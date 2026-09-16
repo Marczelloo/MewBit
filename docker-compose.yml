@@ -42,6 +42,10 @@ services:
 
   bot:
     image: marczelloo/neo-beat-buddy:latest
+    # Built on the Pi from this checkout by the dashboard deploy agent.
+    build:
+      context: .
+      dockerfile: dockerfile
     depends_on:
       lavalink:
         condition: service_healthy
