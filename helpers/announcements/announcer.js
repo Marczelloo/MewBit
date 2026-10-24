@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Status } = require("discord.js");
 const PACKAGE_VERSION = require("../../package.json").version;
 const { BRAND, getPresenceLines, pickPresenceLine } = require("../brand");
 const { getGuildState, updateGuildState } = require("../guildState");
@@ -388,6 +388,12 @@ function updateBotStatus(client) {
     if (presenceTimer) clearTimeout(presenceTimer);
 
     const rotatePresence = () => {
+      // discord.js holds every gateway send made while a shard is reconnecting
+      // and replays them once it is back. A rotation every 20-30 s queued a
+      // dozen stale lines through any outage of a few minutes, which is what
+      // tripped the WebSocketShard listener warning. A missed line costs nothing.
+      if (!client.ws?.shards?.size || client.ws.shards.some((shard) => shard.status !== Status.Ready)) return;
+
       // A random member seed also randomizes the personalized half of the pool;
       // without it those templates would otherwise follow the member cache order.
       const presenceLines = getPresenceLines(client, Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));

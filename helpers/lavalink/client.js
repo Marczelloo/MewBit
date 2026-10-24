@@ -54,6 +54,23 @@ function isPlayerTransitionActive(player) {
   return Boolean(player?.currentTrack || player?.isPlaying || player?.queue?.length);
 }
 
+// Poru answers a TrackException with skip(), which stops the stream but leaves
+// the dead track as currentTrack. Its queueEnd then reads as a transition still
+// in flight and is ignored, so playback went silent instead of moving on. Only
+// the player is released: the playback state keeps the failed track so queue
+// end still has something to seed autoplay from.
+function releaseFailedTrack(player, failedTrack) {
+  const failedKey = getTrackKey(failedTrack);
+  if (!player || !failedKey || getTrackKey(player.currentTrack) !== failedKey) return false;
+
+  clearProgressInterval(player.guildId);
+  player.currentTrack = null;
+  player.isPlaying = false;
+  player.isPaused = false;
+  player.position = 0;
+  return true;
+}
+
 function requestQueuedTrackStart(player, expectedTrack, recover) {
   if (!player || !expectedTrack) return;
 
@@ -230,6 +247,10 @@ function createPoru(client) {
             .catch(() => null);
         }
         return true;
+      }
+
+      if (releaseFailedTrack(player, track)) {
+        Log.warning("No verified mirror; moving past the failed track", "", `guild=${player.guildId}`, `track=${trackTitle}`);
       }
 
       if (activityActive) {
@@ -569,6 +590,7 @@ function createPoru(client) {
 
 module.exports = {
   createPoru,
+  releaseFailedTrack,
   get poru() {
     return poru;
   },

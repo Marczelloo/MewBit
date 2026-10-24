@@ -105,3 +105,25 @@ test("track-start watchdog is cancelled by TrackStart handling", async () => {
   assert.equal(recovered, false);
   assert.equal(getTrackStartWatchdog(guildId), null);
 });
+
+test("a failed track without a mirror releases the player so queue end can continue", () => {
+  const { releaseFailedTrack } = require("../../../helpers/lavalink/client");
+  const failed = { track: "dead-track", info: { title: "Wind" } };
+  const player = { guildId: "release-failed", currentTrack: failed, isPlaying: false, isPaused: false, position: 41_000 };
+
+  assert.equal(releaseFailedTrack(player, failed), true);
+  assert.equal(player.currentTrack, null);
+  assert.equal(player.isPlaying, false);
+  assert.equal(player.position, 0);
+});
+
+test("a late provider error never releases a track that replaced the failed one", () => {
+  const { releaseFailedTrack } = require("../../../helpers/lavalink/client");
+  const failed = { track: "dead-track", info: { title: "Wind" } };
+  const replacement = { track: "mirror-track", info: { title: "Wind (mirror)" } };
+  const player = { guildId: "release-replaced", currentTrack: replacement, isPlaying: true, isPaused: false, position: 3_000 };
+
+  assert.equal(releaseFailedTrack(player, failed), false);
+  assert.equal(player.currentTrack, replacement);
+  assert.equal(player.isPlaying, true);
+});
