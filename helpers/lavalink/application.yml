@@ -81,6 +81,12 @@ plugins:
     oauth:
       enabled: true
       refreshToken: ${YOUTUBE_REFRESH_TOKEN:}
+    # OAuth only covers the TV clients. Without a poToken the WEB/MWEB streams
+    # are refused (403) or start and die mid-song, which leaves a single TV
+    # client between a song and a skip. Empty unless the deployment sets them.
+    pot:
+      token: ${YOUTUBE_PO_TOKEN:}
+      visitorData: ${YOUTUBE_VISITOR_DATA:}
     remoteCipher:
       # yt-cipher is self-hosted in Compose; it keeps YouTube player-script
       # signature changes out of the Lavalink process.

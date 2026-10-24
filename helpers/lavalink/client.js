@@ -32,6 +32,13 @@ const {
   clearProgressInterval,
   scheduleProgressUpdates,
 } = require("./timers");
+const {
+  planTrackRetry,
+  holdQueueForRecovery,
+  releaseHeldQueue,
+  consumeReplay,
+  replayFailedTrack,
+} = require("./trackRetry");
 
 const stopLyricsSession = (...args) => require("./lyricsFormatter").stopLyricsSession(...args);
 const TRACK_FAILURE_SETTLE_MS = 350;
@@ -186,6 +193,8 @@ function createPoru(client) {
   poru.on("nodeConnect", (node) => Log.success(`Lavalink node connected ${node.name}`));
 
   poru.on("trackError", async (player, track, err) => {
+    // Read before Poru's skip() zeroes it; this is where a replay resumes.
+    const failedAt = player.position || 0;
     const errorSummary = err instanceof Error ? err.message : inspect(err, { depth: 1 });
     const trackInfo = track?.info || {};
     const trackTitle = trackInfo.title || "Unknown";
@@ -203,7 +212,37 @@ function createPoru(client) {
     // Poru emits TrackException and immediately calls skip without awaiting
     // this listener. Keep a recovery lock so its following queueEnd cannot
     // start a competing autoplay request while we resolve a verified mirror.
+    holdQueueForRecovery(player);
     const recovery = (async () => {
+      const retryPlan = planTrackRetry(track, failedAt, err);
+      if (retryPlan) {
+        Log.warning(
+          "Replaying the failed track",
+          `attempt=${retryPlan.attempt}`,
+          `resumeAt=${formatDuration(retryPlan.resumeAt)}`,
+          `guild=${player.guildId}`,
+          `track=${trackTitle}`
+        );
+        const failedKey = getTrackKey(track);
+        const replayed = await replayFailedTrack(player, track, retryPlan, {
+          wait,
+          isCurrent: () =>
+            poru.players.get(player.guildId) === player &&
+            (!player.currentTrack || getTrackKey(player.currentTrack) === failedKey),
+          beforeStart: () => armTrackStartWatchdog(player, track, recoverStalledTrackStart),
+        });
+        if (replayed) {
+          releaseHeldQueue(player);
+          markActivityStateChanged(player.guildId, "trackErrorRetry");
+          return true;
+        }
+        clearTrackStartWatchdog(player.guildId, "trackErrorRetry");
+        if (isDifferentActiveTrack(player, track) || poru.players.get(player.guildId) !== player) {
+          releaseHeldQueue(player);
+          return true;
+        }
+      }
+
       const fallbackTrack = await tryQueueFallbackTrack(player, track);
 
       if (fallbackTrack) {
@@ -230,6 +269,7 @@ function createPoru(client) {
         playbackState.set(player.guildId, state);
         markActivityStateChanged(player.guildId, "trackErrorRecovery");
         requestQueuedTrackStart(player, fallbackTrack, recoverStalledTrackStart);
+        releaseHeldQueue(player);
 
         // Discord text-channel delivery is non-critical.  Do it after the
         // replacement request and do not await it: Poru can emit queueEnd
@@ -251,6 +291,13 @@ function createPoru(client) {
 
       if (releaseFailedTrack(player, track)) {
         Log.warning("No verified mirror; moving past the failed track", "", `guild=${player.guildId}`, `track=${trackTitle}`);
+      }
+      // Poru never advances past a failure on its own here (the held queue saw
+      // to that), and the queue-end handler reads queued songs as a transition
+      // already under way. Songs queued meanwhile have to be started here.
+      releaseHeldQueue(player);
+      if (!player.currentTrack && player.queue.length) {
+        requestQueuedTrackStart(player, player.queue[0], recoverStalledTrackStart);
       }
 
       if (activityActive) {
@@ -279,8 +326,11 @@ function createPoru(client) {
 
     clearTrackStartWatchdog(player.guildId, "trackStart");
     clearInactivityTimer(player.guildId, "trackStart");
+    const replay = consumeReplay(track);
     player.isPlaying = true;
     player.isPaused = false;
+    // Poru zeroes the position on every TrackStart; a replay resumed mid-song.
+    if (replay) player.position = replay.resumeAt;
     void stopLyricsSession(player.guildId);
     scheduleProgressUpdates(player);
 
@@ -288,7 +338,7 @@ function createPoru(client) {
     // Artwork, lyrics and Discord UI updates below may involve network waits.
     const state = ensurePlaybackState(player.guildId);
     state.currentTrack = cloneTrack(track);
-    state.lastPosition = 0;
+    state.lastPosition = replay?.resumeAt || 0;
     state.lastTimestamp = Date.now();
     state.paused = Boolean(player.isPaused);
     playbackState.set(player.guildId, state);
@@ -335,18 +385,21 @@ function createPoru(client) {
       void prefetchAutoplayTrack(player, track, player.textChannel);
     }
 
-    try {
-      const voiceChannel = player.poru.client.guilds.cache.get(player.guildId)?.channels.cache.get(player.voiceChannel);
+    // A replay continues a song whose session and play count already exist.
+    if (!replay) {
+      try {
+        const voiceChannel = player.poru.client.guilds.cache.get(player.guildId)?.channels.cache.get(player.voiceChannel);
 
-      const listenerCount = voiceChannel?.members?.filter((m) => !m.user.bot).size || 0;
+        const listenerCount = voiceChannel?.members?.filter((m) => !m.user.bot).size || 0;
 
-      statsStore.beginTrackSession(player.guildId, track, listenerCount);
+        statsStore.beginTrackSession(player.guildId, track, listenerCount);
 
-      // Record track played in health monitoring
-      const health = require("../monitoring/health");
-      health.recordTrackPlayed();
-    } catch (err) {
-      Log.error(`Failed to begin track session for guild ${player.guildId}`, err);
+        // Record track played in health monitoring
+        const health = require("../monitoring/health");
+        health.recordTrackPlayed();
+      } catch (err) {
+        Log.error(`Failed to begin track session for guild ${player.guildId}`, err);
+      }
     }
 
     poru.emit("trackStartUI", player, track);
@@ -460,6 +513,8 @@ function createPoru(client) {
   });
 
   poru.on("queueEnd", async (player) => {
+    // This queueEnd is Poru's answer to the held queue; the hold has done its job.
+    releaseHeldQueue(player);
     const recovery = trackFailureRecoveries.get(player.guildId);
     if (recovery) {
       Log.info("⏳ Waiting for provider-error recovery before queue end", "", `guild=${player.guildId}`);
