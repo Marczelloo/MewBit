@@ -47,6 +47,14 @@ lavalink:
       snapshot: false
 
 logging:
+  # POST /youtube and /youtube/oauth carry the poToken and refresh token in the
+  # body, so request bodies stay out of the log files.
+  request:
+    enabled: true
+    includeClientInfo: true
+    includeHeaders: false
+    includeQueryString: true
+    includePayload: false
   file:
     path: ./logs/
   logback:
