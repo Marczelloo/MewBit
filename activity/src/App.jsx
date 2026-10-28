@@ -1027,6 +1027,45 @@ function titleLengthClass(title = "") {
   return "normal";
 }
 
+// A word wider than its column can only break mid-letter ("Caramelldanse|n"),
+// so the hero title shrinks until its longest word fits on one line.
+function useFitLongestWord(titleRef, title) {
+  useLayoutEffect(() => {
+    const heading = titleRef.current?.closest("h1");
+    // Measure the column, not the heading: a ch-based max width would follow
+    // the font size it is fitting and never settle.
+    const column = heading?.parentElement;
+    const longestWord = String(title || "").split(/\s+/).reduce((longest, word) => (word.length > longest.length ? word : longest), "");
+    if (!heading || !column || !longestWord) return undefined;
+    let fittedWidth = -1;
+    const fit = () => {
+      // Height changes from the resize itself must not refit in a loop.
+      if (column.clientWidth === fittedWidth) return;
+      heading.style.fontSize = "";
+      fittedWidth = column.clientWidth;
+      // Measure in the title button itself so its own font and spacing apply.
+      const probe = document.createElement("span");
+      probe.textContent = longestWord;
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;";
+      titleRef.current.appendChild(probe);
+      const wordWidth = probe.getBoundingClientRect().width;
+      probe.remove();
+      if (fittedWidth > 0 && wordWidth > fittedWidth) {
+        const fontSize = parseFloat(getComputedStyle(heading).fontSize);
+        heading.style.fontSize = `${Math.max(16, Math.floor((fontSize * fittedWidth) / wordWidth))}px`;
+      }
+    };
+    fit();
+    document.fonts?.ready.then(() => { fittedWidth = -1; fit(); });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    observer?.observe(column);
+    return () => {
+      observer?.disconnect();
+      heading.style.fontSize = "";
+    };
+  }, [titleRef, title]);
+}
+
 function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPending, className = "" }) {
   const { player } = state;
   const position = usePlayerPosition(player);
@@ -1042,6 +1081,7 @@ function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPendin
   const trackLinkUrl = [track?.uri, track?.playQuery].find((value) => typeof value === "string" && /^https?:\/\//i.test(value)) || null;
   const commitSeek = (nextValue) => onAction("seek", { positionMs: seekSlider.commit(nextValue) });
   const titleLength = titleLengthClass(track?.title);
+  useFitLongestWord(titleRef, track?.title);
 
   useEffect(() => {
     setTitleMenu(null);

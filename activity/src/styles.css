@@ -1244,6 +1244,8 @@
 /* Sizes follow the stage (cqi), not the window, so pinned sidebars shrink them too. */
 /* Long hero titles step down a size and stop at a few lines; the full title stays on hover. Breaking only between words keeps "Cyberpunk" whole. */
 .now-playing-stage .track-copy { min-height: 0; }
+/* An implicit grid column grows to the title's longest word and pushes it under the queue panel; pin it to the column so break-word can wrap. */
+.now-playing-stage .track-text { grid-template-columns: minmax(0, 1fr); }
 .now-playing-stage .track-copy h1 { --title-lines: 3; overflow-wrap: break-word; hyphens: manual; }
 /* The title is a <button>, an atomic inline box, so the clamp belongs on it rather than on the heading. */
 .now-playing-stage .track-title-link { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--title-lines); max-width: 100%; overflow: hidden; padding-bottom: 0.08em; }
