@@ -50,6 +50,7 @@ import { createMockState, createEmptyState, mockSearchResults } from "./mockStat
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
 
 import ActivityGate from "./views/ActivityGate.jsx";
+import Dropdown from "./views/Dropdown.jsx";
 
 const LazyFiltersPanel = lazy(() => import("./views/FiltersPanel.jsx"));
 const LazyHomePanel = lazy(() => import("./views/HomePanel.jsx"));
@@ -233,6 +234,24 @@ function useCompactViewport() {
 function sourceLabel(source) {
   return ({ deezer: "Deezer", youtube: "YouTube", spotify: "Spotify", soundcloud: "SoundCloud", auto: "YouTube first", direct: "Direct link" })[source] || source || "Unknown";
 }
+
+// A narrow stage leaves the search field only a sliver next to "YouTube first",
+// so the trigger falls back to these; the open list keeps the full names.
+const SOURCE_SHORT_LABELS = { auto: "Auto", youtube: "YT", soundcloud: "SC", deezer: "DZ", spotify: "SP" };
+const SOURCE_OPTIONS = SOURCE_NAMES.map((name) => ({ value: name, label: sourceLabel(name), shortLabel: SOURCE_SHORT_LABELS[name] }));
+const HISTORY_RANGE_OPTIONS = [
+  { value: "all", label: "Any time" },
+  { value: "1h", label: "Last hour" },
+  { value: "today", label: "Today" },
+  { value: "7d", label: "Last 7 days" },
+];
+const PLAYLIST_SORT_OPTIONS = [
+  { value: "recent", label: "Recently added" },
+  { value: "title", label: "Title A–Z" },
+  { value: "artist", label: "Artist A–Z" },
+  { value: "duration-desc", label: "Longest first" },
+  { value: "duration-asc", label: "Shortest first" },
+];
 
 const IconButton = forwardRef(function IconButton({ label, children, className = "", loading = false, disabled = false, ...props }, ref) {
   return (
@@ -999,6 +1018,15 @@ function PlayerControls({ player, playlists = [], likedTrackIds = [], onTab, onA
   );
 }
 
+// YouTube uploads carry the episode, the language and "lyrics" in the title;
+// the hero steps those down a size and clamps them instead of letting them
+// push the controls off the stage.
+function titleLengthClass(title = "") {
+  if (title.length > 72) return "xlong";
+  if (title.length > 40) return "long";
+  return "normal";
+}
+
 function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPending, className = "" }) {
   const { player } = state;
   const position = usePlayerPosition(player);
@@ -1013,6 +1041,7 @@ function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPendin
   const closeTitleMenu = () => { titleGuards.clearCloseTimer(); setTitleMenu(null); };
   const trackLinkUrl = [track?.uri, track?.playQuery].find((value) => typeof value === "string" && /^https?:\/\//i.test(value)) || null;
   const commitSeek = (nextValue) => onAction("seek", { positionMs: seekSlider.commit(nextValue) });
+  const titleLength = titleLengthClass(track?.title);
 
   useEffect(() => {
     setTitleMenu(null);
@@ -1028,7 +1057,7 @@ function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPendin
         <div className="track-copy">
           <div className="track-copy-grid">
             <div className="track-text">
-              <h1>
+              <h1 data-length={titleLength}>
                 {track ? (
                   <button
                     ref={titleRef}
@@ -1045,7 +1074,7 @@ function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPendin
                       });
                     }}
                     aria-haspopup="menu"
-                    title={trackLinkUrl ? "Open the original track page" : undefined}
+                    title={titleLength === "normal" ? (trackLinkUrl ? "Open the original track page" : undefined) : track.title}
                   >{track.title}</button>
                 ) : "Nothing is playing"}
               </h1>
@@ -1298,19 +1327,11 @@ function QueueHistoryPanel({ history = [], sessionStartedAt }) {
       <div className="history-filter-grid">
         <label>
           <span>Played by</span>
-          <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)}>
-            <option value="all">Everyone</option>
-            {users.map((user) => <option value={user} key={user}>{user}</option>)}
-          </select>
+          <Dropdown value={userFilter} onChange={setUserFilter} label="Played by" options={[{ value: "all", label: "Everyone" }, ...users.map((user) => ({ value: user, label: user }))]} />
         </label>
         <label>
           <span>When</span>
-          <select value={rangeFilter} onChange={(event) => setRangeFilter(event.target.value)}>
-            <option value="all">Any time</option>
-            <option value="1h">Last hour</option>
-            <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-          </select>
+          <Dropdown value={rangeFilter} onChange={setRangeFilter} label="When" options={HISTORY_RANGE_OPTIONS} />
         </label>
       </div>
       <label className={`history-session-toggle ${sessionOnly ? "is-active" : ""}`}>
@@ -1345,9 +1366,7 @@ function SearchPanel({ query, setQuery, source, setSource, results, status, onSe
     <div className="search-panel">
       {showSearchBar ? <div className="search-bar-row">
         <div className="search-input-wrap"><MagnifyingGlass size={18} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") onSearch(); }} placeholder="Search title, artist, or a direct link" aria-label="Search music" /></div>
-        <select value={source} onChange={(event) => setSource(event.target.value)} aria-label="Search source">
-          {SOURCE_NAMES.map((name) => <option value={name} key={name}>{sourceLabel(name)}</option>)}
-        </select>
+        <Dropdown className="source-dropdown" value={source} onChange={setSource} label="Search source" options={SOURCE_OPTIONS} align="end" />
         <button className="primary-button" type="button" onClick={onSearch}><MagnifyingGlass size={17} weight="bold" aria-hidden="true" /> Search</button>
       </div> : null}
       {directLink ? <div className="search-caption"><span>Direct link detected — the source picker is ignored</span></div> : null}
@@ -1512,7 +1531,7 @@ function PlaylistsPanel({ playlists, currentTrack, selectedPlaylist, playlistDet
       {editor ? <section className="playlist-detail" aria-label={`${editor.name} playlist editor`}>
         <div className="playlist-detail-heading"><div><span className="sidebar-kicker">PLAYLIST EDITOR</span><h3>{editor.name}</h3><span>{editor.tracks?.length || 0} tracks</span></div><div className="playlist-detail-actions"><button className="primary-button" type="button" onClick={() => onAction("play_playlist", { name: editor.name })}><Play size={15} weight="fill" aria-hidden="true" /> Play</button><button className="secondary-button" type="button" onClick={() => onAction("play_playlist", { name: editor.name, shuffle: true })}><Shuffle size={15} aria-hidden="true" /> Shuffle</button>{!editor.isDefault ? <button className="ghost-button danger-button" type="button" onClick={() => onAction("delete_playlist", { name: editor.name })}><Trash size={15} aria-hidden="true" /> Delete</button> : null}</div></div>
         <div className="playlist-editor-grid"><label>Name<input value={editor.newName ?? editor.name} disabled={editor.isDefault} onChange={(event) => setEditor((value) => ({ ...value, newName: event.target.value }))} /></label><label>Description<textarea value={editor.description || ""} onChange={(event) => setEditor((value) => ({ ...value, description: event.target.value }))} rows="2" /></label><label>Artwork URL<input value={editor.thumbnail || ""} onChange={(event) => setEditor((value) => ({ ...value, thumbnail: event.target.value }))} placeholder="https://…" /></label><div className="playlist-checks"><label className={`playlist-check-toggle ${editor.public ? "is-on" : ""}`}><input type="checkbox" checked={Boolean(editor.public)} disabled={editor.isDefault} onChange={(event) => setEditor((value) => ({ ...value, public: event.target.checked }))} /><Globe size={16} aria-hidden="true" /><span><strong>Public</strong><small>Visible to shared listeners</small></span></label><label className={`playlist-check-toggle ${editor.collaborative ? "is-on" : ""}`}><input type="checkbox" checked={Boolean(editor.collaborative)} disabled={editor.isDefault} onChange={(event) => setEditor((value) => ({ ...value, collaborative: event.target.checked }))} /><UsersThree size={16} aria-hidden="true" /><span><strong>Collaborative</strong><small>Let others add tracks</small></span></label><button className="secondary-button" type="button" onClick={saveEditor}><Check size={15} weight="bold" aria-hidden="true" /> Save changes</button></div></div>
-        <div className="playlist-detail-toolbar"><strong>Tracks</strong><label className="playlist-sort-control"><span>Sort</span><select value={sortMode} onChange={(event) => setSortMode(event.target.value)} aria-label="Sort playlist tracks"><option value="recent">Recently added</option><option value="title">Title A–Z</option><option value="artist">Artist A–Z</option><option value="duration-desc">Longest first</option><option value="duration-asc">Shortest first</option></select></label></div>
+        <div className="playlist-detail-toolbar"><strong>Tracks</strong><label className="playlist-sort-control"><span>Sort</span><Dropdown value={sortMode} onChange={setSortMode} label="Sort playlist tracks" options={PLAYLIST_SORT_OPTIONS} align="end" /></label></div>
         <div className="playlist-track-list">{sortedTracks.length ? sortedTracks.map(({ track, index }) => <div className="playlist-track-row" key={`${track.id}-${index}`}><Artwork track={track} size="small" /><div className="playlist-track-copy"><strong>{track.title}</strong><span>{track.author}</span><SourceTag source={track.source} /></div><span className="playlist-track-duration">{formatTime(track.durationMs)}</span><TrackSaveActions track={track} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} className="playlist-track-save-actions" /><button className="playlist-action danger-button" type="button" onClick={() => onAction("remove_playlist_track", { name: editor.name, position: index })} title="Remove track"><Trash size={15} aria-hidden="true" /></button></div>) : <div className="empty-state compact"><MusicNotes size={30} weight="duotone" aria-hidden="true" /><strong>Playlist is empty</strong><span>Add the current track or save one from search.</span></div>}</div>
       </section> : null}
       {!editor ? <div className="empty-state compact playlist-selection-empty"><VinylRecord size={30} weight="duotone" aria-hidden="true" /><strong>{selectedSummary ? `Opening ${selectedSummary.name}` : "Select a playlist to edit"}</strong><span>Choose a playlist from Your Library on the left.</span></div> : null}
@@ -1539,9 +1558,7 @@ function GlobalSearch({ query, setQuery, source, setSource, onSearch, onFocus })
         placeholder="What do you want to play?"
         aria-label="Search music"
       />
-      <select value={source} onChange={(event) => setSource(event.target.value)} aria-label="Search source">
-        {SOURCE_NAMES.map((name) => <option value={name} key={name}>{sourceLabel(name)}</option>)}
-      </select>
+      <Dropdown className="source-dropdown" value={source} onChange={setSource} label="Search source" options={SOURCE_OPTIONS} align="end" />
       <button className="global-search-submit" type="button" onClick={onSearch} aria-label="Search music" title="Search music">
         <MagnifyingGlass size={17} weight="bold" aria-hidden="true" />
       </button>
@@ -1831,6 +1848,14 @@ function App() {
   const isCompactViewport = useCompactViewport();
   const isCompact = MOCK_COMPACT_PREVIEW || isCompactViewport;
   const isDrawerViewport = useMediaQuery("(max-width: 900px)");
+  // Sidebars open by default on a wide stage. When Discord shrinks the window
+  // into drawer range they would both stay open and cover the player, so
+  // crossing into it closes them; the user reopens one at a time from there.
+  useEffect(() => {
+    if (!isDrawerViewport) return;
+    setLeftSidebarOpen(false);
+    setRightSidebarOpen(false);
+  }, [isDrawerViewport]);
   const activityEvents = state.activity?.events || [];
   const hasActivityErrors = activityEvents.some((event) => event.level === "error" || event.level === "warning");
   const appShellRef = useRef(null);
