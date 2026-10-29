@@ -94,6 +94,15 @@ test("Activity progress follows the event-backed position anchor across view rem
   assert.equal(getActivityPosition(player, state, 48_000, now), 48_000);
 });
 
+test("Activity holds the position of a track that has not been heard yet", () => {
+  const now = Date.now();
+  const state = { lastPosition: 0, lastTimestamp: now - 3_000, paused: false, audioPendingSince: now - 3_000, audioPendingFrom: 0 };
+  assert.equal(getActivityPosition({ position: 0, isPaused: false }, state, 180_000, now), 0);
+
+  state.audioPendingSince = null;
+  assert.equal(getActivityPosition({ position: 0, isPaused: false }, state, 180_000, now), 3_000);
+});
+
 test("Activity always labels autoplay rows as MewBit even when a provider preserved a user requester", () => {
   const track = withAutoplayRequesterLabel({
     info: { title: "Queued by autoplay", requesterTag: "marczelloo#0001", autoplayed: true },

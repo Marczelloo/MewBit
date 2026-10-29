@@ -2087,6 +2087,7 @@ function App() {
     state.player.currentTrack?.artworkFallbackUrl,
     state.player.playing,
     state.player.paused,
+    state.player.buffering,
     state.player.autoplay,
     state.player.loop,
     state.player.shuffleActive,

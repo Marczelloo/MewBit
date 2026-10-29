@@ -8,12 +8,12 @@ export function usePlayerPosition(player, offsetMs = 0) {
   const [now, setNow] = useState(() => Date.now());
   const anchorRef = useRef({ positionMs: Number(player?.positionMs) || 0, receivedAt: Date.now() });
   const trackId = player?.currentTrack?.id;
-  const shouldTick = Boolean(player?.playing && !player?.paused && trackId);
+  const shouldTick = Boolean(player?.playing && !player?.paused && !player?.buffering && trackId);
 
   useEffect(() => {
     anchorRef.current = { positionMs: Number(player?.positionMs) || 0, receivedAt: Date.now() };
     setNow(Date.now());
-  }, [player?.positionMs, player?.updatedAt, player?.playing, player?.paused, trackId]);
+  }, [player?.positionMs, player?.updatedAt, player?.playing, player?.paused, player?.buffering, trackId]);
 
   useEffect(() => {
     if (!shouldTick) return undefined;

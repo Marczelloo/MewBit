@@ -71,16 +71,24 @@ describe("Per-track loudness", () => {
     userData: { features: { loudness: gain } },
   });
 
-  it("cuts loud masters, lifts quiet ones a little and leaves typical ones alone", () => {
-    assert.strictEqual(getTrackGainAdjustmentDb(-9), 0);
-    assert.strictEqual(getTrackGainAdjustmentDb(-5), -4);
-    assert.strictEqual(getTrackGainAdjustmentDb(1), -6);
-    assert.strictEqual(getTrackGainAdjustmentDb(-26), 3);
+  it("leaves typical masters alone, lifts quiet ones and only trims the loudest", () => {
+    assert.strictEqual(getTrackGainAdjustmentDb(-6.5), 0);
+    assert.strictEqual(getTrackGainAdjustmentDb(-5.9), -0.6);
+    assert.strictEqual(getTrackGainAdjustmentDb(1), -2);
+    assert.strictEqual(getTrackGainAdjustmentDb(-10.4), 3.9);
+    assert.strictEqual(getTrackGainAdjustmentDb(-26), 5);
     assert.strictEqual(getTrackGainAdjustmentDb(null), null);
   });
 
+  it("does not turn a typical playlist down", () => {
+    // Real Deezer gains: Metallica, Dua Lipa, Nirvana, Taco Hemingway.
+    const gains = [-5.9, -6.3, -7.4, -9.7];
+    const average = gains.reduce((sum, gain) => sum + getTrackGainAdjustmentDb(gain), 0) / gains.length;
+    assert.ok(average >= 0, `average adjustment ${average} dB`);
+  });
+
   it("prefers the measured master over the provider estimate", () => {
-    assert.strictEqual(getPlaybackGainDb(measured(-5)), -4);
+    assert.strictEqual(getPlaybackGainDb(measured(-5)), -1.5);
     assert.strictEqual(getPlaybackGainDb({ info: { sourceName: "youtube" } }), DEFAULT_SOURCE_GAIN_DB.youtube);
     assert.ok(getNormalizedVolume(100, measured(-5)) < getNormalizedVolume(100, measured(-12)));
   });

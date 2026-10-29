@@ -11,6 +11,9 @@ dev:
 lavalink:
   server:
     password: ${LAVALINK_SERVER_PASSWORD}
+    # Seconds between position reports. The Activity holds its clock until
+    # the first report shows audio moving, so a long gap reads as a late start.
+    playerUpdateInterval: 1
     sources:
       youtube: false # Disabled - using LavaSrc YouTube instead
       bandcamp: true

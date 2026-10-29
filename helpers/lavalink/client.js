@@ -19,6 +19,8 @@ const { clearRecoverySnapshot } = require("./recovery");
 const { armTrackStartWatchdog, clearTrackStartWatchdog } = require("./startWatchdog");
 const {
   ensurePlaybackState,
+  markAwaitingAudio,
+  confirmAudioStarted,
   cloneTrack,
   resolveEndedTrack,
   pushTrackHistory,
@@ -356,6 +358,7 @@ function createPoru(client) {
     state.lastPosition = replay?.resumeAt || 0;
     state.lastTimestamp = Date.now();
     state.paused = Boolean(player.isPaused);
+    markAwaitingAudio(state, state.lastPosition);
     playbackState.set(player.guildId, state);
     markActivityStateChanged(player.guildId, "trackStart");
 
@@ -646,10 +649,11 @@ function createPoru(client) {
     state.lastPosition = player.position ?? 0;
     state.lastTimestamp = Date.now();
     state.paused = Boolean(player.isPaused);
+    const audioStarted = confirmAudioStarted(state, state.lastPosition);
     playbackState.set(player.guildId, state);
 
     const now = Date.now();
-    if (now - (lastActivityProgressSyncAt.get(player.guildId) || 0) >= 1_000) {
+    if (audioStarted || now - (lastActivityProgressSyncAt.get(player.guildId) || 0) >= 1_000) {
       lastActivityProgressSyncAt.set(player.guildId, now);
       markActivityStateChanged(player.guildId, "playerUpdate");
     }

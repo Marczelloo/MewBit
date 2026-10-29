@@ -45,7 +45,7 @@ const { filterPlayableSearchResults, rankSearchResults } = require("../lavalink/
 const { searchWithCorrection } = require("../lavalink/searchSuggestions");
 const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
 const { skipWithLearning } = require("../lavalink/skipLearning");
-const { cloneTrack, getLyricsState, playbackState, setLyricsState } = require("../lavalink/state");
+const { cloneTrack, getLyricsState, isAwaitingAudio, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
 const Log = require("../logs/log");
 const health = require("../monitoring/health");
@@ -513,6 +513,8 @@ function buildActivityState(client, guildId, userId) {
   // event-backed state avoids displaying Poru's transient queued/cleared
   // currentTrack during an error or queue transition.
   const playing = Boolean(playback.track && !paused && (livePlaybackState?.currentTrack || player?.isPlaying));
+  // Started but not heard yet: the clock waits for the first audio frame.
+  const buffering = Boolean(playing && isAwaitingAudio(livePlaybackState));
   const position = getActivityPosition(player, livePlaybackState, playback.durationMs, Date.now());
   const botStatus = client?.user?.presence?.activities?.find((activity) => activity.type === 2)?.name || null;
   const lavalinkMetrics = health.getMetrics?.()?.lavalink || {};
@@ -539,6 +541,7 @@ function buildActivityState(client, guildId, userId) {
       connected: Boolean(player),
       paused,
       playing,
+      buffering,
       positionMs: Math.max(0, Math.round(position)),
       lyricsSyncOffsetMs,
       lyricsDefaultSyncOffsetMs: LYRICS_SYNC_OFFSET_MS,
@@ -591,7 +594,7 @@ function resolveActivityPlayback(stateTrack, playerTrack) {
 function getActivityPosition(player, state, durationMs, now = Date.now()) {
   const anchoredPosition = Number(state?.lastPosition ?? player?.position ?? 0) || 0;
   const anchoredAt = Number(state?.lastTimestamp) || now;
-  const estimated = state?.paused || player?.isPaused
+  const estimated = state?.paused || player?.isPaused || isAwaitingAudio(state, now)
     ? anchoredPosition
     : anchoredPosition + Math.max(0, now - anchoredAt);
   const duration = Number(durationMs) || Number.MAX_SAFE_INTEGER;

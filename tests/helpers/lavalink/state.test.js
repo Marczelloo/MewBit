@@ -6,6 +6,9 @@ const {
   ensurePlaybackState,
   pushTrackHistory,
   endActivePlayback,
+  markAwaitingAudio,
+  confirmAudioStarted,
+  isAwaitingAudio,
 } = require("../../../helpers/lavalink/state");
 
 function track(identifier) {
@@ -36,4 +39,22 @@ test("ending active playback keeps room history after the live player is gone", 
   assert.deepEqual(ended.history.map((entry) => entry.info.identifier), ["first", "second"]);
 
   playbackState.delete(guildId);
+});
+
+test("a started track waits for the position to move before its clock runs", () => {
+  const state = {};
+  markAwaitingAudio(state, 0);
+  assert.equal(isAwaitingAudio(state), true);
+
+  // Lavalink keeps reporting 0 while the stream loads and the voice link opens.
+  assert.equal(confirmAudioStarted(state, 0), false);
+  assert.equal(isAwaitingAudio(state), true);
+
+  assert.equal(confirmAudioStarted(state, 820), true);
+  assert.equal(isAwaitingAudio(state), false);
+  assert.equal(confirmAudioStarted(state, 1_820), false);
+
+  // A position Lavalink never reports must not freeze the clock for good.
+  markAwaitingAudio(state, 0);
+  assert.equal(isAwaitingAudio(state, Date.now() + 16_000), false);
 });

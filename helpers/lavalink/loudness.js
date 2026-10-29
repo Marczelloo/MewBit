@@ -8,12 +8,13 @@ const DEFAULT_SOURCE_GAIN_DB = Object.freeze({
 });
 
 // Deezer measures each master's loudness as `gain` (dB, louder is higher:
-// a brickwalled EDM single sits near -5, solo piano near -20). Tracks are
-// pulled towards a typical modern pop master. Boosts stay small because
-// Lavalink volume above the user's setting can clip.
-const DEFAULT_TARGET_GAIN_DB = -9;
-const MAX_TRACK_CUT_DB = -6;
-const MAX_TRACK_BOOST_DB = 3;
+// most pop, rap and rock masters sit between -5 and -8, solo piano near -20).
+// The target is that loud majority, so normalisation mostly lifts quiet
+// masters instead of turning everything down; the cut only trims the
+// loudest few. Quiet masters have the headroom for the boost.
+const DEFAULT_TARGET_GAIN_DB = -6.5;
+const MAX_TRACK_CUT_DB = -2;
+const MAX_TRACK_BOOST_DB = 5;
 const TRACK_LOUDNESS_LOOKUP_TIMEOUT_MS = 1500;
 
 function normalizeSource(sourceOrTrack) {
