@@ -145,6 +145,8 @@ async function recoverStalledTrackStart(player, stalledTrack) {
     }
   }
 
+  state.handoffTrack = null;
+  markActivityStateChanged(player.guildId, "trackStartGaveUp");
   scheduleInactivityDisconnect(player, "trackStartTimeout");
 }
 
@@ -355,6 +357,7 @@ function createPoru(client) {
     // Artwork, lyrics and Discord UI updates below may involve network waits.
     const state = ensurePlaybackState(player.guildId);
     state.currentTrack = cloneTrack(track);
+    state.handoffTrack = null;
     state.lastPosition = replay?.resumeAt || 0;
     state.lastTimestamp = Date.now();
     state.paused = Boolean(player.isPaused);
@@ -495,6 +498,11 @@ function createPoru(client) {
 
     state.currentTrack = null;
     state.lastEndedTrack = endedTrack ? cloneTrack(endedTrack) : state.lastEndedTrack || null;
+    // The Activity keeps showing the ended track until the next one starts, so
+    // a skip into an autoplay pick does not flash the empty Home screen.
+    state.handoffTrack = state.lastEndedTrack
+      ? { track: state.lastEndedTrack, positionMs: Number(state.lastPosition) || 0, since: Date.now() }
+      : null;
     state.paused = false;
     playbackState.set(player.guildId, state);
     clearLyricsState(player.guildId);
@@ -641,6 +649,9 @@ function createPoru(client) {
       }
     }
 
+    // Nothing follows: let the Activity show that playback has ended.
+    state.handoffTrack = null;
+    markActivityStateChanged(player.guildId, "queueEnded");
     scheduleInactivityDisconnect(player, "queueEnd");
   });
 

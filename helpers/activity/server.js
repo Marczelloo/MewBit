@@ -502,8 +502,11 @@ function buildActivityState(client, guildId, userId) {
   const player = getPlayer(guildId);
   const likedSongs = playlistStore.getLikedSongs(userId);
   const livePlaybackState = playbackState.get(guildId);
+  const generatedAt = Date.now();
   const playback = resolveActivityPlayback(livePlaybackState?.currentTrack, player?.currentTrack);
-  const currentTrack = playback.track ? serializeTrack(withAutoplayRequesterLabel(playback.track, client)) : null;
+  const handoff = playback.track ? null : getActivityHandoff(player, livePlaybackState, generatedAt);
+  const shownTrack = playback.track || handoff?.track || null;
+  const currentTrack = shownTrack ? serializeTrack(withAutoplayRequesterLabel(shownTrack, client)) : null;
   const filters = getEqualizerState(guildId) || player?.filters || {};
   const guild = client.guilds.cache.get(guildId);
   const settings = guildState.getGuildState(guildId);
@@ -512,14 +515,14 @@ function buildActivityState(client, guildId, userId) {
   // A track enters playbackState only on Lavalink TrackStart. Using that
   // event-backed state avoids displaying Poru's transient queued/cleared
   // currentTrack during an error or queue transition.
-  const playing = Boolean(playback.track && !paused && (livePlaybackState?.currentTrack || player?.isPlaying));
+  const playing = Boolean(handoff) || Boolean(playback.track && !paused && (livePlaybackState?.currentTrack || player?.isPlaying));
   // Started but not heard yet: the clock waits for the first audio frame.
-  const buffering = Boolean(playing && isAwaitingAudio(livePlaybackState));
-  const position = getActivityPosition(player, livePlaybackState, playback.durationMs, Date.now());
+  // Between two tracks the clock holds where the previous one stopped.
+  const buffering = Boolean(handoff) || Boolean(playing && isAwaitingAudio(livePlaybackState));
+  const position = handoff ? handoff.positionMs : getActivityPosition(player, livePlaybackState, playback.durationMs, generatedAt);
   const botStatus = client?.user?.presence?.activities?.find((activity) => activity.type === 2)?.name || null;
   const lavalinkMetrics = health.getMetrics?.()?.lavalink || {};
 
-  const generatedAt = Date.now();
   const userLyricsOffset = userPreferences.getUserPreferences(userId)?.lyricsSyncOffsetMs;
   const lyricsSyncOffsetMs = clampLyricsSyncOffset(userLyricsOffset ?? LYRICS_SYNC_OFFSET_MS);
 
@@ -546,6 +549,7 @@ function buildActivityState(client, guildId, userId) {
       lyricsSyncOffsetMs,
       lyricsDefaultSyncOffsetMs: LYRICS_SYNC_OFFSET_MS,
       durationMs: playback.durationMs || currentTrack?.durationMs || 0,
+      handoff: Boolean(handoff),
       volume: getUserVolume(player),
       muted: Boolean(player?.isMuted) || getUserVolume(player) === 0,
       loop: player?.loop || "NONE",
@@ -571,6 +575,16 @@ function buildActivityState(client, guildId, userId) {
     filterPresets: FILTER_PRESET_NAMES,
     equalizerPresets: getSerializedEqualizerPresets(userId),
   };
+}
+
+// Longest wait between two tracks the Activity covers with the previous one:
+// an autoplay plan (12 s AI DJ timeout) plus resolving the pick.
+const HANDOFF_HOLD_MS = 20_000;
+
+function getActivityHandoff(player, state, now = Date.now()) {
+  const handoff = state?.handoffTrack;
+  if (!player || state?.currentTrack || !handoff?.track) return null;
+  return now - (Number(handoff.since) || 0) <= HANDOFF_HOLD_MS ? handoff : null;
 }
 
 function resolveActivityPlayback(stateTrack, playerTrack) {
@@ -1405,6 +1419,7 @@ module.exports = {
   buildActivityState,
   clampLyricsSyncOffset,
   getActivityPosition,
+  getActivityHandoff,
   resolveActivityPlayback,
   withAutoplayRequesterLabel,
   getSerializedPlaybackHistory,

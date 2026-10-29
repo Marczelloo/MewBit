@@ -108,6 +108,7 @@ const endActivePlayback = (guildId) => {
   const state = ensurePlaybackState(guildId);
   state.currentTrack = null;
   state.lastEndedTrack = null;
+  state.handoffTrack = null;
   state.lastPosition = 0;
   state.lastTimestamp = Date.now();
   state.paused = true;
