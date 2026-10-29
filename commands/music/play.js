@@ -9,10 +9,12 @@ const { recordSearch } = require("../../helpers/history/searchHistory");
 const { beginAutocompleteRequest, isLatestAutocompleteRequest } = require("../../helpers/interactions/autocompleteGuard");
 const { buildTrackAutocompleteValue } = require("../../helpers/lavalink/autocompleteTrack");
 const { lavalinkPlay, lavalinkResolveTracks } = require("../../helpers/lavalink/index");
+const { getPersonalSearchTracks } = require("../../helpers/lavalink/personalSearch");
 const { getPoru } = require("../../helpers/lavalink/players");
 const { AUTOCOMPLETE_VARIANT_LIMIT, searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
 const { resolveSearchSource } = require("../../helpers/lavalink/searchSources");
+const { findSearchCorrection, getSearchSuggestions, searchWithCorrection } = require("../../helpers/lavalink/searchSuggestions");
 const { normalizeComparableText } = require("../../helpers/lavalink/trackNormalization");
 const Log = require("../../helpers/logs/log");
 const { assertAllowedMusicUrl } = require("../../helpers/security/mediaUrl");
@@ -25,6 +27,20 @@ const SOURCE_LABELS = Object.freeze({
   spotify: "Spotify",
   youtube: "YouTube",
 });
+const LIBRARY_ORIGIN_LABELS = Object.freeze({ liked: "Liked", playlist: "Playlist", history: "Played before" });
+
+/**
+ * Enter on typed text (not a picked autocomplete choice, which is a URL or a
+ * provider-prefixed query) plays what the user meant: "metalica nothing els"
+ * becomes the "metallica nothing else matters" YouTube suggests.
+ */
+async function correctTypedQuery(query) {
+  const text = query.trim();
+  if (/^https?:\/\//i.test(text) || /^[a-z]+search:/i.test(text)) return text;
+  const correction = findSearchCorrection(text, await getSearchSuggestions(text));
+  if (correction) Log.info("🔤 /play query corrected", `query=${text}`, `correction=${correction}`);
+  return correction || text;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -91,27 +107,33 @@ module.exports = {
       const searchSource = resolveSearchSource(selectedSource, userSource, guildSettings?.defaultSource);
       const poru = getPoru();
       const preferredSource = searchSource === "auto" ? "deezer" : searchSource;
-      const results = await searchAcrossSources(poru, focusedValue, {
-        preferredSource,
-        variantLimit: AUTOCOMPLETE_VARIANT_LIMIT,
-      });
+      // A misspelt query also searches the correction YouTube suggests (both
+      // finish within Discord's three-second autocomplete window), and the
+      // pool is ranked against that correction.
+      const { tracks: results, rankQuery } = await searchWithCorrection(focusedValue, (text) =>
+        searchAcrossSources(poru, text, { preferredSource, variantLimit: AUTOCOMPLETE_VARIANT_LIMIT })
+      );
 
-      if (!results.length) {
+      // The user's own matches lead: liked songs and playlists are what they
+      // most likely mean.
+      const libraryTracks = getPersonalSearchTracks(interaction.user.id, interaction.guildId, rankQuery, { limit: 3 });
+
+      if (!results.length && !libraryTracks.length) {
         return respond([]);
       }
 
       // Require the candidate to represent the query before ranking by
       // artist/title accuracy and popularity. Provider order alone is noisy.
-      const musicTracks = filterPlayableSearchResults(results, focusedValue);
+      const musicTracks = filterPlayableSearchResults(results, rankQuery);
 
       // Match the user's artist/title intent before using provider order as a popularity tie-breaker.
-      const rankedTracks = rankSearchResults(musicTracks, focusedValue, { limit: 15 });
+      const rankedTracks = rankSearchResults(musicTracks, rankQuery, { limit: 15 });
 
       // Deduplicate by artist + title
       const seen = new Set();
       const uniqueTracks = [];
 
-      for (const track of rankedTracks) {
+      for (const track of [...libraryTracks, ...rankedTracks]) {
         const author = (track.info?.author || "Unknown Artist").trim();
         const title = (track.info?.title || "Unknown").trim();
 
@@ -135,7 +157,8 @@ module.exports = {
         const author = track.info?.author || "Unknown Artist";
         const sourceKey = String(track.info?.sourceName || track.info?.source || "").toLowerCase();
         const sourceLabel = SOURCE_LABELS[sourceKey] || (sourceKey ? sourceKey : "Unknown source");
-        const sourceSuffix = ` [${sourceLabel}]`;
+        const originLabel = LIBRARY_ORIGIN_LABELS[track.personal];
+        const sourceSuffix = originLabel ? ` [${sourceLabel} · ${originLabel}]` : ` [${sourceLabel}]`;
 
         // Truncate if too long (Discord has 100 char limit)
         let displayName = `${title} - ${author}${sourceSuffix}`;
@@ -168,7 +191,7 @@ module.exports = {
     const activityActive = hasActiveActivitySession(interaction.guildId);
     await interaction.deferReply({ ephemeral: activityActive });
 
-    const query = await interaction.options.getString("query");
+    const typedQuery = await interaction.options.getString("query");
     const voiceChannel = await interaction.member.voice.channel;
 
     if (!voiceChannel)
@@ -176,10 +199,11 @@ module.exports = {
         embeds: [errorEmbed("You must be in a voice channel to use this command.")],
       });
 
-    if (!query || query.trim() === "")
+    if (!typedQuery || typedQuery.trim() === "")
       return interaction.editReply({ embeds: [errorEmbed("Please provide a valid URL or search term.")] });
 
-    assertAllowedMusicUrl(query);
+    assertAllowedMusicUrl(typedQuery);
+    const query = await correctTypedQuery(typedQuery);
 
     const prepend = interaction.options.getBoolean("prepend") ?? false;
 

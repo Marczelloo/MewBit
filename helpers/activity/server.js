@@ -37,10 +37,13 @@ const {
 const { getUserVolume } = require("../lavalink/loudness");
 const { fetchLyrics } = require("../lavalink/lyricsClient");
 const { LYRICS_SYNC_OFFSET_MS, stopLyricsSession } = require("../lavalink/lyricsFormatter");
+const { getPersonalSearchTracks } = require("../lavalink/personalSearch");
 const { getPoru } = require("../lavalink/players");
 const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayPartition } = require("../lavalink/queueOrdering");
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
+const { searchWithCorrection } = require("../lavalink/searchSuggestions");
+const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
 const { skipWithLearning } = require("../lavalink/skipLearning");
 const { cloneTrack, getLyricsState, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
@@ -652,6 +655,15 @@ function serializeActivitySearchResults(tracks, query) {
   });
 }
 
+// Matches from the user's own library, answered without Lavalink so the
+// panel can show them while the provider search is still running.
+function searchActivityLibrary(identityId, guildId, query) {
+  return getPersonalSearchTracks(identityId, guildId, limitText(query, 200)).map((track) => {
+    const serialized = serializeTrack(track);
+    return { ...serialized, playQuery: serialized.uri, origin: track.personal };
+  });
+}
+
 function serializeActivityActionResult(action, result) {
   if (action === "play" || action === "surprise_me" || action === "replace_autoplay") {
     return {
@@ -1080,23 +1092,49 @@ async function runTrackedActivityAction({ guildId, identity, action, payload = {
   }
 }
 
-async function searchActivityTracks(query, preferredSource) {
+/**
+ * Searches like a search box should: a misspelt query also searches the
+ * correction YouTube suggests and ranks against it, and the response says so
+ * ("showing results for ..."). `exact` searches the query as typed.
+ */
+// "Similar to" the top search result. It runs after the main search so it
+// never slows the results the user asked for.
+async function searchActivitySimilar(title, author) {
+  const poru = getPoru();
+  if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
+  const tracks = await getSimilarSearchTracks(
+    { title: limitText(title, 200), author: limitText(author, 200) },
+    { search: (text) => searchSingleSource(poru, text, "youtube") }
+  );
+  return tracks.map((track) => {
+    const serialized = serializeTrack(track);
+    return { ...serialized, playQuery: serialized.uri || `${serialized.title} ${serialized.author}` };
+  });
+}
+
+async function searchActivityTracks(query, preferredSource, { exact = false } = {}) {
   const poru = getPoru();
   if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
 
   const selectedSource = toSource(preferredSource);
   const normalizedQuery = limitText(query, 200);
 
-  if (selectedSource === "auto") {
-    // Keep YouTube as the first source, but rank the complete provider pool.
-    // Stopping at the first loose YouTube result hid verified Spotify/Deezer
-    // recordings and made a short typing result disappear for a full query.
-    const tracks = await searchAcrossSources(poru, normalizedQuery, { preferredSource: "youtube" });
-    return serializeActivitySearchResults(filterPlayableSearchResults(tracks, query), query);
-  }
+  // Keep YouTube as the first source in auto mode, but rank the complete
+  // provider pool. Stopping at the first loose YouTube result hid verified
+  // Spotify/Deezer recordings and made a short typing result disappear for a
+  // full query.
+  const search = (text) =>
+    selectedSource === "auto"
+      ? searchAcrossSources(poru, text, { preferredSource: "youtube" })
+      : searchSingleSource(poru, text, selectedSource);
 
-  const tracks = await searchSingleSource(poru, normalizedQuery, selectedSource);
-  return serializeActivitySearchResults(filterPlayableSearchResults(tracks, query), query);
+  const result = await searchWithCorrection(normalizedQuery, search, { exact });
+  // serializeActivitySearchResults filters for playability itself.
+  return {
+    tracks: serializeActivitySearchResults(result.tracks, result.rankQuery),
+    correction: result.correction ? { query: result.correction, original: normalizedQuery } : null,
+    suggestions: result.suggestions,
+  };
 }
 
 function sendSocket(socket, payload) {
@@ -1175,13 +1213,29 @@ function createActivityServer(client) {
         return sendJson(response, 200, { ok: true, state: buildActivityState(client, guildId, identity.id), identity: { id: identity.id, username: identity.username } }, config);
       }
 
+      if (url.pathname === "/api/activity/search/library" && request.method === "POST") {
+        enforceRateLimit(request, "search-library", 120, 60_000);
+        const body = await readJson(request);
+        const guildId = limitText(body.guildId || config.devGuildId, 80);
+        const identity = await authenticateRequest(client, request, guildId, config);
+        return sendJson(response, 200, { ok: true, tracks: searchActivityLibrary(identity.id, guildId, body.query) }, config);
+      }
+
+      if (url.pathname === "/api/activity/search/similar" && request.method === "POST") {
+        enforceRateLimit(request, "search-similar", 30, 60_000);
+        const body = await readJson(request);
+        const guildId = limitText(body.guildId || config.devGuildId, 80);
+        await authenticateRequest(client, request, guildId, config);
+        return sendJson(response, 200, { ok: true, tracks: await searchActivitySimilar(body.title, body.author) }, config);
+      }
+
       if (url.pathname === "/api/activity/search" && request.method === "POST") {
         enforceRateLimit(request, "search", 30, 60_000);
         const body = await readJson(request);
         const guildId = limitText(body.guildId || config.devGuildId, 80);
         await authenticateRequest(client, request, guildId, config);
-        const tracks = await searchActivityTracks(body.query, body.source);
-        return sendJson(response, 200, { ok: true, tracks }, config);
+        const result = await searchActivityTracks(body.query, body.source, { exact: body.exact === true });
+        return sendJson(response, 200, { ok: true, ...result }, config);
       }
 
       if (url.pathname === "/api/activity/action" && request.method === "POST") {
@@ -1354,6 +1408,8 @@ module.exports = {
   findQueueItemIndex,
   isAllowedArtworkUrl,
   runActivityAction,
+  searchActivityLibrary,
+  searchActivitySimilar,
   searchActivityTracks,
   serializeActivityActionResult,
   stringifyJson,

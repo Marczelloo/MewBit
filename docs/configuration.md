@@ -29,7 +29,7 @@ All secrets belong in `.env`, `.env.dev`, or `.env.prod`—never in this reposit
 | `DEEZER_MASTER_KEY` | Optional | Deezer resolver configuration; the default is supplied in the example. |
 | `AUTOPLAY_DEEZER_METADATA` | `true` | Uses Deezer's public catalog metadata as a Spotify-independent autoplay signal. It can provide BPM, gain, ISRC, and release data when available. |
 | `GENIUS_API_KEY` | Optional | Better lyrics lookup coverage. |
-| `LASTFM_API_KEY` | Strongly recommended for autoplay | Similar-artist data and tags for DJ mode. |
+| `LASTFM_API_KEY` | Strongly recommended for autoplay | Similar-artist data and tags for DJ mode, and the "Similar to" row in Activity search. |
 | `LASTFM_APPLICATION_NAME` / `LASTFM_SHARED_SECRET` | Optional | Application metadata for Last.fm integrations. |
 
 Spotify links resolve their catalog metadata first, then play a verified YouTube mirror: ISRC search is preferred, followed by title and artist. Deezer is not used as Spotify's primary audio mirror because its media endpoint can reject otherwise valid recordings for licensing or regional-rights reasons. If the primary mirror fails, MewBit retries only a candidate with matching title, artist, requested version, duration, and (when both sources provide it) ISRC; it skips the track rather than silently playing a different song.
@@ -49,6 +49,7 @@ If a provider requires browser cookies, obtain them from an account you control 
 | `LOUDNESS_<SOURCE>_DB` | provider default | Optional gain offset for a provider, e.g. `LOUDNESS_SOUNDCLOUD_DB=-3`. |
 | `PLAYER_RECOVERY_MAX_AGE_MS` | `7200000` | How long an unexpected-disconnect snapshot is eligible for restoration after a user explicitly resumes playback. |
 | `SEARCH_CACHE_MAX_ENTRIES` | `240` | Maximum cached Activity/autocomplete search entries; old entries are evicted first. |
+| `SEARCH_SUGGESTIONS` | `true` | Looks up YouTube's public query suggestions to correct misspelt Activity and `/play` searches ("Showing results for ...") and offer related searches. Set to `false` to search queries exactly as typed and make no suggestion requests. |
 | `AUTOPLAY_HISTORY_LIMIT` | `80` | Recent autoplay reservations remembered for hard duplicate prevention. |
 | `AUTOPLAY_V3` | `true` | Uses the simpler trusted-source DJ selector. Set to `false` only to temporarily roll back to the legacy scorer. |
 | `AUTOPLAY_V3_MAX_ALBUM_STREAK` | `2` | Maximum consecutive tracks from one album before V3 requires a different album. |

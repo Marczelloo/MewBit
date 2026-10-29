@@ -14,6 +14,7 @@ const GENERIC_SEARCH_WORDS = new Set([
   "music",
 ]);
 
+const { matchTokens } = require("./searchMatching");
 const {
   getBaseTitle,
   getVariantKinds,
@@ -61,9 +62,25 @@ const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:royalty\s+free|shopping\s+spree|teaches?|dub|prank|challenge|asmr|mukbang)\b/i,
 ];
 
-function normalizeText(value) {
-  return normalizeComparableText(value);
+// Ranking normalises the same query, titles and artists several times per
+// candidate, and cached searches hand back the same titles on every
+// keystroke; keep the results so a 200-track pool costs one pass of regexes.
+const MAX_MEMO_ENTRIES = 5_000;
+
+function memoizeText(transform) {
+  const memo = new Map();
+  return (value) => {
+    const text = String(value || "");
+    const cached = memo.get(text);
+    if (cached !== undefined) return cached;
+    if (memo.size >= MAX_MEMO_ENTRIES) memo.clear();
+    const result = transform(text);
+    memo.set(text, result);
+    return result;
+  };
 }
+
+const normalizeText = memoizeText(normalizeComparableText);
 
 function getTokens(value, { keepGeneric = false } = {}) {
   return normalizeText(value)
@@ -84,62 +101,18 @@ function getCoverage(needleTokens, candidateTokens) {
   return matches / needleTokens.length;
 }
 
-function levenshteinDistance(left, right) {
-  if (left === right) return 0;
-  if (!left) return right.length;
-  if (!right) return left.length;
-
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      current[rightIndex] = Math.min(
-        current[rightIndex - 1] + 1,
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
-      );
-    }
-    previous = current;
-  }
-
-  return previous[right.length];
+function getFuzzyCoverage(needleTokens, candidateTokens, options) {
+  return matchTokens(needleTokens, candidateTokens, options).credit;
 }
 
-function getTokenSimilarity(left, right) {
-  if (left === right) return 1;
-  if (left.length < 4 || right.length < 4) return 0;
-
-  const longest = Math.max(left.length, right.length);
-  const similarity = 1 - levenshteinDistance(left, right) / longest;
-  // Keep fuzzy matching deliberately strict: it is for a small typo, not a
-  // licence to accept an unrelated title in autocomplete.
-  return similarity >= 0.78 ? similarity : 0;
-}
-
-function getFuzzyCoverage(needleTokens, candidateTokens) {
-  if (!needleTokens.length) return 0;
-
-  const remaining = [...candidateTokens];
-  let total = 0;
-
-  for (const needle of needleTokens) {
-    let bestIndex = -1;
-    let bestSimilarity = 0;
-
-    for (let index = 0; index < remaining.length; index += 1) {
-      const similarity = getTokenSimilarity(needle, remaining[index]);
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestIndex = index;
-      }
-    }
-
-    if (bestIndex === -1) continue;
-    total += bestSimilarity;
-    remaining.splice(bestIndex, 1);
-  }
-
-  return total / needleTokens.length;
+// The word the user is probably still typing. Only that one may match as a
+// prefix; earlier words are complete and must match as words.
+function getPrefixToken(query) {
+  const text = String(query || "");
+  if (/\s$/.test(text)) return null;
+  const tokens = getTokens(text, { keepGeneric: true });
+  const last = tokens[tokens.length - 1];
+  return last && !GENERIC_SEARCH_WORDS.has(last) ? last : null;
 }
 
 function getPopularity(track) {
@@ -188,9 +161,7 @@ function getVersionTokens(title) {
   return getVariantKinds(title);
 }
 
-function getCanonicalTitle(title) {
-  return getBaseTitle(title);
-}
+const getCanonicalTitle = memoizeText(getBaseTitle);
 
 function getProviderIdentity(track) {
   const source = normalizeText(track?.info?.sourceName || track?.info?.source || "");
@@ -273,6 +244,7 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
   const authorTokens = getUniqueTokens(author);
   const explicitQuery = splitExplicitQuery(query);
   const isSingleWordQuery = queryTokens.length === 1;
+  const prefixToken = getPrefixToken(query);
   const popularity = getPopularity(track);
 
   let score = 0;
@@ -321,8 +293,16 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
   }
 
   if (explicitQuery) {
-    const artistCoverage = getCoverage(explicitQuery.artist, authorTokens);
-    const titleCoverage = getCoverage(explicitQuery.title, titleTokens);
+    // A typo in "artist - title" earns most of the credit an exact word does,
+    // but never all of it.
+    const artistCoverage = Math.max(
+      getCoverage(explicitQuery.artist, authorTokens),
+      getFuzzyCoverage(explicitQuery.artist, authorTokens) * 0.9
+    );
+    const titleCoverage = Math.max(
+      getCoverage(explicitQuery.title, titleTokens),
+      getFuzzyCoverage(explicitQuery.title, titleTokens, { prefixToken }) * 0.9
+    );
 
     score += artistCoverage * 105;
     score += titleCoverage * 145;
@@ -333,12 +313,16 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
     const titleCoverage = getCoverage(queryTokens, titleTokens);
     const authorCoverage = getCoverage(queryTokens, authorTokens);
     const combinedCoverage = getCoverage(queryTokens, [...authorTokens, ...titleTokens]);
-    const fuzzyTitleCoverage = getFuzzyCoverage(queryTokens, titleTokens);
-    const fuzzyAuthorCoverage = getFuzzyCoverage(queryTokens, authorTokens);
-    const fuzzyCombinedCoverage = getFuzzyCoverage(queryTokens, [...authorTokens, ...titleTokens]);
-    const authorSet = new Set(authorTokens);
-    const titleTokensAfterArtist = queryTokens.filter((token) => !authorSet.has(token));
+    const fuzzyTitleCoverage = getFuzzyCoverage(queryTokens, titleTokens, { prefixToken });
+    const fuzzyAuthorCoverage = getFuzzyCoverage(queryTokens, authorTokens, { prefixToken });
+    const fuzzyCombinedCoverage = getFuzzyCoverage(queryTokens, [...authorTokens, ...titleTokens], { prefixToken });
+    // Query words that name the artist, typos included, so the rest can be
+    // checked against the title alone.
+    const authorMatch = matchTokens(queryTokens, authorTokens);
+    const titleTokensAfterArtist = queryTokens.filter((_, index) => authorMatch.credits[index] < 0.75);
+    const artistTokenCount = queryTokens.length - titleTokensAfterArtist.length;
     const titleAfterArtistCoverage = getCoverage(titleTokensAfterArtist, titleTokens);
+    const fuzzyTitleAfterArtistCoverage = getFuzzyCoverage(titleTokensAfterArtist, titleTokens, { prefixToken });
 
     score += titleCoverage * 135;
     score += authorCoverage * 80;
@@ -362,6 +346,14 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
     if (authorCoverage > 0 && titleTokensAfterArtist.length > 0 && titleAfterArtistCoverage === 1) {
       score += 180 + authorCoverage * 40;
       reasons.push("artist/title split");
+    } else if (artistTokenCount > 0 && titleTokensAfterArtist.length > 0 && fuzzyTitleAfterArtistCoverage >= 0.8) {
+      // The same split with a misspelt artist or title word ("metalica
+      // nothing else matters", "queen bohemian rapsody"). Scaled down so an
+      // exact split of a different recording still wins.
+      const artistCredits = authorMatch.credits.filter((credit) => credit >= 0.75);
+      const artistQuality = artistCredits.reduce((sum, credit) => sum + credit, 0) / artistCredits.length;
+      score += (180 + (artistTokenCount / queryTokens.length) * 40) * fuzzyTitleAfterArtistCoverage * artistQuality * 0.9;
+      reasons.push("fuzzy artist/title split");
     }
 
     // A multi-word query represented only by the title is ambiguous. Keep it
@@ -439,16 +431,32 @@ function isRelevantSearchResult(track, query) {
   // needs to occur in the candidate metadata.
   if (!queryTokens.length) return true;
 
+  // A single letter the user has only started typing ("queen b") says
+  // nothing yet; judge the words before it.
+  const prefixToken = getPrefixToken(query);
+  const needles =
+    prefixToken && prefixToken.length < 2 && queryTokens.length > 1
+      ? queryTokens.filter((token) => token !== prefixToken)
+      : queryTokens;
+
   const candidateTokens = getUniqueTokens(`${track.info.author || ""} ${track.info.title || ""}`);
-  const coverage = getCoverage(queryTokens, candidateTokens);
-  const fuzzyCoverage = getFuzzyCoverage(queryTokens, candidateTokens);
+  const match = matchTokens(needles, candidateTokens, { prefixToken });
 
-  if (queryTokens.length === 1) return coverage === 1 || fuzzyCoverage >= 0.8;
+  // A requested version ("clean", "acoustic") is never the tolerated extra
+  // word: the candidate has to be that version.
+  if (needles.some((token, index) => match.credits[index] === 0 && getVersionTokens(token).length)) return false;
 
-  // A multi-word music query should be represented by all meaningful words.
-  // This removes YouTube clips that merely contain one word such as "hit".
-  const requiredCoverage = queryTokens.length >= 3 ? 1 : 0.75;
-  return coverage >= requiredCoverage || fuzzyCoverage >= Math.max(0.8, requiredCoverage);
+  return match.credit >= getRequiredRelevance(needles.length) && (needles.length < 2 || match.strong >= 1);
+}
+
+// Average per-word credit a candidate needs to stay in the results. A typo
+// costs a fraction of a word, so it survives; a missing word costs a whole
+// one, which still removes YouTube clips that merely contain "hit". From four
+// words on, one unrelated extra word ("8 mile") is tolerated.
+function getRequiredRelevance(queryTokenCount) {
+  if (queryTokenCount <= 1) return 0.75;
+  if (queryTokenCount <= 3) return 0.72;
+  return 0.7;
 }
 
 function filterRelevantSearchResults(tracks, query) {

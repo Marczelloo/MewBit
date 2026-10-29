@@ -242,4 +242,58 @@ describe("Search result ranking", () => {
 
     assert.strictEqual(ranked[0].info.title, "Pink Pony Club (Acoustic)");
   });
+  describe("typo and as-you-type tolerance", () => {
+    const cases = [
+      ["metalica nothing else matters", "Metallica", "Nothing Else Matters"],
+      ["metallica nothing else maters", "Metallica", "Nothing Else Matters"],
+      ["queen bohemian rapsody", "Queen", "Bohemian Rhapsody"],
+      ["bohemian rhap", "Queen", "Bohemian Rhapsody"],
+      ["queen bohem", "Queen", "Bohemian Rhapsody"],
+      ["queen b", "Queen", "Bohemian Rhapsody"],
+      ["the weekend blinding lights", "The Weeknd", "Blinding Lights"],
+      ["eminem lose yourslef", "Eminem", "Lose Yourself"],
+      ["dua lipa levitatin", "Dua Lipa", "Levitating"],
+      ["sza kil bill", "SZA", "Kill Bill"],
+      ["taco hemingway tamagoczi", "Taco Hemingway", "Tamagotchi"],
+      ["acdc highway to hell", "AC/DC", "Highway to Hell"],
+      ["linkinpark numb", "Linkin Park", "Numb"],
+      ["oasis - live forever", "Oasis", "Live Forever"],
+    ];
+
+    for (const [query, author, title] of cases) {
+      it(`keeps ${author} - ${title} for "${query}"`, () => {
+        const track = createTrack(title, author);
+        assert.deepStrictEqual(filterPlayableSearchResults([track], query), [track]);
+      });
+    }
+
+    it("still rejects a candidate that misses a whole word of a short query", () => {
+      assert.deepStrictEqual(filterRelevantSearchResults([createTrack("Hit The Road Jack", "Ray Charles")], "hit em up"), []);
+    });
+
+    it("ranks the misspelt artist's recording above covers of the same title", () => {
+      const ranked = rankSearchResults(
+        [
+          createTrack("Nothing Else Matters (Cover)", "Random Covers"),
+          createTrack("Nothing Else Matters", "Apocalyptica"),
+          createTrack("Nothing Else Matters", "Metallica"),
+        ],
+        "metalica nothing else maters"
+      );
+
+      assert.strictEqual(ranked[0].info.author, "Metallica");
+    });
+
+    it("ranks the artist's song first while the last word is still being typed", () => {
+      const ranked = rankSearchResults(
+        filterPlayableSearchResults(
+          [createTrack("Bicycle Race", "Queen"), createTrack("Bohemian Rhapsody", "Queen"), createTrack("Live Set", "Bohemian Club")],
+          "queen bohem"
+        ),
+        "queen bohem"
+      );
+
+      assert.strictEqual(ranked[0].info.title, "Bohemian Rhapsody");
+    });
+  });
 });

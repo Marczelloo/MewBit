@@ -40,10 +40,26 @@ export function fetchActivityState({ guildId, accessToken }) {
   return request(`/api/activity/state?guildId=${encodeURIComponent(guildId)}`, {}, accessToken);
 }
 
-export function searchActivity({ guildId, accessToken, query, source, signal }) {
+export function searchActivity({ guildId, accessToken, query, source, exact = false, signal }) {
   return request(
     "/api/activity/search",
-    { method: "POST", body: JSON.stringify({ guildId, query, source }), signal },
+    { method: "POST", body: JSON.stringify({ guildId, query, source, exact }), signal },
+    accessToken
+  );
+}
+
+export function searchActivityLibrary({ guildId, accessToken, query, signal }) {
+  return request(
+    "/api/activity/search/library",
+    { method: "POST", body: JSON.stringify({ guildId, query }), signal },
+    accessToken
+  );
+}
+
+export function searchActivitySimilar({ guildId, accessToken, title, author, signal }) {
+  return request(
+    "/api/activity/search/similar",
+    { method: "POST", body: JSON.stringify({ guildId, title, author }), signal },
     accessToken
   );
 }

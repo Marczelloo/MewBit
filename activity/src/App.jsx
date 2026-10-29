@@ -44,7 +44,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { openExternalLink, setMewbitPresence, setupDiscord } from "./discord.js";
-import { connectActivitySocket, fetchActivityState, searchActivity, sendActivityAction } from "./api.js";
+import { connectActivitySocket, fetchActivityState, searchActivity, searchActivityLibrary, searchActivitySimilar, sendActivityAction } from "./api.js";
 import { parseMusicLink } from "./musicLink.js";
 import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
@@ -1397,35 +1397,22 @@ function QueueHistoryPanel({ history = [], sessionStartedAt }) {
   );
 }
 
-function SearchPanel({ query, setQuery, source, setSource, results, status, onSearch, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
+const LIBRARY_ORIGIN_LABELS = { liked: "Liked", playlist: "In your playlists", history: "Played before" };
+
+// "Linkin Park", "Linkin Park - Topic" and "LinkinParkVEVO" are one artist
+// when grouping results under the top one.
+function normalizeArtistKey(author) {
+  return String(author || "")
+    .toLowerCase()
+    .replace(/\s*-\s*topic$|vevo$|official$/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function SearchPanel({ query, setQuery, source, setSource, results, libraryResults = [], similarResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
   const directLink = parseMusicLink(query);
   const directSource = directLink?.source === "direct" ? "auto" : directLink?.source;
   const [menuState, setMenuState] = useState(null);
-
-  return (
-    <div className="search-panel">
-      {showSearchBar ? <div className="search-bar-row">
-        <div className="search-input-wrap"><MagnifyingGlass size={18} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") onSearch(); }} placeholder="Search title, artist, or a direct link" aria-label="Search music" /></div>
-        <Dropdown className="source-dropdown" value={source} onChange={setSource} label="Search source" options={SOURCE_OPTIONS} align="end" />
-        <button className="primary-button" type="button" onClick={onSearch}><MagnifyingGlass size={17} weight="bold" aria-hidden="true" /> Search</button>
-      </div> : null}
-      {directLink ? <div className="search-caption"><span>Direct link detected — the source picker is ignored</span></div> : null}
-      {status === "searching" ? <div className="skeleton-list" aria-label="Loading search results"><span /><span /><span /></div> : null}
-      {status === "error" ? <div className="inline-error"><WarningCircle size={18} aria-hidden="true" /> Search is temporarily unavailable. Check the Lavalink connection.</div> : null}
-      {directLink ? <section className="direct-link-card" aria-label="Direct music link ready">
-        <div className="direct-link-icon"><LinkSimple size={22} weight="bold" aria-hidden="true" /></div>
-        <div className="direct-link-copy">
-          <strong>Ready to play this link</strong>
-          <span><SourceTag source={directLink.source} /> Original provider resolution — no search substitute.</span>
-          <code title={directLink.url}>{directLink.url}</code>
-        </div>
-        <div className="direct-link-actions">
-          <button className="result-action" type="button" onClick={() => onAction("play", { query: directLink.url, source: directSource, playNow: true, trackId: directLink.url })} disabled={isActionPending(`play:${directLink.url}`)} aria-busy={isActionPending(`play:${directLink.url}`) || undefined}>{isActionPending(`play:${directLink.url}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Play size={16} weight="fill" aria-hidden="true" />} Play now</button>
-          <button className="secondary-button" type="button" onClick={() => onAction("play", { query: directLink.url, source: directSource, trackId: directLink.url })} disabled={isActionPending(`play:${directLink.url}`)} aria-busy={isActionPending(`play:${directLink.url}`) || undefined}>{isActionPending(`play:${directLink.url}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Plus size={16} weight="bold" aria-hidden="true" />} Add to queue</button>
-        </div>
-      </section> : null}
-      {!directLink && status === "empty" ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name, a direct URL, or another source.</span></div> : null}
-            {!directLink && status !== "searching" && results.length > 0 ? <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{results.map((track) => (
+  const renderResultRow = (track) => (
         <div
           className={`result-row ${menuState?.id === track.id ? "is-menu-open" : ""}`}
           key={track.id}
@@ -1442,7 +1429,7 @@ function SearchPanel({ query, setQuery, source, setSource, results, status, onSe
           <Artwork track={track} size="small" />
           <div className="result-copy">
             <strong>{track.title}</strong>
-            <span className="result-subline">{track.author} · {sourceLabel(track.source)}</span>
+            <span className="result-subline">{track.author} · {LIBRARY_ORIGIN_LABELS[track.origin] || sourceLabel(track.source)}</span>
           </div>
           <span className="result-duration">{formatTime(track.durationMs)}</span>
           <div className="result-actions">
@@ -1465,7 +1452,84 @@ function SearchPanel({ query, setQuery, source, setSource, results, status, onSe
             />
           </div>
         </div>
+  );
+  const libraryUris = new Set(libraryResults.map((track) => track.uri).filter(Boolean));
+  const providerResults = results.filter((track) => !track.uri || !libraryUris.has(track.uri));
+  // Previous results stay on screen, dimmed, while the next search runs; the
+  // skeleton is only for the very first search.
+  const isRefreshing = status === "searching" && providerResults.length > 0;
+  const [topResult, ...otherResults] = providerResults;
+  const topArtist = normalizeArtistKey(topResult?.author);
+  const artistResults = topArtist ? otherResults.filter((track) => normalizeArtistKey(track.author) === topArtist).slice(0, 4) : [];
+  const artistIds = new Set(artistResults.length >= 2 ? artistResults.map((track) => track.id) : []);
+  const songResults = otherResults.filter((track) => !artistIds.has(track.id));
+  const shownUris = new Set([...libraryUris, ...providerResults.map((track) => track.uri)].filter(Boolean));
+  const similarShown = similarResults.filter((track) => !track.uri || !shownUris.has(track.uri));
+  const playTrack = (track, playNow) => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, playNow, trackId: track.id });
+  const resultList = (tracks) => <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{tracks.map(renderResultRow)}</div>;
+
+  return (
+    <div className="search-panel">
+      {showSearchBar ? <div className="search-bar-row">
+        <div className="search-input-wrap"><MagnifyingGlass size={18} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") onSearch(); }} placeholder="Search title, artist, or a direct link" aria-label="Search music" /></div>
+        <Dropdown className="source-dropdown" value={source} onChange={setSource} label="Search source" options={SOURCE_OPTIONS} align="end" />
+        <button className="primary-button" type="button" onClick={onSearch}><MagnifyingGlass size={17} weight="bold" aria-hidden="true" /> Search</button>
+      </div> : null}
+      {directLink ? <div className="search-caption"><span>Direct link detected — the source picker is ignored</span></div> : null}
+      {status === "searching" && !isRefreshing ? <div className="skeleton-list" aria-label="Loading search results"><span /><span /><span /></div> : null}
+      {!directLink && status !== "searching" && correction ? <div className="search-correction" role="status">
+        <span>Showing results for <button className="search-correction-query" type="button" onClick={() => setQuery(correction.query)}>{correction.query}</button></span>
+        <span className="search-correction-original">Search instead for <button type="button" onClick={() => onSearchExact?.(correction.original)}>{correction.original}</button></span>
+      </div> : null}
+      {!directLink && status !== "searching" && suggestions.length > 0 ? <div className="search-suggestions" aria-label="Suggested searches">{suggestions.slice(0, 6).map((suggestion) => (
+        <button className="search-suggestion" type="button" key={suggestion} onClick={() => setQuery(suggestion)}><MagnifyingGlass size={13} aria-hidden="true" /> {suggestion}</button>
       ))}</div> : null}
+      {status === "error" ? <div className="inline-error"><WarningCircle size={18} aria-hidden="true" /> Search is temporarily unavailable. Check the Lavalink connection.</div> : null}
+      {directLink ? <section className="direct-link-card" aria-label="Direct music link ready">
+        <div className="direct-link-icon"><LinkSimple size={22} weight="bold" aria-hidden="true" /></div>
+        <div className="direct-link-copy">
+          <strong>Ready to play this link</strong>
+          <span><SourceTag source={directLink.source} /> Original provider resolution — no search substitute.</span>
+          <code title={directLink.url}>{directLink.url}</code>
+        </div>
+        <div className="direct-link-actions">
+          <button className="result-action" type="button" onClick={() => onAction("play", { query: directLink.url, source: directSource, playNow: true, trackId: directLink.url })} disabled={isActionPending(`play:${directLink.url}`)} aria-busy={isActionPending(`play:${directLink.url}`) || undefined}>{isActionPending(`play:${directLink.url}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Play size={16} weight="fill" aria-hidden="true" />} Play now</button>
+          <button className="secondary-button" type="button" onClick={() => onAction("play", { query: directLink.url, source: directSource, trackId: directLink.url })} disabled={isActionPending(`play:${directLink.url}`)} aria-busy={isActionPending(`play:${directLink.url}`) || undefined}>{isActionPending(`play:${directLink.url}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Plus size={16} weight="bold" aria-hidden="true" />} Add to queue</button>
+        </div>
+      </section> : null}
+      {!directLink && status === "empty" && !libraryResults.length ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name, a direct URL, or another source.</span></div> : null}
+      {!directLink && libraryResults.length > 0 ? <section className="search-library" aria-label="From your library">
+        <h3 className="search-section-title">From your library</h3>
+        {resultList(libraryResults)}
+      </section> : null}
+      {!directLink && (status !== "searching" || isRefreshing) && topResult ? <div className={`search-sections ${isRefreshing ? "is-refreshing" : ""}`} aria-busy={isRefreshing || undefined}>
+        <section className="search-top" aria-label="Top result">
+          <h3 className="search-section-title">Top result</h3>
+          <div className="search-top-card">
+            <div className="search-top-artwork"><Artwork track={topResult} size="large" /></div>
+            <div className="search-top-copy">
+              <strong title={topResult.title}>{topResult.title}</strong>
+              <span>{topResult.author} · {sourceLabel(topResult.source)}{topResult.durationMs ? ` · ${formatTime(topResult.durationMs)}` : ""}</span>
+              <div className="search-top-actions">
+                <button className="result-action" type="button" onClick={() => playTrack(topResult, true)} disabled={isActionPending(`play:${topResult.id}`)} aria-busy={isActionPending(`play:${topResult.id}`) || undefined}>{isActionPending(`play:${topResult.id}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Play size={16} weight="fill" aria-hidden="true" />} Play</button>
+                <button className="secondary-button" type="button" onClick={() => playTrack(topResult, false)} disabled={isActionPending(`play:${topResult.id}`)}><Plus size={16} weight="bold" aria-hidden="true" /> Add to queue</button>
+              </div>
+            </div>
+          </div>
+        </section>
+        {artistIds.size > 0 ? <section className="search-group" aria-label={`More from ${topResult.author}`}>
+          <h3 className="search-section-title">More from {topResult.author}</h3>
+          {resultList(artistResults)}
+        </section> : null}
+        {songResults.length > 0 ? <section className="search-group" aria-label="Songs">
+          <h3 className="search-section-title">Songs</h3>
+          {resultList(songResults)}
+        </section> : null}
+        {similarShown.length > 0 ? <section className="search-group" aria-label="Similar songs">
+          <h3 className="search-section-title">Similar to {results[0]?.title}</h3>
+          {resultList(similarShown)}
+        </section> : null}
+      </div> : null}
     </div>
   );
 }
@@ -1867,6 +1931,12 @@ function App() {
   const [searchSource, setSearchSource] = useState("auto");
   const [searchResults, setSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState("idle");
+  // The server's "showing results for" correction and related searches, plus
+  // the query the user asked to search exactly as typed instead.
+  const [searchMeta, setSearchMeta] = useState({ correction: null, suggestions: [] });
+  const [exactSearchQuery, setExactSearchQuery] = useState("");
+  const [libraryResults, setLibraryResults] = useState([]);
+  const [similarResults, setSimilarResults] = useState([]);
   const [isHydrating, setIsHydrating] = useState(true);
   const [showLoader, setShowLoader] = useState(true);
   const hydrationStartedAt = useRef(Date.now());
@@ -2328,6 +2398,7 @@ function App() {
     const requestId = searchRequest.current.id + 1;
     searchRequest.current = { id: requestId, controller: null };
 
+    setSearchMeta({ correction: null, suggestions: [] });
     if (query.length < 2) { setSearchResults([]); setSearchStatus("idle"); return; }
     if (parseMusicLink(query)) {
       setSearchResults([]);
@@ -2344,9 +2415,10 @@ function App() {
       } else {
         const controller = new AbortController();
         searchRequest.current = { id: requestId, controller };
-        const response = await searchActivity({ ...context, query, source: searchSource, signal: controller.signal });
+        const response = await searchActivity({ ...context, query, source: searchSource, exact: query === exactSearchQuery, signal: controller.signal });
         if (searchRequest.current.id !== requestId) return;
         const nextResults = response.tracks || [];
+        setSearchMeta({ correction: response.correction || null, suggestions: response.suggestions || [] });
         setSearchResults(nextResults);
         setSearchStatus(nextResults.length ? "idle" : "empty");
       }
@@ -2356,7 +2428,7 @@ function App() {
       setSearchStatus("error");
       showToast(error.message, "error");
     }
-  }, [context, searchQuery, searchSource, showToast]);
+  }, [context, exactSearchQuery, searchQuery, searchSource, showToast]);
 
   useEffect(() => {
     if (MOCK_PREVIEW && activeTab === "search") {
@@ -2383,14 +2455,65 @@ function App() {
     };
   }, [activeTab, runSearch, searchQuery, searchSource]);
 
+  // The user's own library answers almost instantly, so it runs on a short
+  // debounce of its own instead of waiting for the provider search.
+  useEffect(() => {
+    const query = searchQuery.trim();
+    const localMock = import.meta.env.DEV && context.mode === "local" && import.meta.env.VITE_ACTIVITY_CONNECT_LOCAL !== "true";
+    if (activeTab !== "search" || query.length < 2 || parseMusicLink(query) || MOCK_PREVIEW || localMock) {
+      setLibraryResults([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchActivityLibrary({ ...context, query, signal: controller.signal })
+        .then((response) => setLibraryResults(response.tracks || []))
+        .catch((error) => { if (error?.name !== "AbortError") setLibraryResults([]); });
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeTab, context, searchQuery]);
+
+  // "Similar to" the best match, fetched after the results arrive so it never
+  // competes with them. Results stay set while the next search runs, so the
+  // row only reloads when the best match changes.
+  const similarReference = searchResults[0];
+  const similarTitle = similarReference?.title || "";
+  const similarAuthor = similarReference?.author || "";
+  useEffect(() => {
+    const localMock = import.meta.env.DEV && context.mode === "local" && import.meta.env.VITE_ACTIVITY_CONNECT_LOCAL !== "true";
+    setSimilarResults([]);
+    if (activeTab !== "search" || !similarTitle || !similarAuthor || MOCK_PREVIEW || localMock) return undefined;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchActivitySimilar({ ...context, title: similarTitle, author: similarAuthor, signal: controller.signal })
+        .then((response) => setSimilarResults(response.tracks || []))
+        .catch(() => {});
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeTab, context, similarAuthor, similarTitle]);
+
   const searchProps = {
     query: searchQuery,
     setQuery: setSearchQuery,
     source: searchSource,
     setSource: setSearchSource,
     results: searchResults,
+    libraryResults,
+    similarResults,
     status: searchStatus,
+    correction: searchMeta.correction,
+    suggestions: searchMeta.suggestions,
     onSearch: runSearch,
+    onSearchExact: (original) => {
+      setExactSearchQuery(original);
+      setSearchQuery(original);
+    },
     playlists: state.playlists,
     likedTrackIds: state.likedTrackIds || [],
     isActionPending,
