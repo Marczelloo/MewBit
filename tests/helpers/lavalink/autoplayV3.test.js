@@ -351,3 +351,72 @@ describe("Autoplay V3 AI-first selection", () => {
     assert.deepStrictEqual(tooFar.ranked, []);
   });
 });
+
+describe("Autoplay V3 genre flow", () => {
+  const { enrichAIProposalGenres } = require("../../../helpers/lavalink/autoplayV3");
+  const rapSession = (overrides = {}) => context({ referenceGenres: ["hip hop", "rap"], anchorGenres: ["hip hop"], ...overrides });
+
+  it("rejects a distant jump from the AI plan but keeps a neighbouring genre", () => {
+    const metal = aiCandidate("Riff", "Metal Band", { genres: ["metal"], fit: 95 });
+    const rnb = aiCandidate("Slow Jam", "Singer", { genres: ["rnb"], fit: 85 });
+
+    const filtered = filterAICandidates([metal, rnb], rapSession());
+
+    assert.deepStrictEqual(filtered.ranked.map((entry) => entry.candidate.title), ["Slow Jam"]);
+    assert.strictEqual(filtered.rejected["genre-jump"], 1);
+    assert.deepStrictEqual(filtered.genreRejected.map((entry) => entry.candidate.title), ["Riff"]);
+  });
+
+  it("treats the current artist as a continuation whatever its tags say", () => {
+    const sameArtist = aiCandidate("Rock Experiment", "Taco Hemingway", { genres: ["metal"] });
+    const filtered = filterAICandidates([sameArtist], rapSession());
+    assert.strictEqual(filtered.ranked.length, 1);
+    assert.strictEqual(filtered.ranked[0].details.genreFlow.reason, "continuation");
+  });
+
+  it("lets Surprise Me cross genres when the gate is off", () => {
+    const metal = aiCandidate("Riff", "Metal Band", { genres: ["metal"] });
+    const filtered = filterAICandidates([metal], rapSession({ genreFlowGate: false }));
+    assert.strictEqual(filtered.ranked.length, 1);
+    assert.strictEqual(filtered.ranked[0].details.genreFlow.reason, "gate-off");
+  });
+
+  it("keeps untagged candidates and penalises neighbours in the fallback ladder", () => {
+    const sameGenre = candidate("Same", "Rapper", "lastfm_similar", { genres: ["hip hop"], similarity: 0.5 });
+    const neighbour = candidate("Near", "Singer", "lastfm_similar", { genres: ["rnb"], similarity: 0.5 });
+    const unknown = candidate("Unknown", "Mystery", "lastfm_similar", { genres: [], similarity: 0.5 });
+    const metal = candidate("Far", "Metal Band", "lastfm_similar", { genres: ["metal"], similarity: 0.9 });
+
+    const result = selectFallbackCandidates([sameGenre, neighbour, unknown, metal], rapSession());
+    const titles = result.ranked.map((entry) => entry.candidate.title);
+
+    assert.ok(titles.includes("Unknown"));
+    assert.ok(!titles.includes("Far"));
+    assert.ok(titles.indexOf("Same") < titles.indexOf("Near"));
+    assert.deepStrictEqual(result.genreRejected.map((entry) => entry.candidate.title), ["Far"]);
+  });
+
+  it("orders genre-rejected candidates by the size of the jump", () => {
+    const metal = candidate("Metal", "Metal Band", "lastfm_similar", { genres: ["metal"] });
+    const rock = candidate("Rock", "Rock Band", "lastfm_similar", { genres: ["rock"] });
+    const result = selectFallbackCandidates([metal, rock], rapSession());
+    assert.deepStrictEqual(result.genreRejected.map((entry) => entry.candidate.title), ["Rock", "Metal"]);
+  });
+
+  it("fills missing AI proposal tags from the lookup and gives up at the deadline", async () => {
+    const tagged = aiCandidate("Tagged", "Artist", { genres: ["hip hop"] });
+    const missing = aiCandidate("Missing", "Artist", { genres: [] });
+    const slow = aiCandidate("Slow", "Artist", { genres: [] });
+    const lookup = async ({ title }) => {
+      if (title === "Slow") await new Promise((resolve) => setTimeout(resolve, 200));
+      return { tags: ["rnb"], source: "lastfm" };
+    };
+
+    const filled = await enrichAIProposalGenres([tagged, missing, slow], { timeoutMs: 50, lookup });
+
+    assert.strictEqual(filled, 1);
+    assert.deepStrictEqual(missing.genres, ["rnb"]);
+    assert.deepStrictEqual(tagged.genres, ["hip hop"]);
+    assert.deepStrictEqual(slow.genres, []);
+  });
+});

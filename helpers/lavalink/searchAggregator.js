@@ -1,4 +1,4 @@
-const { buildSearchQueries } = require("./searchQueryVariants");
+const { MAX_VARIANTS, buildSearchQueries } = require("./searchQueryVariants");
 const { filterRelevantSearchResults } = require("./searchRanking");
 const { getSearchPrefix } = require("./searchSources");
 
@@ -80,15 +80,23 @@ function runDeduplicatedSearch(cacheKey, search) {
   return promise;
 }
 
+// Every spelling variant costs one Lavalink load per provider prefix, so
+// per-keystroke callers ask for fewer of them than a final search.
+const AUTOCOMPLETE_VARIANT_LIMIT = 1;
+
+function getVariantLimit(variantLimit) {
+  return Number.isInteger(variantLimit) && variantLimit >= 0 ? variantLimit : MAX_VARIANTS;
+}
+
 /**
  * The first pass asks the primary lane with the query as typed. Only when that
  * finds fewer than MIN_RELEVANT_RESULTS relevant tracks does the second pass
  * ask the other lanes and the Polish accent variants ("cieple" → "ciepłe"),
  * which turns the usual 2–8 requests per provider into one.
  */
-function getSearchPlan(query, source) {
+function getSearchPlan(query, source, { variantLimit } = {}) {
   const prefixes = SEARCH_VARIANTS[source] || [getSearchPrefix(source)];
-  const [original, ...variants] = buildSearchQueries(query);
+  const [original, ...variants] = buildSearchQueries(query, { limit: getVariantLimit(variantLimit) });
   const [primaryPrefix, ...otherPrefixes] = prefixes;
   return {
     first: [{ prefix: primaryPrefix, query: original }],
@@ -107,9 +115,9 @@ function waitUntil(promise, deadline) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function searchSource(poru, query, source) {
+async function searchSource(poru, query, source, options = {}) {
   const deadline = Date.now() + SOURCE_TIMEOUT_MS;
-  const { first, second } = getSearchPlan(query, source);
+  const { first, second } = getSearchPlan(query, source, options);
   // One slot per request keeps results in plan order however they arrive, and
   // a slow request no longer throws away the tracks its faster siblings found.
   const slots = [];
@@ -145,16 +153,19 @@ async function searchSource(poru, query, source) {
  * Queries one provider only. Activity search uses this to avoid mixing a
  * loosely related result from another provider into an otherwise good list.
  */
-async function searchSingleSource(poru, query, source) {
+async function searchSingleSource(poru, query, source, { variantLimit } = {}) {
   const normalizedQuery = normalizeCacheQuery(query);
   if (!poru || !normalizedQuery) return [];
 
   const normalizedSource = SEARCH_VARIANTS[source] ? source : "youtube";
-  const cacheKey = `single:${normalizedSource}:${normalizedQuery}`;
+  const limit = getVariantLimit(variantLimit);
+  const cacheKey = `single:${normalizedSource}:v${limit}:${normalizedQuery}`;
   const cached = getCachedTracks(cacheKey);
   if (cached) return cached;
 
-  const tracks = await runDeduplicatedSearch(cacheKey, () => searchSource(poru, query, normalizedSource));
+  const tracks = await runDeduplicatedSearch(cacheKey, () =>
+    searchSource(poru, query, normalizedSource, { variantLimit: limit })
+  );
   setCachedTracks(cacheKey, tracks);
   return tracks;
 }
@@ -165,11 +176,12 @@ async function searchSingleSource(poru, query, source) {
  * artist/title accuracy and popularity instead of hiding good matches from
  * another provider.
  */
-async function searchAcrossSources(poru, query, { preferredSource = "deezer" } = {}) {
+async function searchAcrossSources(poru, query, { preferredSource = "deezer", variantLimit } = {}) {
   const normalizedQuery = normalizeCacheQuery(query);
   if (!poru || !normalizedQuery) return [];
 
-  const cacheKey = `${preferredSource}:${normalizedQuery}`;
+  const limit = getVariantLimit(variantLimit);
+  const cacheKey = `${preferredSource}:v${limit}:${normalizedQuery}`;
   const cached = getCachedTracks(cacheKey);
   if (cached) return cached;
 
@@ -177,7 +189,7 @@ async function searchAcrossSources(poru, query, { preferredSource = "deezer" } =
   const sources = [preferredSource, ...allSources.filter((source) => source !== preferredSource)];
   const tracks = await runDeduplicatedSearch(cacheKey, async () => {
     const settled = await Promise.allSettled(
-      sources.map((source) => searchSource(poru, query, source))
+      sources.map((source) => searchSource(poru, query, source, { variantLimit: limit }))
     );
     return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   });
@@ -191,6 +203,7 @@ function clearSearchCache() {
 }
 
 module.exports = {
+  AUTOCOMPLETE_VARIANT_LIMIT,
   CACHE_TTL_MS,
   MIN_RELEVANT_RESULTS,
   MAX_SEARCH_CACHE_ENTRIES,

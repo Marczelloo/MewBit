@@ -11,7 +11,7 @@ const { buildTrackAutocompleteValue } = require("../../helpers/lavalink/autocomp
 const { lavalinkPlay, lavalinkResolveTracks } = require("../../helpers/lavalink/index");
 const { getPersonalSearchTracks } = require("../../helpers/lavalink/personalSearch");
 const { getPoru } = require("../../helpers/lavalink/players");
-const { searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
+const { AUTOCOMPLETE_VARIANT_LIMIT, searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
 const { resolveSearchSource } = require("../../helpers/lavalink/searchSources");
 const { findSearchCorrection, getSearchSuggestions, searchWithCorrection } = require("../../helpers/lavalink/searchSuggestions");
@@ -111,7 +111,7 @@ module.exports = {
       // finish within Discord's three-second autocomplete window), and the
       // pool is ranked against that correction.
       const { tracks: results, rankQuery } = await searchWithCorrection(focusedValue, (text) =>
-        searchAcrossSources(poru, text, { preferredSource })
+        searchAcrossSources(poru, text, { preferredSource, variantLimit: AUTOCOMPLETE_VARIANT_LIMIT })
       );
 
       // The user's own matches lead: liked songs and playlists are what they

@@ -13,7 +13,7 @@ const Log = require("../logs/log");
 const statsStore = require("../stats/store.js");
 const { formatDuration } = require("../utils");
 const { tryQueueFallbackTrack, describeTrack } = require("./fallbacks");
-const { applyNormalizedVolume } = require("./loudness");
+const { applyNormalizedVolume, refineTrackLoudness, resolveTrackLoudness } = require("./loudness");
 const { fetchLyrics } = require("./lyricsClient");
 const { clearRecoverySnapshot } = require("./recovery");
 const { armTrackStartWatchdog, clearTrackStartWatchdog } = require("./startWatchdog");
@@ -26,6 +26,7 @@ const {
   setLyricsState,
   clearLyricsState,
 } = require("./state");
+const { describeSocketClose, startStreamHealthMonitor } = require("./streamHealth");
 const {
   clearInactivityTimer,
   scheduleInactivityDisconnect,
@@ -192,6 +193,20 @@ function createPoru(client) {
 
   poru.on("nodeConnect", (node) => Log.success(`Lavalink node connected ${node.name}`));
 
+  // Voice gateway drops show up as audible gaps; Poru rejoins on 4015/4009.
+  poru.on("socketClose", (player, _track, data) => {
+    const close = describeSocketClose(player, data);
+    Log.warning(
+      "Discord voice connection closed",
+      "",
+      `guild=${close.guildId}`,
+      `code=${close.code}`,
+      `byRemote=${close.byRemote}`
+    );
+  });
+
+  startStreamHealthMonitor(poru);
+
   poru.on("trackError", async (player, track, err) => {
     // Read before Poru's skip() zeroes it; this is where a replay resumes.
     const failedAt = player.position || 0;
@@ -349,6 +364,12 @@ function createPoru(client) {
     } catch (err) {
       Log.warning("Failed to normalize provider volume", err?.message || String(err), `guild=${player.guildId}`);
     }
+    // Unmeasured tracks get a quick Deezer loudness lookup; the next queued
+    // track is measured now so it starts at the right level.
+    void refineTrackLoudness(player, track).catch((err) => {
+      Log.debug("Track loudness lookup failed", err?.message || String(err), `guild=${player.guildId}`);
+    });
+    if (player.queue[0]) void resolveTrackLoudness(player.queue[0]).catch(() => null);
 
     try {
       await updateTrackVoiceChannelStatus(poru.client, player, track);

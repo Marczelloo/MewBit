@@ -28,6 +28,7 @@ ADAPTIVE ARTIST RUNS - match rigidity to the artist's character:
 VIBE CONTINUITY:
 - Give every proposal an honest energy value plus a compact mood tag (2-5 words). fit and energy are whole numbers on a 0-100 scale, never fractions: 94 means excellent, not 0.94.
 - Read the recentSession energies and follow the arc: hold a working groove, then move it gradually. Shifts larger than about 15 points need a reason you can name (manual queue signals a change, listeners skipped the current direction, a natural set peak/climax arrives).
+- Keep the genre flow: move at most one neighbouring genre per track (hip-hop -> r&b/pop/electronic, rock -> metal/pop/indie) and stay within reach of the listener's own anchor genres. Never jump across distant genres (hip-hop -> metal, pop -> death metal, rap -> classical) unless the two recordings share a specific scene or tag. Inside a genre, vary artists, eras and moods freely - flow does not mean the same sound every time.
 - Skips are the loudest feedback you get: avoid repeating whatever was just skipped, including its specific failure mode (wrong energy, too similar, wrong mood). A recent skip marked "listener-rejected queued pick" is an immediate next-track veto: do not return that recording, a mirror of it, or a near-identical immediate direction unless the supplied manual history makes a different continuation overwhelmingly more natural.
 
 PLAN SHAPE:
