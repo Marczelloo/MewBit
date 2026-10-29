@@ -338,6 +338,15 @@ describe("Search results from several providers", () => {
       ranked.slice(0, 2).map((track) => track.info.title),
       ["High Forever", "High Forever (Marlon Hoffstadt Remix)"]
     );
+    // With one provider selected there is no second opinion, but the remix
+    // that provider lists second still sits right under the original.
+    const youtubeOnly = tracks.filter((track) => track.info.sourceName === "youtube");
+    assert.deepStrictEqual(
+      rankSearchResults(filterRelevantSearchResults(youtubeOnly, "high forever"), "high forever")
+        .slice(0, 2)
+        .map((track) => track.info.title),
+      ["High Forever", "High Forever (Marlon Hoffstadt Remix)"]
+    );
     // Implicit playback still never substitutes the remix for the original.
     assert.ok(filterPlayableSearchResults(tracks, "high forever").every((track) => !/remix/i.test(track.info.title)));
   });

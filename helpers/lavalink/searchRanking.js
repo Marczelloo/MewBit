@@ -61,6 +61,10 @@ const MIN_PREFERRED_PROVIDER_SCORE = 260;
 // same-titled uploads; one provider's order alone stays a mere tie-break.
 const PROVIDER_TOP_PICK_BONUSES = Object.freeze([36, 24, 12]);
 const MIN_TOP_PICK_PROVIDERS = 2;
+// A version a provider lists this high for a base-title search is the one
+// people play (YouTube Music puts the Edgerunners "High Forever" remix second),
+// so it is not penalised as an unrequested remix. Its original still leads.
+const VARIANT_TOP_PICK_POSITIONS = 2;
 
 const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:tutorial|how to|lesson|tips?|tricks?|review|reaction|reacts?|analysis|explained)\b/i,
@@ -270,6 +274,48 @@ function getProviderTopPicks(tracks) {
   return bonuses;
 }
 
+/** Each track's position in its own provider's list, in pool order. */
+function getProviderPositions(tracks) {
+  const counts = new Map();
+  return tracks.map((track) => {
+    const provider = getProviderIdentity(track);
+    const position = counts.get(provider) ?? 0;
+    counts.set(provider, position + 1);
+    return position;
+  });
+}
+
+function getRecordingBaseKey(track) {
+  const title = getCanonicalTitle(track?.info?.title || "");
+  const author = normalizeText(cleanArtistName(track?.info?.author || ""));
+  return title && author ? `${author}|||${title}` : null;
+}
+
+/**
+ * Moves an artist's original recording directly above the first of its
+ * versions that outranked it, so a remix lifted as a provider top pick sits
+ * second rather than replacing the song that was searched for.
+ */
+function keepOriginalsAboveVariants(entries) {
+  const result = [...entries];
+  for (let index = 0; index < result.length; index += 1) {
+    const entry = result[index];
+    if (!entry.reasons.some((reason) => reason.startsWith("provider top pick"))) continue;
+    const baseKey = getRecordingBaseKey(entry.track);
+    if (!baseKey) continue;
+    const originalIndex = result.findIndex(
+      (candidate, candidateIndex) =>
+        candidateIndex > index &&
+        !getVersionTokens(candidate.track?.info?.title).length &&
+        getRecordingBaseKey(candidate.track) === baseKey
+    );
+    if (originalIndex === -1) continue;
+    const [original] = result.splice(originalIndex, 1);
+    result.splice(index, 0, original);
+  }
+  return result;
+}
+
 function getTopPickBonus(entry, topPicks) {
   if (!entry || entry.score < MIN_PREFERRED_PROVIDER_SCORE) return 0;
   return topPicks.get(getRecordingKey(entry.track)) || 0;
@@ -316,7 +362,7 @@ function trimWeakSingleWordMatches(entries, query) {
   return entries.filter((entry) => entry.score >= minimumScore);
 }
 
-function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
+function scoreSearchResult(track, query, index = 0, { consensusMap, providerPosition = Infinity } = {}) {
   const title = track?.info?.title || "";
   const author = track?.info?.author || "";
   const queryWords = getTokens(query, { keepGeneric: true });
@@ -454,7 +500,9 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
   }
 
   const unwantedVersions = getVersionTokens(title).filter((kind) => !queryRequestsVariant(query, title) || !getVersionTokens(query).includes(kind));
-  if (unwantedVersions.length) {
+  if (unwantedVersions.length && providerPosition < VARIANT_TOP_PICK_POSITIONS) {
+    reasons.push(`provider top pick:${unwantedVersions.join(",")}`);
+  } else if (unwantedVersions.length) {
     const penalty = unwantedVersions.reduce((sum, token) => sum + (VERSION_PENALTIES[token] ?? 25), 0);
     score -= penalty;
     reasons.push(`version penalty:${unwantedVersions.join(",")}`);
@@ -572,13 +620,16 @@ function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = 
   }
 
   const topPicks = getProviderTopPicks(pool);
+  const providerPositions = getProviderPositions(pool);
   const ranked = pool
-    .map((track, index) => scoreSearchResult(track, query, index, { consensusMap: sourceConsensus }))
+    .map((track, index) =>
+      scoreSearchResult(track, query, index, { consensusMap: sourceConsensus, providerPosition: providerPositions[index] })
+    )
     .map((entry) => ({ ...entry, providerBonus: getSearchProviderBonus(entry) + getTopPickBonus(entry, topPicks) }))
     .map((entry) => ({ ...entry, effectiveScore: entry.score + entry.providerBonus }))
     .sort(compareRankedSearchResults);
 
-  const focusedRanked = trimWeakSingleWordMatches(ranked, query);
+  const focusedRanked = trimWeakSingleWordMatches(keepOriginalsAboveVariants(ranked), query);
   const uniqueRanked = dedupe ? deduplicateRankedSearchResults(focusedRanked) : focusedRanked;
 
   const selected = Number.isInteger(limit) ? uniqueRanked.slice(0, Math.max(0, limit)) : uniqueRanked;
