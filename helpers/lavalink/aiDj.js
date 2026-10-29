@@ -4,7 +4,7 @@ const { getTrackMetadata } = require("./sessionProfile");
 const { getTrackIdentityKeys } = require("./trackIdentity");
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.6-luna";
+const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_REASONING_EFFORT = "low";
 const DEFAULT_TIMEOUT_MS = 12000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;

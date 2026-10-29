@@ -56,7 +56,7 @@ If a provider requires browser cookies, obtain them from an account you control 
 | `AUTOPLAY_V3_MAX_ARTIST_STREAK` | `3` | Maximum consecutive tracks by one artist before V3 requires a different artist. |
 | `AI_DJ_ENABLED` | `false` | Enables OpenAI as the primary autoplay music director; V3 is retained as a safe playback fallback. |
 | `OPENAI_API_KEY` | — | Secret API key for the OpenAI Responses API. Keep it only in local/server `.env` files. |
-| `AI_DJ_MODEL` | `gpt-5.6-luna` | Fast Responses API model used for structured AI DJ plans. |
+| `AI_DJ_MODEL` | `gpt-6-luna` | Fast Responses API model used for structured AI DJ plans. |
 | `AI_DJ_REASONING_EFFORT` | `low` | GPT-5.6 reasoning depth; `low` keeps autoplay decisions responsive. |
 | `AI_DJ_TIMEOUT_MS` | `12000` | Maximum AI DJ wait before falling back to V3. Planning runs in parallel with provider fallback collection. |
 | `AI_DJ_CACHE_TTL_MS` | `300000` | Caches an identical sanitized listening context to avoid duplicate API calls. |
