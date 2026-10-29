@@ -43,6 +43,7 @@ const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayParti
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
 const { searchWithCorrection } = require("../lavalink/searchSuggestions");
+const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
 const { skipWithLearning } = require("../lavalink/skipLearning");
 const { cloneTrack, getLyricsState, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
@@ -1096,6 +1097,21 @@ async function runTrackedActivityAction({ guildId, identity, action, payload = {
  * correction YouTube suggests and ranks against it, and the response says so
  * ("showing results for ..."). `exact` searches the query as typed.
  */
+// "Similar to" the top search result. It runs after the main search so it
+// never slows the results the user asked for.
+async function searchActivitySimilar(title, author) {
+  const poru = getPoru();
+  if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
+  const tracks = await getSimilarSearchTracks(
+    { title: limitText(title, 200), author: limitText(author, 200) },
+    { search: (text) => searchSingleSource(poru, text, "youtube") }
+  );
+  return tracks.map((track) => {
+    const serialized = serializeTrack(track);
+    return { ...serialized, playQuery: serialized.uri || `${serialized.title} ${serialized.author}` };
+  });
+}
+
 async function searchActivityTracks(query, preferredSource, { exact = false } = {}) {
   const poru = getPoru();
   if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
@@ -1203,6 +1219,14 @@ function createActivityServer(client) {
         const guildId = limitText(body.guildId || config.devGuildId, 80);
         const identity = await authenticateRequest(client, request, guildId, config);
         return sendJson(response, 200, { ok: true, tracks: searchActivityLibrary(identity.id, guildId, body.query) }, config);
+      }
+
+      if (url.pathname === "/api/activity/search/similar" && request.method === "POST") {
+        enforceRateLimit(request, "search-similar", 30, 60_000);
+        const body = await readJson(request);
+        const guildId = limitText(body.guildId || config.devGuildId, 80);
+        await authenticateRequest(client, request, guildId, config);
+        return sendJson(response, 200, { ok: true, tracks: await searchActivitySimilar(body.title, body.author) }, config);
       }
 
       if (url.pathname === "/api/activity/search" && request.method === "POST") {
@@ -1385,6 +1409,7 @@ module.exports = {
   isAllowedArtworkUrl,
   runActivityAction,
   searchActivityLibrary,
+  searchActivitySimilar,
   searchActivityTracks,
   serializeActivityActionResult,
   stringifyJson,

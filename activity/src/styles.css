@@ -1314,3 +1314,18 @@
 /* Matches from the user's own library, above the provider results. */
 .search-library { margin: 0 0 16px; }
 .search-section-title { margin: 0 0 8px; color: var(--faint); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+/* Grouped results: top match, the same artist, songs, similar. */
+.search-sections { display: grid; gap: 18px; transition: opacity 180ms var(--ease); }
+.search-sections.is-refreshing { opacity: 0.55; pointer-events: none; }
+.search-top-card { display: flex; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-panel); background: linear-gradient(135deg, rgb(103 227 244 / 0.07), transparent 60%), var(--surface-raised); min-width: 0; }
+.search-top-artwork { flex: 0 0 88px; width: 88px; height: 88px; }
+.search-top-artwork .artwork-large { border-radius: 12px; }
+.search-top-copy { display: grid; gap: 4px; min-width: 0; }
+.search-top-copy strong { font-size: 18px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.search-top-copy > span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-top-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.search-top-actions .result-action { font-size: 12px; color: var(--on-white); background: var(--white-btn); border-color: transparent; }
+@media (max-width: 480px) {
+  .search-top-artwork { flex-basis: 64px; width: 64px; height: 64px; }
+  .search-top-copy strong { font-size: 16px; }
+}

@@ -44,7 +44,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { openExternalLink, setMewbitPresence, setupDiscord } from "./discord.js";
-import { connectActivitySocket, fetchActivityState, searchActivity, searchActivityLibrary, sendActivityAction } from "./api.js";
+import { connectActivitySocket, fetchActivityState, searchActivity, searchActivityLibrary, searchActivitySimilar, sendActivityAction } from "./api.js";
 import { parseMusicLink } from "./musicLink.js";
 import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
@@ -1399,7 +1399,16 @@ function QueueHistoryPanel({ history = [], sessionStartedAt }) {
 
 const LIBRARY_ORIGIN_LABELS = { liked: "Liked", playlist: "In your playlists", history: "Played before" };
 
-function SearchPanel({ query, setQuery, source, setSource, results, libraryResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
+// "Linkin Park", "Linkin Park - Topic" and "LinkinParkVEVO" are one artist
+// when grouping results under the top one.
+function normalizeArtistKey(author) {
+  return String(author || "")
+    .toLowerCase()
+    .replace(/\s*-\s*topic$|vevo$|official$/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function SearchPanel({ query, setQuery, source, setSource, results, libraryResults = [], similarResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
   const directLink = parseMusicLink(query);
   const directSource = directLink?.source === "direct" ? "auto" : directLink?.source;
   const [menuState, setMenuState] = useState(null);
@@ -1446,6 +1455,18 @@ function SearchPanel({ query, setQuery, source, setSource, results, libraryResul
   );
   const libraryUris = new Set(libraryResults.map((track) => track.uri).filter(Boolean));
   const providerResults = results.filter((track) => !track.uri || !libraryUris.has(track.uri));
+  // Previous results stay on screen, dimmed, while the next search runs; the
+  // skeleton is only for the very first search.
+  const isRefreshing = status === "searching" && providerResults.length > 0;
+  const [topResult, ...otherResults] = providerResults;
+  const topArtist = normalizeArtistKey(topResult?.author);
+  const artistResults = topArtist ? otherResults.filter((track) => normalizeArtistKey(track.author) === topArtist).slice(0, 4) : [];
+  const artistIds = new Set(artistResults.length >= 2 ? artistResults.map((track) => track.id) : []);
+  const songResults = otherResults.filter((track) => !artistIds.has(track.id));
+  const shownUris = new Set([...libraryUris, ...providerResults.map((track) => track.uri)].filter(Boolean));
+  const similarShown = similarResults.filter((track) => !track.uri || !shownUris.has(track.uri));
+  const playTrack = (track, playNow) => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, playNow, trackId: track.id });
+  const resultList = (tracks) => <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{tracks.map(renderResultRow)}</div>;
 
   return (
     <div className="search-panel">
@@ -1455,7 +1476,7 @@ function SearchPanel({ query, setQuery, source, setSource, results, libraryResul
         <button className="primary-button" type="button" onClick={onSearch}><MagnifyingGlass size={17} weight="bold" aria-hidden="true" /> Search</button>
       </div> : null}
       {directLink ? <div className="search-caption"><span>Direct link detected — the source picker is ignored</span></div> : null}
-      {status === "searching" ? <div className="skeleton-list" aria-label="Loading search results"><span /><span /><span /></div> : null}
+      {status === "searching" && !isRefreshing ? <div className="skeleton-list" aria-label="Loading search results"><span /><span /><span /></div> : null}
       {!directLink && status !== "searching" && correction ? <div className="search-correction" role="status">
         <span>Showing results for <button className="search-correction-query" type="button" onClick={() => setQuery(correction.query)}>{correction.query}</button></span>
         <span className="search-correction-original">Search instead for <button type="button" onClick={() => onSearchExact?.(correction.original)}>{correction.original}</button></span>
@@ -1479,9 +1500,36 @@ function SearchPanel({ query, setQuery, source, setSource, results, libraryResul
       {!directLink && status === "empty" && !libraryResults.length ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name, a direct URL, or another source.</span></div> : null}
       {!directLink && libraryResults.length > 0 ? <section className="search-library" aria-label="From your library">
         <h3 className="search-section-title">From your library</h3>
-        <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{libraryResults.map(renderResultRow)}</div>
+        {resultList(libraryResults)}
       </section> : null}
-      {!directLink && status !== "searching" && providerResults.length > 0 ? <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{providerResults.map(renderResultRow)}</div> : null}
+      {!directLink && (status !== "searching" || isRefreshing) && topResult ? <div className={`search-sections ${isRefreshing ? "is-refreshing" : ""}`} aria-busy={isRefreshing || undefined}>
+        <section className="search-top" aria-label="Top result">
+          <h3 className="search-section-title">Top result</h3>
+          <div className="search-top-card">
+            <div className="search-top-artwork"><Artwork track={topResult} size="large" /></div>
+            <div className="search-top-copy">
+              <strong title={topResult.title}>{topResult.title}</strong>
+              <span>{topResult.author} · {sourceLabel(topResult.source)}{topResult.durationMs ? ` · ${formatTime(topResult.durationMs)}` : ""}</span>
+              <div className="search-top-actions">
+                <button className="result-action" type="button" onClick={() => playTrack(topResult, true)} disabled={isActionPending(`play:${topResult.id}`)} aria-busy={isActionPending(`play:${topResult.id}`) || undefined}>{isActionPending(`play:${topResult.id}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Play size={16} weight="fill" aria-hidden="true" />} Play</button>
+                <button className="secondary-button" type="button" onClick={() => playTrack(topResult, false)} disabled={isActionPending(`play:${topResult.id}`)}><Plus size={16} weight="bold" aria-hidden="true" /> Add to queue</button>
+              </div>
+            </div>
+          </div>
+        </section>
+        {artistIds.size > 0 ? <section className="search-group" aria-label={`More from ${topResult.author}`}>
+          <h3 className="search-section-title">More from {topResult.author}</h3>
+          {resultList(artistResults)}
+        </section> : null}
+        {songResults.length > 0 ? <section className="search-group" aria-label="Songs">
+          <h3 className="search-section-title">Songs</h3>
+          {resultList(songResults)}
+        </section> : null}
+        {similarShown.length > 0 ? <section className="search-group" aria-label="Similar songs">
+          <h3 className="search-section-title">Similar to {results[0]?.title}</h3>
+          {resultList(similarShown)}
+        </section> : null}
+      </div> : null}
     </div>
   );
 }
@@ -1888,6 +1936,7 @@ function App() {
   const [searchMeta, setSearchMeta] = useState({ correction: null, suggestions: [] });
   const [exactSearchQuery, setExactSearchQuery] = useState("");
   const [libraryResults, setLibraryResults] = useState([]);
+  const [similarResults, setSimilarResults] = useState([]);
   const [isHydrating, setIsHydrating] = useState(true);
   const [showLoader, setShowLoader] = useState(true);
   const hydrationStartedAt = useRef(Date.now());
@@ -2427,6 +2476,28 @@ function App() {
     };
   }, [activeTab, context, searchQuery]);
 
+  // "Similar to" the best match, fetched after the results arrive so it never
+  // competes with them. Results stay set while the next search runs, so the
+  // row only reloads when the best match changes.
+  const similarReference = searchResults[0];
+  const similarTitle = similarReference?.title || "";
+  const similarAuthor = similarReference?.author || "";
+  useEffect(() => {
+    const localMock = import.meta.env.DEV && context.mode === "local" && import.meta.env.VITE_ACTIVITY_CONNECT_LOCAL !== "true";
+    setSimilarResults([]);
+    if (activeTab !== "search" || !similarTitle || !similarAuthor || MOCK_PREVIEW || localMock) return undefined;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchActivitySimilar({ ...context, title: similarTitle, author: similarAuthor, signal: controller.signal })
+        .then((response) => setSimilarResults(response.tracks || []))
+        .catch(() => {});
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeTab, context, similarAuthor, similarTitle]);
+
   const searchProps = {
     query: searchQuery,
     setQuery: setSearchQuery,
@@ -2434,6 +2505,7 @@ function App() {
     setSource: setSearchSource,
     results: searchResults,
     libraryResults,
+    similarResults,
     status: searchStatus,
     correction: searchMeta.correction,
     suggestions: searchMeta.suggestions,

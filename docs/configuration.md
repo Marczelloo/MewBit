@@ -29,7 +29,7 @@ All secrets belong in `.env`, `.env.dev`, or `.env.prod`—never in this reposit
 | `DEEZER_MASTER_KEY` | Optional | Deezer resolver configuration; the default is supplied in the example. |
 | `AUTOPLAY_DEEZER_METADATA` | `true` | Uses Deezer's public catalog metadata as a Spotify-independent autoplay signal. It can provide BPM, gain, ISRC, and release data when available. |
 | `GENIUS_API_KEY` | Optional | Better lyrics lookup coverage. |
-| `LASTFM_API_KEY` | Strongly recommended for autoplay | Similar-artist data and tags for DJ mode. |
+| `LASTFM_API_KEY` | Strongly recommended for autoplay | Similar-artist data and tags for DJ mode, and the "Similar to" row in Activity search. |
 | `LASTFM_APPLICATION_NAME` / `LASTFM_SHARED_SECRET` | Optional | Application metadata for Last.fm integrations. |
 
 Spotify links resolve their catalog metadata first, then play a verified YouTube mirror: ISRC search is preferred, followed by title and artist. Deezer is not used as Spotify's primary audio mirror because its media endpoint can reject otherwise valid recordings for licensing or regional-rights reasons. If the primary mirror fails, MewBit retries only a candidate with matching title, artist, requested version, duration, and (when both sources provide it) ISRC; it skips the track rather than silently playing a different song.

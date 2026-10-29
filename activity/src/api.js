@@ -56,6 +56,14 @@ export function searchActivityLibrary({ guildId, accessToken, query, signal }) {
   );
 }
 
+export function searchActivitySimilar({ guildId, accessToken, title, author, signal }) {
+  return request(
+    "/api/activity/search/similar",
+    { method: "POST", body: JSON.stringify({ guildId, title, author }), signal },
+    accessToken
+  );
+}
+
 export function sendActivityAction({ guildId, accessToken, action, payload }) {
   return request(
     "/api/activity/action",
