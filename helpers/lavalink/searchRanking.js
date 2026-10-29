@@ -43,6 +43,14 @@ const VERSION_PENALTIES = Object.freeze({
   radio: 0,
   explicit: 0,
   remaster: 20,
+  // Kinds trackNormalization reports. Nightcore and slowed uploads are
+  // "tempo", which used to fall through to the 25-point default and so sat
+  // next to the original as if they were a radio edit.
+  tempo: 70,
+  chopped: 70,
+  demo: 45,
+  // 8-bit covers, parodies, type beats and lullaby versions: never the song.
+  novelty: 90,
 });
 
 // "YouTube first" is the Activity's default search mode. Spotify remains the
@@ -65,6 +73,16 @@ const MIN_TOP_PICK_PROVIDERS = 2;
 // people play (YouTube Music puts the Edgerunners "High Forever" remix second),
 // so it is not penalised as an unrequested remix. Its original still leads.
 const VARIANT_TOP_PICK_POSITIONS = 2;
+// Deezer's play-count rank (searchPopularity.js) separates the song everyone
+// means from same-titled covers: The Weeknd's "Blinding Lights" ranks ~985k,
+// a string quartet's ~430k. The bonus grows with the cube of the share of the
+// pool's best rank, so only recordings close to the top gain much, and only
+// strong matches get it: popularity breaks ties, it never makes a weak match
+// relevant.
+const POPULARITY_BONUS = 70;
+// A song whose main artist the query names only as a guest ("Otwieram wino
+// (feat. Pezet)" for "pezet") is that artist's second-hand result.
+const FEATURED_ONLY_PENALTY = 80;
 
 const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:tutorial|how to|lesson|tips?|tricks?|review|reaction|reacts?|analysis|explained)\b/i,
@@ -209,6 +227,27 @@ function splitExplicitQuery(query) {
 
 function getVersionTokens(title) {
   return getVariantKinds(title);
+}
+
+const FEATURED_CREDIT_PATTERN = /[([]\s*(?:feat\.?|ft\.?|featuring|with)\s+([^)\]]+)[)\]]|\s(?:feat\.?|ft\.?|featuring)\s+(.+)$/gi;
+
+function getFeaturedCredits(title) {
+  const text = String(title || "");
+  const credits = [...text.matchAll(FEATURED_CREDIT_PATTERN)].map((match) => match[1] || match[2]);
+  return {
+    featuredTokens: getUniqueTokens(credits.join(" ")),
+    mainTitleTokens: getUniqueTokens(text.replace(FEATURED_CREDIT_PATTERN, " ")),
+  };
+}
+
+function getPopularityShare(track, maxRank) {
+  const rank = Number(track?.searchPopularity);
+  return maxRank > 0 && rank > 0 ? Math.min(1, rank / maxRank) : 0;
+}
+
+function getPopularityBonus(entry) {
+  if (!entry?.popularityShare || entry.score < MIN_PREFERRED_PROVIDER_SCORE) return 0;
+  return Math.round(POPULARITY_BONUS * entry.popularityShare ** 3);
 }
 
 const getCanonicalTitle = memoizeText(getBaseTitle);
@@ -362,7 +401,12 @@ function trimWeakSingleWordMatches(entries, query) {
   return entries.filter((entry) => entry.score >= minimumScore);
 }
 
-function scoreSearchResult(track, query, index = 0, { consensusMap, providerPosition = Infinity } = {}) {
+function scoreSearchResult(
+  track,
+  query,
+  index = 0,
+  { consensusMap, providerPosition = Infinity, popularityShare = 0 } = {}
+) {
   const title = track?.info?.title || "";
   const author = track?.info?.author || "";
   const queryWords = getTokens(query, { keepGeneric: true });
@@ -497,6 +541,14 @@ function scoreSearchResult(track, query, index = 0, { consensusMap, providerPosi
 
     if (titleCoverage > 0) reasons.push("title tokens");
     if (authorCoverage > 0) reasons.push("artist tokens");
+
+    if (authorCoverage === 0 && titleCoverage === 1) {
+      const { featuredTokens, mainTitleTokens } = getFeaturedCredits(title);
+      if (featuredTokens.length && getCoverage(queryTokens, featuredTokens) === 1 && getCoverage(queryTokens, mainTitleTokens) < 1) {
+        score -= FEATURED_ONLY_PENALTY;
+        reasons.push("featured artist only");
+      }
+    }
   }
 
   const unwantedVersions = getVersionTokens(title).filter((kind) => !queryRequestsVariant(query, title) || !getVersionTokens(query).includes(kind));
@@ -520,10 +572,18 @@ function scoreSearchResult(track, query, index = 0, { consensusMap, providerPosi
     canonicalTitle !== normalizedQuery
   ) {
     // Uploaders are frequently named after a song, album or label. Their
-    // arbitrary uploads must not compete with the actual track title.
-    score -= 220;
-    reasons.push("uploader-only single-word penalty");
+    // arbitrary uploads must not compete with the actual track title. A
+    // recording Deezer itself lists for the query is by an artist of that
+    // name ("pezet", "sanah"), not by a channel that borrowed it.
+    if (popularityShare > 0) {
+      reasons.push("catalogued artist");
+    } else {
+      score -= 220;
+      reasons.push("uploader-only single-word penalty");
+    }
   }
+
+  if (popularityShare > 0) reasons.push(`catalog popularity:${popularityShare.toFixed(2)}`);
 
   const consensusSources = getProviderConsensus(track, consensusMap);
   if (consensusSources > 1) {
@@ -546,6 +606,7 @@ function scoreSearchResult(track, query, index = 0, { consensusMap, providerPosi
     track,
     index,
     popularity,
+    popularityShare,
     score,
     reasons,
   };
@@ -621,11 +682,19 @@ function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = 
 
   const topPicks = getProviderTopPicks(pool);
   const providerPositions = getProviderPositions(pool);
+  const maxRank = Math.max(0, ...pool.map((track) => Number(track?.searchPopularity) || 0));
   const ranked = pool
     .map((track, index) =>
-      scoreSearchResult(track, query, index, { consensusMap: sourceConsensus, providerPosition: providerPositions[index] })
+      scoreSearchResult(track, query, index, {
+        consensusMap: sourceConsensus,
+        providerPosition: providerPositions[index],
+        popularityShare: getPopularityShare(track, maxRank),
+      })
     )
-    .map((entry) => ({ ...entry, providerBonus: getSearchProviderBonus(entry) + getTopPickBonus(entry, topPicks) }))
+    .map((entry) => ({
+      ...entry,
+      providerBonus: getSearchProviderBonus(entry) + getTopPickBonus(entry, topPicks) + getPopularityBonus(entry),
+    }))
     .map((entry) => ({ ...entry, effectiveScore: entry.score + entry.providerBonus }))
     .sort(compareRankedSearchResults);
 
@@ -643,7 +712,10 @@ module.exports = {
   filterRelevantSearchResults,
   filterPlayableSearchResults,
   getFuzzyCoverage,
+  getFeaturedCredits,
   getPopularity,
+  getPopularityBonus,
+  getPopularityShare,
   getProviderConsensus,
   getProviderIdentity,
   getSearchProviderBonus,

@@ -7,7 +7,7 @@ const VARIANT_DEFINITIONS = [
   ["remix", /\b(?:remix|remixed|rework|bootleg)\b/i],
   ["live", /\b(?:live(?:\s+(?:version|performance|session|at|from))?|concert\s+version|concert)\b/i],
   ["acoustic", /\b(?:acoustic|unplugged|stripped|piano\s+version|orchestral\s+version)\b/i],
-  ["demo", /\b(?:demo|rehearsal|rough\s+mix|early\s+version)\b/i],
+  ["demo", /\b(?:demo|rehearsal|rough\s+mix|early\s+version|(?:work|writing)\s+in\s+progress)\b/i],
   ["cover", /\b(?:cover|tribute)\b/i],
   ["instrumental", /\b(?:instrumental|karaoke|backing\s+track)\b/i],
   ["tempo", /\b(?:nightcore|slowed(?:\s*(?:\+|and)\s*reverb)?|sped\s*up|speed\s*up)\b/i],
@@ -15,6 +15,7 @@ const VARIANT_DEFINITIONS = [
   ["edit", /\b(?:radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|edit)\b/i],
   ["clean", /\b(?:clean|censored|radio\s+version)\b/i],
   ["remaster", /\b(?:remaster(?:ed)?|anniversary\s+edition)\b/i],
+  ["novelty", /\b(?:(?:8|16)[\s-]?bit|chiptune|emulation|parody|type\s+beat|lullaby|music\s+box|game\s*boy\s+sound)\b/i],
 ];
 
 function normalizeComparableText(value) {
@@ -60,7 +61,7 @@ function getDecoratedSegments(value) {
 function getVariantKinds(value) {
   const title = String(value || "").trim();
   const segments = getDecoratedSegments(title).map((segment) => segment.value);
-  const trailing = title.match(/\b(?:remix|remixed|rework|bootleg|acoustic|unplugged|stripped|demo|rehearsal|cover|tribute|instrumental|karaoke|nightcore|slowed|sped\s*up|speed\s*up|chopped\s*(?:and\s*)?(?:screwed|slopped)|choppednotslopped|radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|clean|censored|radio\s+version|remaster(?:ed)?|anniversary\s+edition)(?:\s+(?:version|mix))?\s*$/i);
+  const trailing = title.match(/\b(?:remix|remixed|rework|bootleg|acoustic|unplugged|stripped|demo|rehearsal|cover|tribute|instrumental|karaoke|nightcore|slowed|sped\s*up|speed\s*up|chopped\s*(?:and\s*)?(?:screwed|slopped)|choppednotslopped|radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|clean|censored|radio\s+version|remaster(?:ed)?|anniversary\s+edition|type\s+beat|parody)(?:\s+(?:version|mix))?\s*$/i);
   if (trailing) segments.push(trailing[0]);
 
   const kinds = new Set();

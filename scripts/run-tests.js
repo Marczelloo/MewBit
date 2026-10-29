@@ -25,5 +25,8 @@ if (!files.length) {
   process.exit(1);
 }
 
-const result = spawnSync(process.execPath, ["--test", ...process.argv.slice(2), ...files], { stdio: "inherit" });
+// Search asks Deezer for popularity on every query; tests must not depend on
+// the network, so the lookup is off unless a test injects its own.
+const env = { ...process.env, SEARCH_POPULARITY: process.env.SEARCH_POPULARITY ?? "false" };
+const result = spawnSync(process.execPath, ["--test", ...process.argv.slice(2), ...files], { stdio: "inherit", env });
 process.exit(result.status ?? 1);

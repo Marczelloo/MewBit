@@ -810,8 +810,9 @@ async function resolveToPlayable(candidate, guildId, { referenceTitle = "", prov
           `Autoplay YouTube resolver (${searchQuery})`
         )).tracks || []
         : await withTimeout(
-          // Catalog metadata is already spelled correctly.
-          searchSingleSource(poru, searchQuery, source, { variantLimit: 0 }),
+          // Catalog metadata is already spelled correctly, and names one
+          // recording, so popularity would not change which one is played.
+          searchSingleSource(poru, searchQuery, source, { variantLimit: 0, popularity: false }),
           AUTOPLAY_RESOLVE_TIMEOUT_MS,
           `Autoplay ${source} resolver (${searchQuery})`
         );
