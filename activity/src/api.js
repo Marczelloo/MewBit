@@ -48,6 +48,14 @@ export function searchActivity({ guildId, accessToken, query, source, exact = fa
   );
 }
 
+export function searchActivityLibrary({ guildId, accessToken, query, signal }) {
+  return request(
+    "/api/activity/search/library",
+    { method: "POST", body: JSON.stringify({ guildId, query }), signal },
+    accessToken
+  );
+}
+
 export function sendActivityAction({ guildId, accessToken, action, payload }) {
   return request(
     "/api/activity/action",

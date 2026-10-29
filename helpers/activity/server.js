@@ -37,6 +37,7 @@ const {
 const { getUserVolume } = require("../lavalink/loudness");
 const { fetchLyrics } = require("../lavalink/lyricsClient");
 const { LYRICS_SYNC_OFFSET_MS, stopLyricsSession } = require("../lavalink/lyricsFormatter");
+const { getPersonalSearchTracks } = require("../lavalink/personalSearch");
 const { getPoru } = require("../lavalink/players");
 const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayPartition } = require("../lavalink/queueOrdering");
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
@@ -653,6 +654,15 @@ function serializeActivitySearchResults(tracks, query) {
   });
 }
 
+// Matches from the user's own library, answered without Lavalink so the
+// panel can show them while the provider search is still running.
+function searchActivityLibrary(identityId, guildId, query) {
+  return getPersonalSearchTracks(identityId, guildId, limitText(query, 200)).map((track) => {
+    const serialized = serializeTrack(track);
+    return { ...serialized, playQuery: serialized.uri, origin: track.personal };
+  });
+}
+
 function serializeActivityActionResult(action, result) {
   if (action === "play" || action === "surprise_me" || action === "replace_autoplay") {
     return {
@@ -1187,6 +1197,14 @@ function createActivityServer(client) {
         return sendJson(response, 200, { ok: true, state: buildActivityState(client, guildId, identity.id), identity: { id: identity.id, username: identity.username } }, config);
       }
 
+      if (url.pathname === "/api/activity/search/library" && request.method === "POST") {
+        enforceRateLimit(request, "search-library", 120, 60_000);
+        const body = await readJson(request);
+        const guildId = limitText(body.guildId || config.devGuildId, 80);
+        const identity = await authenticateRequest(client, request, guildId, config);
+        return sendJson(response, 200, { ok: true, tracks: searchActivityLibrary(identity.id, guildId, body.query) }, config);
+      }
+
       if (url.pathname === "/api/activity/search" && request.method === "POST") {
         enforceRateLimit(request, "search", 30, 60_000);
         const body = await readJson(request);
@@ -1366,6 +1384,7 @@ module.exports = {
   findQueueItemIndex,
   isAllowedArtworkUrl,
   runActivityAction,
+  searchActivityLibrary,
   searchActivityTracks,
   serializeActivityActionResult,
   stringifyJson,

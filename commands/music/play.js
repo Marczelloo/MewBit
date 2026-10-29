@@ -9,6 +9,7 @@ const { recordSearch } = require("../../helpers/history/searchHistory");
 const { beginAutocompleteRequest, isLatestAutocompleteRequest } = require("../../helpers/interactions/autocompleteGuard");
 const { buildTrackAutocompleteValue } = require("../../helpers/lavalink/autocompleteTrack");
 const { lavalinkPlay, lavalinkResolveTracks } = require("../../helpers/lavalink/index");
+const { getPersonalSearchTracks } = require("../../helpers/lavalink/personalSearch");
 const { getPoru } = require("../../helpers/lavalink/players");
 const { searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
@@ -26,6 +27,7 @@ const SOURCE_LABELS = Object.freeze({
   spotify: "Spotify",
   youtube: "YouTube",
 });
+const LIBRARY_ORIGIN_LABELS = Object.freeze({ liked: "Liked", playlist: "Playlist", history: "Played before" });
 
 /**
  * Enter on typed text (not a picked autocomplete choice, which is a URL or a
@@ -112,7 +114,11 @@ module.exports = {
         searchAcrossSources(poru, text, { preferredSource })
       );
 
-      if (!results.length) {
+      // The user's own matches lead: liked songs and playlists are what they
+      // most likely mean.
+      const libraryTracks = getPersonalSearchTracks(interaction.user.id, interaction.guildId, rankQuery, { limit: 3 });
+
+      if (!results.length && !libraryTracks.length) {
         return respond([]);
       }
 
@@ -127,7 +133,7 @@ module.exports = {
       const seen = new Set();
       const uniqueTracks = [];
 
-      for (const track of rankedTracks) {
+      for (const track of [...libraryTracks, ...rankedTracks]) {
         const author = (track.info?.author || "Unknown Artist").trim();
         const title = (track.info?.title || "Unknown").trim();
 
@@ -151,7 +157,8 @@ module.exports = {
         const author = track.info?.author || "Unknown Artist";
         const sourceKey = String(track.info?.sourceName || track.info?.source || "").toLowerCase();
         const sourceLabel = SOURCE_LABELS[sourceKey] || (sourceKey ? sourceKey : "Unknown source");
-        const sourceSuffix = ` [${sourceLabel}]`;
+        const originLabel = LIBRARY_ORIGIN_LABELS[track.personal];
+        const sourceSuffix = originLabel ? ` [${sourceLabel} · ${originLabel}]` : ` [${sourceLabel}]`;
 
         // Truncate if too long (Discord has 100 char limit)
         let displayName = `${title} - ${author}${sourceSuffix}`;

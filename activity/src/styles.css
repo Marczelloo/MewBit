@@ -1311,3 +1311,6 @@
 .search-suggestion { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: 99px; background: var(--surface-soft); color: var(--muted-strong); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color 160ms var(--ease), color 160ms var(--ease), background 160ms var(--ease); }
 .search-suggestion svg { flex: none; color: var(--faint); }
 .search-suggestion:hover { border-color: rgb(103 227 244 / 0.35); background: rgb(103 227 244 / 0.06); color: var(--text); }
+/* Matches from the user's own library, above the provider results. */
+.search-library { margin: 0 0 16px; }
+.search-section-title { margin: 0 0 8px; color: var(--faint); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }

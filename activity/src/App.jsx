@@ -44,7 +44,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { openExternalLink, setMewbitPresence, setupDiscord } from "./discord.js";
-import { connectActivitySocket, fetchActivityState, searchActivity, sendActivityAction } from "./api.js";
+import { connectActivitySocket, fetchActivityState, searchActivity, searchActivityLibrary, sendActivityAction } from "./api.js";
 import { parseMusicLink } from "./musicLink.js";
 import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
@@ -1397,10 +1397,55 @@ function QueueHistoryPanel({ history = [], sessionStartedAt }) {
   );
 }
 
-function SearchPanel({ query, setQuery, source, setSource, results, status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
+const LIBRARY_ORIGIN_LABELS = { liked: "Liked", playlist: "In your playlists", history: "Played before" };
+
+function SearchPanel({ query, setQuery, source, setSource, results, libraryResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
   const directLink = parseMusicLink(query);
   const directSource = directLink?.source === "direct" ? "auto" : directLink?.source;
   const [menuState, setMenuState] = useState(null);
+  const renderResultRow = (track) => (
+        <div
+          className={`result-row ${menuState?.id === track.id ? "is-menu-open" : ""}`}
+          key={track.id}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMenuState({
+              id: track.id,
+              top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 238)),
+              left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 246)),
+            });
+          }}
+        >
+          <Artwork track={track} size="small" />
+          <div className="result-copy">
+            <strong>{track.title}</strong>
+            <span className="result-subline">{track.author} · {LIBRARY_ORIGIN_LABELS[track.origin] || sourceLabel(track.source)}</span>
+          </div>
+          <span className="result-duration">{formatTime(track.durationMs)}</span>
+          <div className="result-actions">
+            <button className="row-play" type="button" onClick={() => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, playNow: true, trackId: track.id })} disabled={isActionPending(`play:${track.id}`)} aria-label="Play">
+              <Play size={14} weight="fill" aria-hidden="true" />
+            </button>
+            <button className="row-add" type="button" onClick={() => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, trackId: track.id })} disabled={isActionPending(`play:${track.id}`)} aria-label="Add to queue">
+              <Plus size={14} aria-hidden="true" />
+            </button>
+            <TrackContextMenu
+              track={track}
+              playlists={playlists}
+              likedTrackIds={likedTrackIds}
+              onAction={onAction}
+              isActionPending={isActionPending}
+              open={menuState?.id === track.id}
+              position={{ top: menuState?.top ?? 0, left: menuState?.left ?? 0 }}
+              onOpen={(pos) => setMenuState({ id: track.id, top: pos.top, left: pos.left })}
+              onClose={() => setMenuState(null)}
+            />
+          </div>
+        </div>
+  );
+  const libraryUris = new Set(libraryResults.map((track) => track.uri).filter(Boolean));
+  const providerResults = results.filter((track) => !track.uri || !libraryUris.has(track.uri));
 
   return (
     <div className="search-panel">
@@ -1431,48 +1476,12 @@ function SearchPanel({ query, setQuery, source, setSource, results, status, corr
           <button className="secondary-button" type="button" onClick={() => onAction("play", { query: directLink.url, source: directSource, trackId: directLink.url })} disabled={isActionPending(`play:${directLink.url}`)} aria-busy={isActionPending(`play:${directLink.url}`) || undefined}>{isActionPending(`play:${directLink.url}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Plus size={16} weight="bold" aria-hidden="true" />} Add to queue</button>
         </div>
       </section> : null}
-      {!directLink && status === "empty" ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name, a direct URL, or another source.</span></div> : null}
-            {!directLink && status !== "searching" && results.length > 0 ? <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{results.map((track) => (
-        <div
-          className={`result-row ${menuState?.id === track.id ? "is-menu-open" : ""}`}
-          key={track.id}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setMenuState({
-              id: track.id,
-              top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 238)),
-              left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 246)),
-            });
-          }}
-        >
-          <Artwork track={track} size="small" />
-          <div className="result-copy">
-            <strong>{track.title}</strong>
-            <span className="result-subline">{track.author} · {sourceLabel(track.source)}</span>
-          </div>
-          <span className="result-duration">{formatTime(track.durationMs)}</span>
-          <div className="result-actions">
-            <button className="row-play" type="button" onClick={() => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, playNow: true, trackId: track.id })} disabled={isActionPending(`play:${track.id}`)} aria-label="Play">
-              <Play size={14} weight="fill" aria-hidden="true" />
-            </button>
-            <button className="row-add" type="button" onClick={() => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, trackId: track.id })} disabled={isActionPending(`play:${track.id}`)} aria-label="Add to queue">
-              <Plus size={14} aria-hidden="true" />
-            </button>
-            <TrackContextMenu
-              track={track}
-              playlists={playlists}
-              likedTrackIds={likedTrackIds}
-              onAction={onAction}
-              isActionPending={isActionPending}
-              open={menuState?.id === track.id}
-              position={{ top: menuState?.top ?? 0, left: menuState?.left ?? 0 }}
-              onOpen={(pos) => setMenuState({ id: track.id, top: pos.top, left: pos.left })}
-              onClose={() => setMenuState(null)}
-            />
-          </div>
-        </div>
-      ))}</div> : null}
+      {!directLink && status === "empty" && !libraryResults.length ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name, a direct URL, or another source.</span></div> : null}
+      {!directLink && libraryResults.length > 0 ? <section className="search-library" aria-label="From your library">
+        <h3 className="search-section-title">From your library</h3>
+        <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{libraryResults.map(renderResultRow)}</div>
+      </section> : null}
+      {!directLink && status !== "searching" && providerResults.length > 0 ? <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{providerResults.map(renderResultRow)}</div> : null}
     </div>
   );
 }
@@ -1878,6 +1887,7 @@ function App() {
   // the query the user asked to search exactly as typed instead.
   const [searchMeta, setSearchMeta] = useState({ correction: null, suggestions: [] });
   const [exactSearchQuery, setExactSearchQuery] = useState("");
+  const [libraryResults, setLibraryResults] = useState([]);
   const [isHydrating, setIsHydrating] = useState(true);
   const [showLoader, setShowLoader] = useState(true);
   const hydrationStartedAt = useRef(Date.now());
@@ -2396,12 +2406,34 @@ function App() {
     };
   }, [activeTab, runSearch, searchQuery, searchSource]);
 
+  // The user's own library answers almost instantly, so it runs on a short
+  // debounce of its own instead of waiting for the provider search.
+  useEffect(() => {
+    const query = searchQuery.trim();
+    const localMock = import.meta.env.DEV && context.mode === "local" && import.meta.env.VITE_ACTIVITY_CONNECT_LOCAL !== "true";
+    if (activeTab !== "search" || query.length < 2 || parseMusicLink(query) || MOCK_PREVIEW || localMock) {
+      setLibraryResults([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchActivityLibrary({ ...context, query, signal: controller.signal })
+        .then((response) => setLibraryResults(response.tracks || []))
+        .catch((error) => { if (error?.name !== "AbortError") setLibraryResults([]); });
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeTab, context, searchQuery]);
+
   const searchProps = {
     query: searchQuery,
     setQuery: setSearchQuery,
     source: searchSource,
     setSource: setSearchSource,
     results: searchResults,
+    libraryResults,
     status: searchStatus,
     correction: searchMeta.correction,
     suggestions: searchMeta.suggestions,

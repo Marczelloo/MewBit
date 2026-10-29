@@ -8,6 +8,7 @@ const JOINED_CREDIT = 0.96;
 const PHONETIC_CREDIT = 0.92;
 const MIN_PREFIX_LENGTH = 2;
 const MIN_FUZZY_LENGTH = 3;
+const MIN_TYPO_PREFIX_LENGTH = 4;
 // Ranking compares the same handful of query words against a few hundred
 // titles that share most of their vocabulary, so memoised word pairs turn
 // most comparisons into a map lookup.
@@ -85,6 +86,18 @@ function getPrefixCredit(needle, candidate) {
   return Math.min(0.95, 0.6 + (0.35 * needle.length) / candidate.length);
 }
 
+// A half-typed word with a typo in it: "beliv" is one edit from "belie", the
+// start of "believer". Credit stays below a clean prefix.
+function getFuzzyPrefixCredit(needle, candidate) {
+  if (needle.length < MIN_TYPO_PREFIX_LENGTH || needle.length >= candidate.length) return 0;
+  for (let length = needle.length - 1; length <= Math.min(candidate.length - 1, needle.length + 1); length += 1) {
+    if (getEditDistance(needle, candidate.slice(0, length)) <= 1) {
+      return Math.min(0.85, 0.48 + (0.35 * needle.length) / candidate.length);
+    }
+  }
+  return 0;
+}
+
 /**
  * How well one query word describes one candidate word. `allowPrefix` is set
  * for the word the user is still typing, so "bohem" already finds "bohemian".
@@ -100,7 +113,7 @@ function getTokenSimilarity(needle, candidate, { allowPrefix = false } = {}) {
 }
 
 function compareTokens(needle, candidate, allowPrefix) {
-  let best = allowPrefix ? getPrefixCredit(needle, candidate) : 0;
+  let best = allowPrefix ? getPrefixCredit(needle, candidate) || getFuzzyPrefixCredit(needle, candidate) : 0;
 
   if (needle.length >= MIN_PREFIX_LENGTH && candidate.length >= MIN_PREFIX_LENGTH) {
     const needleKey = getPhoneticKey(needle);
