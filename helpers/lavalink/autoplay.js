@@ -64,7 +64,8 @@ function queueAutoplayTrack(player, lastTrack, textChannelId) {
   return runSharedAutoplayTask(player.guildId, async () => {
     try {
       const relatedTrack = await fetchAutoplayV3Track(lastTrack, player.guildId, {
-        pendingManualTracks: getPendingManualTracks(player),
+        // A queued reference is already the selection's starting point.
+        pendingManualTracks: getPendingManualTracks(player).filter((track) => track !== lastTrack),
       });
 
       if (!relatedTrack) {
@@ -206,15 +207,20 @@ function replaceQueuedAutoplayTrack(player, {
 async function prefetchAutoplayTrack(player, currentTrack, textChannelId) {
   if (!player || !currentTrack || player.queue.length > AUTOPLAY_PREFETCH_QUEUE_THRESHOLD) return false;
 
+  // The pick is appended after whatever is already queued, so it has to
+  // follow that track, not the one playing now.
+  const referenceTrack = Array.from(player.queue || []).at(-1) || currentTrack;
+
   Log.debug(
     "⏩ Starting autoplay prefetch",
     "",
     `guild=${player.guildId}`,
     `queue=${player.queue.length}`,
-    `current=${currentTrack.info?.title || "unknown"}`
+    `current=${currentTrack.info?.title || "unknown"}`,
+    `reference=${referenceTrack.info?.title || "unknown"}`
   );
 
-  return queueAutoplayTrack(player, currentTrack, textChannelId);
+  return queueAutoplayTrack(player, referenceTrack, textChannelId);
 }
 
 function isAutoplayInFlight(guildId) {

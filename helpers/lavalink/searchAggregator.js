@@ -1,4 +1,4 @@
-const { buildSearchQueries } = require("./searchQueryVariants");
+const { MAX_VARIANTS, buildSearchQueries } = require("./searchQueryVariants");
 const { getSearchPrefix } = require("./searchSources");
 
 const CACHE_TTL_MS = 15_000;
@@ -74,9 +74,17 @@ function runDeduplicatedSearch(cacheKey, search) {
   return promise;
 }
 
-async function searchSource(poru, query, source) {
+// Every spelling variant costs one Lavalink load per provider prefix, so
+// per-keystroke callers ask for fewer of them than a final search.
+const AUTOCOMPLETE_VARIANT_LIMIT = 1;
+
+function getVariantLimit(variantLimit) {
+  return Number.isInteger(variantLimit) && variantLimit >= 0 ? variantLimit : MAX_VARIANTS;
+}
+
+async function searchSource(poru, query, source, { variantLimit } = {}) {
   const prefixes = SEARCH_VARIANTS[source] || [getSearchPrefix(source)];
-  const queries = buildSearchQueries(query);
+  const queries = buildSearchQueries(query, { limit: getVariantLimit(variantLimit) });
   const settled = await Promise.allSettled(
     // Poru prepends its default platform when a source is not passed. Put
     // the Lavalink search prefix in `source`, otherwise `dzsearch:foo` turns
@@ -92,9 +100,9 @@ async function searchSource(poru, query, source) {
     .slice(0, MAX_RESULTS_PER_SOURCE);
 }
 
-function searchSourceWithTimeout(poru, query, source) {
+function searchSourceWithTimeout(poru, query, source, options) {
   return Promise.race([
-    searchSource(poru, query, source),
+    searchSource(poru, query, source, options),
     new Promise((resolve) => setTimeout(() => resolve([]), SOURCE_TIMEOUT_MS)),
   ]);
 }
@@ -103,16 +111,19 @@ function searchSourceWithTimeout(poru, query, source) {
  * Queries one provider only. Activity search uses this to avoid mixing a
  * loosely related result from another provider into an otherwise good list.
  */
-async function searchSingleSource(poru, query, source) {
+async function searchSingleSource(poru, query, source, { variantLimit } = {}) {
   const normalizedQuery = normalizeCacheQuery(query);
   if (!poru || !normalizedQuery) return [];
 
   const normalizedSource = SEARCH_VARIANTS[source] ? source : "youtube";
-  const cacheKey = `single:${normalizedSource}:${normalizedQuery}`;
+  const limit = getVariantLimit(variantLimit);
+  const cacheKey = `single:${normalizedSource}:v${limit}:${normalizedQuery}`;
   const cached = getCachedTracks(cacheKey);
   if (cached) return cached;
 
-  const tracks = await runDeduplicatedSearch(cacheKey, () => searchSourceWithTimeout(poru, query, normalizedSource));
+  const tracks = await runDeduplicatedSearch(cacheKey, () =>
+    searchSourceWithTimeout(poru, query, normalizedSource, { variantLimit: limit })
+  );
   setCachedTracks(cacheKey, tracks);
   return tracks;
 }
@@ -123,11 +134,12 @@ async function searchSingleSource(poru, query, source) {
  * artist/title accuracy and popularity instead of hiding good matches from
  * another provider.
  */
-async function searchAcrossSources(poru, query, { preferredSource = "deezer" } = {}) {
+async function searchAcrossSources(poru, query, { preferredSource = "deezer", variantLimit } = {}) {
   const normalizedQuery = normalizeCacheQuery(query);
   if (!poru || !normalizedQuery) return [];
 
-  const cacheKey = `${preferredSource}:${normalizedQuery}`;
+  const limit = getVariantLimit(variantLimit);
+  const cacheKey = `${preferredSource}:v${limit}:${normalizedQuery}`;
   const cached = getCachedTracks(cacheKey);
   if (cached) return cached;
 
@@ -135,7 +147,7 @@ async function searchAcrossSources(poru, query, { preferredSource = "deezer" } =
   const sources = [preferredSource, ...allSources.filter((source) => source !== preferredSource)];
   const tracks = await runDeduplicatedSearch(cacheKey, async () => {
     const settled = await Promise.allSettled(
-      sources.map((source) => searchSourceWithTimeout(poru, query, source))
+      sources.map((source) => searchSourceWithTimeout(poru, query, source, { variantLimit: limit }))
     );
     return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   });
@@ -149,6 +161,7 @@ function clearSearchCache() {
 }
 
 module.exports = {
+  AUTOCOMPLETE_VARIANT_LIMIT,
   CACHE_TTL_MS,
   MAX_SEARCH_CACHE_ENTRIES,
   MAX_RESULTS_PER_SOURCE,

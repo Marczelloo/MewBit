@@ -4,7 +4,7 @@ const { errorEmbed, successEmbed } = require("../../helpers/embeds");
 const { requireSharedVoice } = require("../../helpers/interactions/voiceGuards");
 const { createPoru, getPlayer } = require("../../helpers/lavalink");
 const { addManualTracksToQueue, markManualTrack } = require("../../helpers/lavalink/queueOrdering");
-const { searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
+const { AUTOCOMPLETE_VARIANT_LIMIT, searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
 const { generateShareCode, importFromCode, shareWithUser } = require("../../helpers/playlists/sharing");
 const {
@@ -282,7 +282,10 @@ module.exports = {
       try {
         const { createPoru } = require("../../helpers/lavalink");
         const poru = createPoru(interaction.client);
-        const resolved = await searchAcrossSources(poru, query, { preferredSource: "youtube" });
+        const resolved = await searchAcrossSources(poru, query, {
+          preferredSource: "youtube",
+          variantLimit: AUTOCOMPLETE_VARIANT_LIMIT,
+        });
 
         if (!resolved.length) {
           return interaction.respond([]);

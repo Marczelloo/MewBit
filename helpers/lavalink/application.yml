@@ -21,7 +21,10 @@ lavalink:
       local: false
     bufferDurationMs: 400
     resamplingQuality: HIGH
-    frameBufferDurationMs: 1000
+    # Ready-to-send Opus frames. A deeper buffer rides out GC pauses, CPU
+    # contention on the Pi and short upstream stalls; filter/EQ changes take
+    # up to this long to be heard.
+    frameBufferDurationMs: 2500
     trackStuckThresholdMs: 10000
     useSeekGhosting: true
     filters:

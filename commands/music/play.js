@@ -10,7 +10,7 @@ const { beginAutocompleteRequest, isLatestAutocompleteRequest } = require("../..
 const { buildTrackAutocompleteValue } = require("../../helpers/lavalink/autocompleteTrack");
 const { lavalinkPlay, lavalinkResolveTracks } = require("../../helpers/lavalink/index");
 const { getPoru } = require("../../helpers/lavalink/players");
-const { searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
+const { AUTOCOMPLETE_VARIANT_LIMIT, searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
 const { resolveSearchSource } = require("../../helpers/lavalink/searchSources");
 const { normalizeComparableText } = require("../../helpers/lavalink/trackNormalization");
@@ -91,7 +91,10 @@ module.exports = {
       const searchSource = resolveSearchSource(selectedSource, userSource, guildSettings?.defaultSource);
       const poru = getPoru();
       const preferredSource = searchSource === "auto" ? "deezer" : searchSource;
-      const results = await searchAcrossSources(poru, focusedValue, { preferredSource });
+      const results = await searchAcrossSources(poru, focusedValue, {
+        preferredSource,
+        variantLimit: AUTOCOMPLETE_VARIANT_LIMIT,
+      });
 
       if (!results.length) {
         return respond([]);

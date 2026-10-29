@@ -22,6 +22,10 @@ services:
       YT_CIPHER_API_TOKEN: ${YT_CIPHER_API_TOKEN:-}
       DEEZER_ARL_TOKEN: ${DEEZER_ARL_TOKEN:-}
       DEEZER_MASTER_KEY: ${DEEZER_MASTER_KEY:-}
+      # Fixed heap and short GC pauses keep the audio frame loop steady.
+      JAVA_TOOL_OPTIONS: "-Xms512m -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=50"
+    # Audio wins CPU contention against builds and other containers on the Pi.
+    cpu_shares: 2048
     volumes:
       - ./helpers/lavalink/application.yml:/opt/Lavalink/application.yml:ro
       - ./helpers/lavalink/plugins:/opt/Lavalink/plugins
