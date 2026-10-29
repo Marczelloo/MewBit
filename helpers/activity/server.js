@@ -41,7 +41,7 @@ const { getPersonalSearchTracks } = require("../lavalink/personalSearch");
 const { getPoru } = require("../lavalink/players");
 const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayPartition } = require("../lavalink/queueOrdering");
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
-const { filterPlayableSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
+const { filterRelevantSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
 const { searchWithCorrection } = require("../lavalink/searchSuggestions");
 const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
 const { skipWithLearning } = require("../lavalink/skipLearning");
@@ -648,8 +648,10 @@ function toSource(value) {
   return ["auto", "deezer", "youtube", "spotify", "soundcloud"].includes(value) ? value : "auto";
 }
 
+// The user picks from this list, so a remix or live version stays in it,
+// ranked below the original, instead of being hidden as implicit playback does.
 function serializeActivitySearchResults(tracks, query) {
-  return rankSearchResults(filterPlayableSearchResults(tracks, query), query, { limit: 48 }).map((track) => {
+  return rankSearchResults(filterRelevantSearchResults(tracks, query), query, { limit: 48 }).map((track) => {
     const serialized = serializeTrack(track);
     return {
       ...serialized,

@@ -54,6 +54,13 @@ const SEARCH_PROVIDER_BONUSES = Object.freeze({
   spotify: 22,
 });
 const MIN_PREFERRED_PROVIDER_SCORE = 260;
+// A provider's own first results carry its popularity knowledge, which the
+// metadata does not: for "high forever" every upload is titled the same, and
+// only the providers know the Edgerunners remix is the one people play. A
+// recording that at least two providers list near the top rises above the
+// same-titled uploads; one provider's order alone stays a mere tie-break.
+const PROVIDER_TOP_PICK_BONUSES = Object.freeze([36, 24, 12]);
+const MIN_TOP_PICK_PROVIDERS = 2;
 
 const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:tutorial|how to|lesson|tips?|tricks?|review|reaction|reacts?|analysis|explained)\b/i,
@@ -91,6 +98,45 @@ function getTokens(value, { keepGeneric = false } = {}) {
 
 function getUniqueTokens(value, options) {
   return [...new Set(getTokens(value, options))];
+}
+
+// Shorter joins ("a b" → "ab") are too likely to be a different word.
+const MIN_RESPACED_WORD_LENGTH = 4;
+
+function splitLikeQuery(word, queryWords) {
+  if (word.length < MIN_RESPACED_WORD_LENGTH) return [word];
+  for (let start = 0; start < queryWords.length; start += 1) {
+    for (const count of [3, 2]) {
+      const parts = queryWords.slice(start, start + count);
+      if (parts.length === count && parts.join("") === word) return parts;
+    }
+  }
+  return [word];
+}
+
+/**
+ * "kickback" and "KICK BACK" are the same song. Re-spaces candidate words to
+ * the query's spelling: joins neighbours the query writes as one word and
+ * splits a word the query writes as several, so word matching sees them equal.
+ */
+function alignWordSpacing(words, queryWords) {
+  if (!queryWords.length) return words;
+  const joined = new Set(queryWords.filter((word) => word.length >= MIN_RESPACED_WORD_LENGTH));
+  const aligned = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const count = [3, 2].find((size) => index + size <= words.length && joined.has(words.slice(index, index + size).join("")));
+    if (count) {
+      aligned.push(words.slice(index, index + count).join(""));
+      index += count - 1;
+    } else {
+      aligned.push(...splitLikeQuery(words[index], queryWords));
+    }
+  }
+  return aligned;
+}
+
+function alignTextSpacing(text, queryWords) {
+  return alignWordSpacing(String(text || "").split(" ").filter(Boolean), queryWords).join(" ");
 }
 
 function getCoverage(needleTokens, candidateTokens) {
@@ -168,11 +214,17 @@ function getProviderIdentity(track) {
   return source || "unknown";
 }
 
+// Versions that sound different enough to be their own recording. A remaster
+// or radio edit is still the song people meant, so it shares the original's key.
+const MIN_DISTINCT_VERSION_PENALTY = 50;
+
 function getConsensusKey(track) {
-  const title = getCanonicalTitle(track?.info?.title || "");
+  const rawTitle = track?.info?.title || "";
+  const title = getCanonicalTitle(rawTitle);
   const author = normalizeText(cleanArtistName(track?.info?.author || ""));
   if (!title || !author) return null;
-  return `${author}|||${title}`;
+  const versions = getVersionTokens(rawTitle).filter((kind) => (VERSION_PENALTIES[kind] ?? 25) >= MIN_DISTINCT_VERSION_PENALTY);
+  return versions.length ? `${author}|||${title}|||${versions.sort().join(",")}` : `${author}|||${title}`;
 }
 
 function getCatalogSourceBonus(track, consensusSources) {
@@ -188,6 +240,39 @@ function getProviderConsensus(track, consensusMap) {
   const key = getConsensusKey(track);
   if (!key || !consensusMap) return 0;
   return consensusMap.get(key)?.size ?? 0;
+}
+
+function getRecordingKey(track) {
+  return getConsensusKey(track) || track?.info?.uri || track?.info?.identifier || null;
+}
+
+/**
+ * Sums, per recording, the bonus for its position in each provider's list,
+ * keeping only recordings that MIN_TOP_PICK_PROVIDERS providers agree on.
+ */
+function getProviderTopPicks(tracks) {
+  const positions = new Map();
+  const picks = new Map();
+  for (const track of tracks) {
+    const provider = getProviderIdentity(track);
+    const position = positions.get(provider) ?? 0;
+    positions.set(provider, position + 1);
+    const key = getRecordingKey(track);
+    if (!key || position >= PROVIDER_TOP_PICK_BONUSES.length) continue;
+    const pick = picks.get(key) || new Map();
+    if (!pick.has(provider)) pick.set(provider, PROVIDER_TOP_PICK_BONUSES[position]);
+    picks.set(key, pick);
+  }
+  const bonuses = new Map();
+  for (const [key, pick] of picks) {
+    if (pick.size >= MIN_TOP_PICK_PROVIDERS) bonuses.set(key, [...pick.values()].reduce((sum, bonus) => sum + bonus, 0));
+  }
+  return bonuses;
+}
+
+function getTopPickBonus(entry, topPicks) {
+  if (!entry || entry.score < MIN_PREFERRED_PROVIDER_SCORE) return 0;
+  return topPicks.get(getRecordingKey(entry.track)) || 0;
 }
 
 function getSearchProviderBonus(entry) {
@@ -234,14 +319,15 @@ function trimWeakSingleWordMatches(entries, query) {
 function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
   const title = track?.info?.title || "";
   const author = track?.info?.author || "";
+  const queryWords = getTokens(query, { keepGeneric: true });
   const normalizedQuery = normalizeText(query);
-  const normalizedTitle = normalizeText(title);
-  const canonicalTitle = getCanonicalTitle(title);
-  const normalizedAuthor = normalizeText(author);
+  const normalizedTitle = alignTextSpacing(normalizeText(title), queryWords);
+  const canonicalTitle = alignTextSpacing(getCanonicalTitle(title), queryWords);
+  const normalizedAuthor = alignTextSpacing(normalizeText(author), queryWords);
   const candidateText = `${normalizedAuthor} ${normalizedTitle}`.trim();
   const queryTokens = getUniqueTokens(query);
-  const titleTokens = getUniqueTokens(title);
-  const authorTokens = getUniqueTokens(author);
+  const titleTokens = getUniqueTokens(normalizedTitle);
+  const authorTokens = getUniqueTokens(normalizedAuthor);
   const explicitQuery = splitExplicitQuery(query);
   const isSingleWordQuery = queryTokens.length === 1;
   const prefixToken = getPrefixToken(query);
@@ -439,7 +525,9 @@ function isRelevantSearchResult(track, query) {
       ? queryTokens.filter((token) => token !== prefixToken)
       : queryTokens;
 
-  const candidateTokens = getUniqueTokens(`${track.info.author || ""} ${track.info.title || ""}`);
+  const candidateTokens = [
+    ...new Set(alignWordSpacing(getTokens(`${track.info.author || ""} ${track.info.title || ""}`), queryTokens)),
+  ];
   const match = matchTokens(needles, candidateTokens, { prefixToken });
 
   // A requested version ("clean", "acoustic") is never the tolerated extra
@@ -473,8 +561,9 @@ function filterPlayableSearchResults(tracks, query) {
 }
 
 function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = true } = {}) {
+  const pool = Array.isArray(tracks) ? tracks : [];
   const sourceConsensus = new Map();
-  for (const track of Array.isArray(tracks) ? tracks : []) {
+  for (const track of pool) {
     const key = getConsensusKey(track);
     if (!key) continue;
 
@@ -482,9 +571,10 @@ function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = 
     sourceConsensus.get(key).add(getProviderIdentity(track));
   }
 
-  const ranked = (Array.isArray(tracks) ? tracks : [])
+  const topPicks = getProviderTopPicks(pool);
+  const ranked = pool
     .map((track, index) => scoreSearchResult(track, query, index, { consensusMap: sourceConsensus }))
-    .map((entry) => ({ ...entry, providerBonus: getSearchProviderBonus(entry) }))
+    .map((entry) => ({ ...entry, providerBonus: getSearchProviderBonus(entry) + getTopPickBonus(entry, topPicks) }))
     .map((entry) => ({ ...entry, effectiveScore: entry.score + entry.providerBonus }))
     .sort(compareRankedSearchResults);
 

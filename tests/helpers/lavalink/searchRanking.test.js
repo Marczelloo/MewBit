@@ -297,3 +297,48 @@ describe("Search result ranking", () => {
     });
   });
 });
+
+describe("Search results from several providers", () => {
+  const fromProvider = (sourceName, title, author) => ({ info: { title, author, sourceName, uri: `${sourceName}:${author}:${title}` } });
+
+  it("matches a title however the query spaces its words", () => {
+    // Real ytmsearch/dzsearch results for "kickback": the Chainsaw Man song
+    // is spelt "KICK BACK" and used to be dropped as irrelevant.
+    const tracks = [
+      fromProvider("youtube", "KICK BACK", "Kenshi Yonezu"),
+      fromProvider("youtube", "kickback", "nafla"),
+      fromProvider("youtube", "Kickback", "Cabaret Voltaire"),
+      fromProvider("deezer", "KICK BACK", "Kenshi Yonezu"),
+      fromProvider("deezer", "Kick Back", "Marta"),
+      fromProvider("spotify", "Kickback", "Omar Apollo"),
+    ];
+
+    for (const query of ["kickback", "kick back"]) {
+      const relevant = filterRelevantSearchResults(tracks, query);
+      assert.strictEqual(relevant.length, tracks.length, query);
+      assert.strictEqual(rankSearchResults(relevant, query)[0].info.author, "Kenshi Yonezu", query);
+    }
+  });
+
+  it("keeps a remix the providers lead with as its own result, under the original", () => {
+    // Real results for "high forever": the Cyberpunk: Edgerunners 2 remix.
+    const tracks = [
+      fromProvider("youtube", "High Forever", "Petite Meller"),
+      fromProvider("youtube", "High Forever (Marlon Hoffstadt Remix)", "Petite Meller"),
+      fromProvider("youtube", "High Forever", "Catie St.Germain"),
+      fromProvider("youtube", "High Forever", "Ryan King"),
+      fromProvider("deezer", "High Forever (Marlon Hoffstadt Remix)", "Petite Meller"),
+      fromProvider("deezer", "High Forever", "Petite Meller"),
+      fromProvider("deezer", "High Forever", "Tatsunoshin"),
+      fromProvider("deezer", "High Forever", "The Maine"),
+    ];
+
+    const ranked = rankSearchResults(filterRelevantSearchResults(tracks, "high forever"), "high forever");
+    assert.deepStrictEqual(
+      ranked.slice(0, 2).map((track) => track.info.title),
+      ["High Forever", "High Forever (Marlon Hoffstadt Remix)"]
+    );
+    // Implicit playback still never substitutes the remix for the original.
+    assert.ok(filterPlayableSearchResults(tracks, "high forever").every((track) => !/remix/i.test(track.info.title)));
+  });
+});
