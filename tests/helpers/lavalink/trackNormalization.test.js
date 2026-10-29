@@ -56,6 +56,33 @@ describe("Autoplay track normalization", () => {
       searchArtist: "Chappell Roan",
     });
   });
+
+  it("recognises 8-bit, parody, type beat and lullaby uploads as novelty versions", () => {
+    for (const title of [
+      "Not Like Us (8-Bit Emulation)",
+      "Blinding Lights [16 bit]",
+      "Numb - Chiptune",
+      "Not Like Us (Parody)",
+      "Kendrick Lamar Not Like Us Type Beat",
+      "Bohemian Rhapsody (Lullaby Version)",
+      "Smells Like Teen Spirit (Music Box)",
+      "KICK BACK [GAME BOY Sound]",
+    ]) {
+      assert.ok(getVariantKinds(title).includes("novelty"), title);
+      assert.strictEqual(isUnrequestedAlternateVersion(title, "not like us"), true, title);
+    }
+  });
+
+  it("treats a work-in-progress take as a demo", () => {
+    assert.deepStrictEqual(getVariantKinds("One (November 1987, Writing in Progress)"), ["demo"]);
+    assert.deepStrictEqual(getVariantKinds("Song (Work in Progress)"), ["demo"]);
+  });
+
+  it("does not see novelty in ordinary titles", () => {
+    for (const title of ["Bit by Bit", "8 kobiet", "Orbit", "Beat It", "A Little Bit", "Progress"]) {
+      assert.deepStrictEqual(getVariantKinds(title), [], title);
+    }
+  });
 });
 
 describe("Autoplay genre normalization", () => {
