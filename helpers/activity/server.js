@@ -41,6 +41,7 @@ const { getPoru } = require("../lavalink/players");
 const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayPartition } = require("../lavalink/queueOrdering");
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
 const { filterPlayableSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
+const { searchWithCorrection } = require("../lavalink/searchSuggestions");
 const { skipWithLearning } = require("../lavalink/skipLearning");
 const { cloneTrack, getLyricsState, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
@@ -1080,24 +1081,34 @@ async function runTrackedActivityAction({ guildId, identity, action, payload = {
   }
 }
 
-async function searchActivityTracks(query, preferredSource) {
+/**
+ * Searches like a search box should: a misspelt query also searches the
+ * correction YouTube suggests and ranks against it, and the response says so
+ * ("showing results for ..."). `exact` searches the query as typed.
+ */
+async function searchActivityTracks(query, preferredSource, { exact = false } = {}) {
   const poru = getPoru();
   if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
 
   const selectedSource = toSource(preferredSource);
   const normalizedQuery = limitText(query, 200);
 
-  if (selectedSource === "auto") {
-    // Keep YouTube as the first source, but rank the complete provider pool.
-    // Stopping at the first loose YouTube result hid verified Spotify/Deezer
-    // recordings and made a short typing result disappear for a full query.
-    const tracks = await searchAcrossSources(poru, normalizedQuery, { preferredSource: "youtube" });
-    return serializeActivitySearchResults(tracks, query);
-  }
+  // Keep YouTube as the first source in auto mode, but rank the complete
+  // provider pool. Stopping at the first loose YouTube result hid verified
+  // Spotify/Deezer recordings and made a short typing result disappear for a
+  // full query.
+  const search = (text) =>
+    selectedSource === "auto"
+      ? searchAcrossSources(poru, text, { preferredSource: "youtube" })
+      : searchSingleSource(poru, text, selectedSource);
 
+  const result = await searchWithCorrection(normalizedQuery, search, { exact });
   // serializeActivitySearchResults filters for playability itself.
-  const tracks = await searchSingleSource(poru, normalizedQuery, selectedSource);
-  return serializeActivitySearchResults(tracks, query);
+  return {
+    tracks: serializeActivitySearchResults(result.tracks, result.rankQuery),
+    correction: result.correction ? { query: result.correction, original: normalizedQuery } : null,
+    suggestions: result.suggestions,
+  };
 }
 
 function sendSocket(socket, payload) {
@@ -1181,8 +1192,8 @@ function createActivityServer(client) {
         const body = await readJson(request);
         const guildId = limitText(body.guildId || config.devGuildId, 80);
         await authenticateRequest(client, request, guildId, config);
-        const tracks = await searchActivityTracks(body.query, body.source);
-        return sendJson(response, 200, { ok: true, tracks }, config);
+        const result = await searchActivityTracks(body.query, body.source, { exact: body.exact === true });
+        return sendJson(response, 200, { ok: true, ...result }, config);
       }
 
       if (url.pathname === "/api/activity/action" && request.method === "POST") {

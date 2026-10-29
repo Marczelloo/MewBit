@@ -1301,3 +1301,13 @@
   .player-control-deck .deck-right { grid-area: right; justify-self: end; }
 }
 .now-playing-stage .meta-requester { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "Showing results for" correction and related searches above the results. */
+.search-correction { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 2px 0 12px; color: var(--muted); font-size: 13px; }
+.search-correction button { padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; overflow-wrap: anywhere; text-align: left; }
+.search-correction button:hover { color: var(--text); text-decoration-color: currentColor; }
+.search-correction .search-correction-query { color: var(--cyan-soft); font-weight: 600; font-style: italic; }
+.search-correction-original { font-size: 12px; color: var(--faint); }
+.search-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.search-suggestion { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: 99px; background: var(--surface-soft); color: var(--muted-strong); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color 160ms var(--ease), color 160ms var(--ease), background 160ms var(--ease); }
+.search-suggestion svg { flex: none; color: var(--faint); }
+.search-suggestion:hover { border-color: rgb(103 227 244 / 0.35); background: rgb(103 227 244 / 0.06); color: var(--text); }

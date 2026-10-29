@@ -1397,7 +1397,7 @@ function QueueHistoryPanel({ history = [], sessionStartedAt }) {
   );
 }
 
-function SearchPanel({ query, setQuery, source, setSource, results, status, onSearch, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
+function SearchPanel({ query, setQuery, source, setSource, results, status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
   const directLink = parseMusicLink(query);
   const directSource = directLink?.source === "direct" ? "auto" : directLink?.source;
   const [menuState, setMenuState] = useState(null);
@@ -1411,6 +1411,13 @@ function SearchPanel({ query, setQuery, source, setSource, results, status, onSe
       </div> : null}
       {directLink ? <div className="search-caption"><span>Direct link detected — the source picker is ignored</span></div> : null}
       {status === "searching" ? <div className="skeleton-list" aria-label="Loading search results"><span /><span /><span /></div> : null}
+      {!directLink && status !== "searching" && correction ? <div className="search-correction" role="status">
+        <span>Showing results for <button className="search-correction-query" type="button" onClick={() => setQuery(correction.query)}>{correction.query}</button></span>
+        <span className="search-correction-original">Search instead for <button type="button" onClick={() => onSearchExact?.(correction.original)}>{correction.original}</button></span>
+      </div> : null}
+      {!directLink && status !== "searching" && suggestions.length > 0 ? <div className="search-suggestions" aria-label="Suggested searches">{suggestions.slice(0, 6).map((suggestion) => (
+        <button className="search-suggestion" type="button" key={suggestion} onClick={() => setQuery(suggestion)}><MagnifyingGlass size={13} aria-hidden="true" /> {suggestion}</button>
+      ))}</div> : null}
       {status === "error" ? <div className="inline-error"><WarningCircle size={18} aria-hidden="true" /> Search is temporarily unavailable. Check the Lavalink connection.</div> : null}
       {directLink ? <section className="direct-link-card" aria-label="Direct music link ready">
         <div className="direct-link-icon"><LinkSimple size={22} weight="bold" aria-hidden="true" /></div>
@@ -1867,6 +1874,10 @@ function App() {
   const [searchSource, setSearchSource] = useState("auto");
   const [searchResults, setSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState("idle");
+  // The server's "showing results for" correction and related searches, plus
+  // the query the user asked to search exactly as typed instead.
+  const [searchMeta, setSearchMeta] = useState({ correction: null, suggestions: [] });
+  const [exactSearchQuery, setExactSearchQuery] = useState("");
   const [isHydrating, setIsHydrating] = useState(true);
   const [showLoader, setShowLoader] = useState(true);
   const hydrationStartedAt = useRef(Date.now());
@@ -2328,6 +2339,7 @@ function App() {
     const requestId = searchRequest.current.id + 1;
     searchRequest.current = { id: requestId, controller: null };
 
+    setSearchMeta({ correction: null, suggestions: [] });
     if (query.length < 2) { setSearchResults([]); setSearchStatus("idle"); return; }
     if (parseMusicLink(query)) {
       setSearchResults([]);
@@ -2344,9 +2356,10 @@ function App() {
       } else {
         const controller = new AbortController();
         searchRequest.current = { id: requestId, controller };
-        const response = await searchActivity({ ...context, query, source: searchSource, signal: controller.signal });
+        const response = await searchActivity({ ...context, query, source: searchSource, exact: query === exactSearchQuery, signal: controller.signal });
         if (searchRequest.current.id !== requestId) return;
         const nextResults = response.tracks || [];
+        setSearchMeta({ correction: response.correction || null, suggestions: response.suggestions || [] });
         setSearchResults(nextResults);
         setSearchStatus(nextResults.length ? "idle" : "empty");
       }
@@ -2356,7 +2369,7 @@ function App() {
       setSearchStatus("error");
       showToast(error.message, "error");
     }
-  }, [context, searchQuery, searchSource, showToast]);
+  }, [context, exactSearchQuery, searchQuery, searchSource, showToast]);
 
   useEffect(() => {
     if (MOCK_PREVIEW && activeTab === "search") {
@@ -2390,7 +2403,13 @@ function App() {
     setSource: setSearchSource,
     results: searchResults,
     status: searchStatus,
+    correction: searchMeta.correction,
+    suggestions: searchMeta.suggestions,
     onSearch: runSearch,
+    onSearchExact: (original) => {
+      setExactSearchQuery(original);
+      setSearchQuery(original);
+    },
     playlists: state.playlists,
     likedTrackIds: state.likedTrackIds || [],
     isActionPending,

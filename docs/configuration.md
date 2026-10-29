@@ -49,6 +49,7 @@ If a provider requires browser cookies, obtain them from an account you control 
 | `LOUDNESS_<SOURCE>_DB` | provider default | Optional gain offset for a provider, e.g. `LOUDNESS_SOUNDCLOUD_DB=-3`. |
 | `PLAYER_RECOVERY_MAX_AGE_MS` | `7200000` | How long an unexpected-disconnect snapshot is eligible for restoration after a user explicitly resumes playback. |
 | `SEARCH_CACHE_MAX_ENTRIES` | `240` | Maximum cached Activity/autocomplete search entries; old entries are evicted first. |
+| `SEARCH_SUGGESTIONS` | `true` | Looks up YouTube's public query suggestions to correct misspelt Activity and `/play` searches ("Showing results for ...") and offer related searches. Set to `false` to search queries exactly as typed and make no suggestion requests. |
 | `AUTOPLAY_HISTORY_LIMIT` | `80` | Recent autoplay reservations remembered for hard duplicate prevention. |
 | `AUTOPLAY_V3` | `true` | Uses the simpler trusted-source DJ selector. Set to `false` only to temporarily roll back to the legacy scorer. |
 | `AUTOPLAY_V3_MAX_ALBUM_STREAK` | `2` | Maximum consecutive tracks from one album before V3 requires a different album. |
