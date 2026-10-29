@@ -1092,11 +1092,12 @@ async function searchActivityTracks(query, preferredSource) {
     // Stopping at the first loose YouTube result hid verified Spotify/Deezer
     // recordings and made a short typing result disappear for a full query.
     const tracks = await searchAcrossSources(poru, normalizedQuery, { preferredSource: "youtube" });
-    return serializeActivitySearchResults(filterPlayableSearchResults(tracks, query), query);
+    return serializeActivitySearchResults(tracks, query);
   }
 
+  // serializeActivitySearchResults filters for playability itself.
   const tracks = await searchSingleSource(poru, normalizedQuery, selectedSource);
-  return serializeActivitySearchResults(filterPlayableSearchResults(tracks, query), query);
+  return serializeActivitySearchResults(tracks, query);
 }
 
 function sendSocket(socket, payload) {

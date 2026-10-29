@@ -62,9 +62,25 @@ const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:royalty\s+free|shopping\s+spree|teaches?|dub|prank|challenge|asmr|mukbang)\b/i,
 ];
 
-function normalizeText(value) {
-  return normalizeComparableText(value);
+// Ranking normalises the same query, titles and artists several times per
+// candidate, and cached searches hand back the same titles on every
+// keystroke; keep the results so a 200-track pool costs one pass of regexes.
+const MAX_MEMO_ENTRIES = 5_000;
+
+function memoizeText(transform) {
+  const memo = new Map();
+  return (value) => {
+    const text = String(value || "");
+    const cached = memo.get(text);
+    if (cached !== undefined) return cached;
+    if (memo.size >= MAX_MEMO_ENTRIES) memo.clear();
+    const result = transform(text);
+    memo.set(text, result);
+    return result;
+  };
 }
+
+const normalizeText = memoizeText(normalizeComparableText);
 
 function getTokens(value, { keepGeneric = false } = {}) {
   return normalizeText(value)
@@ -145,9 +161,7 @@ function getVersionTokens(title) {
   return getVariantKinds(title);
 }
 
-function getCanonicalTitle(title) {
-  return getBaseTitle(title);
-}
+const getCanonicalTitle = memoizeText(getBaseTitle);
 
 function getProviderIdentity(track) {
   const source = normalizeText(track?.info?.sourceName || track?.info?.source || "");

@@ -8,6 +8,18 @@ const JOINED_CREDIT = 0.96;
 const PHONETIC_CREDIT = 0.92;
 const MIN_PREFIX_LENGTH = 2;
 const MIN_FUZZY_LENGTH = 3;
+// Ranking compares the same handful of query words against a few hundred
+// titles that share most of their vocabulary, so memoised word pairs turn
+// most comparisons into a map lookup.
+const MAX_MEMO_ENTRIES = 20_000;
+const phoneticKeys = new Map();
+const similarities = [new Map(), new Map()];
+
+function remember(memo, key, value) {
+  if (memo.size >= MAX_MEMO_ENTRIES) memo.clear();
+  memo.set(key, value);
+  return value;
+}
 
 /**
  * A rough sound-alike key. It folds spellings people commonly mix up while
@@ -15,7 +27,10 @@ const MIN_FUZZY_LENGTH = 3;
  * the English tch, sz/sh, w/v and y/i.
  */
 function getPhoneticKey(token) {
-  return String(token || "")
+  const text = String(token || "");
+  const cached = phoneticKeys.get(text);
+  if (cached !== undefined) return cached;
+  const key = text
     .replace(/ph/g, "f")
     .replace(/ck/g, "k")
     .replace(/tch|ch|cz/g, "c")
@@ -23,6 +38,7 @@ function getPhoneticKey(token) {
     .replace(/w/g, "v")
     .replace(/y/g, "i")
     .replace(/(.)\1+/g, "$1");
+  return remember(phoneticKeys, text, key);
 }
 
 // Optimal string alignment distance: Levenshtein plus adjacent transposition,
@@ -32,31 +48,26 @@ function getEditDistance(left, right) {
   if (!left) return right.length;
   if (!right) return left.length;
 
-  const rows = left.length + 1;
+  // Three rolling rows: the transposition step looks two rows back.
   const columns = right.length + 1;
-  const distances = Array.from({ length: rows }, (_, row) => {
-    const line = new Array(columns).fill(0);
-    line[0] = row;
-    return line;
-  });
-  for (let column = 0; column < columns; column += 1) distances[0][column] = column;
+  let beforePrevious = new Array(columns).fill(0);
+  let previous = Array.from({ length: columns }, (_, column) => column);
+  let current = new Array(columns).fill(0);
 
-  for (let row = 1; row < rows; row += 1) {
+  for (let row = 1; row <= left.length; row += 1) {
+    current[0] = row;
     for (let column = 1; column < columns; column += 1) {
       const cost = left[row - 1] === right[column - 1] ? 0 : 1;
-      let distance = Math.min(
-        distances[row - 1][column] + 1,
-        distances[row][column - 1] + 1,
-        distances[row - 1][column - 1] + cost
-      );
+      let distance = Math.min(previous[column] + 1, current[column - 1] + 1, previous[column - 1] + cost);
       if (row > 1 && column > 1 && left[row - 1] === right[column - 2] && left[row - 2] === right[column - 1]) {
-        distance = Math.min(distance, distances[row - 2][column - 2] + 1);
+        distance = Math.min(distance, beforePrevious[column - 2] + 1);
       }
-      distances[row][column] = distance;
+      current[column] = distance;
     }
+    [beforePrevious, previous, current] = [previous, current, beforePrevious];
   }
 
-  return distances[rows - 1][columns - 1];
+  return previous[columns - 1];
 }
 
 // Short words tolerate one typo, long words two or three. Two-letter words
@@ -82,6 +93,13 @@ function getTokenSimilarity(needle, candidate, { allowPrefix = false } = {}) {
   if (!needle || !candidate) return 0;
   if (needle === candidate) return EXACT_CREDIT;
 
+  const byCandidate = similarities[allowPrefix ? 1 : 0].get(needle) || remember(similarities[allowPrefix ? 1 : 0], needle, new Map());
+  const cached = byCandidate.get(candidate);
+  if (cached !== undefined) return cached;
+  return remember(byCandidate, candidate, compareTokens(needle, candidate, allowPrefix));
+}
+
+function compareTokens(needle, candidate, allowPrefix) {
   let best = allowPrefix ? getPrefixCredit(needle, candidate) : 0;
 
   if (needle.length >= MIN_PREFIX_LENGTH && candidate.length >= MIN_PREFIX_LENGTH) {
@@ -126,8 +144,20 @@ function matchTokens(needleTokens, candidateTokens, { prefixToken = null } = {})
   const used = new Set();
   const credits = new Array(needles.length).fill(0);
 
+  // Exact words first: a lookup instead of a scan, and a typo elsewhere in
+  // the query can no longer take the word another query word spelled right.
+  const positions = new Map();
+  candidates.forEach((text, position) => positions.set(text, [...(positions.get(text) || []), position]));
+  needles.forEach((needle, index) => {
+    const position = (positions.get(needle) || []).find((candidate) => !used.has(candidate));
+    if (position === undefined) return;
+    used.add(position);
+    credits[index] = EXACT_CREDIT;
+  });
+
   // Glued query words: "linkin park" typed against an uploader "LinkinPark".
   for (let index = 0; index < needles.length - 1; index += 1) {
+    if (credits[index] > 0 || credits[index + 1] > 0) continue;
     const joined = `${needles[index]}${needles[index + 1]}`;
     const target = entries.find((entry) => !entry.joined && entry.text === joined && !used.has(entry.span[0]));
     if (!target) continue;
