@@ -64,6 +64,17 @@ export function searchActivitySimilar({ guildId, accessToken, title, author, sig
   );
 }
 
+export function findActivityTrackSources({ guildId, accessToken, track }) {
+  return request(
+    "/api/activity/search/sources",
+    {
+      method: "POST",
+      body: JSON.stringify({ guildId, title: track.title, author: track.author, uri: track.uri, source: track.source, durationMs: track.durationMs }),
+    },
+    accessToken
+  );
+}
+
 export function sendActivityAction({ guildId, accessToken, action, payload }) {
   return request(
     "/api/activity/action",

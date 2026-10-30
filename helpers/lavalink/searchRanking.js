@@ -51,6 +51,8 @@ const VERSION_PENALTIES = Object.freeze({
   demo: 45,
   // 8-bit covers, parodies, type beats and lullaby versions: never the song.
   novelty: 90,
+  // 432 Hz, 8D and bass-boosted re-uploads of the recording.
+  pitch: 70,
 });
 
 // "YouTube first" is the Activity's default search mode. Spotify remains the
@@ -73,6 +75,9 @@ const MIN_TOP_PICK_PROVIDERS = 2;
 // people play (YouTube Music puts the Edgerunners "High Forever" remix second),
 // so it is not penalised as an unrequested remix. Its original still leads.
 const VARIANT_TOP_PICK_POSITIONS = 2;
+// Re-uploads that only process the recording (slowed, 432 Hz, 8-bit) are
+// listed high for their views, not because they are the song.
+const PROCESSED_VERSION_KINDS = new Set(["tempo", "chopped", "pitch", "novelty"]);
 // Deezer's play-count rank (searchPopularity.js) separates the song everyone
 // means from same-titled covers: The Weeknd's "Blinding Lights" ranks ~985k,
 // a string quartet's ~430k. The bonus grows with the cube of the share of the
@@ -552,7 +557,8 @@ function scoreSearchResult(
   }
 
   const unwantedVersions = getVersionTokens(title).filter((kind) => !queryRequestsVariant(query, title) || !getVersionTokens(query).includes(kind));
-  if (unwantedVersions.length && providerPosition < VARIANT_TOP_PICK_POSITIONS) {
+  const waivable = unwantedVersions.every((kind) => !PROCESSED_VERSION_KINDS.has(kind));
+  if (unwantedVersions.length && waivable && providerPosition < VARIANT_TOP_PICK_POSITIONS) {
     reasons.push(`provider top pick:${unwantedVersions.join(",")}`);
   } else if (unwantedVersions.length) {
     const penalty = unwantedVersions.reduce((sum, token) => sum + (VERSION_PENALTIES[token] ?? 25), 0);

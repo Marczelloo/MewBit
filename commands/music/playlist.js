@@ -3,6 +3,7 @@ const djStore = require("../../helpers/dj/store");
 const { errorEmbed, successEmbed } = require("../../helpers/embeds");
 const { requireSharedVoice } = require("../../helpers/interactions/voiceGuards");
 const { createPoru, getPlayer } = require("../../helpers/lavalink");
+const { scheduleAutoplayRefresh } = require("../../helpers/lavalink/autoplay");
 const { addManualTracksToQueue, markManualTrack } = require("../../helpers/lavalink/queueOrdering");
 const { AUTOCOMPLETE_VARIANT_LIMIT, searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
 const { filterRelevantSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
@@ -605,6 +606,7 @@ async function handlePlay(interaction, userId, guildId) {
   } else {
     addManualTracksToQueue(player, tracks);
   }
+  scheduleAutoplayRefresh(player);
 
   // Start playing if not already
   if (!player.isPlaying && !player.isPaused) {

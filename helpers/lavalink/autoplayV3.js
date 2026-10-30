@@ -38,6 +38,9 @@ const SOFT_ALBUM_EXIT_STREAK = Math.max(Number(process.env.AUTOPLAY_V3_SOFT_ALBU
 const AI_DJ_MIN_FIT = Number(process.env.AI_DJ_MIN_FIT ?? 55);
 const AI_DJ_FIT_BAND = Math.min(Math.max(Number(process.env.AI_DJ_DIVERSITY_FIT_BAND ?? 10), 0), 30);
 const AI_DJ_SKIP_DEMOTION = Math.max(Number(process.env.AI_DJ_SKIP_DEMOTION ?? 12), 0);
+// Energy steps up to this size keep the groove; each 15 points beyond it
+// divides a proposal's draw weight once more.
+const AI_DJ_SMOOTH_ENERGY_STEP = 12;
 
 // Genre flow. Proposals without tags get a short Last.fm lookup so the gate
 // can judge them; a slow lookup never holds the pick back for long.
@@ -307,6 +310,23 @@ function filterAICandidates(candidates, context, { minFit = AI_DJ_MIN_FIT, now =
   return { ranked: accepted, rejected, genreRejected };
 }
 
+function getEnergyJumpDivisor(energy, referenceEnergy) {
+  const candidate = Number(energy);
+  const reference = Number(referenceEnergy);
+  if (!Number.isFinite(candidate) || !Number.isFinite(reference)) return 1;
+  const jump = Math.abs(candidate - reference) - AI_DJ_SMOOTH_ENERGY_STEP;
+  return jump > 0 ? 1 + jump / 15 : 1;
+}
+
+// The director's own verdict on the playing track keeps one energy scale
+// across turns; measured features fill in for tracks it never rated.
+function getReferenceEnergy(track) {
+  const declared = Number(track?.userData?.aiDJ?.energy);
+  if (Number.isFinite(declared)) return declared;
+  const measured = getTrackMetadata(track).features?.energy;
+  return Number.isFinite(measured) ? Math.round(measured * 100) : null;
+}
+
 /**
  * Orders AI candidates with fit as the dominant signal, plus two soft nudges:
  * a weighted-random draw inside the top fit band (less deterministic than
@@ -373,6 +393,7 @@ function orderAIDirectorCandidates(ranked, context, random = Math.random) {
       }
       const skips = skipCounts.get(artistKey(entry.candidate.artist)) || 0;
       if (skips > 0) weight /= 1 + (AI_DJ_SKIP_DEMOTION / 100) * Math.min(skips, 3);
+      weight /= getEnergyJumpDivisor(entry.candidate.aiDjEnergy, context.referenceEnergy);
 
       return { entry, index, fit, weight };
     })
@@ -718,6 +739,7 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
   const skipPatterns = getSkipPatterns(guildId);
   const context = buildSelectionContext({ profile, exposure: profile.autoplayExposure, referenceTrack, recentTracks, skipPatterns, anchorTrack, blockedTracks });
   context.selectionIntent = selectionIntent;
+  context.referenceEnergy = getReferenceEnergy(referenceTrack);
   // A chart pick is never a normal-autoplay fallback. It is only a safe,
   // verified escape hatch for Surprise me when personal context is too noisy
   // or the AI request times out.

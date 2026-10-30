@@ -232,6 +232,22 @@ describe("Autoplay V3 AI-first selection", () => {
     assert.strictEqual(maxRollOrder.deferred, null);
   });
 
+  it("draws proposals that jump far from the current energy less often", () => {
+    const jump = aiCandidate("Rager", "Quebonafide", { fit: 94, energy: 92 });
+    const smooth = aiCandidate("Same Groove", "Taco Hemingway", { fit: 90, energy: 55, lane: "bridge", rank: 1 });
+    const filtered = filterAICandidates([jump, smooth], context());
+
+    // Without a reference energy, floor=84: weights 11 and 7, so a roll of
+    // 0.5 stays on the higher fit.
+    const unrated = orderAIDirectorCandidates(filtered.ranked, context(), () => 0.5);
+    assert.strictEqual(unrated.ranked[0].candidate.title, "Rager");
+
+    // At energy 50 the 42-point jump divides its weight by 3 (11 -> 3.67),
+    // the 5-point step keeps 7, so the same roll lands on the smooth pick.
+    const rated = orderAIDirectorCandidates(filtered.ranked, context({ referenceEnergy: 50 }), () => 0.5);
+    assert.strictEqual(rated.ranked[0].candidate.title, "Same Groove");
+  });
+
   it("demotes but keeps candidates by artists listeners just skipped", () => {
     const fresh = aiCandidate("Fresh Pick", "Quebonafide", { fit: 90, rank: 0 });
     const skipped = aiCandidate("Skipped Artist Pick", "Mata", { fit: 90, rank: 1, lane: "bridge" });

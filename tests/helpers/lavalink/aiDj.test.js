@@ -125,6 +125,9 @@ describe("AI DJ director", () => {
     assert.match(AI_DJ_DIRECTOR_SYSTEM_PROMPT, /honest energy value/);
     assert.match(AI_DJ_DIRECTOR_SYSTEM_PROMPT, /web search is available/);
     assert.match(AI_DJ_DIRECTOR_SYSTEM_PROMPT, /durable taste map/);
+    assert.match(AI_DJ_DIRECTOR_SYSTEM_PROMPT, /FEEL OF THE NEXT SONG/);
+    assert.match(AI_DJ_DIRECTOR_SYSTEM_PROMPT, /selectionIntent.mode is "refresh"/);
+    assert.match(AI_DJ_DIRECTOR_SYSTEM_PROMPT, /Another version of currentTrack/);
     assert.match(request.input[1].content[0].text, /verifiedCatalog/);
     // Every candidate must carry an energy/mood verdict on one shared scale.
     assert.deepStrictEqual(

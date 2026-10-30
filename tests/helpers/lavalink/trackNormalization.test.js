@@ -6,6 +6,7 @@ const {
   cleanTrackMetadata,
   getAutoplayVersionCompatibility,
   getBaseTitle,
+  getCoreTitle,
   getVariantKinds,
   isUnrequestedAlternateVersion,
 } = require("../../../helpers/lavalink/trackNormalization");
@@ -82,6 +83,28 @@ describe("Autoplay track normalization", () => {
     for (const title of ["Bit by Bit", "8 kobiet", "Orbit", "Beat It", "A Little Bit", "Progress"]) {
       assert.deepStrictEqual(getVariantKinds(title), [], title);
     }
+  });
+
+  it("reads live, 8-bit and retuned uploads as versions of the song", () => {
+    assert.strictEqual(getBaseTitle("Numb (Live)"), "numb");
+    assert.strictEqual(getBaseTitle("Not Like Us (8-Bit Emulation)"), "not like us");
+    assert.strictEqual(getBaseTitle("Song (8D Audio)"), "song");
+    assert.strictEqual(getBaseTitle("Song - Bass Boosted"), "song");
+    assert.strictEqual(getBaseTitle("Song - Live at Wembley"), "song");
+    assert.strictEqual(getBaseTitle("Song - Mark Ronson Remix"), "song");
+    assert.deepStrictEqual(getVariantKinds("Serce 432hz"), ["pitch"]);
+    assert.deepStrictEqual(getVariantKinds("Numb (Live)"), ["live"]);
+  });
+
+  it("keeps the song in a ' - ' suffix that only ends in a processing label", () => {
+    assert.strictEqual(getBaseTitle("LSO - Serce 432hz"), "lso serce");
+    assert.strictEqual(getBaseTitle("Artist - Song Nightcore"), "artist song");
+  });
+
+  it("drops credit and soundtrack brackets from the core title, not part numbers", () => {
+    assert.strictEqual(getCoreTitle("Syberia TDW/LSO - Serce [Cyberpunk: Edgerunners II] (Talia Yang)"), "syberia tdw lso serce");
+    assert.strictEqual(getCoreTitle("Mask Off (Part 2)"), "mask off part 2");
+    assert.strictEqual(getCoreTitle("Serce 432hz"), "serce");
   });
 });
 

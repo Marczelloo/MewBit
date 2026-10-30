@@ -16,6 +16,7 @@ const { tryQueueFallbackTrack, describeTrack } = require("./fallbacks");
 const { applyNormalizedVolume, refineTrackLoudness, resolveTrackLoudness } = require("./loudness");
 const { fetchLyrics } = require("./lyricsClient");
 const { clearRecoverySnapshot } = require("./recovery");
+const { recordSourcePlayback } = require("./sourceHealth");
 const { armTrackStartWatchdog, clearTrackStartWatchdog } = require("./startWatchdog");
 const {
   ensurePlaybackState,
@@ -219,6 +220,7 @@ function createPoru(client) {
     const trackTitle = trackInfo.title || "Unknown";
     const source = trackInfo.sourceName || "unknown";
     const activityActive = hasActiveActivitySession(player.guildId);
+    recordSourcePlayback(source, false);
 
     Log.error(
       "❌ Track error",
@@ -346,6 +348,7 @@ function createPoru(client) {
     clearTrackStartWatchdog(player.guildId, "trackStart");
     clearInactivityTimer(player.guildId, "trackStart");
     const replay = consumeReplay(track);
+    recordSourcePlayback(track.info?.sourceName, true);
     player.isPlaying = true;
     player.isPaused = false;
     // Poru zeroes the position on every TrackStart; a replay resumed mid-song.
@@ -407,7 +410,8 @@ function createPoru(client) {
     // Start fetching the next autoplay track while the current one is still
     // playing. Waiting for queueEnd makes every recommendation fetch audible.
     const guildSettings = getGuildState(player.guildId);
-    if (guildSettings?.autoplay && player.queue.length <= 1) {
+    // prefetchAutoplayTrack also re-picks a waiting pick chosen for another track.
+    if (guildSettings?.autoplay) {
       const { prefetchAutoplayTrack } = require("./autoplay");
       void prefetchAutoplayTrack(player, track, player.textChannel);
     }
@@ -633,7 +637,7 @@ function createPoru(client) {
       Log.info("🔁 Autoplay fetching", `basedOn=${lastTitle}`, `guild=${player.guildId}`);
 
       const { queueAutoplayTrack, getAutoplayInFlight } = require("./autoplay");
-      const pendingPrefetch = getAutoplayInFlight(player.guildId);
+      const pendingPrefetch = getAutoplayInFlight(player.guildId, player);
       if (pendingPrefetch) {
         Log.info("⏳ Awaiting autoplay prefetch after queue end", `guild=${player.guildId}`);
         const prefetchAdded = await pendingPrefetch.catch(() => false);

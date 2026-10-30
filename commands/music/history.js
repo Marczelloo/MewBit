@@ -3,6 +3,7 @@ const { errorEmbed, successEmbed } = require("../../helpers/embeds");
 const { getHistory, clearHistory, searchHistory } = require("../../helpers/history/searchHistory");
 const { requireSharedVoice } = require("../../helpers/interactions/voiceGuards");
 const { createPoru } = require("../../helpers/lavalink");
+const { scheduleAutoplayRefresh } = require("../../helpers/lavalink/autoplay");
 const { addManualTracksToQueue, markManualTrack } = require("../../helpers/lavalink/queueOrdering");
 const Log = require("../../helpers/logs/log");
 const { createPlaylist, addTrack } = require("../../helpers/playlists/store");
@@ -235,6 +236,7 @@ async function handleReplay(interaction, userId, guildId) {
   } else {
     addManualTracksToQueue(player, [track]);
   }
+  scheduleAutoplayRefresh(player);
 
   if (!player.isPlaying && !player.isPaused) {
     player.play();

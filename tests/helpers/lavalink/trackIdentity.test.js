@@ -69,4 +69,31 @@ describe("Autoplay track identity", () => {
     assert.strictEqual(getTrackIdentity(youtube).preferredKey, "isrc:USUG12001870");
     assert.strictEqual(hasTrackIdentity([youtube], deezer, { includeIdentifier: false }), true);
   });
+
+  it("matches re-uploads that credit the real artist in the title", () => {
+    const retuned = { info: { title: "LSO - Serce 432hz", author: "Czarno432hzBóG", identifier: "a" } };
+    const soundtrack = {
+      info: { title: "Syberia TDW/LSO - Serce [Cyberpunk: Edgerunners II] (Talia Yang)", author: "Raven-VXV", identifier: "b" },
+    };
+    const original = { info: { title: "Serce", author: "LSO", identifier: "c" } };
+
+    assert.strictEqual(hasTrackIdentity([retuned], soundtrack, { includeIdentifier: false }), true);
+    assert.strictEqual(hasTrackIdentity([retuned], original, { includeIdentifier: false }), true);
+    assert.strictEqual(hasTrackIdentity([soundtrack], original, { includeIdentifier: false }), true);
+  });
+
+  it("keeps same-titled songs by other artists distinct", () => {
+    const original = { info: { title: "Serce", author: "LSO", identifier: "c" } };
+    const otherBand = { info: { title: "Serce", author: "Some Band", identifier: "d" } };
+    const otherCredit = { info: { title: "Ktoś Inny - Serce", author: "Kanał", identifier: "e" } };
+
+    assert.strictEqual(hasTrackIdentity([original], otherBand, { includeIdentifier: false }), false);
+    assert.strictEqual(hasTrackIdentity([original], otherCredit, { includeIdentifier: false }), false);
+  });
+
+  it("matches a live upload to the studio recording", () => {
+    const live = { info: { title: "Numb (Live)", author: "Linkin Park", identifier: "live" } };
+    const studio = { info: { title: "Numb", author: "Linkin Park", identifier: "studio" } };
+    assert.strictEqual(hasTrackIdentity([studio], live, { includeIdentifier: false }), true);
+  });
 });

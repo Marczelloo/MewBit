@@ -1,5 +1,5 @@
 const { normalizeText } = require("./searchRanking");
-const { cleanArtistName, getBaseTitle } = require("./trackNormalization");
+const { cleanArtistName, getBaseTitle, getCoreTitle } = require("./trackNormalization");
 
 function cleanArtist(value) {
   return normalizeText(
@@ -24,7 +24,7 @@ function normalizeArtist(value) {
   return getArtistKeys(value)[0] || "";
 }
 
-function normalizeTitle(value, artistKeys) {
+function normalizeTitle(value, artistKeys, toTitle = getBaseTitle) {
   const rawTitle = String(value || "").trim();
   const explicitParts = rawTitle.split(/\s[-–—|]\s/);
   let title = rawTitle;
@@ -36,7 +36,7 @@ function normalizeTitle(value, artistKeys) {
     }
   }
 
-  let canonicalTitle = getBaseTitle(title);
+  let canonicalTitle = toTitle(title);
 
   // YouTube channels sometimes repeat the artist in the title without a
   // reliable delimiter. Remove that provider-specific prefix/suffix only
@@ -47,6 +47,21 @@ function normalizeTitle(value, artistKeys) {
   }
 
   return canonicalTitle;
+}
+
+/**
+ * Re-uploads credit the real artist in the title: "LSO - Serce 432hz" by
+ * Czarno432hzBóG, "Syberia TDW/LSO - Serce [Cyberpunk: Edgerunners II]" by
+ * Raven-VXV. Keys for the credited artists and the core title let both
+ * match each other and LSO's own upload.
+ */
+function getCreditedTextKeys(title, artistKeys) {
+  const parts = String(title || "").trim().split(/\s[-–—|]\s/);
+  if (parts.length < 2) return [];
+  const creditedKeys = getArtistKeys(parts[0]);
+  if (!creditedKeys.length || creditedKeys.some((key) => artistKeys.includes(key))) return [];
+  const coreTitle = getCoreTitle(parts.slice(1).join(" - "));
+  return coreTitle ? creditedKeys.map((artistKey) => `text:${artistKey}|${coreTitle}`) : [];
 }
 
 function getTrackIdentity(trackLike) {
@@ -71,6 +86,12 @@ function getTrackIdentity(trackLike) {
   const canonicalTitle = normalizeTitle(title, artistKeys);
   const normalizedArtist = artistKeys[0] || "";
   const textKeys = artistKeys.map((artistKey) => `text:${artistKey}|${canonicalTitle}`);
+  if (canonicalTitle) {
+    // The uploader's own title with credit and soundtrack tags dropped.
+    const coreTitle = normalizeTitle(title, artistKeys, getCoreTitle);
+    if (coreTitle && coreTitle !== canonicalTitle) textKeys.push(...artistKeys.map((artistKey) => `text:${artistKey}|${coreTitle}`));
+    textKeys.push(...getCreditedTextKeys(title, artistKeys));
+  }
 
   return {
     identifier: String(identifier || "").trim(),
@@ -79,7 +100,7 @@ function getTrackIdentity(trackLike) {
     artist: normalizedArtist,
     artistKeys,
     textKey: canonicalTitle && normalizedArtist ? `text:${normalizedArtist}|${canonicalTitle}` : null,
-    textKeys: canonicalTitle ? textKeys : [],
+    textKeys: canonicalTitle ? [...new Set(textKeys)] : [],
     preferredKey: isrc ? `isrc:${isrc}` : canonicalTitle && normalizedArtist ? `text:${normalizedArtist}|${canonicalTitle}` : identifier ? `id:${identifier}` : null,
   };
 }

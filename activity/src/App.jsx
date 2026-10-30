@@ -44,7 +44,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { openExternalLink, setMewbitPresence, setupDiscord } from "./discord.js";
-import { connectActivitySocket, fetchActivityState, searchActivity, searchActivityLibrary, searchActivitySimilar, sendActivityAction } from "./api.js";
+import { connectActivitySocket, fetchActivityState, findActivityTrackSources, searchActivity, searchActivityLibrary, searchActivitySimilar, sendActivityAction } from "./api.js";
 import { parseMusicLink } from "./musicLink.js";
 import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
@@ -56,7 +56,6 @@ const LazyFiltersPanel = lazy(() => import("./views/FiltersPanel.jsx"));
 const LazyHomePanel = lazy(() => import("./views/HomePanel.jsx"));
 const LazyLyricsPanel = lazy(() => import("./views/LyricsPanel.jsx"));
 
-const SOURCE_NAMES = ["auto", "youtube", "soundcloud", "deezer", "spotify"];
 // Mock preview is a dev-only affordance: production builds never render mock
 // data or search results, even if someone appends ?mock=1 to the URL.
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
@@ -235,10 +234,6 @@ function sourceLabel(source) {
   return ({ deezer: "Deezer", youtube: "YouTube", spotify: "Spotify", soundcloud: "SoundCloud", auto: "YouTube first", direct: "Direct link" })[source] || source || "Unknown";
 }
 
-// A narrow stage leaves the search field only a sliver next to "YouTube first",
-// so the trigger falls back to these; the open list keeps the full names.
-const SOURCE_SHORT_LABELS = { auto: "Auto", youtube: "YT", soundcloud: "SC", deezer: "DZ", spotify: "SP" };
-const SOURCE_OPTIONS = SOURCE_NAMES.map((name) => ({ value: name, label: sourceLabel(name), shortLabel: SOURCE_SHORT_LABELS[name] }));
 const HISTORY_RANGE_OPTIONS = [
   { value: "all", label: "Any time" },
   { value: "1h", label: "Last hour" },
@@ -645,6 +640,57 @@ function PlaylistSubmenuItem({ track, playlists = [], onAction, onClose }) {
   );
 }
 
+const PLAY_FROM_REASONS = { not_found: "Not found", failing: "Failing lately", not_loadable: "Won't load", unreachable: "No answer" };
+
+// Looks the recording up on every provider the first time it opens, and only
+// offers the ones that found it and can stream it right now.
+function PlayFromSubmenuItem({ track, findSources, onAction, onClose }) {
+  const [open, setOpen] = useState(false);
+  const [opensLeft, setOpensLeft] = useState(false);
+  const [lookup, setLookup] = useState({ status: "idle", sources: [] });
+  const triggerRef = useRef(null);
+  const submenuRef = useRef(null);
+  const submenuGuards = useSmartMenuGuards(open, triggerRef, submenuRef, () => setOpen(false));
+  const scheduleClose = () => submenuGuards.scheduleClose(280);
+  const openSubmenu = () => {
+    submenuGuards.clearCloseTimer();
+    const rect = triggerRef.current?.getBoundingClientRect();
+    setOpensLeft(Boolean(rect && window.innerWidth - rect.right < 250));
+    setOpen(true);
+    if (lookup.status !== "idle") return;
+    setLookup({ status: "loading", sources: [] });
+    findSources(track)
+      .then((response) => setLookup({ status: "ready", sources: response.sources || [] }))
+      .catch(() => setLookup({ status: "error", sources: [] }));
+  };
+
+  return (
+    <div className={`row-menu-submenu ${open ? "is-open" : ""}`} onMouseEnter={openSubmenu} onMouseLeave={scheduleClose} onFocus={openSubmenu} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) scheduleClose(); }}>
+      <button ref={triggerRef} type="button" role="menuitem" className="row-menu-item" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openSubmenu(); }} aria-haspopup="menu" aria-expanded={open}>
+        <Globe size={15} aria-hidden="true" /><span>Play from…</span><CaretRight className="row-menu-chevron" size={14} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div ref={submenuRef} className={`row-menu-submenu-panel ${opensLeft ? "opens-left" : ""}`} role="menu" aria-label="Play from another provider" aria-busy={lookup.status === "loading" || undefined} onMouseEnter={openSubmenu} onMouseLeave={scheduleClose}>
+          {lookup.status === "loading" || lookup.status === "idle" ? <span className="row-menu-submenu-empty"><SpinnerGap className="button-spinner" size={12} aria-hidden="true" /> Checking providers…</span> : null}
+          {lookup.status === "error" ? <span className="row-menu-submenu-empty">Couldn't check providers</span> : null}
+          {lookup.status === "ready" ? lookup.sources.map((entry) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={entry.source}
+              disabled={!entry.available}
+              onClick={() => { onAction("play", { query: entry.track.playQuery, source: entry.source, playNow: true, trackId: track.id }); onClose(); }}
+            >
+              <SourceTag source={entry.source} />
+              <span className="row-menu-source-status">{entry.available ? (entry.current ? "This result" : formatTime(entry.track.durationMs)) : PLAY_FROM_REASONS[entry.reason] || "Unavailable"}</span>
+            </button>
+          )) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TrackMenuActions({ track, playlists = [], likedTrackIds = [], onAction, onClose }) {
   const isLiked = likedTrackIds.includes(track.id) || likedTrackIds.includes(getTrackLikeKey(track));
   const linkUrl = [track.uri, track.playQuery].find((value) => typeof value === "string" && /^https?:\/\//i.test(value));
@@ -676,7 +722,7 @@ function TrackMenuActions({ track, playlists = [], likedTrackIds = [], onAction,
   );
 }
 
-function TrackContextMenu({ track, playlists = [], likedTrackIds = [], onAction, open, position, onOpen, onClose }) {
+function TrackContextMenu({ track, playlists = [], likedTrackIds = [], onAction, findSources, open, position, onOpen, onClose }) {
   const rootRef = useRef(null);
   const menuRef = useRef(null);
   const { clearCloseTimer, scheduleClose } = useSmartMenuGuards(open, rootRef, menuRef, onClose);
@@ -721,6 +767,7 @@ function TrackContextMenu({ track, playlists = [], likedTrackIds = [], onAction,
           <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play", { query: playQuery, source: track.source }); closeMenu(); }}>
             <Plus size={15} weight="bold" aria-hidden="true" /><span>Add to queue</span>
           </button>
+          {findSources ? <PlayFromSubmenuItem track={track} findSources={findSources} onAction={onAction} onClose={closeMenu} /> : null}
           <span className="row-menu-divider" aria-hidden="true" />
           <TrackMenuActions track={track} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} onClose={closeMenu} />
         </>
@@ -1408,7 +1455,7 @@ function normalizeArtistKey(author) {
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
-function SearchPanel({ query, setQuery, source, setSource, results, libraryResults = [], similarResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
+function SearchPanel({ query, setQuery, results, findSources, libraryResults = [], similarResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
   const directLink = parseMusicLink(query);
   const directSource = directLink?.source === "direct" ? "auto" : directLink?.source;
   const [menuState, setMenuState] = useState(null);
@@ -1444,6 +1491,7 @@ function SearchPanel({ query, setQuery, source, setSource, results, libraryResul
               playlists={playlists}
               likedTrackIds={likedTrackIds}
               onAction={onAction}
+              findSources={findSources}
               isActionPending={isActionPending}
               open={menuState?.id === track.id}
               position={{ top: menuState?.top ?? 0, left: menuState?.left ?? 0 }}
@@ -1472,10 +1520,8 @@ function SearchPanel({ query, setQuery, source, setSource, results, libraryResul
     <div className="search-panel">
       {showSearchBar ? <div className="search-bar-row">
         <div className="search-input-wrap"><MagnifyingGlass size={18} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") onSearch(); }} placeholder="Search title, artist, or a direct link" aria-label="Search music" /></div>
-        <Dropdown className="source-dropdown" value={source} onChange={setSource} label="Search source" options={SOURCE_OPTIONS} align="end" />
         <button className="primary-button" type="button" onClick={onSearch}><MagnifyingGlass size={17} weight="bold" aria-hidden="true" /> Search</button>
       </div> : null}
-      {directLink ? <div className="search-caption"><span>Direct link detected — the source picker is ignored</span></div> : null}
       {status === "searching" && !isRefreshing ? <div className="skeleton-list" aria-label="Loading search results"><span /><span /><span /></div> : null}
       {!directLink && status !== "searching" && correction ? <div className="search-correction" role="status">
         <span>Showing results for <button className="search-correction-query" type="button" onClick={() => setQuery(correction.query)}>{correction.query}</button></span>
@@ -1497,7 +1543,7 @@ function SearchPanel({ query, setQuery, source, setSource, results, libraryResul
           <button className="secondary-button" type="button" onClick={() => onAction("play", { query: directLink.url, source: directSource, trackId: directLink.url })} disabled={isActionPending(`play:${directLink.url}`)} aria-busy={isActionPending(`play:${directLink.url}`) || undefined}>{isActionPending(`play:${directLink.url}`) ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Plus size={16} weight="bold" aria-hidden="true" />} Add to queue</button>
         </div>
       </section> : null}
-      {!directLink && status === "empty" && !libraryResults.length ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name, a direct URL, or another source.</span></div> : null}
+      {!directLink && status === "empty" && !libraryResults.length ? <div className="empty-state compact"><MagnifyingGlass size={30} weight="duotone" aria-hidden="true" /><strong>No close matches</strong><span>Try the artist name or a direct URL.</span></div> : null}
       {!directLink && libraryResults.length > 0 ? <section className="search-library" aria-label="From your library">
         <h3 className="search-section-title">From your library</h3>
         {resultList(libraryResults)}
@@ -1650,7 +1696,7 @@ function PlaylistsPanel({ playlists, currentTrack, selectedPlaylist, playlistDet
   );
 }
 
-function GlobalSearch({ query, setQuery, source, setSource, onSearch, onFocus }) {
+function GlobalSearch({ query, setQuery, onSearch, onFocus }) {
   return (
     <div className="global-search">
       <MagnifyingGlass size={18} aria-hidden="true" />
@@ -1662,7 +1708,6 @@ function GlobalSearch({ query, setQuery, source, setSource, onSearch, onFocus })
         placeholder="What do you want to play?"
         aria-label="Search music"
       />
-      <Dropdown className="source-dropdown" value={source} onChange={setSource} label="Search source" options={SOURCE_OPTIONS} align="end" />
       <button className="global-search-submit" type="button" onClick={onSearch} aria-label="Search music" title="Search music">
         <MagnifyingGlass size={17} weight="bold" aria-hidden="true" />
       </button>
@@ -1928,7 +1973,6 @@ function App() {
   const [toast, setToast] = useState(null);
   const [pendingActions, setPendingActions] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchSource, setSearchSource] = useState("auto");
   const [searchResults, setSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState("idle");
   // The server's "showing results for" correction and related searches, plus
@@ -2416,7 +2460,7 @@ function App() {
       } else {
         const controller = new AbortController();
         searchRequest.current = { id: requestId, controller };
-        const response = await searchActivity({ ...context, query, source: searchSource, exact: query === exactSearchQuery, signal: controller.signal });
+        const response = await searchActivity({ ...context, query, exact: query === exactSearchQuery, signal: controller.signal });
         if (searchRequest.current.id !== requestId) return;
         const nextResults = response.tracks || [];
         setSearchMeta({ correction: response.correction || null, suggestions: response.suggestions || [] });
@@ -2429,7 +2473,7 @@ function App() {
       setSearchStatus("error");
       showToast(error.message, "error");
     }
-  }, [context, exactSearchQuery, searchQuery, searchSource, showToast]);
+  }, [context, exactSearchQuery, searchQuery, showToast]);
 
   useEffect(() => {
     if (MOCK_PREVIEW && activeTab === "search") {
@@ -2454,7 +2498,7 @@ function App() {
       searchRequest.current.controller?.abort();
       searchRequest.current.controller = null;
     };
-  }, [activeTab, runSearch, searchQuery, searchSource]);
+  }, [activeTab, runSearch, searchQuery]);
 
   // The user's own library answers almost instantly, so it runs on a short
   // debounce of its own instead of waiting for the provider search.
@@ -2502,9 +2546,8 @@ function App() {
   const searchProps = {
     query: searchQuery,
     setQuery: setSearchQuery,
-    source: searchSource,
-    setSource: setSearchSource,
     results: searchResults,
+    findSources: (track) => findActivityTrackSources({ ...context, track }),
     libraryResults,
     similarResults,
     status: searchStatus,
@@ -2620,7 +2663,7 @@ function App() {
             </div>
             <div className={`main-content main-view-${activeTab}`}>
               {activeTab === "home" ? (isHydrating ? <Suspense fallback={<HomePanelFallback />}><LazyHomePanel loading /></Suspense> : state.player.currentTrack ? <NowPlaying className="now-playing-stage" state={state} onTab={goToView} onAction={onAction} onOpenExternalLink={requestExternalLink} isActionPending={isActionPending} /> : <Suspense fallback={<HomePanelFallback />}><LazyHomePanel onView={goToView} onAction={onAction} isActionPending={isActionPending} /></Suspense>) : null}
-              {activeTab === "search" ? <section className="content-panel panel-surface"><PanelTitle icon={<MagnifyingGlass size={18} aria-hidden="true" />} title="Find a track" description="Search providers together, then choose the exact source" /><SearchPanel {...searchProps} showSearchBar={false} onAction={onAction} /></section> : null}
+              {activeTab === "search" ? <section className="content-panel panel-surface"><PanelTitle icon={<MagnifyingGlass size={18} aria-hidden="true" />} title="Find a track" description="Every provider at once, YouTube first. Pick another source from a track's menu" /><SearchPanel {...searchProps} showSearchBar={false} onAction={onAction} /></section> : null}
               {activeTab === "filters" ? <section className={`content-panel panel-surface filters-surface filters-surface-${soundSection}`}><PanelTitle icon={<SlidersHorizontal size={18} aria-hidden="true" />} title="Shape the sound" description="EQ and playful filters are applied to the live player" action={<div className="sound-mode-actions" role="tablist" aria-label="Sound controls"><button type="button" role="tab" aria-selected={soundSection === "effects"} className={soundSection === "effects" ? "is-active" : ""} onClick={() => setSoundSection("effects")}><Faders size={15} aria-hidden="true" /><span>Effects</span></button><button type="button" role="tab" aria-selected={soundSection === "equalizer"} className={soundSection === "equalizer" ? "is-active" : ""} onClick={() => setSoundSection("equalizer")}><SlidersHorizontal size={15} aria-hidden="true" /><span>Equalizer</span></button></div>} /><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading sound controls</span></div>}><LazyFiltersPanel filters={state.player.filters} filterPresets={state.filterPresets} equalizerPresets={state.equalizerPresets} activeSection={soundSection} canAdjust={Boolean(state.player.currentTrack)} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "lyrics" ? <section className="content-panel panel-surface"><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading lyrics</span></div>}><LazyLiveLyricsPanel player={state.player} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "activity" ? <section className="content-panel panel-surface activity-feed-panel"><PanelTitle icon={<Bell size={18} aria-hidden="true" />} title="Room activity" description="Live actions and playback issues from this listening room" action={<ShortcutHelp placement="activity" />} /><ActivityFeedPanel events={activityEvents} /></section> : null}

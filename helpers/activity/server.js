@@ -10,7 +10,7 @@ const { getUserPresets } = require("../equalizer/customPresets");
 const EQ_PRESET_NAMES = require("../equalizer/presets");
 const guildState = require("../guildState");
 const { getHistory } = require("../history/searchHistory");
-const { replaceQueuedAutoplayTrack } = require("../lavalink/autoplay");
+const { replaceQueuedAutoplayTrack, scheduleAutoplayRefresh } = require("../lavalink/autoplay");
 const { fetchAutoplayV3Track } = require("../lavalink/autoplayV3");
 const { EQUALIZER_PRESETS } = require("../lavalink/constants");
 const { getEqualizerState } = require("../lavalink/equalizerStore");
@@ -40,13 +40,17 @@ const { LYRICS_SYNC_OFFSET_MS, stopLyricsSession } = require("../lavalink/lyrics
 const { getPersonalSearchTracks } = require("../lavalink/personalSearch");
 const { getPoru } = require("../lavalink/players");
 const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayPartition } = require("../lavalink/queueOrdering");
+const { withTimeout } = require("../lavalink/resolveTimeout");
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
 const { filterRelevantSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
 const { searchWithCorrection } = require("../lavalink/searchSuggestions");
 const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
 const { skipWithLearning } = require("../lavalink/skipLearning");
+const { isSourcePlaybackFailing } = require("../lavalink/sourceHealth");
 const { cloneTrack, getLyricsState, isAwaitingAudio, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
+const { hasTrackIdentity } = require("../lavalink/trackIdentity");
+const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormalization");
 const Log = require("../logs/log");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
@@ -475,6 +479,7 @@ async function restoreQueueUndoSnapshot(guildId, token) {
   player.queue.clear();
   for (const track of snapshot.queue) await player.queue.add(cloneTrack(track));
   normalizeQueueAutoplayPartition(player.queue);
+  scheduleAutoplayRefresh(player);
   queueUndoSnapshots.delete(key);
   return { success: true, restored: snapshot.queue.length };
 }
@@ -915,6 +920,7 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
       const undoToken = createQueueUndoSnapshot(guildId, player);
       const removed = await lavalinkRemoveFromQueue(guildId, { position: position + 1 });
       normalizeQueueAutoplayPartition(player?.queue);
+      scheduleAutoplayRefresh(player);
       return { success: removed?.status === "removed", undoToken: removed?.status === "removed" ? undoToken : null, ...removed };
     }
     case "replace_autoplay": {
@@ -939,6 +945,7 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
       markManualTrack(track);
       player.queue.unshift(track);
       normalizeQueueAutoplayPartition(player.queue);
+      scheduleAutoplayRefresh(player);
       return { success: true };
     }
     case "undo_queue":
@@ -947,7 +954,9 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
       if (!player?.queue) return false;
       const from = assertCurrentQueueItem(player.queue, payload.fromQueueItemId, payload.from);
       const to = assertCurrentQueueItem(player.queue, payload.toQueueItemId, payload.to);
-      return moveQueueTrackWithinOrigin(player.queue, from, to);
+      const moved = moveQueueTrackWithinOrigin(player.queue, from, to);
+      scheduleAutoplayRefresh(player);
+      return moved;
     }
     case "filter":
       assertActivePlayback(player, "filter");
@@ -1156,6 +1165,80 @@ async function searchActivityTracks(query, preferredSource, { exact = false } = 
   };
 }
 
+const PLAY_FROM_SOURCES = ["youtube", "spotify", "deezer", "soundcloud"];
+const PLAY_FROM_SEARCH_TIMEOUT_MS = 4_000;
+const PLAY_FROM_RESOLVE_TIMEOUT_MS = 3_000;
+const PREVIEW_MAX_MS = 31_000;
+
+function isSameRecordingLength(referenceMs, candidateMs) {
+  if (!referenceMs || !candidateMs) return true;
+  if (candidateMs <= PREVIEW_MAX_MS && referenceMs > 60_000) return false;
+  return Math.abs(referenceMs - candidateMs) <= Math.max(20_000, referenceMs * 0.15);
+}
+
+function hasSameVersion(referenceTitle, candidateTitle) {
+  const reference = getVariantKinds(referenceTitle).sort().join(",");
+  return getVariantKinds(candidateTitle).sort().join(",") === reference;
+}
+
+/**
+ * The same recording on every provider, for "Play from…". A provider is
+ * offered only when its match loads again from its own link and its streams
+ * have not been failing lately, so picking one does not end in an error.
+ */
+async function findActivityTrackSources({ title, author, uri, source, durationMs }) {
+  const poru = getPoru();
+  if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
+  const reference = {
+    info: { title: limitText(title, 200), author: limitText(author, 200), uri: limitText(uri, 500) || null, length: Number(durationMs) || 0 },
+  };
+  if (!reference.info.title) throw Object.assign(new Error("Choose a track first."), { statusCode: 400 });
+
+  const { cleanTitle, searchArtist } = cleanTrackMetadata(reference.info.title, reference.info.author);
+  const searchTitle = getVariantKinds(reference.info.title).length ? reference.info.title : cleanTitle;
+  const query = `${searchArtist} ${searchTitle}`.trim();
+  const ownSource = toSource(source);
+
+  const findMatch = async (provider) => {
+    if (provider === ownSource && reference.info.uri) return { ...reference, info: { ...reference.info, sourceName: provider } };
+    const tracks = await withTimeout(
+      searchSingleSource(poru, query, provider, { variantLimit: 0, popularity: false }),
+      PLAY_FROM_SEARCH_TIMEOUT_MS,
+      `Play from ${provider}`
+    );
+    return rankSearchResults(filterRelevantSearchResults(tracks, query), query).find((track) =>
+      track?.info?.uri &&
+      hasSameVersion(reference.info.title, track.info.title) &&
+      isSameRecordingLength(reference.info.length, Number(track.info.length) || 0) &&
+      hasTrackIdentity([reference], track, { includeIdentifier: false })
+    ) || null;
+  };
+
+  const sources = await Promise.all(PLAY_FROM_SOURCES.map(async (provider) => {
+    const unavailable = (reason) => ({ source: provider, available: false, reason, track: null });
+    try {
+      const match = await findMatch(provider);
+      if (!match) return unavailable("not_found");
+      if (isSourcePlaybackFailing(provider)) return unavailable("failing");
+      if (provider !== ownSource) {
+        const loaded = await withTimeout(poru.resolve({ query: match.info.uri }), PLAY_FROM_RESOLVE_TIMEOUT_MS, `Play from ${provider} link`);
+        if (!["track", "search"].includes(loaded?.loadType) || !loaded.tracks?.length) return unavailable("not_loadable");
+      }
+      const serialized = serializeTrack(match);
+      return {
+        source: provider,
+        available: true,
+        current: provider === ownSource,
+        reason: null,
+        track: { ...serialized, source: provider, playQuery: match.info.uri },
+      };
+    } catch {
+      return unavailable("unreachable");
+    }
+  }));
+  return sources;
+}
+
 function sendSocket(socket, payload) {
   if (socket.readyState === 1) socket.send(stringifyJson(payload));
 }
@@ -1246,6 +1329,14 @@ function createActivityServer(client) {
         const guildId = limitText(body.guildId || config.devGuildId, 80);
         await authenticateRequest(client, request, guildId, config);
         return sendJson(response, 200, { ok: true, tracks: await searchActivitySimilar(body.title, body.author) }, config);
+      }
+
+      if (url.pathname === "/api/activity/search/sources" && request.method === "POST") {
+        enforceRateLimit(request, "search-sources", 20, 60_000);
+        const body = await readJson(request);
+        const guildId = limitText(body.guildId || config.devGuildId, 80);
+        await authenticateRequest(client, request, guildId, config);
+        return sendJson(response, 200, { ok: true, sources: await findActivityTrackSources(body) }, config);
       }
 
       if (url.pathname === "/api/activity/search" && request.method === "POST") {
@@ -1416,6 +1507,7 @@ function createActivityServer(client) {
 
 module.exports = {
   createActivityServer,
+  findActivityTrackSources,
   buildActivityState,
   clampLyricsSyncOffset,
   getActivityPosition,

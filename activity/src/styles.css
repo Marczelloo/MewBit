@@ -1329,3 +1329,6 @@
   .search-top-artwork { flex-basis: 64px; width: 64px; height: 64px; }
   .search-top-copy strong { font-size: 16px; }
 }
+.row-menu-submenu-panel .source-tag { flex: none; }
+.row-menu-submenu-panel button span.row-menu-source-status { margin-left: auto; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.row-menu-submenu-empty .button-spinner { vertical-align: -2px; }
