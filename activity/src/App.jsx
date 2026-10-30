@@ -379,7 +379,7 @@ function getActionFeedback(action, payload = {}, result = null, state = null) {
   const track = trackFeedbackLabel(currentTrack);
   switch (action) {
     case "play": return payload.playNow ? (track ? `Playing now: ${track}` : "Playing now") : (track ? `Added to queue: ${track}` : "Added to queue");
-    case "surprise_me": return track ? `Picked ${result?.surpriseIntent && result.surpriseIntent !== "freestyle" ? "for this room" : "from today’s chart"}: ${track}` : "Picked a verified surprise track";
+    case "surprise_me": return track ? `Picked ${result?.surpriseMoodLabel ? `a ${result.surpriseMoodLabel.toLowerCase()} pick` : result?.surpriseIntent && result.surpriseIntent !== "freestyle" ? "for this room" : "from today’s chart"}: ${track}` : "Picked a verified surprise track";
     case "stop": return "Playback stopped and queue cleared";
     case "skip": return "Skipped to the next track";
     case "previous": return "Restarted the current track";
@@ -2797,6 +2797,21 @@ function App() {
           next.player.paused = false;
         }
       }
+      if (action === "play_playlist") {
+        const detail = Object.values(next.playlistDetails || {}).find((item) => item.name === payload.name);
+        const stamp = Date.now();
+        const list = [...(detail?.tracks || [])];
+        if (payload.shuffle) list.sort(() => Math.random() - 0.5);
+        const [first, ...rest] = list.map((track, index) => ({ ...track, requester: "Local Listener", autoplay: false, queueItemId: `local-pl-${stamp}-${index}` }));
+        if (first) {
+          next.player.currentTrack = first;
+          next.player.durationMs = first.durationMs;
+          next.player.positionMs = 0;
+          next.player.playing = true;
+          next.player.paused = false;
+          next.player.queue = rest;
+        }
+      }
       if (action === "play") {
         const pool = [
           ...searchResults,
@@ -3197,7 +3212,7 @@ function App() {
               </div>
             </div>
             <div className={`main-content main-view-${activeTab}`}>
-              {activeTab === "home" ? (isHydrating ? <Suspense fallback={<HomePanelFallback />}><LazyHomePanel loading /></Suspense> : state.player.currentTrack ? <NowPlaying className="now-playing-stage" state={state} onTab={goToView} onAction={onAction} onOpenExternalLink={requestExternalLink} isActionPending={isActionPending} /> : <Suspense fallback={<HomePanelFallback />}><LazyHomePanel onView={goToView} onAction={onAction} isActionPending={isActionPending} /></Suspense>) : null}
+              {activeTab === "home" ? (isHydrating ? <Suspense fallback={<HomePanelFallback />}><LazyHomePanel loading /></Suspense> : state.player.currentTrack ? <NowPlaying className="now-playing-stage" state={state} onTab={goToView} onAction={onAction} onOpenExternalLink={requestExternalLink} isActionPending={isActionPending} /> : <Suspense fallback={<HomePanelFallback />}><LazyHomePanel onView={goToView} onAction={onAction} isActionPending={isActionPending} history={state.player.history || []} playlists={state.playlists || []} sessionStartedAt={state.player.sessionStartedAt} /></Suspense>) : null}
               {activeTab === "search" ? <section className="content-panel panel-surface"><PanelTitle icon={<MagnifyingGlass size={18} aria-hidden="true" />} title="Find a track" description="Every provider at once, YouTube first. Pick another source from a track's menu" /><SearchPanel {...searchProps} showSearchBar={false} onAction={onAction} /></section> : null}
               {activeTab === "filters" ? <section className={`content-panel panel-surface filters-surface filters-surface-${soundSection}`}><PanelTitle icon={<SlidersHorizontal size={18} aria-hidden="true" />} title="Shape the sound" description="EQ and playful filters are applied to the live player" action={<div className="sound-mode-actions" role="tablist" aria-label="Sound controls"><button type="button" role="tab" aria-selected={soundSection === "effects"} className={soundSection === "effects" ? "is-active" : ""} onClick={() => setSoundSection("effects")}><Faders size={15} aria-hidden="true" /><span>Effects</span></button><button type="button" role="tab" aria-selected={soundSection === "equalizer"} className={soundSection === "equalizer" ? "is-active" : ""} onClick={() => setSoundSection("equalizer")}><SlidersHorizontal size={15} aria-hidden="true" /><span>Equalizer</span></button></div>} /><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading sound controls</span></div>}><LazyFiltersPanel filters={state.player.filters} filterPresets={state.filterPresets} equalizerPresets={state.equalizerPresets} activeSection={soundSection} canAdjust={Boolean(state.player.currentTrack)} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "lyrics" ? <section className="content-panel panel-surface"><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading lyrics</span></div>}><LazyLiveLyricsPanel player={state.player} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}

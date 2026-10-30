@@ -167,8 +167,37 @@ function clearLastFmTagCache() {
   tagCache.clear();
 }
 
+/**
+ * Gets the most-tagged recordings for one community tag (e.g. "chill"). Used
+ * to seed a mood request in a room that has no taste history yet.
+ */
+async function getLastFmTagTopTracks({ tag, limit = 50 } = {}) {
+  if (!process.env.LASTFM_API_KEY || !tag) return [];
+
+  const cacheKey = `tagtop:${String(tag).trim().toLowerCase()}|${Number(limit) || 0}`;
+  const cached = tagCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < TAG_CACHE_TTL_MS) return cached.tracks;
+
+  try {
+    const data = await callLastFm({ method: "tag.gettoptracks", tag, limit: String(limit) });
+    const tracks = (data?.tracks?.track || [])
+      .filter((track) => track?.name && track?.artist?.name)
+      .map((track) => ({
+        title: track.name,
+        artist: track.artist.name,
+        durationMs: Number(track.duration) > 0 ? Number(track.duration) * 1000 : null,
+      }));
+    if (tracks.length) tagCache.set(cacheKey, { timestamp: Date.now(), tracks });
+    return tracks;
+  } catch (error) {
+    Log.debug("Last.fm tag top-tracks lookup failed", error.message);
+    return [];
+  }
+}
+
 module.exports = {
   getLastFmSimilarTracks,
+  getLastFmTagTopTracks,
   getLastFmTrackTags,
   getLastFmArtistTags,
   getLastFmAlbumTags,

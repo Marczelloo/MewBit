@@ -740,7 +740,11 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
   const skipPatterns = getSkipPatterns(guildId);
   const context = buildSelectionContext({ profile, exposure: profile.autoplayExposure, referenceTrack, recentTracks, skipPatterns, anchorTrack, blockedTracks });
   context.selectionIntent = selectionIntent;
-  context.referenceEnergy = getReferenceEnergy(referenceTrack);
+  // An explicit mood asks for its own energy, not a smooth step from the seed.
+  const moodEnergy = selectionIntent?.targetEnergy;
+  context.referenceEnergy = moodEnergy && Number.isFinite(moodEnergy.min) && Number.isFinite(moodEnergy.max)
+    ? Math.round((moodEnergy.min + moodEnergy.max) / 2)
+    : getReferenceEnergy(referenceTrack);
   // A chart pick is never a normal-autoplay fallback. It is only a safe,
   // verified escape hatch for Surprise me when personal context is too noisy
   // or the AI request times out.

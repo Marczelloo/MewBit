@@ -49,7 +49,7 @@ const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
 const { skipWithLearning } = require("../lavalink/skipLearning");
 const { isSourcePlaybackFailing } = require("../lavalink/sourceHealth");
 const { cloneTrack, getLyricsState, isAwaitingAudio, playbackState, setLyricsState } = require("../lavalink/state");
-const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
+const { MOODS, buildIntent, fetchFreestyleSurpriseTrack, normalizeMood, selectSurpriseSeed } = require("../lavalink/surpriseMe");
 const { hasTrackIdentity } = require("../lavalink/trackIdentity");
 const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormalization");
 const Log = require("../logs/log");
@@ -823,6 +823,7 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
         avoidTracks: feedbackEntries.filter((entry) => entry?.sentiment === "less").map((entry) => entry.track),
       };
       const surpriseMemoryKey = `${guildId}:${identity.id}`;
+      const mood = normalizeMood(payload.mood);
       let selection = null;
       let recommendation = null;
       const attemptedSeeds = new Set();
@@ -838,15 +839,17 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
       if (!hasTasteSignal) {
         selection = {
           seed: null,
-          intent: { mode: "freestyle", goal: "Start a fresh room with a current, broadly loved, verified track.", preferredLanes: ["continuation", "bridge"] },
+          intent: mood
+            ? buildIntent("freestyle", mood)
+            : { mode: "freestyle", goal: "Start a fresh room with a current, broadly loved, verified track.", preferredLanes: ["continuation", "bridge"] },
         };
-        recommendation = await fetchFreestyleSurpriseTrack(guildId, { memoryKey: surpriseMemoryKey });
+        recommendation = await fetchFreestyleSurpriseTrack(guildId, { memoryKey: surpriseMemoryKey, mood });
       } else {
         // A single obscure/current recording can legitimately have no usable
         // catalogue. Surprise me should then pivot to another recent, liked,
         // or frequently played taste anchor instead of reporting a false dead end.
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const candidateSelection = selectSurpriseSeed(surpriseTaste, { memoryKey: surpriseMemoryKey });
+          const candidateSelection = selectSurpriseSeed(surpriseTaste, { memoryKey: surpriseMemoryKey, mood });
           if (!candidateSelection || attemptedSeeds.has(candidateSelection.seedKey)) break;
           attemptedSeeds.add(candidateSelection.seedKey);
           selection = candidateSelection;
@@ -864,6 +867,7 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
             "",
             `guild=${guildId}`,
             `attempt=${attempt + 1}`,
+            `mood=${mood || "none"}`,
             `seed=${selection.seed.info?.author || "Unknown"} - ${selection.seed.info?.title || "Unknown"}`
           );
         }
@@ -879,11 +883,13 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
             `guild=${guildId}`,
             `attempts=${attemptedSeeds.size}`
           );
-          recommendation = await fetchFreestyleSurpriseTrack(guildId, { memoryKey: surpriseMemoryKey });
+          recommendation = await fetchFreestyleSurpriseTrack(guildId, { memoryKey: surpriseMemoryKey, mood });
           if (recommendation) {
             selection = {
               seed: null,
-              intent: { mode: "freestyle", goal: "Recover Surprise me with a current, broadly loved, verified track.", preferredLanes: ["continuation", "bridge"] },
+              intent: mood
+                ? buildIntent("freestyle", mood)
+                : { mode: "freestyle", goal: "Recover Surprise me with a current, broadly loved, verified track.", preferredLanes: ["continuation", "bridge"] },
             };
           }
         }
@@ -912,7 +918,7 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
           avatar: identity.avatar,
         },
       });
-      return { ...result, surpriseIntent: selection.intent.mode };
+      return { ...result, surpriseIntent: selection.intent.mode, surpriseMood: mood, surpriseMoodLabel: mood ? MOODS[mood].label : null };
     }
     case "change_source": {
       const liveTrack = resolveActivityPlayback(playbackState.get(guildId)?.currentTrack, player?.currentTrack).track;

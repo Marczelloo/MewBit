@@ -1,8 +1,12 @@
 const assert = require("node:assert/strict");
 const { beforeEach, describe, test } = require("node:test");
 const {
+  MOODS,
+  buildIntent,
   buildSurpriseSeedPool,
   clearSurpriseMemory,
+  getMoodEnergyCenter,
+  normalizeMood,
   rememberFreestyleCandidate,
   selectFreestyleCandidates,
   selectSurpriseSeed,
@@ -84,5 +88,53 @@ describe("Surprise me selector", () => {
     ], { count: 3, random: () => 0, memoryKey: "artists" });
 
     assert.deepEqual(selected.map((candidate) => candidate.artist), ["Artist A", "Artist B", "Artist C"]);
+  });
+
+  test("accepts only whitelisted moods", () => {
+    assert.equal(normalizeMood(" Chill "), "chill");
+    assert.equal(normalizeMood("late"), "late");
+    assert.equal(normalizeMood("__proto__"), null);
+    assert.equal(normalizeMood("rage"), null);
+    assert.equal(normalizeMood(undefined), null);
+  });
+
+  test("a mood forces its intent and carries goal and energy", () => {
+    const input = { roomHistory: [track("One", "Artist A"), track("Two", "Artist B")] };
+    // random 0 would otherwise pick the first non-blocked intent ("flow").
+    const selection = selectSurpriseSeed(input, { random: () => 0, memoryKey: "mood", mood: "hype" });
+    assert.equal(selection.intent.mode, MOODS.hype.intent);
+    assert.equal(selection.intent.mood, "hype");
+    assert.equal(selection.intent.goal, MOODS.hype.goal);
+    assert.deepEqual(selection.intent.targetEnergy, { min: 70, max: 95 });
+    assert.equal(getMoodEnergyCenter("hype"), 83);
+    assert.equal(getMoodEnergyCenter("discover"), null);
+  });
+
+  test("a mood favours seeds already rated near its energy", () => {
+    const calm = track("Calm", "Artist A");
+    calm.userData = { aiDJ: { energy: 30 } };
+    const loud = track("Loud", "Artist B");
+    loud.userData = { aiDJ: { energy: 90 } };
+    const picks = { calm: 0, loud: 0 };
+    for (let index = 0; index < 40; index += 1) {
+      clearSurpriseMemory();
+      const roll = index / 40;
+      const selection = selectSurpriseSeed({ roomHistory: [calm, loud] }, { random: () => roll, memoryKey: "energy", mood: "chill" });
+      picks[selection.seed.info.title.toLowerCase()] += 1;
+    }
+    assert.ok(picks.calm > picks.loud * 2, `expected calm seeds to dominate: ${JSON.stringify(picks)}`);
+  });
+
+  test("intents without a mood keep their original shape", () => {
+    assert.deepEqual(Object.keys(buildIntent("flow")).sort(), ["goal", "mode", "preferredLanes"]);
+    assert.equal(buildIntent("freestyle", "focus").mood, "focus");
+  });
+
+  test("freestyle selection keeps tag candidates without a known duration", () => {
+    const selected = selectFreestyleCandidates([
+      { title: "Tagged", artist: "Artist A", duration: null, chartPosition: 1 },
+      { title: "Too Short", artist: "Artist B", duration: 30_000, chartPosition: 2 },
+    ], { count: 2, random: () => 0, memoryKey: "tags", window: 30 });
+    assert.deepEqual(selected.map((candidate) => candidate.title), ["Tagged"]);
   });
 });

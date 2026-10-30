@@ -150,6 +150,12 @@ function serializePlaylist(playlist, { includeTracks = false } = {}) {
     public: Boolean(playlist.public),
     collaborative: Boolean(playlist.collaborative),
     isDefault: Boolean(playlist.isDefault),
+    // Up to four covers for the Home library mosaic.
+    artworks: (playlist.tracks || [])
+      .map((track) => track?.artworkUrl || track?.thumbnail || null)
+      .filter((url) => typeof url === "string" && /^https?:\/\//.test(url))
+      .filter((url, index, list) => list.indexOf(url) === index)
+      .slice(0, 4),
   };
 
   if (includeTracks) serialized.tracks = (playlist.tracks || []).map(serializePlaylistTrack);
