@@ -1,6 +1,7 @@
 const { markActivityStateChanged } = require("../activity/sync");
 const { getGuildState } = require("../guildState");
 const Log = require("../logs/log");
+const { getAIDJTimeoutBudget } = require("./aiDj");
 const { recordAutoplayExposure } = require("./autoplayExposure");
 const { fetchAutoplayV3Track } = require("./autoplayV3");
 const { isAutoplayTrack } = require("./queueOrdering");
@@ -84,7 +85,21 @@ function decorateAutoplayTrack(track, player, textChannelId, userData = {}) {
   return cloned;
 }
 
-function queueAutoplayTrack(player, lastTrack, textChannelId) {
+/**
+ * Time until the queue slot at `index` starts playing: what is left of the
+ * current track plus every queued track ahead of it. Null when that is
+ * unknown (nothing playing), so callers keep the short default budget.
+ */
+function getPlaybackRunwayMs(player, index = Array.from(player?.queue || []).length) {
+  if (!player?.currentTrack) return null;
+  const ahead = Array.from(player.queue || []).slice(0, Math.max(0, index));
+  return ahead.reduce((total, track) => {
+    const info = track?.info || {};
+    return total + (info.isStream ? Infinity : Number(info.length) || 0);
+  }, getRemainingMs(player));
+}
+
+function queueAutoplayTrack(player, lastTrack, textChannelId, { aiTimeoutMs = null } = {}) {
   if (!player || !lastTrack) {
     Log.warning("Autoplay called without player or lastTrack");
     return Promise.resolve(false);
@@ -102,6 +117,7 @@ function queueAutoplayTrack(player, lastTrack, textChannelId) {
         // A queued reference is already the selection's starting point.
         pendingManualTracks: getPendingManualTracks(player).filter((track) => track !== lastTrack),
         liveTracks: getLiveTracks(player),
+        aiTimeoutMs,
       });
 
       if (!relatedTrack) {
@@ -268,48 +284,127 @@ function getRemainingMs(player) {
 }
 
 /**
+ * Flags the autoplay pick Activity shows as "picking a fresh one". The flag
+ * lives on the queued track, so a replaced or removed pick takes it along.
+ */
+function setAutoplayRefreshing(player, pick, refreshing) {
+  if (!pick?.userData || Boolean(pick.userData.autoplayRefreshing) === refreshing) return;
+  if (refreshing) pick.userData.autoplayRefreshing = true;
+  else delete pick.userData.autoplayRefreshing;
+  markActivityStateChanged(player.guildId, "autoplayRefreshing");
+}
+
+function clearAutoplayRefreshing(player) {
+  for (const track of Array.from(player?.queue || [])) {
+    if (track?.userData?.autoplayRefreshing) setAutoplayRefreshing(player, track, false);
+  }
+}
+
+function findQueuedPick(player, pick) {
+  const queue = Array.from(player.queue || []);
+  const pickQueueId = pick.userData?.activityQueueId;
+  let position = queue.indexOf(pick);
+  if (position < 0 && pickQueueId) {
+    position = queue.findIndex((track) => track?.userData?.activityQueueId === pickQueueId);
+  }
+  return position >= 0 && isAutoplayTrack(queue[position]) ? position : -1;
+}
+
+// Drops the pick and the chain that followed it.
+function removeAutoplayChain(player, position) {
+  for (let index = player.queue.length - 1; index >= position; index -= 1) {
+    if (isAutoplayTrack(player.queue[index])) player.queue.splice(index, 1);
+  }
+}
+
+/**
  * Re-picks the queued autoplay track when the track it was chosen to follow
  * is no longer the one before it: a listener queued something, removed or
  * moved a track, or playback reached a song the pick was not chosen for.
- * The old pick stays until a better one is ready, and is kept on failure.
+ * The old pick stays visible (flagged as refreshing) until a new one is
+ * ready. If no new one is found, a pick that is not up next is dropped and
+ * the prefetch for the track before it chooses again; a pick that is up next
+ * gets one quick retry and is kept only if that fails too, because dropping
+ * it would leave the room in silence.
  */
 async function refreshQueuedAutoplayTrack(player, textChannelId = player?.textChannel) {
   if (!player || !isLivePlayer(player)) return false;
-  if (!getGuildState(player.guildId)?.autoplay) return false;
+  if (!getGuildState(player.guildId)?.autoplay) {
+    clearAutoplayRefreshing(player);
+    return false;
+  }
 
   // A pick still being chosen lands first; judge the queue it lands in.
   const pending = getAutoplayInFlight(player.guildId, player);
   if (pending) await pending.catch(() => false);
 
   const target = getRefreshTarget(player);
-  if (!target) return false;
+  if (!target) {
+    clearAutoplayRefreshing(player);
+    return false;
+  }
   if (target.index === 0 && getRemainingMs(player) < AUTOPLAY_REFRESH_MIN_REMAINING_MS) {
+    clearAutoplayRefreshing(player);
     Log.debug("Autoplay refresh skipped - the pick plays too soon", "", `guild=${player.guildId}`);
     return false;
   }
 
   const { pick, referenceTrack } = target;
   const staleSummary = `${pick.info?.author || "Unknown"} - ${pick.info?.title || "Unknown"}`;
+  setAutoplayRefreshing(player, pick, true);
+
+  const pickFresh = (aiTimeoutMs) => fetchAutoplayV3Track(referenceTrack, player.guildId, {
+    pendingManualTracks: getPendingManualTracks(player).filter((track) => track !== referenceTrack),
+    liveTracks: getLiveTracks(player, pick),
+    aiTimeoutMs,
+    selectionIntent: {
+      mode: "refresh",
+      goal: "The listener changed the queue. Choose what should follow the track before the autoplay slot, fitting the queued tracks too.",
+    },
+  });
 
   return runSharedAutoplayTask(player.guildId, async () => {
     try {
-      const relatedTrack = await fetchAutoplayV3Track(referenceTrack, player.guildId, {
-        pendingManualTracks: getPendingManualTracks(player).filter((track) => track !== referenceTrack),
-        liveTracks: getLiveTracks(player, pick),
-        selectionIntent: {
-          mode: "refresh",
-          goal: "The listener changed the queue. Choose what should follow the track before the autoplay slot, fitting the queued tracks too.",
-        },
-      });
-      if (!relatedTrack || !isLivePlayer(player)) return false;
+      let relatedTrack = null;
+      try {
+        relatedTrack = await pickFresh(getAIDJTimeoutBudget(getPlaybackRunwayMs(player, target.index)));
+      } catch (error) {
+        Log.error("❌ Autoplay refresh failed", error, `guild=${player.guildId}`);
+      }
+      if (!isLivePlayer(player)) return false;
+
+      let position = findQueuedPick(player, pick);
+      if (position < 0) return false;
+
+      if (!relatedTrack && position > 0) {
+        removeAutoplayChain(player, position);
+        markActivityStateChanged(player.guildId, "autoplayRefreshDropped");
+        Log.info(
+          "Autoplay pick dropped - no fresh pick for the new queue",
+          staleSummary,
+          `after=${referenceTrack.info?.title || "Unknown"}`,
+          `guild=${player.guildId}`
+        );
+        return false;
+      }
+
+      if (!relatedTrack) {
+        // Up next: one quick retry with the short interactive budget.
+        try {
+          relatedTrack = await pickFresh(null);
+        } catch (error) {
+          Log.error("❌ Autoplay refresh retry failed", error, `guild=${player.guildId}`);
+        }
+        if (!isLivePlayer(player)) return false;
+        position = findQueuedPick(player, pick);
+        if (position < 0) return false;
+        if (!relatedTrack) {
+          Log.warning("Autoplay refresh kept the old pick - it plays next and no fresh one was found", staleSummary, `guild=${player.guildId}`);
+          return false;
+        }
+      }
 
       const queue = Array.from(player.queue || []);
-      const pickQueueId = pick.userData?.activityQueueId;
-      let position = queue.indexOf(pick);
-      if (position < 0 && pickQueueId) {
-        position = queue.findIndex((track) => track?.userData?.activityQueueId === pickQueueId);
-      }
-      if (position < 0 || !isAutoplayTrack(queue[position])) return false;
 
       const cloned = decorateAutoplayTrack(relatedTrack, player, textChannelId, {
         autoplayAfterKey: getTrackKey(position > 0 ? queue[position - 1] : player.currentTrack),
@@ -335,6 +430,8 @@ async function refreshQueuedAutoplayTrack(player, textChannelId = player?.textCh
     } catch (error) {
       Log.error("❌ Autoplay refresh failed", error, `guild=${player.guildId}`);
       return false;
+    } finally {
+      setAutoplayRefreshing(player, pick, false);
     }
   }, player);
 }
@@ -346,6 +443,11 @@ async function refreshQueuedAutoplayTrack(player, textChannelId = player?.textCh
 function scheduleAutoplayRefresh(player, textChannelId = player?.textChannel) {
   if (!player?.guildId) return;
   clearTimeout(refreshTimers.get(player.guildId));
+  // Show the stale pick as being re-chosen now, not after the debounce.
+  if (getGuildState(player.guildId)?.autoplay) {
+    const target = getRefreshTarget(player);
+    if (target) setAutoplayRefreshing(player, target.pick, true);
+  }
   const timer = setTimeout(() => {
     if (refreshTimers.get(player.guildId) === timer) refreshTimers.delete(player.guildId);
     void refreshQueuedAutoplayTrack(player, textChannelId).catch((error) => {
@@ -384,7 +486,11 @@ async function prefetchAutoplayTrack(player, currentTrack, textChannelId) {
     `reference=${referenceTrack.info?.title || "unknown"}`
   );
 
-  return queueAutoplayTrack(player, referenceTrack, textChannelId);
+  // A prefetch has the rest of the queue to think; give the AI DJ that time
+  // instead of the short budget queue-end and replace picks need.
+  return queueAutoplayTrack(player, referenceTrack, textChannelId, {
+    aiTimeoutMs: getAIDJTimeoutBudget(getPlaybackRunwayMs(player)),
+  });
 }
 
 function isAutoplayInFlight(guildId, player = null) {

@@ -49,6 +49,55 @@ async function getLastFmSimilarTracks({ artist, title, limit = 10 } = {}) {
   }
 }
 
+function getCachedList(cacheKey) {
+  const cached = tagCache.get(cacheKey);
+  return cached && Date.now() - cached.timestamp < TAG_CACHE_TTL_MS ? cached.items : null;
+}
+
+/**
+ * Artists Last.fm listeners pair with this one. Used when a recording is too
+ * new or obscure for track.getsimilar to know it.
+ */
+async function getLastFmSimilarArtists({ artist, limit = 6 } = {}) {
+  if (!process.env.LASTFM_API_KEY || !artist) return [];
+
+  const cacheKey = `similarartists:${String(artist).trim().toLowerCase()}|${Number(limit) || 0}`;
+  const cached = getCachedList(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const data = await callLastFm({ method: "artist.getsimilar", artist, limit: String(limit) });
+    const items = (data?.similarartists?.artist || [])
+      .filter((entry) => entry?.name)
+      .map((entry) => ({ artist: entry.name, match: Number(entry.match) || 0 }));
+    if (items.length) tagCache.set(cacheKey, { timestamp: Date.now(), items });
+    return items;
+  } catch (error) {
+    Log.debug("Last.fm similar-artist lookup failed", error.message);
+    return [];
+  }
+}
+
+async function getLastFmArtistTopTracks({ artist, limit = 4 } = {}) {
+  if (!process.env.LASTFM_API_KEY || !artist) return [];
+
+  const cacheKey = `artisttop:${String(artist).trim().toLowerCase()}|${Number(limit) || 0}`;
+  const cached = getCachedList(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const data = await callLastFm({ method: "artist.gettoptracks", artist, limit: String(limit) });
+    const items = (data?.toptracks?.track || [])
+      .filter((track) => track?.name)
+      .map((track) => ({ title: track.name, artist: track.artist?.name || artist }));
+    if (items.length) tagCache.set(cacheKey, { timestamp: Date.now(), items });
+    return items;
+  } catch (error) {
+    Log.debug("Last.fm artist top-tracks lookup failed", error.message);
+    return [];
+  }
+}
+
 /**
  * Gets the community tags attached to one exact recording. Tags are cached
  * because autoplay asks for the same reference tracks repeatedly while it
@@ -197,6 +246,8 @@ async function getLastFmTagTopTracks({ tag, limit = 50 } = {}) {
 
 module.exports = {
   getLastFmSimilarTracks,
+  getLastFmSimilarArtists,
+  getLastFmArtistTopTracks,
   getLastFmTagTopTracks,
   getLastFmTrackTags,
   getLastFmArtistTags,

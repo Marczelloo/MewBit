@@ -9,7 +9,18 @@ const {
   getCoreTitle,
   getVariantKinds,
   isUnrequestedAlternateVersion,
+  stripTopicSuffix,
 } = require("../../../helpers/lavalink/trackNormalization");
+
+describe("stripTopicSuffix", () => {
+  it("drops YouTube's auto-generated channel suffix only", () => {
+    assert.strictEqual(stripTopicSuffix("K/DA - Topic"), "K/DA");
+    assert.strictEqual(stripTopicSuffix("Kenshi Yonezu - topic"), "Kenshi Yonezu");
+    assert.strictEqual(stripTopicSuffix("Creepy Nuts"), "Creepy Nuts");
+    assert.strictEqual(stripTopicSuffix("The Topic Band"), "The Topic Band");
+    assert.strictEqual(stripTopicSuffix(null), "");
+  });
+});
 
 describe("Autoplay track normalization", () => {
   it("rejects alternate versions for a base-title query", () => {

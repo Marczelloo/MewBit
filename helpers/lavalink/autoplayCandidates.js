@@ -8,7 +8,12 @@ const {
 } = require("./autoplayMetadata");
 const { AUTOPLAY_RESOLVE_TIMEOUT_MS } = require("./constants");
 const { normalizeGenreTags } = require("./genreUtils");
-const { getLastFmSimilarTracks, getLastFmTagProfile } = require("./lastfmClient");
+const {
+  getLastFmArtistTopTracks,
+  getLastFmSimilarArtists,
+  getLastFmSimilarTracks,
+  getLastFmTagProfile,
+} = require("./lastfmClient");
 const { normalizeReleaseYear } = require("./metadataValidation");
 const { getPoru } = require("./players");
 const { withTimeout } = require("./resolveTimeout");
@@ -26,6 +31,11 @@ const { filterAutoplaySongs } = require("./trackValidation");
 
 const LASTFM_AUTOPLAY_FETCH_LIMIT = Number(process.env.LASTFM_AUTOPLAY_FETCH_LIMIT ?? 18);
 const LASTFM_AUTOPLAY_RESOLVE_LIMIT = Number(process.env.LASTFM_AUTOPLAY_RESOLVE_LIMIT ?? 12);
+const LASTFM_SIMILAR_ARTIST_LIMIT = 6;
+const LASTFM_SIMILAR_ARTIST_TOP_TRACKS = 4;
+// A neighbour artist's hit is weaker evidence than a recording Last.fm
+// listeners actually pair with the reference; it must not outrank one.
+const LASTFM_ARTIST_SIMILARITY_WEIGHT = 0.6;
 const USE_DEEZER_METADATA = process.env.AUTOPLAY_DEEZER_METADATA !== "false";
 const AUTOPLAY_DEEZER_METADATA_LIMIT = Number(process.env.AUTOPLAY_DEEZER_METADATA_LIMIT ?? 18);
 // Deezer and Spotify tracks are excellent catalogue/metadata candidates, but
@@ -516,15 +526,44 @@ function getLastFmExposureWeight(track, reference, exposure, now = Date.now()) {
   return freshness(getExposureRecord(exposure, trackKey)) + freshness(getExposureRecord(exposure, transitionKey, "transitions"));
 }
 
+/**
+ * Top tracks of the artists Last.fm pairs with the reference's artist,
+ * interleaved by rank so the strongest neighbour cannot fill every slot.
+ * Each track inherits its artist's match, shaded down by its rank.
+ */
+async function getLastFmSimilarArtistTracks(reference, limit) {
+  const referenceArtist = normalizeComparableText(reference.searchArtist);
+  const artists = (await getLastFmSimilarArtists({ artist: reference.searchArtist, limit: LASTFM_SIMILAR_ARTIST_LIMIT }))
+    .filter((entry) => normalizeComparableText(entry.artist) !== referenceArtist);
+  const topLists = await mapWithConcurrency(artists, 2, async (entry) => {
+    const tracks = await getLastFmArtistTopTracks({ artist: entry.artist, limit: LASTFM_SIMILAR_ARTIST_TOP_TRACKS });
+    return tracks.map((track, rank) => ({ ...track, match: entry.match * (1 - 0.08 * rank) }));
+  });
+
+  const interleaved = [];
+  for (let rank = 0; rank < LASTFM_SIMILAR_ARTIST_TOP_TRACKS && interleaved.length < limit; rank += 1) {
+    for (const list of topLists) {
+      if (list?.[rank] && interleaved.length < limit) interleaved.push(list[rank]);
+    }
+  }
+  return interleaved;
+}
+
 async function fetchLastFmCandidates(reference, guildId, exposure = null) {
   const candidates = [];
 
   try {
-    const similarTracks = await getLastFmSimilarTracks({
+    const fetchLimit = Math.max(LASTFM_AUTOPLAY_FETCH_LIMIT, LASTFM_AUTOPLAY_RESOLVE_LIMIT);
+    let similarVia = "track";
+    let similarTracks = await getLastFmSimilarTracks({
       artist: reference.searchArtist,
       title: reference.cleanTitle,
-      limit: Math.max(LASTFM_AUTOPLAY_FETCH_LIMIT, LASTFM_AUTOPLAY_RESOLVE_LIMIT),
+      limit: fetchLimit,
     });
+    if (!similarTracks.length) {
+      similarVia = "artist";
+      similarTracks = await getLastFmSimilarArtistTracks(reference, fetchLimit);
+    }
 
     const maximumMatch = Math.max(...similarTracks.map((track) => Number(track.match) || 0), 0);
 
@@ -565,7 +604,9 @@ async function fetchLastFmCandidates(reference, guildId, exposure = null) {
             // This is a collaborative-similarity signal, not catalog
             // popularity. Keeping it separate prevents a great match from
             // being penalized as an overplayed track.
-            similarity: normalizeLastFmSimilarity(similar.match, maximumMatch),
+            similarity: normalizeLastFmSimilarity(similar.match, maximumMatch)
+              * (similarVia === "artist" ? LASTFM_ARTIST_SIMILARITY_WEIGHT : 1),
+            ...(similarVia === "artist" ? { similarVia } : {}),
             popularity: 0,
             releaseYear: null,
             features: null,
@@ -576,7 +617,7 @@ async function fetchLastFmCandidates(reference, guildId, exposure = null) {
       });
 
     candidates.push(...resolved.filter(Boolean));
-    Log.info("Last.fm similar candidates collected", "", `guild=${guildId}`, `count=${candidates.length}`);
+    Log.info("Last.fm similar candidates collected", "", `guild=${guildId}`, `count=${candidates.length}`, `via=${similarVia}`);
   } catch (error) {
     Log.debug("Last.fm autoplay candidates failed", error.message);
   }

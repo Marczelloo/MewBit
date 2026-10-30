@@ -7,6 +7,7 @@ const {
   buildDirectorInput,
   clearAIDJCacheForTests,
   filterPlanRepeats,
+  getAIDJTimeoutBudget,
   planNextTrackWithAIDJ,
   setAIDJFetchForTests,
 } = require("../../../helpers/lavalink/aiDj");
@@ -21,6 +22,8 @@ const envKeys = [
   "AI_DJ_CACHE_TTL_MS",
   "AI_DJ_WEB_SEARCH",
   "AI_DJ_MAX_PROPOSALS",
+  "AI_DJ_TIMEOUT_MS",
+  "AI_DJ_PREFETCH_TIMEOUT_MS",
 ];
 let savedEnvironment = {};
 
@@ -88,6 +91,8 @@ describe("AI DJ director", () => {
     process.env.AI_DJ_CACHE_TTL_MS = "300000";
     process.env.AI_DJ_WEB_SEARCH = "true";
     process.env.AI_DJ_MAX_PROPOSALS = "8";
+    delete process.env.AI_DJ_TIMEOUT_MS;
+    delete process.env.AI_DJ_PREFETCH_TIMEOUT_MS;
     clearAIDJCacheForTests();
     setAIDJFetchForTests(null);
   });
@@ -134,6 +139,59 @@ describe("AI DJ director", () => {
       AI_DJ_DIRECTOR_RESPONSE_SCHEMA.properties.candidates.items.required.sort(),
       ["album", "artist", "energy", "fit", "lane", "mood", "reason", "title"].sort()
     );
+  });
+
+  it("budgets a prefetch by the time left before the slot plays", () => {
+    // Unknown runway (queue end, replace): the short interactive budget.
+    assert.strictEqual(getAIDJTimeoutBudget(null), 12000);
+    assert.strictEqual(getAIDJTimeoutBudget(0), 12000);
+    // Plenty of track left: capped at the prefetch ceiling.
+    assert.strictEqual(getAIDJTimeoutBudget(180000), 28000);
+    assert.strictEqual(getAIDJTimeoutBudget(Infinity), 28000);
+    // Tight runway keeps a reserve for resolution but never drops below the default.
+    assert.strictEqual(getAIDJTimeoutBudget(40000), 20000);
+    assert.strictEqual(getAIDJTimeoutBudget(25000), 12000);
+
+    process.env.AI_DJ_TIMEOUT_MS = "9000";
+    process.env.AI_DJ_PREFETCH_TIMEOUT_MS = "40000";
+    assert.strictEqual(getAIDJTimeoutBudget(null), 9000);
+    assert.strictEqual(getAIDJTimeoutBudget(300000), 40000);
+  });
+
+  it("honours a per-call timeout and reports it with the latency", async () => {
+    setAIDJFetchForTests((_url, options) => new Promise((_resolve, reject) => {
+      // The director's own timer is unref'd; hold the loop open until it fires.
+      const keepAlive = setInterval(() => {}, 50);
+      options.signal.addEventListener("abort", () => {
+        clearInterval(keepAlive);
+        reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      });
+    }));
+
+    const result = await planNextTrackWithAIDJ({ ...input(), timeoutMs: 600 });
+
+    assert.strictEqual(result.status, "fallback-error");
+    assert.strictEqual(result.timeoutMs, 600);
+    assert.strictEqual(result.error, "timeout after 600ms");
+    assert.ok(result.latencyMs >= 500 && result.latencyMs < 5000);
+  });
+
+  it("reports latency and the budget on a successful plan", async () => {
+    setAIDJFetchForTests(async () => ({ ok: true, json: async () => ({ output_text: JSON.stringify(plannedResponse()) }) }));
+
+    const result = await planNextTrackWithAIDJ({ ...input(), timeoutMs: 25000 });
+
+    assert.strictEqual(result.status, "planned");
+    assert.strictEqual(result.timeoutMs, 25000);
+    assert.ok(Number.isFinite(result.latencyMs));
+  });
+
+  it("shows the director artists without YouTube's \"- Topic\" channel suffix", () => {
+    const nextInput = input();
+    nextInput.referenceTrack = track("POP/STARS", "K/DA - Topic");
+    const prompt = JSON.stringify(buildDirectorInput({ ...nextInput, maxProposals: 8 }));
+    assert.ok(prompt.includes("K/DA"));
+    assert.ok(!prompt.includes("Topic"));
   });
 
   it("passes a direct surprise intent to the music director", () => {

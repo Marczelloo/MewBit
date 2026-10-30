@@ -225,6 +225,11 @@
 .track-row.is-menu-open { background: rgb(255 255 255 / 0.06); }
 .track-row.is-pending { opacity: 0.62; }
 .track-row.is-dragged { opacity: 0.45; }
+/* The queue changed in front of this autoplay pick; MewBit is re-choosing it. */
+.track-row.is-refreshing .track-row-lead,
+.track-row.is-refreshing .track-row-title,
+.track-row.is-refreshing .track-row-sub > :not(.track-row-extra) { opacity: 0.5; transition: opacity 200ms var(--ease); }
+.queue-refreshing { display: inline-flex; align-items: center; gap: 5px; color: var(--cyan-soft); }
 .track-row.is-drop-target { box-shadow: inset 0 2px 0 var(--cyan); }
 
 .track-row-search { --row-cols: 40px minmax(0, 1fr) 56px 104px; }

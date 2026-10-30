@@ -87,6 +87,8 @@ function serializeTrack(track, index = null) {
     requester: info.requesterTag || info.requester || null,
     requesterAvatarUrl: resolveRequesterAvatarUrl(info, isAutoplay),
     autoplay: isAutoplay,
+    // The queue changed in front of this pick and MewBit is re-choosing it.
+    autoplayRefreshing: isAutoplay && Boolean(track.userData?.autoplayRefreshing),
     recommendation,
   };
 }

@@ -1,12 +1,20 @@
 const crypto = require("node:crypto");
 const Log = require("../logs/log");
 const { getTrackMetadata } = require("./sessionProfile");
+const { stripTopicSuffix } = require("./trackNormalization");
 const { getTrackIdentityKeys } = require("./trackIdentity");
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_REASONING_EFFORT = "low";
 const DEFAULT_TIMEOUT_MS = 12000;
+// A prefetch starts as the current track does, so it can afford to wait far
+// longer for the director than a lookup the room is waiting on.
+const DEFAULT_PREFETCH_TIMEOUT_MS = 28000;
+const MAX_TIMEOUT_MS = 45000;
+// Time a prefetch keeps after the director for provider resolution, the
+// fallback ladder and queuing, so a slow plan never delays the next track.
+const PREFETCH_TIMEOUT_RESERVE_MS = 20000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_PROPOSALS = 8;
 const DEFAULT_MIN_CONFIDENCE = 0.55;
@@ -108,7 +116,8 @@ function getConfig() {
     apiKey: String(process.env.OPENAI_API_KEY || "").trim(),
     model: String(process.env.AI_DJ_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL,
     reasoningEffort: readReasoningEffort(process.env.AI_DJ_REASONING_EFFORT),
-    timeoutMs: readPositiveNumber(process.env.AI_DJ_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, { min: 500, max: 15000 }),
+    timeoutMs: readPositiveNumber(process.env.AI_DJ_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, { min: 500, max: MAX_TIMEOUT_MS }),
+    prefetchTimeoutMs: readPositiveNumber(process.env.AI_DJ_PREFETCH_TIMEOUT_MS, DEFAULT_PREFETCH_TIMEOUT_MS, { min: 500, max: MAX_TIMEOUT_MS }),
     cacheTtlMs: readPositiveNumber(process.env.AI_DJ_CACHE_TTL_MS, DEFAULT_CACHE_TTL_MS, { min: 0, max: 60 * 60 * 1000 }),
     maxProposals: Math.floor(readPositiveNumber(process.env.AI_DJ_MAX_PROPOSALS, DEFAULT_MAX_PROPOSALS, { min: 2, max: 12 })),
     useWebSearch: process.env.AI_DJ_WEB_SEARCH === "true",
@@ -117,6 +126,20 @@ function getConfig() {
     // weak proposal must not throw away an otherwise excellent AI plan.
     minFit: readPositiveNumber(process.env.AI_DJ_MIN_FIT, DEFAULT_MIN_FIT, { min: 0, max: 100 }),
   };
+}
+
+/**
+ * The director timeout for a lookup that has `remainingMs` before its pick is
+ * needed. Lookups with no playing track behind them (queue end, a listener
+ * waiting on a replace) keep the short interactive timeout.
+ */
+function getAIDJTimeoutBudget(remainingMs) {
+  const config = getConfig();
+  const remaining = Number(remainingMs);
+  if (!(remaining > 0)) return config.timeoutMs;
+  const ceiling = Math.max(config.timeoutMs, config.prefetchTimeoutMs);
+  const budget = Number.isFinite(remaining) ? remaining - PREFETCH_TIMEOUT_RESERVE_MS : ceiling;
+  return Math.round(Math.min(ceiling, Math.max(config.timeoutMs, budget)));
 }
 
 function compactText(value, limit = 120) {
@@ -129,7 +152,7 @@ function describeTrack(track) {
   const measuredEnergy = Number.isFinite(metadata.features?.energy) ? Math.round(metadata.features.energy * 100) : null;
   return {
     title: compactText(track?.userData?.autoplayReference?.title || track?.info?.title),
-    artist: compactText(track?.userData?.autoplayReference?.artist || track?.info?.author),
+    artist: compactText(track?.userData?.autoplayReference?.artist || stripTopicSuffix(track?.info?.author)),
     album: compactText(metadata.albumTitle),
     genres: metadata.genres.slice(0, 6),
     tempo: Number.isFinite(metadata.features?.tempo) ? Math.round(metadata.features.tempo) : null,
@@ -150,7 +173,7 @@ function describeRecentTrack(track) {
 function describeVerifiedCandidate(candidate) {
   return {
     title: compactText(candidate?.title || candidate?.track?.info?.title),
-    artist: compactText(candidate?.artist || candidate?.track?.info?.author),
+    artist: compactText(candidate?.artist || stripTopicSuffix(candidate?.track?.info?.author)),
     album: compactText(candidate?.albumTitle || candidate?.track?.userData?.albumTitle),
     source: compactText(candidate?.source || candidate?.track?.info?.sourceName, 40),
     genres: Array.isArray(candidate?.genres) ? candidate.genres.slice(0, 5) : [],
@@ -350,6 +373,8 @@ async function requestDirectorPlan(config, prompt) {
 
 async function planNextTrackWithAIDJ(input) {
   const config = getConfig();
+  const timeoutMs = Number(input?.timeoutMs);
+  if (Number.isFinite(timeoutMs) && timeoutMs >= 500) config.timeoutMs = Math.min(timeoutMs, MAX_TIMEOUT_MS);
   if (!config.enabled) return { status: "disabled", plan: null };
   if (!config.apiKey) return { status: "missing-api-key", plan: null };
   if (typeof (fetchForTests || globalThis.fetch) !== "function") return { status: "fetch-unavailable", plan: null };
@@ -358,6 +383,7 @@ async function planNextTrackWithAIDJ(input) {
   const cacheKey = getCacheKey(`${config.model}:director:${config.useWebSearch}`, prompt);
   let plan = getCachedDecision(cacheKey);
   const cached = Boolean(plan);
+  const startedAt = Date.now();
 
   try {
     if (!plan) {
@@ -367,13 +393,16 @@ async function planNextTrackWithAIDJ(input) {
       cacheDecision(cacheKey, plan, config.cacheTtlMs);
     }
   } catch (error) {
-    Log.warning("AI DJ director unavailable; using deterministic fallback ladder", "", `error=${compactText(error.message, 180)}`);
-    return { status: "fallback-error", plan: null };
+    const latencyMs = Date.now() - startedAt;
+    const reason = error?.name === "AbortError" ? `timeout after ${config.timeoutMs}ms` : compactText(error.message, 180);
+    Log.warning("AI DJ director unavailable; using deterministic fallback ladder", "", `error=${reason}`, `latencyMs=${latencyMs}`);
+    return { status: "fallback-error", plan: null, error: reason, latencyMs, timeoutMs: config.timeoutMs };
   }
 
-  if (plan.decision !== "propose" || !plan.candidates.length) return { status: "no-match", plan, cached, model: config.model };
-  if (plan.confidence < config.minConfidence) return { status: "low-confidence", plan, cached, model: config.model };
-  return { status: "planned", plan, cached, model: config.model };
+  const telemetry = { cached, model: config.model, latencyMs: Date.now() - startedAt, timeoutMs: config.timeoutMs };
+  if (plan.decision !== "propose" || !plan.candidates.length) return { status: "no-match", plan, ...telemetry };
+  if (plan.confidence < config.minConfidence) return { status: "low-confidence", plan, ...telemetry };
+  return { status: "planned", plan, ...telemetry };
 }
 
 function clearAIDJCacheForTests() {
@@ -390,6 +419,7 @@ module.exports = {
   buildDirectorInput,
   clearAIDJCacheForTests,
   filterPlanRepeats,
+  getAIDJTimeoutBudget,
   planNextTrackWithAIDJ,
   setAIDJFetchForTests,
 };

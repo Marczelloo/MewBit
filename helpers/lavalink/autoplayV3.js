@@ -8,6 +8,7 @@ const {
   getAutoplayReference,
   resolveToPlayable,
 } = require("./autoplayCandidates");
+const { recordAutoplayDecision } = require("./autoplayDecisionLog");
 const { getExposureKey, getAutoplayExposureSnapshot } = require("./autoplayExposure");
 const { evaluateGenreFlow, getGenreFamilies } = require("./genreUtils");
 const { getLastFmTagProfile } = require("./lastfmClient");
@@ -15,7 +16,8 @@ const { buildSessionProfile, getTrackMetadata, isAutoplayTrack } = require("./se
 const { getSkipPatterns } = require("./skipLearning");
 const { cloneTrack, ensurePlaybackState, playbackState } = require("./state");
 const { hasTrackIdentity } = require("./trackIdentity");
-const { cleanArtistName, normalizeComparableText } = require("./trackNormalization");
+const { getDisplayTrackMetadata } = require("./displayMetadata");
+const { cleanArtistName, normalizeComparableText, stripTopicSuffix } = require("./trackNormalization");
 const { isValidSong } = require("./trackValidation");
 
 function artistKey(value) {
@@ -712,6 +714,75 @@ async function resolveV3Candidates(ranked, guildId, referenceTrack, anchorTrack,
   return null;
 }
 
+function describeDecisionTrack(track) {
+  if (!track?.info) return null;
+  const display = getDisplayTrackMetadata(track);
+  return { artist: display.author, title: display.title, identifier: track.info.identifier || null };
+}
+
+function countBySource(candidates) {
+  const counts = {};
+  for (const candidate of candidates) {
+    for (const source of sourceSet(candidate)) counts[source] = (counts[source] || 0) + 1;
+  }
+  return counts;
+}
+
+function buildDecisionEntry({
+  guildId, mode, selectionIntent, elapsedMs, anchorTrack, referenceTrack, candidates, context,
+  aiResult, aiCandidates, aiRejected, fallbackRanked, fallbackRejected, relaxedGenreFlow, resolved,
+}) {
+  const plan = aiResult?.plan || null;
+  const winner = resolved?.entry?.candidate || null;
+  const winnerSources = winner ? sourceSet(winner) : new Set();
+  return {
+    guildId,
+    mode,
+    intent: selectionIntent?.mode || null,
+    mood: selectionIntent?.mood || null,
+    elapsedMs,
+    anchor: describeDecisionTrack(anchorTrack),
+    reference: describeDecisionTrack(referenceTrack),
+    candidates: candidates.length,
+    sources: countBySource(candidates),
+    lastFmVia: candidates.some((candidate) => candidate.similarVia === "artist") ? "artist" : null,
+    artistStreak: context.artistStreak,
+    albumStreak: context.albumStreak,
+    referenceEnergy: context.referenceEnergy ?? null,
+    ai: {
+      status: aiResult?.status || null,
+      cached: Boolean(aiResult?.cached),
+      latencyMs: aiResult?.latencyMs ?? null,
+      timeoutMs: aiResult?.timeoutMs ?? null,
+      error: aiResult?.error || null,
+      confidence: plan?.confidence ?? null,
+      summary: plan?.direction?.summary || null,
+      proposals: aiCandidates.slice(0, 4).map((candidate) => ({
+        artist: candidate.artist,
+        title: candidate.title,
+        lane: candidate.aiDjLane || null,
+        fit: candidate.aiDjFit ?? null,
+        energy: candidate.aiDjEnergy ?? null,
+      })),
+      rejected: aiRejected,
+    },
+    fallback: { eligible: fallbackRanked.length, rejected: fallbackRejected },
+    genreFlow: resolved?.entry?.details?.genreFlow
+      ? { reason: resolved.entry.details.genreFlow.reason, distance: resolved.entry.details.genreFlow.distance ?? null }
+      : null,
+    relaxedGenreFlow,
+    winner: resolved ? {
+      ...describeDecisionTrack(resolved.track),
+      via: winnerSources.has("ai_dj") ? "ai-director" : "fallback-ladder",
+      sources: [...winnerSources],
+      lane: winner?.aiDjLane || null,
+      fit: winner?.aiDjFit ?? null,
+      energy: winner?.aiDjEnergy ?? null,
+      reason: winner?.aiDJ?.proposalReason || null,
+    } : null,
+  };
+}
+
 async function fetchAutoplayV3Track(referenceTrack, guildId, {
   pendingManualTracks = [],
   liveTracks = [],
@@ -719,6 +790,7 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
   allowWhenAutoplayDisabled = false,
   selectionIntent = null,
   mode = "normal",
+  aiTimeoutMs = null,
 } = {}) {
   if (!referenceTrack?.info) return null;
   if (!allowWhenAutoplayDisabled && !getGuildState(guildId)?.autoplay) return null;
@@ -760,7 +832,7 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
   });
   profile.verifiedCatalogCandidates = candidates;
 
-  const aiResult = await planNextTrackWithAIDJ({ guildId, anchorTrack, referenceTrack, profile, context });
+  const aiResult = await planNextTrackWithAIDJ({ guildId, anchorTrack, referenceTrack, profile, context, timeoutMs: aiTimeoutMs });
   const aiCandidates = buildAIDJCandidates(aiResult, candidates);
 
   let resolved = null;
@@ -805,12 +877,13 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
     `guild=${guildId}`,
     `mode=${mode}`,
     `elapsedMs=${Date.now() - startedAt}`,
-    `anchor=${anchorTrack.info?.author || "Unknown"} - ${anchorTrack.info?.title || "Unknown"}`,
-    `reference=${referenceTrack.info?.author || "Unknown"} - ${referenceTrack.info?.title || "Unknown"}`,
+    `anchor=${stripTopicSuffix(anchorTrack.info?.author) || "Unknown"} - ${anchorTrack.info?.title || "Unknown"}`,
+    `reference=${stripTopicSuffix(referenceTrack.info?.author) || "Unknown"} - ${referenceTrack.info?.title || "Unknown"}`,
     `candidates=${candidates.length}`,
     `artistStreak=${context.artistStreak}`,
     `albumStreak=${context.albumStreak}`,
     `aiDj=${aiResult.status}${aiResult.plan ? `:${aiResult.plan.confidence}/${aiResult.plan.direction.summary}` : ""}`,
+    `aiLatencyMs=${aiResult.latencyMs ?? "?"}/${aiResult.timeoutMs ?? "?"}${aiResult.cached ? ";cached" : ""}${aiResult.error ? `;${aiResult.error}` : ""}`,
     `aiProposals=${aiCandidates.slice(0, 4).map((candidate) => `${candidate.artist} - ${candidate.title} [${candidate.aiDjLane};fit=${candidate.aiDjFit};e=${candidate.aiDjEnergy}]`).join(" | ") || "none"}`,
     `aiOrder=${aiOrdered.slice(0, 4).map((entry) => `${entry.candidate.artist} - ${entry.candidate.title} [${entry.candidate.aiDjLane};fit=${entry.candidate.aiDjFit}]`).join(" | ") || "none"}`,
     `aiDeferred=${aiDeferred ? `${aiDeferred.artist} - ${aiDeferred.title} [${aiDeferred.fit}]=>${aiDeferred.forArtist} - ${aiDeferred.forTitle} [${aiDeferred.forFit}]` : "none"}`,
@@ -818,8 +891,26 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
     `fallbackEligible=${fallbackRanked.length}`,
     `fallbackRejected=${Object.entries(fallbackRejected).map(([key, value]) => `${key}:${value}`).join(",") || "none"}`,
     `genreFlow=${resolved?.entry.details?.genreFlow ? `${resolved.entry.details.genreFlow.reason}:${resolved.entry.details.genreFlow.distance ?? "?"}` : "none"}${relaxedGenreFlow ? ";relaxed" : ""}`,
-    `winner=${resolved ? `${resolved.track.info?.author} - ${resolved.track.info?.title}${sourceSet(resolved.entry.candidate).has("ai_dj") ? ";ai-director" : ";fallback-ladder"}` : "none"}`
+    `winner=${resolved ? `${stripTopicSuffix(resolved.track.info?.author)} - ${resolved.track.info?.title}${sourceSet(resolved.entry.candidate).has("ai_dj") ? ";ai-director" : ";fallback-ladder"}` : "none"}`
   );
+
+  recordAutoplayDecision(buildDecisionEntry({
+    guildId,
+    mode,
+    selectionIntent,
+    elapsedMs: Date.now() - startedAt,
+    anchorTrack,
+    referenceTrack,
+    candidates,
+    context,
+    aiResult,
+    aiCandidates,
+    aiRejected,
+    fallbackRanked,
+    fallbackRejected,
+    relaxedGenreFlow,
+    resolved,
+  }));
 
   return resolved?.track || null;
 }

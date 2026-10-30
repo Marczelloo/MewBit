@@ -1493,9 +1493,11 @@ function QueuePanel({ queue, playlists = [], likedTrackIds = [], onAction, isAct
             playlists={playlists}
             likedTrackIds={likedTrackIds}
             isActionPending={isActionPending}
-            subExtra={formatQueueEta(queue, index)}
+            subExtra={track.autoplayRefreshing
+              ? <span className="queue-refreshing" role="status"><SpinnerGap className="button-spinner" size={11} aria-hidden="true" />Picking a fresh one…</span>
+              : formatQueueEta(queue, index)}
             hideMenuBasics
-            className={draggedQueueItemId === track.queueItemId ? "is-dragged" : ""}
+            className={[draggedQueueItemId === track.queueItemId ? "is-dragged" : "", track.autoplayRefreshing ? "is-refreshing" : ""].filter(Boolean).join(" ")}
             rowProps={{
               draggable: true,
               tabIndex: 0,

@@ -145,7 +145,7 @@ test("a re-pick knows the playing track and the queue, but may keep the pick it 
   assert.deepEqual(fetchCalls[0].options.liveTracks.map((item) => item.info.title), ["KICK BACK", "IRIS OUT"]);
 });
 
-test("refresh leaves a pick alone when it still follows the right track, and keeps it on failure", async () => {
+test("refresh leaves a pick alone when it still follows the right track", async () => {
   const { refreshQueuedAutoplayTrack } = loadAutoplay();
   const fitting = createPlayer("guild-fit", { queue: [autoplayPick("Pick", "id-Current")] });
   assert.equal(await refreshQueuedAutoplayTrack(fitting), false);
@@ -154,10 +154,101 @@ test("refresh leaves a pick alone when it still follows the right track, and kee
   const legacy = createPlayer("guild-legacy", { queue: [track("Manual"), autoplayPick("Legacy", undefined)] });
   assert.equal(await refreshQueuedAutoplayTrack(legacy), false);
 
+});
+
+test("a failed re-pick drops a stale pick that is not up next, chain included", async () => {
+  const { refreshQueuedAutoplayTrack } = loadAutoplay();
   fetchImpl = async () => null;
-  const failing = createPlayer("guild-fail", { queue: [track("Manual"), autoplayPick("Kept", "id-Current")] });
+  const failing = createPlayer("guild-fail", {
+    queue: [track("Manual"), autoplayPick("Stale", "id-Current"), autoplayPick("Chained", "id-Stale")],
+  });
   assert.equal(await refreshQueuedAutoplayTrack(failing), false);
-  assert.deepEqual(failing.queue.map((item) => item.info.title), ["Manual", "Kept"]);
+  assert.equal(fetchCalls.length, 1);
+  assert.deepEqual(failing.queue.map((item) => item.info.title), ["Manual"]);
+});
+
+test("a crashed re-pick is handled like a failed one", async () => {
+  const { refreshQueuedAutoplayTrack } = loadAutoplay();
+  fetchImpl = async () => { throw new Error("provider down"); };
+  const failing = createPlayer("guild-crash", { queue: [track("Manual"), autoplayPick("Stale", "id-Current")] });
+  assert.equal(await refreshQueuedAutoplayTrack(failing), false);
+  assert.deepEqual(failing.queue.map((item) => item.info.title), ["Manual"]);
+});
+
+test("a pick up next gets one quick retry and is kept only when that fails too", async () => {
+  const { refreshQueuedAutoplayTrack } = loadAutoplay();
+  let attempts = 0;
+  fetchImpl = async () => (attempts++ === 0 ? null : track("Retry Pick"));
+  const retried = createPlayer("guild-retry", { queue: [autoplayPick("Stale", "id-Earlier")] });
+  assert.equal(await refreshQueuedAutoplayTrack(retried), true);
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(fetchCalls[1].options.aiTimeoutMs, null);
+  assert.deepEqual(retried.queue.map((item) => item.info.title), ["Retry Pick"]);
+
+  fetchCalls.length = 0;
+  fetchImpl = async () => null;
+  const kept = createPlayer("guild-keep", { queue: [autoplayPick("Kept", "id-Earlier")] });
+  assert.equal(await refreshQueuedAutoplayTrack(kept), false);
+  assert.equal(fetchCalls.length, 2);
+  assert.deepEqual(kept.queue.map((item) => item.info.title), ["Kept"]);
+  assert.equal(kept.queue[0].userData.autoplayRefreshing, undefined);
+});
+
+test("a stale pick is flagged as refreshing until its re-pick settles", async () => {
+  const { refreshQueuedAutoplayTrack, scheduleAutoplayRefresh } = loadAutoplay();
+  const stale = autoplayPick("Stale", "id-Current");
+  const player = createPlayer("guild-flag", { queue: [track("Manual"), stale] });
+
+  scheduleAutoplayRefresh(player);
+  // Flagged as soon as the queue changes, before the debounce runs.
+  assert.equal(stale.userData.autoplayRefreshing, true);
+
+  let flaggedDuringLookup = null;
+  fetchImpl = async () => {
+    flaggedDuringLookup = stale.userData.autoplayRefreshing;
+    return track("Fresh");
+  };
+  assert.equal(await refreshQueuedAutoplayTrack(player), true);
+  assert.equal(flaggedDuringLookup, true);
+  assert.equal(stale.userData.autoplayRefreshing, undefined);
+  assert.equal(player.queue[1].userData.autoplayRefreshing, undefined);
+});
+
+test("a refresh with nothing to re-pick clears a leftover flag", async () => {
+  const { refreshQueuedAutoplayTrack } = loadAutoplay();
+  const pick = autoplayPick("Pick", "id-Current");
+  pick.userData.autoplayRefreshing = true;
+  const player = createPlayer("guild-clear", { queue: [pick] });
+  assert.equal(await refreshQueuedAutoplayTrack(player), false);
+  assert.equal(pick.userData.autoplayRefreshing, undefined);
+});
+
+test("a prefetch gives the AI DJ the queue's runway; a queue-end pick keeps the short budget", async () => {
+  const { prefetchAutoplayTrack, queueAutoplayTrack } = loadAutoplay();
+  fetchImpl = async () => track("Next");
+  const current = track("Now");
+  const player = createPlayer("guild-budget", { currentTrack: current });
+  player.position = 20_000;
+
+  await prefetchAutoplayTrack(player, current, "text");
+  // 180 s left minus the reserve is far above the ceiling.
+  assert.equal(fetchCalls[0].options.aiTimeoutMs, 28_000);
+
+  fetchCalls.length = 0;
+  const ended = createPlayer("guild-end", { currentTrack: null });
+  await queueAutoplayTrack(ended, current, "text");
+  assert.equal(fetchCalls[0].options.aiTimeoutMs, null);
+});
+
+test("a prefetch near the end of a short track falls back to the default budget", async () => {
+  const { prefetchAutoplayTrack } = loadAutoplay();
+  fetchImpl = async () => track("Next");
+  const current = track("Short", { info: { title: "Short", author: "Artist", identifier: "id-Short", length: 30_000 } });
+  const player = createPlayer("guild-short", { currentTrack: current });
+  player.position = 0;
+
+  await prefetchAutoplayTrack(player, current, "text");
+  assert.equal(fetchCalls[0].options.aiTimeoutMs, 12_000);
 });
 
 test("refresh does not race a pick that is about to play", async () => {

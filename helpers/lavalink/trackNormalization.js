@@ -42,6 +42,13 @@ function cleanArtistName(value) {
     .trim();
 }
 
+// YouTube's auto-generated "Artist - Topic" channels carry the real artist
+// name. Only that suffix goes: unlike cleanArtistName, the rest of the name
+// is shown and sent exactly as the platform has it.
+function stripTopicSuffix(value) {
+  return String(value || "").replace(/\s*-\s*Topic\s*$/i, "").trim();
+}
+
 function getDecoratedSegments(value) {
   const title = String(value || "").trim();
   const segments = [];
@@ -231,5 +238,6 @@ module.exports = {
   normalizeComparableText,
   queryRequestsVariant,
   stripPresentationNoise,
+  stripTopicSuffix,
   stripVariantDecorators,
 };
