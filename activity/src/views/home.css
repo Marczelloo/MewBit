@@ -13,7 +13,7 @@
   overflow-y: auto;
   scrollbar-gutter: stable;
   container: home / inline-size;
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
 }
 
@@ -144,7 +144,7 @@
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 20px;
-  background: var(--surface);
+  background: rgb(255 255 255 / 0.025);
 }
 
 .home-resume-text { min-width: 0; display: grid; gap: 4px; }
@@ -297,7 +297,7 @@
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 20px;
-  background: var(--surface);
+  background: rgb(255 255 255 / 0.025);
 }
 
 /* Library tiles */
