@@ -26,6 +26,13 @@ function getPendingManualTracks(player) {
     .slice(0, 4);
 }
 
+// The playing track and the queue, which a pick must not repeat. `except` is
+// the pick being re-chosen: picking it again is a valid answer.
+function getLiveTracks(player, except = null) {
+  return [player?.currentTrack, ...Array.from(player?.queue || [])]
+    .filter((track) => track && track !== except);
+}
+
 function runSharedAutoplayTask(guildId, createTask, owner = null) {
   const existing = getAutoplayInFlight(guildId, owner);
   if (existing) return existing;
@@ -94,6 +101,7 @@ function queueAutoplayTrack(player, lastTrack, textChannelId) {
       const relatedTrack = await fetchAutoplayV3Track(lastTrack, player.guildId, {
         // A queued reference is already the selection's starting point.
         pendingManualTracks: getPendingManualTracks(player).filter((track) => track !== lastTrack),
+        liveTracks: getLiveTracks(player),
       });
 
       if (!relatedTrack) {
@@ -190,6 +198,7 @@ function replaceQueuedAutoplayTrack(player, {
       recordSkip(player.guildId, rejectedTrack, "autoplay_replace");
       const relatedTrack = await fetchAutoplayV3Track(referenceTrack, player.guildId, {
         pendingManualTracks: getPendingManualTracks(player),
+        liveTracks: getLiveTracks(player, rejectedTrack),
         blockedTracks: [rejectedTrack],
         selectionIntent: {
           mode: "replace",
@@ -286,6 +295,7 @@ async function refreshQueuedAutoplayTrack(player, textChannelId = player?.textCh
     try {
       const relatedTrack = await fetchAutoplayV3Track(referenceTrack, player.guildId, {
         pendingManualTracks: getPendingManualTracks(player).filter((track) => track !== referenceTrack),
+        liveTracks: getLiveTracks(player, pick),
         selectionIntent: {
           mode: "refresh",
           goal: "The listener changed the queue. Choose what should follow the track before the autoplay slot, fitting the queued tracks too.",

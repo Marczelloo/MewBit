@@ -192,7 +192,12 @@ function getSessionArtist(track) {
  * @param {Object} referenceTrack - Current or last played track
  * @returns {Object} Session profile with artists, genres, features, trends
  */
-function buildSessionProfile(guildId, referenceTrack, { pendingManualTracks = [] } = {}) {
+/**
+ * `liveTracks` is what the player holds right now, the playing track first
+ * and then the queue. History only gains a track when it ends, so without
+ * them a pick chosen for a queued reference could repeat the song playing.
+ */
+function buildSessionProfile(guildId, referenceTrack, { pendingManualTracks = [], liveTracks = [] } = {}) {
   const state = playbackState.get(guildId);
   const history = state?.history || [];
   const recentAutoplayTracks = (state?.autoplayHistory || []).map((entry) => entry.track).filter(Boolean).slice(-20);
@@ -211,8 +216,13 @@ function buildSessionProfile(guildId, referenceTrack, { pendingManualTracks = []
       .join(" → ")}`
   );
 
-  const recentTracks = uniqueTracks([...history.slice(-14), referenceTrack]);
-  const cooldownTracks = [...history, referenceTrack, ...recentAutoplayTracks].filter(Boolean).slice(-160);
+  const live = liveTracks.filter(Boolean);
+  const referenceIndex = live.indexOf(referenceTrack);
+  // Plays before the pick; queued manual tracks already reach the plan as upcoming.
+  const playsFirst = (referenceIndex > 0 ? live.slice(0, referenceIndex) : [])
+    .filter((track) => !pendingManual.includes(track));
+  const recentTracks = uniqueTracks([...history.slice(-14), ...playsFirst, referenceTrack]);
+  const cooldownTracks = [...history, ...recentAutoplayTracks, ...live, referenceTrack].filter(Boolean).slice(-160);
   const manualHistoryWithReference = isManualTrack(referenceTrack) ? [...manualHistory, referenceTrack] : manualHistory;
   const manualAnchorRecords = buildManualAnchorRecords(manualHistoryWithReference, pendingManual);
   const manualAnchorTracks = manualAnchorRecords.map((record) => record.track);

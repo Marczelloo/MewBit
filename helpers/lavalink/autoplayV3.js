@@ -714,6 +714,7 @@ async function resolveV3Candidates(ranked, guildId, referenceTrack, anchorTrack,
 
 async function fetchAutoplayV3Track(referenceTrack, guildId, {
   pendingManualTracks = [],
+  liveTracks = [],
   blockedTracks = [],
   allowWhenAutoplayDisabled = false,
   selectionIntent = null,
@@ -731,7 +732,7 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
     : await enrichAnchorGenres(getAnchorTrack(guildId, referenceTrack));
   if (!surpriseMode) await enrichManualAnchorTracks(pendingManualTracks, guildId);
 
-  const profile = buildSessionProfile(guildId, referenceTrack, { pendingManualTracks });
+  const profile = buildSessionProfile(guildId, referenceTrack, { pendingManualTracks, liveTracks });
   profile.autoplayExposure = await getAutoplayExposureSnapshot(guildId);
   profile.guildId = guildId;
 

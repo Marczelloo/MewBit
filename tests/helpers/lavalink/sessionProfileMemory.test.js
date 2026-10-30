@@ -16,6 +16,27 @@ function manual(title, artist, albumTitle) {
 
 afterEach(() => playbackState.delete(GUILD_ID));
 
+describe("live player tracks", () => {
+  it("treat the playing track as heard when the pick follows a queued one", () => {
+    const playing = manual("KICK BACK", "Kenshi Yonezu");
+    const queued = manual("IRIS OUT", "Kenshi Yonezu");
+    const profile = buildSessionProfile(GUILD_ID, queued, { liveTracks: [playing, queued] });
+
+    assert.ok(profile.cooldownTracks.includes(playing));
+    assert.deepStrictEqual(profile.recentTracks.map((track) => track.info.title), ["KICK BACK", "IRIS OUT"]);
+  });
+
+  it("leave queued manual tracks to the upcoming list", () => {
+    const playing = manual("KICK BACK", "Kenshi Yonezu");
+    const queued = manual("IRIS OUT", "Kenshi Yonezu");
+    const reference = manual("Lemon", "Kenshi Yonezu");
+    const profile = buildSessionProfile(GUILD_ID, reference, { pendingManualTracks: [queued], liveTracks: [playing, queued, reference] });
+
+    assert.deepStrictEqual(profile.recentTracks.map((track) => track.info.title), ["KICK BACK", "Lemon"]);
+    assert.ok(profile.cooldownTracks.includes(queued));
+  });
+});
+
 describe("manual autoplay memory", () => {
   it("keeps user-selected artists and albums after an autoplay detour", () => {
     const frascati = manual("Nostalgia", "Taco Hemingway", "Frascati");

@@ -134,6 +134,17 @@ test("a manual add re-picks the waiting pick for the newly queued track", async 
   assert.equal(player.queue[2].info.autoplayed, true);
 });
 
+test("a re-pick knows the playing track and the queue, but may keep the pick it replaces", async () => {
+  const { refreshQueuedAutoplayTrack } = loadAutoplay();
+  fetchImpl = async () => track("Better Pick");
+  const added = track("IRIS OUT");
+  const stale = autoplayPick("Otonoke", "id-KICK BACK");
+  const player = createPlayer("guild-refresh-live", { currentTrack: track("KICK BACK"), queue: [added, stale] });
+
+  assert.equal(await refreshQueuedAutoplayTrack(player), true);
+  assert.deepEqual(fetchCalls[0].options.liveTracks.map((item) => item.info.title), ["KICK BACK", "IRIS OUT"]);
+});
+
 test("refresh leaves a pick alone when it still follows the right track, and keeps it on failure", async () => {
   const { refreshQueuedAutoplayTrack } = loadAutoplay();
   const fitting = createPlayer("guild-fit", { queue: [autoplayPick("Pick", "id-Current")] });
