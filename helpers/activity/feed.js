@@ -57,6 +57,8 @@ function actionDetail(action, payload, beforeTrack, result) {
     case "filter": return text(payload?.preset, 40).toLowerCase() === "off" ? "reset the audio effects" : `applied the ${text(payload?.preset, 40)} effect`;
     case "equalizer_preset": return `changed the EQ preset to ${text(payload?.preset, 40)}`;
     case "play_playlist": return payload?.shuffle ? "started a playlist in shuffle" : "started a playlist";
+    case "queue_tracks": return `queued ${Number(result?.count) || "some"} tracks`;
+    case "save_tracks_as_playlist": return payload?.name ? `saved ${Number(result?.count) || "some"} tracks as ${text(payload.name, 80)}` : "saved tracks as a playlist";
     case "change_source": return `switched the current track to ${text(payload?.source, 30) || "another"}`;
     case "track_feedback": return payload?.sentiment === "more" ? "asked for more tracks like this" : "asked MewBit to avoid this direction";
     default: return null;

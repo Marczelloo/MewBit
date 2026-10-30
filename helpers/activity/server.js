@@ -71,6 +71,7 @@ const { activityStateEvents, getActivityStateRevision, markActivityStateChanged 
 
 const DEFAULT_PORT = 8787;
 const MAX_BODY_SIZE = 64 * 1024;
+const MAX_BULK_TRACKS = 50;
 const MAX_ARTWORK_SIZE = 8 * 1024 * 1024;
 const CLIENT_CACHE_TTL = 5 * 60 * 1000;
 const MAX_IDENTITY_CACHE_ENTRIES = 1_000;
@@ -357,6 +358,7 @@ function assertControlPermission(guildId, identity, action) {
     "surprise_me",
     "change_source",
     "play_playlist",
+    "queue_tracks",
   ]);
 
   if (guardedActions.has(action)) {
@@ -400,7 +402,7 @@ function assertPlayerVoiceAccess(player, identity, action) {
     "pause", "resume", "toggle", "skip", "previous", "stop", "remove_queue", "replace_autoplay", "play_next",
     "move_queue", "clear_queue", "undo_queue", "shuffle", "volume", "toggle_mute", "seek", "filter",
     "equalizer", "equalizer_preset", "loop", "autoplay", "play", "surprise_me", "play_playlist",
-    "change_source",
+    "queue_tracks", "change_source",
   ]);
   if (!guardedActions.has(action)) return;
   if (identity.member?.voice?.channelId !== player.voiceChannel) {
@@ -701,6 +703,41 @@ function serializeActivityActionResult(action, result) {
   }
   if (action === "refresh_lyrics") return result ? serializeLyrics(result) : null;
   return result;
+}
+
+// Bulk actions take plain track records from the client; keep only what a
+// playlist row or a play query needs.
+function readTrackList(list, max) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, max).map((track) => ({
+    title: limitText(track?.title, 180),
+    author: limitText(track?.author, 180),
+    uri: limitText(track?.uri, 500) || null,
+    source: toSource(track?.source),
+    length: Number.isFinite(Number(track?.durationMs)) ? Number(track.durationMs) : undefined,
+    artworkUrl: limitText(track?.artworkUrl, 500) || null,
+  })).filter((track) => track.uri || track.title);
+}
+
+async function queueTrackList({ guildId, identity, player, tracks, what }) {
+  const voiceId = player?.voiceChannel || identity.member?.voice?.channelId;
+  const settings = guildState.getGuildState(guildId);
+  const textId = settings?.playerChannel || player?.textChannel || null;
+  if (!voiceId) throw Object.assign(new Error(`Join a voice channel before playing ${what}.`), { statusCode: 400 });
+  if (!textId) throw Object.assign(new Error("Set the player channel first with /setup player channel."), { statusCode: 400 });
+  if (player && player.textChannel !== textId) player.textChannel = textId;
+  if (settings?.playerChannel) guildState.updateGuildState(guildId, { nowPlayingChannel: textId });
+
+  for (const track of tracks) {
+    await lavalinkPlay({
+      guildId,
+      voiceId,
+      textId,
+      query: track.uri || `${track.title} ${track.author}`,
+      source: normalizeSource(track.source || track.uri),
+      requester: { id: identity.id, tag: identity.tag || identity.username, avatar: identity.avatar },
+    });
+  }
 }
 
 async function runActivityAction({ guildId, identity, action, payload = {} }) {
@@ -1065,28 +1102,33 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
     case "play_playlist": {
       const playlist = playlistStore.getPlaylist(identity.id, guildId, limitText(payload.name, 80));
       if (!playlist?.tracks?.length) throw Object.assign(new Error("That playlist is empty or unavailable."), { statusCode: 404 });
-      const voiceId = player?.voiceChannel || identity.member?.voice?.channelId;
-      const settings = guildState.getGuildState(guildId);
-      const textId = settings?.playerChannel || player?.textChannel || null;
-      if (!voiceId) throw Object.assign(new Error("Join a voice channel before playing a playlist."), { statusCode: 400 });
-      if (!textId) throw Object.assign(new Error("Set the player channel first with /setup player channel."), { statusCode: 400 });
-      if (player && player.textChannel !== textId) player.textChannel = textId;
-      if (settings?.playerChannel) guildState.updateGuildState(guildId, { nowPlayingChannel: textId });
-
       const tracks = [...playlist.tracks.slice(0, 100)];
       if (payload.shuffle) tracks.sort(() => Math.random() - 0.5);
-      for (const track of tracks) {
-        const query = track.uri || `${track.title} ${track.author}`;
-        await lavalinkPlay({
-          guildId,
-          voiceId,
-          textId,
-          query,
-          source: normalizeSource(track.source || track.uri),
-          requester: { id: identity.id, tag: identity.tag || identity.username, avatar: identity.avatar },
-        });
-      }
+      await queueTrackList({ guildId, identity, player, tracks, what: "a playlist" });
       return { count: tracks.length, shuffled: Boolean(payload.shuffle) };
+    }
+    case "queue_tracks": {
+      const tracks = readTrackList(payload.tracks, MAX_BULK_TRACKS);
+      if (!tracks.length) throw Object.assign(new Error("Choose some tracks to queue."), { statusCode: 400 });
+      await queueTrackList({ guildId, identity, player, tracks, what: "these tracks" });
+      return { count: tracks.length };
+    }
+    case "save_tracks_as_playlist": {
+      const name = limitText(payload.name, 80);
+      const tracks = readTrackList(payload.tracks, MAX_BULK_TRACKS);
+      if (!tracks.length) throw Object.assign(new Error("Choose some tracks to save."), { statusCode: 400 });
+      const created = playlistStore.createPlaylist(identity.id, guildId, name, {
+        description: limitText(payload.description, 180),
+        type: "user",
+      });
+      if (!created.success) return created;
+      const playlistName = created.playlist.name;
+      let added = 0;
+      for (const track of tracks) {
+        const result = playlistStore.addTrack(identity.id, guildId, playlistName, track);
+        if (result.success && !result.duplicate) added += 1;
+      }
+      return { success: true, playlistName, count: added };
     }
     default:
       throw Object.assign(new Error(`Unknown Activity action: ${action}`), { statusCode: 400 });
@@ -1366,6 +1408,7 @@ function createActivityServer(client) {
           "remove_playlist_track",
           "move_playlist_track",
           "import_playlist",
+          "save_tracks_as_playlist",
         ]);
         if (detailActions.has(body.action) && detailName) {
           const playlist = playlistStore.getPlaylist(identity.id, guildId, detailName);
