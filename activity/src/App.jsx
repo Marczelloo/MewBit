@@ -20,6 +20,7 @@ import {
   MagnifyingGlass,
   MusicNotes,
   Pause,
+  PencilSimple,
   Play,
   Plus,
   Queue,
@@ -51,6 +52,9 @@ import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
 
 import ActivityGate from "./views/ActivityGate.jsx";
 import Dropdown from "./views/Dropdown.jsx";
+import SignalLoader from "./views/SignalLoader.jsx";
+import "./styles.css";
+import "./motion.css";
 
 const LazyFiltersPanel = lazy(() => import("./views/FiltersPanel.jsx"));
 const LazyHomePanel = lazy(() => import("./views/HomePanel.jsx"));
@@ -400,6 +404,17 @@ function getActionFeedback(action, payload = {}, result = null, state = null) {
     case "change_source": return `Trying the ${sourceLabel(payload.source)} version`;
     case "track_feedback": return payload.sentiment === "more" ? "MewBit will lean closer to this sound" : "MewBit will avoid this direction";
     case "update_playlist": return "Playlist changes saved";
+    case "queue_tracks": {
+      const count = Number(result?.count ?? result?.queued ?? payload.tracks?.length ?? 0);
+      return count ? `Queued ${count} ${count === 1 ? "track" : "tracks"}` : "Queued tracks";
+    }
+    case "save_tracks_as_playlist": {
+      const count = Number(result?.count ?? payload.tracks?.length ?? 0);
+      const name = result?.playlistName || payload.name || "playlist";
+      return count ? `Saved ${count} ${count === 1 ? "track" : "tracks"} to ${name}` : `Saved ${name}`;
+    }
+    case "remove_playlist_track": return "Removed from playlist";
+    case "delete_playlist": return payload.name ? `Deleted ${payload.name}` : "Playlist deleted";
     default: return null;
   }
 }
@@ -582,10 +597,37 @@ function useSmartMenuGuards(open, rootRef, menuRef, onClose) {
   return { clearCloseTimer, scheduleClose };
 }
 
+// Keeps the menu mounted for the exit animation (120ms) so closing fades rather
+// than snapping away. `is-open` is added two frames after mount so the enter
+// transition has a closed state to start from.
 function SmartMenu({ open, position, rootRef, menuRef, guards, label, children }) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(false);
+  const lastPositionRef = useRef(position);
+  if (open && position) lastPositionRef.current = position;
+
+  useEffect(() => {
+    let frameA = 0;
+    let frameB = 0;
+    let timer = 0;
+    if (open) {
+      setMounted(true);
+      frameA = window.requestAnimationFrame(() => { frameB = window.requestAnimationFrame(() => setShown(true)); });
+    } else {
+      setShown(false);
+      timer = window.setTimeout(() => setMounted(false), 160);
+    }
+    return () => {
+      window.cancelAnimationFrame(frameA);
+      window.cancelAnimationFrame(frameB);
+      window.clearTimeout(timer);
+    };
+  }, [open]);
+
+  const place = lastPositionRef.current;
+  if ((!mounted && !open) || !place) return null;
   return createPortal(
-    <div ref={menuRef} className="row-context-menu" style={{ top: position.top, left: position.left }} role="menu" aria-label={label}>
+    <div ref={menuRef} className={`row-context-menu ${shown && open ? "is-open" : ""}`} style={{ top: place.top, left: place.left }} role="menu" aria-label={label} aria-hidden={!open || undefined}>
       {children}
     </div>,
     document.body,
@@ -722,7 +764,10 @@ function TrackMenuActions({ track, playlists = [], likedTrackIds = [], onAction,
   );
 }
 
-function TrackContextMenu({ track, playlists = [], likedTrackIds = [], onAction, findSources, open, position, onOpen, onClose }) {
+function TrackContextMenu({
+  track, playlists = [], likedTrackIds = [], onAction, findSources, open, position, onOpen, onClose,
+  triggerClassName = "", menuExtras = null, menuFooter = null, hideBasics = false,
+}) {
   const rootRef = useRef(null);
   const menuRef = useRef(null);
   const { clearCloseTimer, scheduleClose } = useSmartMenuGuards(open, rootRef, menuRef, onClose);
@@ -730,28 +775,30 @@ function TrackContextMenu({ track, playlists = [], likedTrackIds = [], onAction,
 
   if (!track) return null;
   const playQuery = track.playQuery || track.uri || `${track.title} ${track.author}`;
+  const extras = menuExtras ? menuExtras({ close: closeMenu }) : null;
+  const footer = menuFooter ? menuFooter({ close: closeMenu }) : null;
 
   return (
     <>
       <IconButton
         ref={rootRef}
         label="More actions"
-        className={`row-dots ${open ? "is-active" : ""}`}
+        className={`${triggerClassName || "row-dots"} ${open ? "is-active" : ""}`}
         onClick={(event) => {
           event.stopPropagation();
           if (open) { closeMenu(); return; }
           const rect = event.currentTarget.getBoundingClientRect();
           onOpen({
-            top: Math.max(10, Math.min(rect.bottom + 4, window.innerHeight - 238)),
-            left: Math.max(10, Math.min(rect.left + rect.width / 2 - 110, window.innerWidth - 246)),
+            top: Math.max(10, Math.min(rect.bottom + 4, window.innerHeight - 360)),
+            left: Math.max(10, Math.min(rect.left + rect.width / 2 - 110, window.innerWidth - 256)),
           });
         }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
           onOpen({
-            top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 238)),
-            left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 246)),
+            top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 360)),
+            left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 256)),
           });
         }}
         aria-expanded={open}
@@ -761,18 +808,157 @@ function TrackContextMenu({ track, playlists = [], likedTrackIds = [], onAction,
       </IconButton>
       <SmartMenu open={open} position={position} rootRef={rootRef} menuRef={menuRef} label={`Actions for ${track.title}`}>
         <>
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play", { query: playQuery, source: track.source, playNow: true }); closeMenu(); }}>
-            <Play size={15} weight="fill" aria-hidden="true" /><span>Play now</span>
-          </button>
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play", { query: playQuery, source: track.source }); closeMenu(); }}>
-            <Plus size={15} weight="bold" aria-hidden="true" /><span>Add to queue</span>
-          </button>
-          {findSources ? <PlayFromSubmenuItem track={track} findSources={findSources} onAction={onAction} onClose={closeMenu} /> : null}
-          <span className="row-menu-divider" aria-hidden="true" />
+          {hideBasics ? null : (
+            <>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play", { query: playQuery, source: track.source, playNow: true }); closeMenu(); }}>
+                <Play size={15} weight="fill" aria-hidden="true" /><span>Play now</span>
+              </button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play", { query: playQuery, source: track.source, prepend: true }); closeMenu(); }}>
+                <ArrowBendUpRight size={15} aria-hidden="true" /><span>Play next</span>
+              </button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play", { query: playQuery, source: track.source }); closeMenu(); }}>
+                <Plus size={15} weight="bold" aria-hidden="true" /><span>Add to queue</span>
+              </button>
+              {findSources ? <PlayFromSubmenuItem track={track} findSources={findSources} onAction={onAction} onClose={closeMenu} /> : null}
+              <span className="row-menu-divider" aria-hidden="true" />
+            </>
+          )}
+          {extras ? <>{extras}<span className="row-menu-divider" aria-hidden="true" /></> : null}
           <TrackMenuActions track={track} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} onClose={closeMenu} />
+          {footer ? <><span className="row-menu-divider" aria-hidden="true" />{footer}</> : null}
         </>
       </SmartMenu>
     </>
+  );
+}
+
+function TrackSourceGlyph({ source }) {
+  const props = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" };
+  let glyph;
+  if (source === "youtube") glyph = <svg {...props}><rect x="3" y="6" width="18" height="12" rx="3.5" /><path d="M10.2 9.6 14.6 12l-4.4 2.4z" /></svg>;
+  else if (source === "spotify") glyph = <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M7 9.6c3.4-1 7-.7 10 1.1M7.8 12.9c2.7-.7 5.4-.4 7.6.9M8.7 15.7c2-.5 3.9-.3 5.6.6" /></svg>;
+  else if (source === "soundcloud") glyph = <svg {...props}><path d="M7 18h10.2a3.8 3.8 0 0 0 .5-7.6A5.6 5.6 0 0 0 7.2 9.6 4.2 4.2 0 0 0 7 18z" /></svg>;
+  else if (source === "deezer") glyph = <svg {...props}><path d="M4 18v-3M8.5 18v-6M13 18V9M17.5 18V6M22 18v-9" transform="translate(-1 0)" /></svg>;
+  else glyph = <svg {...props}><path d="M9 18V6l10-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></svg>;
+  return <span className="track-row-src" title={sourceLabel(source)}>{glyph}</span>;
+}
+
+// One row for every track list: search, history, a playlist and the queue.
+// `variant` decides the columns; everything else (play overlay, equaliser,
+// hover actions, the context menu, right-click) is shared so the lists behave
+// as one system. Pass `menuExtras({ close })` / `menuFooter({ close })` to add
+// list-specific items, and `actions` for always-rendered buttons (queue).
+function TrackRow({
+  variant = "search", track, index = 0, playing = false,
+  onAction, playlists = [], likedTrackIds = [], findSources, isActionPending = () => false,
+  onPlay, onQueue, menuExtras, menuFooter, hideMenuBasics = false,
+  columns = {}, subExtra = null, actions = null, className = "", rowProps = {},
+}) {
+  const [menu, setMenu] = useState({ open: false, top: 0, left: 0 });
+  const [popping, setPopping] = useState(false);
+  const isLiked = Boolean(track) && (likedTrackIds.includes(track.id) || likedTrackIds.includes(getTrackLikeKey(track)));
+  const previousLikedRef = useRef(isLiked);
+
+  useEffect(() => {
+    if (!previousLikedRef.current && isLiked) {
+      setPopping(true);
+      const timer = window.setTimeout(() => setPopping(false), 380);
+      previousLikedRef.current = isLiked;
+      return () => window.clearTimeout(timer);
+    }
+    previousLikedRef.current = isLiked;
+    return undefined;
+  }, [isLiked]);
+
+  if (!track) return null;
+  const playQuery = track.playQuery || track.uri || `${track.title} ${track.author}`;
+  const pending = isActionPending(`play:${track.id}`);
+  const playNow = () => (onPlay ? onPlay(track) : onAction("play", { query: playQuery, source: track.source, playNow: true, trackId: track.id }));
+  const addToQueue = () => (onQueue ? onQueue(track) : onAction("play", { query: playQuery, source: track.source, trackId: track.id }));
+  const openAt = (position) => setMenu({ open: true, ...position });
+  const closeMenu = () => setMenu((current) => ({ ...current, open: false }));
+  const durationText = track.isStream ? "Live" : track.durationMs ? formatTime(track.durationMs) : "";
+  const whoName = columns.who || "";
+  const classes = [
+    "track-row", `track-row-${variant}`,
+    playing ? "is-playing" : "", menu.open ? "is-menu-open" : "", pending ? "is-pending" : "", isLiked ? "is-liked" : "", className,
+  ].filter(Boolean).join(" ");
+
+  return (
+    <div
+      {...rowProps}
+      className={classes}
+      style={{ "--row-i": Math.min(index, 7) }}
+      onContextMenu={(event) => {
+        if (event.target.closest?.("input, textarea")) return;
+        event.preventDefault();
+        openAt({
+          top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 360)),
+          left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 256)),
+        });
+      }}
+    >
+      {variant === "queue" ? <span className="track-row-drag" aria-hidden="true"><DotsSixVertical size={14} /></span> : null}
+      <div className="track-row-lead">
+        {variant === "playlist" ? <span className="track-row-idx">{index + 1}</span> : <Artwork track={track} size="small" />}
+        <button type="button" className="track-row-overlay" aria-label={`Play ${track.title}`} onClick={playNow} disabled={pending}>
+          {pending ? <SpinnerGap className="button-spinner" size={16} aria-hidden="true" /> : <Play size={16} weight="fill" aria-hidden="true" />}
+        </button>
+        <span className="track-row-eq" aria-hidden="true"><i /><i /><i /></span>
+      </div>
+      <div className="track-row-main">
+        <div className="track-row-title">
+          <strong title={track.title}>{track.title}</strong>
+          <TrackBadges track={track} />
+          {variant === "queue" && isAutoplayQueueTrack(track) ? <span className="auto-pill">Auto</span> : null}
+        </div>
+        <div className="track-row-sub">
+          <span className="track-row-artist">{track.author}</span>
+          <TrackSourceGlyph source={track.source} />
+          {subExtra ? <span className="track-row-extra">{subExtra}</span> : null}
+          {variant === "history" && whoName ? <span className="track-row-who-inline">{whoName}</span> : null}
+        </div>
+      </div>
+      {variant === "history" ? (
+        <>
+          <div className="track-row-col track-row-who">
+            <span className={`track-row-avatar ${columns.whoAuto ? "is-auto" : ""}`} aria-hidden="true">{columns.whoAuto ? <Sparkle size={12} weight="fill" /> : whoName.charAt(0)}</span>
+            <span>{whoName}</span>
+          </div>
+          <div className="track-row-col track-row-time">{columns.time || ""}</div>
+        </>
+      ) : null}
+      {variant === "playlist" ? <div className="track-row-col track-row-added">{columns.added || ""}</div> : null}
+      {variant !== "history" ? <div className="track-row-col track-row-dur">{columns.duration ?? durationText}</div> : null}
+      <div className="track-row-actions">
+        {actions}
+        {variant !== "queue" ? (
+          <>
+            <IconButton label={isLiked ? "Remove from liked songs" : "Add to liked songs"} className={`track-act ${isLiked ? "is-liked" : ""} ${popping ? "is-pop" : ""}`} loading={isActionPending(`toggle_like:${track.id}`)} onClick={() => onAction("toggle_like", { track })} aria-pressed={isLiked}>
+              <Heart size={17} weight={isLiked ? "fill" : "regular"} aria-hidden="true" />
+            </IconButton>
+            <IconButton label="Add to queue" className="track-act" disabled={pending} onClick={addToQueue}>
+              <Plus size={17} aria-hidden="true" />
+            </IconButton>
+          </>
+        ) : null}
+        <TrackContextMenu
+          track={track}
+          playlists={playlists}
+          likedTrackIds={likedTrackIds}
+          onAction={onAction}
+          findSources={findSources}
+          open={menu.open}
+          position={menu}
+          onOpen={openAt}
+          onClose={closeMenu}
+          triggerClassName="track-act"
+          menuExtras={menuExtras}
+          menuFooter={menuFooter}
+          hideBasics={hideMenuBasics}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1270,12 +1456,6 @@ function CompactPlayer({ state }) {
 
 function QueuePanel({ queue, playlists = [], likedTrackIds = [], onAction, isActionPending = () => false }) {
   const [draggedQueueItemId, setDraggedQueueItemId] = useState(null);
-  const [menu, setMenu] = useState(null);
-  const menuRef = useRef(null);
-  const guards = useSmartMenuGuards(Boolean(menu), null, menuRef, () => setMenu(null));
-  const closeMenu = () => { guards.clearCloseTimer(); setMenu(null); };
-  const menuTrack = menu ? queue.find((track) => track.queueItemId === menu.queueItemId) : null;
-  const menuIndex = menuTrack ? queue.indexOf(menuTrack) : -1;
   const moveTrack = (track, index, targetIndex) => {
     const target = queue[targetIndex];
     if (!track || !target || track.queueItemId === target.queueItemId) return;
@@ -1295,101 +1475,194 @@ function QueuePanel({ queue, playlists = [], likedTrackIds = [], onAction, isAct
         <div className="queue-group-kicker">From the room</div>
         {queue.map((track, index) => <div key={track.queueItemId || `${track.id}-${index}`}>
           {track.autoplay && index > 0 && !queue[index - 1]?.autoplay ? <div className="queue-group-kicker" role="separator">MewBit autoplay</div> : null}
-          <div
-            className={`queue-row ${draggedQueueItemId === track.queueItemId ? "is-dragged" : ""}`}
-            draggable
-            tabIndex={0}
-            onDragStart={() => setDraggedQueueItemId(track.queueItemId)}
-            onDragEnd={() => setDraggedQueueItemId(null)}
-            onKeyDown={(event) => {
-              if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
-              event.preventDefault();
-              moveTrack(track, index, event.key === "ArrowUp" ? index - 1 : index + 1);
+          <TrackRow
+            variant="queue"
+            track={track}
+            index={index}
+            onAction={onAction}
+            playlists={playlists}
+            likedTrackIds={likedTrackIds}
+            isActionPending={isActionPending}
+            subExtra={formatQueueEta(queue, index)}
+            hideMenuBasics
+            className={draggedQueueItemId === track.queueItemId ? "is-dragged" : ""}
+            rowProps={{
+              draggable: true,
+              tabIndex: 0,
+              onDragStart: () => setDraggedQueueItemId(track.queueItemId),
+              onDragEnd: () => setDraggedQueueItemId(null),
+              onKeyDown: (event) => {
+                if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                event.preventDefault();
+                moveTrack(track, index, event.key === "ArrowUp" ? index - 1 : index + 1);
+              },
+              onDrop: () => {
+                const draggedIndex = queue.findIndex((item) => item.queueItemId === draggedQueueItemId);
+                const draggedTrack = queue[draggedIndex];
+                if (draggedTrack && draggedIndex !== index) moveTrack(draggedTrack, draggedIndex, index);
+                setDraggedQueueItemId(null);
+              },
             }}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              setDraggedQueueItemId(null);
-              setMenu({
-                queueItemId: track.queueItemId,
-                top: Math.max(10, Math.min(event.clientY + 4, window.innerHeight - 300)),
-                left: Math.max(10, Math.min(event.clientX + 4, window.innerWidth - 246)),
-              });
-            }}
-            onDrop={() => {
-              const draggedIndex = queue.findIndex((item) => item.queueItemId === draggedQueueItemId);
-              const draggedTrack = queue[draggedIndex];
-              if (draggedTrack && draggedIndex !== index) moveTrack(draggedTrack, draggedIndex, index);
-              setDraggedQueueItemId(null);
-            }}
-          >
-            <span className="queue-num" aria-hidden="true">{index + 1}</span>
-            <Artwork track={track} size="small" />
-            <div className="queue-track-copy">
-              <strong>{track.title}</strong>
-              <span>{track.author} · {sourceLabel(track.source)} · {formatQueueEta(queue, index)}</span>
-            </div>
-            <div className="queue-side">
-              {track.autoplay ? <span className="auto-pill" title="Added by MewBit autoplay">AUTO</span> : null}
-              <div className="queue-side-btns">
-                {track.autoplay ? <IconButton label={`Find a different autoplay pick than ${track.title}`} className="queue-replace-autoplay" loading={isActionPending(`replace_autoplay:${track.queueItemId}`)} onClick={() => onAction("replace_autoplay", { position: index, queueItemId: track.queueItemId })}>
-                  <ArrowsClockwise size={15} aria-hidden="true" />
-                </IconButton> : null}
-                <IconButton label={`Play ${track.title} next`} className="queue-play-next" loading={isActionPending(`play_next:${track.queueItemId}`)} onClick={() => onAction("play_next", { position: index, queueItemId: track.queueItemId })}>
-                  <ArrowBendUpRight size={15} aria-hidden="true" />
-                </IconButton>
-                <IconButton label={`Remove ${track.title} from queue`} className="queue-remove" loading={isActionPending(`remove_queue:${track.queueItemId}`)} onClick={() => onAction("remove_queue", { position: index, queueItemId: track.queueItemId })}>
-                  <Trash size={15} aria-hidden="true" />
-                </IconButton>
-              </div>
-              <span className="queue-duration">{formatTime(track.durationMs)}</span>
-            </div>
-          </div>
+            actions={<>
+              {track.autoplay ? <IconButton label={`Find a different autoplay pick than ${track.title}`} className="track-act queue-replace-autoplay" loading={isActionPending(`replace_autoplay:${track.queueItemId}`)} onClick={() => onAction("replace_autoplay", { position: index, queueItemId: track.queueItemId })}>
+                <ArrowsClockwise size={15} aria-hidden="true" />
+              </IconButton> : null}
+              <IconButton label={`Play ${track.title} next`} className="track-act queue-play-next" loading={isActionPending(`play_next:${track.queueItemId}`)} onClick={() => onAction("play_next", { position: index, queueItemId: track.queueItemId })}>
+                <ArrowBendUpRight size={15} aria-hidden="true" />
+              </IconButton>
+              <IconButton label={`Remove ${track.title} from queue`} className="track-act queue-remove" loading={isActionPending(`remove_queue:${track.queueItemId}`)} onClick={() => onAction("remove_queue", { position: index, queueItemId: track.queueItemId })}>
+                <Trash size={15} aria-hidden="true" />
+              </IconButton>
+            </>}
+            menuExtras={({ close }) => <>
+              {track.autoplay ? <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("replace_autoplay", { position: index, queueItemId: track.queueItemId }); close(); }}>
+                <ArrowsClockwise size={15} aria-hidden="true" /><span>Find a different autoplay pick</span>
+              </button> : null}
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play_next", { position: index, queueItemId: track.queueItemId }); close(); }}>
+                <Play size={15} weight="fill" aria-hidden="true" /><span>Play next</span>
+              </button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { moveTrack(track, index, 0); close(); }} disabled={index === 0}>
+                <ArrowBendUpRight size={15} aria-hidden="true" /><span>Move to top</span>
+              </button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { moveTrack(track, index, index - 1); close(); }} disabled={index <= 0}>
+                <ArrowBendUpRight size={15} aria-hidden="true" /><span>Move up</span>
+              </button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { moveTrack(track, index, index + 1); close(); }} disabled={index >= queue.length - 1}>
+                <ArrowBendUpRight size={15} aria-hidden="true" /><span>Move down</span>
+              </button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("remove_queue", { position: index, queueItemId: track.queueItemId }); close(); }}>
+                <Trash size={15} aria-hidden="true" /><span>Remove from queue</span>
+              </button>
+            </>}
+          />
         </div>)}
       </>}
-      {(menuTrack ? (<SmartMenu open position={menu} rootRef={null} menuRef={menuRef} label={`Actions for ${menuTrack.title}`}>
-        <>
-          {menuTrack.autoplay ? <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("replace_autoplay", { position: menuIndex, queueItemId: menuTrack.queueItemId }); closeMenu(); }}>
-            <ArrowsClockwise size={15} aria-hidden="true" /><span>Find a different autoplay pick</span>
-          </button> : null}
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("play_next", { position: menuIndex, queueItemId: menuTrack.queueItemId }); closeMenu(); }}>
-            <Play size={15} weight="fill" aria-hidden="true" /><span>Play next</span>
-          </button>
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { moveTrack(menuTrack, menuIndex, 0); closeMenu(); }} disabled={menuIndex === 0}>
-            <ArrowBendUpRight size={15} aria-hidden="true" /><span>Move to top</span>
-          </button>
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { onAction("remove_queue", { position: menuIndex, queueItemId: menuTrack.queueItemId }); closeMenu(); }}>
-            <Trash size={15} aria-hidden="true" /><span>Remove from queue</span>
-          </button>
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { moveTrack(menuTrack, menuIndex, menuIndex - 1); closeMenu(); }} disabled={menuIndex <= 0}>
-            <ArrowBendUpRight size={15} aria-hidden="true" /><span>Move up</span>
-          </button>
-          <button type="button" role="menuitem" className="row-menu-item" onClick={() => { moveTrack(menuTrack, menuIndex, menuIndex + 1); closeMenu(); }} disabled={menuIndex < 0 || menuIndex >= queue.length - 1}>
-            <ArrowBendUpRight size={15} aria-hidden="true" /><span>Move down</span>
-          </button>
-          <span className="row-menu-divider" aria-hidden="true" />
-          <QueueRowLikeMenuItem track={menuTrack} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} onClose={closeMenu} />
-        </>
-      </SmartMenu>) : null)}
     </div>
   );
 }
 
-function QueueRowLikeMenuItem({ track, playlists = [], likedTrackIds = [], onAction, onClose }) {
-  if (!track) return null;
-  return <TrackMenuActions track={track} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} onClose={onClose} />;
+// Small shared dialog: scrim + panel with the Motion v1 enter/exit, Escape to
+// close, a Tab trap and focus returned to whatever opened it. Rendered in a
+// portal so it is never clipped by (or positioned inside) a scrolling panel.
+function Modal({ open, onClose, labelledBy, initialFocusRef, restoreFocusRef, children, className = "" }) {
+  const [mounted, setMounted] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const dialogRef = useRef(null);
+  const returnFocusRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setClosing(false);
+      return undefined;
+    }
+    if (!mounted) return undefined;
+    setClosing(true);
+    const timer = window.setTimeout(() => { setMounted(false); setClosing(false); }, 190);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    returnFocusRef.current = document.activeElement;
+    const focusTimer = window.requestAnimationFrame(() => {
+      const target = initialFocusRef?.current || dialogRef.current?.querySelector("input, textarea, button:not([data-modal-close])");
+      target?.focus();
+    });
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      else if (!dialogRef.current.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      document.removeEventListener("keydown", onKeyDown, true);
+      const returnTo = restoreFocusRef?.current?.isConnected ? restoreFocusRef.current : returnFocusRef.current;
+      window.requestAnimationFrame(() => { if (returnTo?.isConnected) returnTo.focus?.(); });
+    };
+  }, [open]);
+
+  if (!mounted && !open) return null;
+  return createPortal(
+    <div className={`mscrim ${closing || !open ? "is-closing" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
+      <div ref={dialogRef} className={`mdlg ${className}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
-function QueueHistoryPanel({ history = [], sessionStartedAt }) {
+const HISTORY_QUEUE_LIMIT = 50;
+const HISTORY_SAVE_LIMIT = 500;
+
+function historyRequester(track) {
+  return String(track?.requester || (track?.autoplay ? "MewBit" : "Unknown")).trim();
+}
+
+function formatClock(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
+function historyDayKey(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return "earlier";
+  const date = new Date(value);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function historyDayLabel(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return "Earlier";
+  const date = new Date(value);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (historyDayKey(value) === historyDayKey(today.getTime())) return "Today";
+  if (historyDayKey(value) === historyDayKey(yesterday.getTime())) return "Yesterday";
+  return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(date);
+}
+
+function toQueueTrackPayload(track) {
+  return {
+    title: track.title,
+    author: track.author,
+    uri: track.uri || track.playQuery || "",
+    source: track.source,
+    durationMs: track.durationMs || 0,
+    artworkUrl: track.artworkUrl || null,
+  };
+}
+
+function HistoryView({ history = [], sessionStartedAt = null, playlists = [], likedTrackIds = [], onAction, isActionPending = () => false, findSources }) {
+  const hasSession = Number(sessionStartedAt) > 0;
+  const [scope, setScope] = useState(hasSession ? "session" : "all");
   const [userFilter, setUserFilter] = useState("all");
   const [rangeFilter, setRangeFilter] = useState("all");
-  const [sessionOnly, setSessionOnly] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const nameInputRef = useRef(null);
 
-  const users = useMemo(() => [...new Set(history
-    .map((track) => String(track?.requester || (track?.autoplay ? "MewBit" : "Unknown")).trim())
-    .filter(Boolean))].sort((left, right) => left.localeCompare(right)), [history]);
+  const users = useMemo(() => [...new Set(history.map(historyRequester).filter(Boolean))].sort((left, right) => left.localeCompare(right)), [history]);
 
-  const filteredHistory = useMemo(() => {
+  const filtered = useMemo(() => {
     const now = Date.now();
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -1398,48 +1671,139 @@ function QueueHistoryPanel({ history = [], sessionStartedAt }) {
       today: startOfToday.getTime(),
       "7d": now - 7 * 24 * 60 * 60_000,
     }[rangeFilter] || 0;
-    const sessionStart = sessionOnly ? Number(sessionStartedAt || 0) : 0;
-
+    const sessionStart = scope === "session" ? Number(sessionStartedAt || 0) : 0;
     return history.filter((track) => {
-      const requester = String(track?.requester || (track?.autoplay ? "MewBit" : "Unknown")).trim();
       const playedAt = Number(track?.playedAt || 0);
-      return (userFilter === "all" || requester === userFilter)
+      return (userFilter === "all" || historyRequester(track) === userFilter)
         && (!rangeStart || playedAt >= rangeStart)
         && (!sessionStart || playedAt >= sessionStart);
     });
-  }, [history, rangeFilter, sessionOnly, sessionStartedAt, userFilter]);
+  }, [history, rangeFilter, scope, sessionStartedAt, userFilter]);
+
+  // Newest first on screen, grouped by local calendar day.
+  const groups = useMemo(() => {
+    const ordered = [...filtered].sort((left, right) => Number(right.playedAt || 0) - Number(left.playedAt || 0));
+    const result = [];
+    for (const track of ordered) {
+      const key = historyDayKey(track.playedAt);
+      let group = result[result.length - 1];
+      if (!group || group.key !== key) {
+        group = { key, label: historyDayLabel(track.playedAt), tracks: [] };
+        result.push(group);
+      }
+      group.tracks.push(track);
+    }
+    return result;
+  }, [filtered]);
+
+  const summary = `${filtered.length} ${filtered.length === 1 ? "track" : "tracks"}${scope === "session" && hasSession ? " this session" : ""}`;
+
+  const queueAll = () => {
+    const tracks = [...filtered]
+      .sort((left, right) => Number(left.playedAt || 0) - Number(right.playedAt || 0))
+      .slice(-HISTORY_QUEUE_LIMIT)
+      .map(toQueueTrackPayload);
+    if (tracks.length) onAction("queue_tracks", { tracks });
+  };
+
+  const openSave = () => {
+    const label = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date());
+    setSaveName(`${scope === "session" && hasSession ? "Session" : "History"} – ${label}`);
+    setSaveOpen(true);
+  };
+
+  const submitSave = async (event) => {
+    event.preventDefault();
+    const name = saveName.trim();
+    if (!name || saving || !filtered.length) return;
+    setSaving(true);
+    try {
+      const tracks = [...filtered]
+        .sort((left, right) => Number(left.playedAt || 0) - Number(right.playedAt || 0))
+        .slice(-HISTORY_SAVE_LIMIT)
+        .map(toQueueTrackPayload);
+      const response = await onAction("save_tracks_as_playlist", { name, tracks });
+      // onAction resolves to a falsy value when the request failed (the error is
+      // already a toast); keep the dialog open so the name can be changed.
+      if (response !== false) setSaveOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <section className="queue-history" aria-label="Playback history">
-      <div className="history-filter-grid">
-        <label>
-          <span>Played by</span>
+    <section className="history-view" aria-label="Playback history">
+      <div className="history-head">
+        <h2>History</h2>
+        <div className="history-head-actions">
+          <button type="button" className="mbtn mbtn-ghost" onClick={queueAll} disabled={!filtered.length || isActionPending("queue_tracks")}>Queue all</button>
+          <button type="button" className="mbtn mbtn-primary" onClick={openSave} disabled={!filtered.length}>Save as playlist</button>
+        </div>
+      </div>
+      <div className="history-filters">
+        <div className={`segs ${scope === "all" ? "at-1" : ""}`} role="tablist" aria-label="History range">
+          <button type="button" role="tab" aria-selected={scope === "session"} onClick={() => setScope("session")}>This session</button>
+          <button type="button" role="tab" aria-selected={scope === "all"} onClick={() => setScope("all")}>All time</button>
+        </div>
+        <label className="hist-chip">
+          <span>Played by:</span>
           <Dropdown value={userFilter} onChange={setUserFilter} label="Played by" options={[{ value: "all", label: "Everyone" }, ...users.map((user) => ({ value: user, label: user }))]} />
         </label>
-        <label>
-          <span>When</span>
+        <label className="hist-chip">
+          <span>When:</span>
           <Dropdown value={rangeFilter} onChange={setRangeFilter} label="When" options={HISTORY_RANGE_OPTIONS} />
         </label>
+        <span className="history-summary" aria-live="polite">{summary}</span>
       </div>
-      <label className={`history-session-toggle ${sessionOnly ? "is-active" : ""}`}>
-        <input type="checkbox" checked={sessionOnly} onChange={(event) => setSessionOnly(event.target.checked)} />
-        <span>This room session</span>
-      </label>
-      {filteredHistory.length === 0 ? <div className="empty-state compact queue-history-empty"><ClockCounterClockwise size={28} weight="duotone" aria-hidden="true" /><strong>{history.length ? "No matching tracks" : "Nothing has finished yet"}</strong><span>{history.length ? "Try another person or time range." : "Finished tracks will appear here for this room session."}</span></div> : (
-        <div className="history-list">
-          {filteredHistory.map((track, index) => (
-            <article className="history-row" key={`${track.id}-${track.playedAt || index}`}>
-              <Artwork track={track} size="small" />
-              <div className="history-track-copy">
-                <strong title={track.title}>{track.title}</strong>
-                <span title={track.author}>{track.author}</span>
-                <div className="history-track-meta"><SourceTag source={track.source} /><span>{track.requester || (track.autoplay ? "MewBit" : "Unknown")}</span></div>
+      {filtered.length === 0 ? (
+        <div className="empty-state compact queue-history-empty"><ClockCounterClockwise size={28} weight="duotone" aria-hidden="true" /><strong>{history.length ? "No matching tracks" : "Nothing has finished yet"}</strong><span>{history.length ? "Try another person or time range." : "Finished tracks will appear here for this room session."}</span></div>
+      ) : (
+        <div className="history-days">
+          {groups.map((group) => (
+            <div className="history-day" key={group.key}>
+              <div className="history-day-head"><h3>{group.label}</h3><span>{group.tracks.length} {group.tracks.length === 1 ? "track" : "tracks"}</span></div>
+              <div className="track-list">
+                {group.tracks.map((track, index) => {
+                  const who = historyRequester(track);
+                  return (
+                    <TrackRow
+                      key={`${track.id}-${track.playedAt || index}`}
+                      variant="history"
+                      track={track}
+                      index={index}
+                      onAction={onAction}
+                      playlists={playlists}
+                      likedTrackIds={likedTrackIds}
+                      findSources={findSources}
+                      isActionPending={isActionPending}
+                      columns={{ who, whoAuto: Boolean(track.autoplay) || who === "MewBit", time: formatClock(track.playedAt) }}
+                    />
+                  );
+                })}
               </div>
-              <time dateTime={track.playedAt ? new Date(track.playedAt).toISOString() : undefined} title={track.playedAt ? new Date(track.playedAt).toLocaleString() : undefined}>{formatHistoryTime(track.playedAt)}</time>
-            </article>
+            </div>
           ))}
         </div>
       )}
+      <Modal open={saveOpen} onClose={() => setSaveOpen(false)} labelledBy="history-save-title" initialFocusRef={nameInputRef}>
+        <form className="mdlg-form" onSubmit={submitSave}>
+          <div className="mdlg-head">
+            <div>
+              <h2 id="history-save-title">Save as playlist</h2>
+              <p>{filtered.length} {filtered.length === 1 ? "track" : "tracks"}{filtered.length > HISTORY_SAVE_LIMIT ? ` (the latest ${HISTORY_SAVE_LIMIT} will be saved)` : ""}</p>
+            </div>
+            <IconButton label="Close" data-modal-close onClick={() => setSaveOpen(false)}><X size={17} aria-hidden="true" /></IconButton>
+          </div>
+          <label className="fl">
+            <span>Name</span>
+            <input ref={nameInputRef} className="fi" value={saveName} maxLength={100} onChange={(event) => setSaveName(event.target.value)} required />
+          </label>
+          <div className="mdlg-actions">
+            <button type="button" className="mbtn mbtn-ghost" onClick={() => setSaveOpen(false)}>Cancel</button>
+            <button type="submit" className="mbtn mbtn-primary" disabled={!saveName.trim() || saving}>{saving ? "Saving…" : "Save playlist"}</button>
+          </div>
+        </form>
+      </Modal>
     </section>
   );
 }
@@ -1458,48 +1822,19 @@ function normalizeArtistKey(author) {
 function SearchPanel({ query, setQuery, results, findSources, libraryResults = [], similarResults = [], status, correction = null, suggestions = [], onSearch, onSearchExact, onAction, playlists = [], likedTrackIds = [], isActionPending = () => false, showSearchBar = true }) {
   const directLink = parseMusicLink(query);
   const directSource = directLink?.source === "direct" ? "auto" : directLink?.source;
-  const [menuState, setMenuState] = useState(null);
-  const renderResultRow = (track) => (
-        <div
-          className={`result-row ${menuState?.id === track.id ? "is-menu-open" : ""}`}
-          key={track.id}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setMenuState({
-              id: track.id,
-              top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 238)),
-              left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 246)),
-            });
-          }}
-        >
-          <Artwork track={track} size="small" />
-          <div className="result-copy">
-            <strong>{track.title}</strong>
-            <span className="result-subline">{track.author} · {LIBRARY_ORIGIN_LABELS[track.origin] || sourceLabel(track.source)}</span>
-          </div>
-          <span className="result-duration">{formatTime(track.durationMs)}</span>
-          <div className="result-actions">
-            <button className="row-play" type="button" onClick={() => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, playNow: true, trackId: track.id })} disabled={isActionPending(`play:${track.id}`)} aria-label="Play">
-              <Play size={14} weight="fill" aria-hidden="true" />
-            </button>
-            <button className="row-add" type="button" onClick={() => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, trackId: track.id })} disabled={isActionPending(`play:${track.id}`)} aria-label="Add to queue">
-              <Plus size={14} aria-hidden="true" />
-            </button>
-            <TrackContextMenu
-              track={track}
-              playlists={playlists}
-              likedTrackIds={likedTrackIds}
-              onAction={onAction}
-              findSources={findSources}
-              isActionPending={isActionPending}
-              open={menuState?.id === track.id}
-              position={{ top: menuState?.top ?? 0, left: menuState?.left ?? 0 }}
-              onOpen={(pos) => setMenuState({ id: track.id, top: pos.top, left: pos.left })}
-              onClose={() => setMenuState(null)}
-            />
-          </div>
-        </div>
+  const renderResultRow = (track, index) => (
+    <TrackRow
+      key={track.id}
+      variant="search"
+      track={track}
+      index={index}
+      onAction={onAction}
+      playlists={playlists}
+      likedTrackIds={likedTrackIds}
+      findSources={findSources}
+      isActionPending={isActionPending}
+      subExtra={LIBRARY_ORIGIN_LABELS[track.origin] || null}
+    />
   );
   const libraryUris = new Set(libraryResults.map((track) => track.uri).filter(Boolean));
   const providerResults = results.filter((track) => !track.uri || !libraryUris.has(track.uri));
@@ -1514,7 +1849,7 @@ function SearchPanel({ query, setQuery, results, findSources, libraryResults = [
   const shownUris = new Set([...libraryUris, ...providerResults.map((track) => track.uri)].filter(Boolean));
   const similarShown = similarResults.filter((track) => !track.uri || !shownUris.has(track.uri));
   const playTrack = (track, playNow) => onAction("play", { query: track.playQuery || track.uri || `${track.title} ${track.author}`, source: track.source, playNow, trackId: track.id });
-  const resultList = (tracks) => <div className={`search-results ${menuState ? "has-menu-open" : ""}`}>{tracks.map(renderResultRow)}</div>;
+  const resultList = (tracks) => <div className="search-results track-list">{tracks.map(renderResultRow)}</div>;
 
   return (
     <div className="search-panel">
@@ -1580,6 +1915,21 @@ function SearchPanel({ query, setQuery, results, findSources, libraryResults = [
   );
 }
 
+function formatTotalDuration(milliseconds) {
+  const minutes = Math.max(1, Math.round(milliseconds / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} hr ${minutes % 60} min`;
+}
+
+function formatAddedDate(timestamp) {
+  const value = Number(timestamp);
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
+}
+
 function PlaylistsPanel({ playlists, currentTrack, selectedPlaylist, playlistDetail, likedTrackIds = [], composerOpen = false, onComposerClose, onAction }) {
   const [name, setName] = useState("");
   const [importUrl, setImportUrl] = useState("");
@@ -1587,11 +1937,24 @@ function PlaylistsPanel({ playlists, currentTrack, selectedPlaylist, playlistDet
   const [composerTab, setComposerTab] = useState("create");
   const [editor, setEditor] = useState(null);
   const [sortMode, setSortMode] = useState("recent");
+  const [trackFilter, setTrackFilter] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [showImageField, setShowImageField] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [moreMenu, setMoreMenu] = useState({ open: false, top: 0, left: 0 });
+  const moreRef = useRef(null);
+  const moreMenuRef = useRef(null);
+  const nameFieldRef = useRef(null);
+  const closeMoreMenu = useCallback(() => setMoreMenu((current) => ({ ...current, open: false })), []);
+  useSmartMenuGuards(moreMenu.open, moreRef, moreMenuRef, closeMoreMenu);
   const composerRef = useRef(null);
   const composerReturnFocusRef = useRef(null);
   const selectedSummary = playlists.find((playlist) => playlist.name === selectedPlaylist) || playlists.find((playlist) => playlist.id === selectedPlaylist);
 
   useEffect(() => {
+    setTrackFilter("");
+    setEditOpen(false);
     if (selectedPlaylist === null) {
       setEditor(null);
       setSortMode("recent");
@@ -1644,7 +2007,9 @@ function PlaylistsPanel({ playlists, currentTrack, selectedPlaylist, playlistDet
   }, [closeComposer, composerOpen, composerTab]);
 
   const sortedTracks = useMemo(() => {
-    const tracks = (editor?.tracks || []).map((track, index) => ({ track, index }));
+    const needle = trackFilter.trim().toLowerCase();
+    const tracks = (editor?.tracks || []).map((track, index) => ({ track, index }))
+      .filter(({ track }) => !needle || `${track.title || ""} ${track.author || ""}`.toLowerCase().includes(needle));
     return tracks.sort((left, right) => {
       const a = left.track;
       const b = right.track;
@@ -1660,29 +2025,143 @@ function PlaylistsPanel({ playlists, currentTrack, selectedPlaylist, playlistDet
       if (sortMode === "duration-asc") return Number(a.durationMs || 0) - Number(b.durationMs || 0) || left.index - right.index;
       return (Number(b.addedAt) || right.index) - (Number(a.addedAt) || left.index) || right.index - left.index;
     });
-  }, [editor?.tracks, sortMode]);
+  }, [editor?.tracks, sortMode, trackFilter]);
 
   const submit = () => { if (!name.trim()) return; onAction("create_playlist", { name: name.trim() }); setName(""); closeComposer(); };
   const submitImport = () => { if (!importUrl.trim()) return; onAction("import_playlist", { url: importUrl.trim(), name: importName.trim() }); setImportUrl(""); setImportName(""); closeComposer(); };
-  const selectedName = editor?.name || selectedSummary?.name;
-  const saveEditor = () => {
-    if (!editor || !selectedName) return;
-    onAction("update_playlist", {
-      name: selectedName,
-      newName: editor.newName,
-      description: editor.description,
-      thumbnail: editor.thumbnail,
-      public: editor.public,
-      collaborative: editor.collaborative,
+  const coverTracks = (editor?.tracks || []).filter((track) => track.artworkUrl).slice(0, 4);
+  const totalDurationMs = (editor?.tracks || []).reduce((sum, track) => sum + (track.isStream ? 0 : Number(track.durationMs) || 0), 0);
+  const toggleMoreMenu = (event) => {
+    if (moreMenu.open) { closeMoreMenu(); return; }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMoreMenu({
+      open: true,
+      top: Math.max(10, Math.min(rect.bottom + 6, window.innerHeight - 200)),
+      left: Math.max(10, Math.min(rect.left, window.innerWidth - 246)),
     });
+  };
+  const openEdit = () => {
+    if (!editor) return;
+    setDraft({
+      newName: editor.name || "",
+      description: editor.description || "",
+      thumbnail: editor.thumbnail || "",
+      public: Boolean(editor.public),
+      collaborative: Boolean(editor.collaborative),
+    });
+    setShowImageField(Boolean(editor.thumbnail));
+    setEditOpen(true);
+  };
+  const saveDetails = async (event) => {
+    event.preventDefault();
+    if (!editor || !draft || savingDetails) return;
+    setSavingDetails(true);
+    const ok = await onAction("update_playlist", {
+      name: editor.name,
+      newName: String(draft.newName || "").trim() || editor.name,
+      description: draft.description,
+      thumbnail: draft.thumbnail,
+      public: draft.public,
+      collaborative: draft.collaborative,
+    });
+    setSavingDetails(false);
+    if (ok !== false) setEditOpen(false);
   };
   return (
     <div className="playlists-panel">
-      {editor ? <section className="playlist-detail" aria-label={`${editor.name} playlist editor`}>
-        <div className="playlist-detail-heading"><div><span className="sidebar-kicker">PLAYLIST EDITOR</span><h3>{editor.name}</h3><span>{editor.tracks?.length || 0} tracks</span></div><div className="playlist-detail-actions"><button className="primary-button" type="button" onClick={() => onAction("play_playlist", { name: editor.name })}><Play size={15} weight="fill" aria-hidden="true" /> Play</button><button className="secondary-button" type="button" onClick={() => onAction("play_playlist", { name: editor.name, shuffle: true })}><Shuffle size={15} aria-hidden="true" /> Shuffle</button>{!editor.isDefault ? <button className="ghost-button danger-button" type="button" onClick={() => onAction("delete_playlist", { name: editor.name })}><Trash size={15} aria-hidden="true" /> Delete</button> : null}</div></div>
-        <div className="playlist-editor-grid"><label>Name<input value={editor.newName ?? editor.name} disabled={editor.isDefault} onChange={(event) => setEditor((value) => ({ ...value, newName: event.target.value }))} /></label><label>Description<textarea value={editor.description || ""} onChange={(event) => setEditor((value) => ({ ...value, description: event.target.value }))} rows="2" /></label><label>Artwork URL<input value={editor.thumbnail || ""} onChange={(event) => setEditor((value) => ({ ...value, thumbnail: event.target.value }))} placeholder="https://…" /></label><div className="playlist-checks"><label className={`playlist-check-toggle ${editor.public ? "is-on" : ""}`}><input type="checkbox" checked={Boolean(editor.public)} disabled={editor.isDefault} onChange={(event) => setEditor((value) => ({ ...value, public: event.target.checked }))} /><Globe size={16} aria-hidden="true" /><span><strong>Public</strong><small>Visible to shared listeners</small></span></label><label className={`playlist-check-toggle ${editor.collaborative ? "is-on" : ""}`}><input type="checkbox" checked={Boolean(editor.collaborative)} disabled={editor.isDefault} onChange={(event) => setEditor((value) => ({ ...value, collaborative: event.target.checked }))} /><UsersThree size={16} aria-hidden="true" /><span><strong>Collaborative</strong><small>Let others add tracks</small></span></label><button className="secondary-button" type="button" onClick={saveEditor}><Check size={15} weight="bold" aria-hidden="true" /> Save changes</button></div></div>
-        <div className="playlist-detail-toolbar"><strong>Tracks</strong><label className="playlist-sort-control"><span>Sort</span><Dropdown value={sortMode} onChange={setSortMode} label="Sort playlist tracks" options={PLAYLIST_SORT_OPTIONS} align="end" /></label></div>
-        <div className="playlist-track-list">{sortedTracks.length ? sortedTracks.map(({ track, index }) => <div className="playlist-track-row" key={`${track.id}-${index}`}><Artwork track={track} size="small" /><div className="playlist-track-copy"><strong>{track.title}</strong><span>{track.author}</span><SourceTag source={track.source} /></div><span className="playlist-track-duration">{formatTime(track.durationMs)}</span><TrackSaveActions track={track} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} className="playlist-track-save-actions" /><button className="playlist-action danger-button" type="button" onClick={() => onAction("remove_playlist_track", { name: editor.name, position: index })} title="Remove track"><Trash size={15} aria-hidden="true" /></button></div>) : <div className="empty-state compact"><MusicNotes size={30} weight="duotone" aria-hidden="true" /><strong>Playlist is empty</strong><span>Add the current track or save one from search.</span></div>}</div>
+      {editor ? <section className="pl-detail" aria-label={`${editor.name} playlist`}>
+        <div className="pl-hero">
+          <div className={`pl-cover ${coverTracks.length < 4 || editor.thumbnail ? "is-single" : ""}`}>
+            {editor.thumbnail || coverTracks.length < 4
+              ? <Artwork track={{ title: editor.name, artworkUrl: editor.thumbnail || coverTracks[0]?.artworkUrl }} size="large" />
+              : coverTracks.map((track, index) => <Artwork key={`${track.id}-${index}`} track={track} size="large" />)}
+          </div>
+          <div className="pl-meta">
+            <span className="pl-kicker">Playlist</span>
+            <h1 className="pl-title">{editor.name}</h1>
+            {editor.description ? <p className="pl-desc">{editor.description}</p> : null}
+            <div className="pl-stats">
+              <span>{editor.tracks?.length || 0} {(editor.tracks?.length || 0) === 1 ? "track" : "tracks"}</span>
+              {totalDurationMs ? <span>· {formatTotalDuration(totalDurationMs)}</span> : null}
+              {editor.public ? <span className="pl-flag"><Globe size={13} aria-hidden="true" /> Public</span> : null}
+              {editor.collaborative ? <span className="pl-flag"><UsersThree size={13} aria-hidden="true" /> Collaborative</span> : null}
+            </div>
+          </div>
+        </div>
+        <div className="pl-controls">
+          <button className="pl-play" type="button" aria-label={`Play ${editor.name}`} title="Play" onClick={() => onAction("play_playlist", { name: editor.name })} disabled={!editor.tracks?.length}><Play size={24} weight="fill" aria-hidden="true" /></button>
+          <button className="pl-round" type="button" aria-label="Shuffle play" title="Shuffle play" onClick={() => onAction("play_playlist", { name: editor.name, shuffle: true })} disabled={!editor.tracks?.length}><Shuffle size={18} aria-hidden="true" /></button>
+          <button ref={moreRef} className={`pl-round ${moreMenu.open ? "is-active" : ""}`} type="button" aria-label="More playlist actions" title="More" aria-haspopup="menu" aria-expanded={moreMenu.open} onClick={toggleMoreMenu}><DotsThreeVertical size={18} weight="bold" aria-hidden="true" /></button>
+          <SmartMenu open={moreMenu.open} position={moreMenu} rootRef={moreRef} menuRef={moreMenuRef} label="Playlist actions">
+            <>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { closeMoreMenu(); openEdit(); }}><PencilSimple size={15} aria-hidden="true" /><span>Edit details</span></button>
+              <button type="button" role="menuitem" className="row-menu-item" onClick={() => { navigator.clipboard?.writeText(editor.name).catch(() => {}); closeMoreMenu(); }}><CopySimple size={15} aria-hidden="true" /><span>Copy playlist name</span></button>
+              {!editor.isDefault ? <>
+                <span className="row-menu-divider" aria-hidden="true" />
+                <button type="button" role="menuitem" className="row-menu-item danger-button" onClick={() => { closeMoreMenu(); onAction("delete_playlist", { name: editor.name }); }}><Trash size={15} aria-hidden="true" /><span>Delete playlist</span></button>
+              </> : null}
+            </>
+          </SmartMenu>
+          <div className="pl-toolbar">
+            <label className="pl-search">
+              <MagnifyingGlass size={15} aria-hidden="true" />
+              <input value={trackFilter} onChange={(event) => setTrackFilter(event.target.value)} placeholder="Search in playlist" aria-label="Search in playlist" />
+            </label>
+            <label className="pl-sort"><span>Sort:</span><Dropdown value={sortMode} onChange={setSortMode} label="Sort playlist tracks" options={PLAYLIST_SORT_OPTIONS} align="end" /></label>
+          </div>
+        </div>
+        <div className="pl-colh" aria-hidden="true"><span className="pl-col-idx">#</span><span>Title</span><span className="pl-col-added">Added</span><span className="pl-col-dur"><ClockCounterClockwise size={14} /></span><span /></div>
+        <div className="pl-list track-list">
+          {sortedTracks.length ? sortedTracks.map(({ track, index }, rowIndex) => (
+            <TrackRow
+              key={`${track.id}-${index}`}
+              variant="playlist"
+              track={track}
+              index={rowIndex}
+              playing={Boolean(currentTrack) && getTrackLikeKey(track) === getTrackLikeKey(currentTrack)}
+              onAction={onAction}
+              playlists={playlists}
+              likedTrackIds={likedTrackIds}
+              columns={{ added: formatAddedDate(track.addedAt) }}
+              menuFooter={({ close }) => (
+                <button type="button" role="menuitem" className="row-menu-item danger-button" onClick={() => { onAction("remove_playlist_track", { name: editor.name, position: index }); close(); }}>
+                  <Trash size={15} aria-hidden="true" /><span>Remove from this playlist</span>
+                </button>
+              )}
+            />
+          )) : <div className="empty-state compact"><MusicNotes size={30} weight="duotone" aria-hidden="true" /><strong>{editor.tracks?.length ? "No matching tracks" : "Playlist is empty"}</strong><span>{editor.tracks?.length ? "Try another title or artist." : "Add the current track or save one from search."}</span></div>}
+        </div>
+        <Modal open={editOpen} onClose={() => setEditOpen(false)} labelledBy="pl-edit-title" initialFocusRef={nameFieldRef} restoreFocusRef={moreRef}>
+          {draft ? <form className="mdlg-form" onSubmit={saveDetails}>
+            <div className="mdlg-head">
+              <div><h2 id="pl-edit-title">Edit details</h2></div>
+              <IconButton label="Close" data-modal-close onClick={() => setEditOpen(false)}><X size={17} aria-hidden="true" /></IconButton>
+            </div>
+            <div className="mdlg-edit">
+              <div className="mdlg-tile">
+                <div className="pl-cover is-single"><Artwork track={{ title: draft.newName || editor.name, artworkUrl: draft.thumbnail || editor.thumbnail || coverTracks[0]?.artworkUrl }} size="large" /></div>
+                <button type="button" className="mlink" onClick={() => setShowImageField((value) => !value)} aria-expanded={showImageField}>Use image URL</button>
+              </div>
+              <div className="mdlg-fields">
+                <label className="fl"><span>Name</span><input ref={nameFieldRef} className="fi" value={draft.newName} disabled={editor.isDefault} maxLength={100} onChange={(event) => setDraft((value) => ({ ...value, newName: event.target.value }))} required /></label>
+                <label className="fl"><span>Description</span><textarea className="ft" value={draft.description} rows="3" maxLength={300} placeholder="Add an optional description" onChange={(event) => setDraft((value) => ({ ...value, description: event.target.value }))} /></label>
+                {showImageField ? <label className="fl"><span>Image URL</span><input className="fi" value={draft.thumbnail} placeholder="https://…" onChange={(event) => setDraft((value) => ({ ...value, thumbnail: event.target.value }))} /></label> : null}
+                <div className={`trow ${editor.isDefault ? "is-disabled" : ""}`}>
+                  <div><strong>Public</strong><small>Visible to shared listeners</small></div>
+                  <button type="button" role="switch" className="sw" aria-label="Public" aria-checked={Boolean(draft.public)} disabled={editor.isDefault} onClick={() => setDraft((value) => ({ ...value, public: !value.public }))}><i /></button>
+                </div>
+                <div className={`trow ${editor.isDefault ? "is-disabled" : ""}`}>
+                  <div><strong>Collaborative</strong><small>Let others add tracks</small></div>
+                  <button type="button" role="switch" className="sw" aria-label="Collaborative" aria-checked={Boolean(draft.collaborative)} disabled={editor.isDefault} onClick={() => setDraft((value) => ({ ...value, collaborative: !value.collaborative }))}><i /></button>
+                </div>
+              </div>
+            </div>
+            <div className="mdlg-actions">
+              <button type="button" className="mbtn mbtn-ghost" onClick={() => setEditOpen(false)}>Cancel</button>
+              <button type="submit" className="mbtn mbtn-primary" disabled={savingDetails || !String(draft.newName || "").trim()}>{savingDetails ? "Saving…" : "Save"}</button>
+            </div>
+          </form> : null}
+        </Modal>
       </section> : null}
       {!editor ? <div className="empty-state compact playlist-selection-empty"><VinylRecord size={30} weight="duotone" aria-hidden="true" /><strong>{selectedSummary ? `Opening ${selectedSummary.name}` : "Select a playlist to edit"}</strong><span>Choose a playlist from Your Library on the left.</span></div> : null}
       {composerOpen ? <div className="playlist-composer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeComposer(); }}>
@@ -1787,70 +2266,19 @@ function PlaylistSidebar({ playlists, selectedPlaylist, onSelect, onCreate, onAc
   );
 }
 
-function QueueSidebar({ queue, history = [], sessionStartedAt = null, playlists = [], likedTrackIds = [], queueOpen, onToggleQueue, onAction, isActionPending, loading = false }) {
-  const [view, setView] = useState("queue");
-  const showingHistory = view === "history";
-
+function QueueSidebar({ queue, playlists = [], likedTrackIds = [], historyActive = false, onOpenHistory, onToggleQueue, onAction, isActionPending, loading = false }) {
   return (
     <div className="sidebar-content queue-sidebar-content">
       <div className="sidebar-heading"><button className="drawer-close" type="button" aria-label="Close queue panel" onClick={onToggleQueue}><X size={16} aria-hidden="true" /></button>
-        <h2>{showingHistory ? "History" : "Queue"}</h2>
+        <h2>Queue</h2>
         <div className="queue-head-meta">
-          <span className="queue-upnext">{loading ? "…" : (showingHistory ? `${history.length} played` : `${queue.length} up next`)}</span>
-          <IconButton label={showingHistory ? "Show queue" : "Show playback history"} className={`queue-history-button ${showingHistory ? "is-active" : ""}`} onClick={() => setView((current) => current === "queue" ? "history" : "queue")} disabled={loading} aria-pressed={showingHistory}><ClockCounterClockwise size={16} aria-hidden="true" /></IconButton>
-          {!showingHistory ? <IconButton label="Clear queue" loading={isActionPending("clear_queue")} onClick={() => onAction("clear_queue")} disabled={loading || !queue.length}><Trash size={16} aria-hidden="true" /></IconButton> : null}
+          <span className="queue-upnext">{loading ? "…" : `${queue.length} up next`}</span>
+          <IconButton label="Open playback history" className={`queue-history-button ${historyActive ? "is-active" : ""}`} onClick={onOpenHistory} disabled={loading} aria-pressed={historyActive}><ClockCounterClockwise size={16} aria-hidden="true" /></IconButton>
+          <IconButton label="Clear queue" loading={isActionPending("clear_queue")} onClick={() => onAction("clear_queue")} disabled={loading || !queue.length}><Trash size={16} aria-hidden="true" /></IconButton>
         </div>
       </div>
-      {loading ? <div className="queue-skeletons" aria-label="Loading queue"><span /><span /><span /></div> : (showingHistory ? <QueueHistoryPanel history={history} sessionStartedAt={sessionStartedAt} /> : <QueuePanel queue={queue} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} isActionPending={isActionPending} />)}
+      {loading ? <div className="queue-skeletons" aria-label="Loading queue"><span /><span /><span /></div> : <QueuePanel queue={queue} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} isActionPending={isActionPending} />}
     </div>
-  );
-}
-
-function ActivityLoader({ message, leaving }) {
-  return (
-    <section
-      className={`activity-loader ${leaving ? "is-leaving" : ""}`}
-      aria-label="MewBit is connecting to the listening room"
-      aria-live="polite"
-      aria-busy="true"
-    >
-        <div className="loader-ambient loader-ambient-cyan" aria-hidden="true" />
-        <div className="loader-ambient loader-ambient-magenta" aria-hidden="true" />
-        <div className="loader-content">
-          <div className="loader-signal" aria-hidden="true">
-            <div className="loader-signal-echo loader-signal-echo-back" />
-            <div className="loader-signal-echo loader-signal-echo-mid" />
-            <div className="loader-signal-panel">
-              <div className="loader-signal-heading">
-                <Waveform size={15} weight="bold" />
-                <span>ROOM SIGNAL</span>
-              </div>
-              <div className="loader-spectrum">
-                {Array.from({ length: 13 }, (_, index) => <i key={index} style={{ "--bar-index": index }} />)}
-              </div>
-              <div className="loader-scan" />
-              <div className="loader-signal-footer">
-                <span>MEWBIT</span>
-                <div><i /><i /><i /></div>
-              </div>
-            </div>
-            <div className="loader-packets"><i /><i /><i /></div>
-          </div>
-        <div className="loader-copy">
-          <span className="loader-kicker"><i /> MEWBIT LINK</span>
-          <h1>Tuning into the room</h1>
-          <p>{message || "Synchronizing player state"}</p>
-        </div>
-        <div className="loader-progress" role="progressbar" aria-label="Connecting">
-          <span />
-        </div>
-        <div className="loader-steps" aria-hidden="true">
-          <span>Discord</span><i />
-          <span>Gateway</span><i />
-          <span>Player</span>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -1983,6 +2411,7 @@ function App() {
   const [similarResults, setSimilarResults] = useState([]);
   const [isHydrating, setIsHydrating] = useState(true);
   const [showLoader, setShowLoader] = useState(true);
+  const [loaderPhase, setLoaderPhase] = useState("loading");
   const hydrationStartedAt = useRef(Date.now());
   const hydrationTimer = useRef(null);
   const appliedSnapshot = useRef({ revision: -1, generatedAt: -1 });
@@ -2143,11 +2572,7 @@ function App() {
     hydrationTimer.current = window.setTimeout(() => setIsHydrating(false), remaining);
   }, []);
 
-  useEffect(() => {
-    if (isHydrating) return undefined;
-    const timer = window.setTimeout(() => setShowLoader(false), 320);
-    return () => window.clearTimeout(timer);
-  }, [isHydrating]);
+  const hideLoader = useCallback(() => setShowLoader(false), []);
 
   useEffect(() => {
     let stopSocket = null;
@@ -2259,6 +2684,12 @@ function App() {
     };
   }, [applyState, finishHydration, showToast]);
 
+  // Local preview only: keep the open playlist in step with the mock library.
+  useEffect(() => {
+    if (!state.playlistDetails) return;
+    setSelectedPlaylistDetail((current) => (current ? state.playlistDetails[current.id] || null : current));
+  }, [state.playlistDetails]);
+
   const updateActionPending = useCallback((key, change) => {
     const nextCount = Math.max(0, (pendingActionCounts.current.get(key) || 0) + change);
     if (nextCount) pendingActionCounts.current.set(key, nextCount);
@@ -2353,7 +2784,15 @@ function App() {
         }
       }
       if (action === "play") {
-        const result = searchResults.find((track) => track.playQuery === payload.query);
+        const pool = [
+          ...searchResults,
+          ...mockSearchResults,
+          ...(next.player.history || []),
+          ...(next.player.queue || []),
+          ...Object.values(next.playlistDetails || {}).flatMap((detail) => detail.tracks || []),
+        ];
+        const found = pool.find((track) => (payload.trackId && track.id === payload.trackId) || (payload.query && track.playQuery === payload.query));
+        const result = found ? { ...found, requester: "Local Listener", autoplay: false, queueItemId: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` } : null;
         if (result && next.player.currentTrack) {
           if (payload.playNow) {
             next.player.queue.unshift(next.player.currentTrack);
@@ -2362,6 +2801,8 @@ function App() {
             next.player.positionMs = 0;
             next.player.playing = true;
             next.player.paused = false;
+          } else if (payload.prepend) {
+            next.player.queue.unshift(result);
           } else {
             const autoplayIndex = next.player.queue.findIndex((track) => track.autoplay);
             if (autoplayIndex === -1) next.player.queue.push(result);
@@ -2373,6 +2814,69 @@ function App() {
           next.player.positionMs = 0;
           next.player.playing = true;
           next.player.paused = false;
+        }
+      }
+      if (action === "queue_tracks") {
+        const stamp = Date.now();
+        const tracks = (payload.tracks || []).map((track, index) => ({
+          ...track,
+          id: track.id || track.uri || `${track.title}-${index}`,
+          playQuery: track.playQuery || track.uri || `${track.title} ${track.author}`,
+          requester: "Local Listener",
+          autoplay: false,
+          queueItemId: `local-${stamp}-${index}`,
+        }));
+        if (tracks.length) {
+          if (!next.player.currentTrack) {
+            const [first, ...rest] = tracks;
+            next.player.currentTrack = first;
+            next.player.durationMs = first.durationMs;
+            next.player.positionMs = 0;
+            next.player.playing = true;
+            next.player.paused = false;
+            tracks.splice(0, tracks.length, ...rest);
+          }
+          const autoplayIndex = next.player.queue.findIndex(isAutoplayQueueTrack);
+          if (autoplayIndex === -1) next.player.queue.push(...tracks);
+          else next.player.queue.splice(autoplayIndex, 0, ...tracks);
+        }
+      }
+      if (action === "save_tracks_as_playlist") {
+        const id = `local-playlist-${Date.now()}`;
+        const tracks = (payload.tracks || []).map((track, index) => ({
+          ...track,
+          id: track.id || track.uri || `${track.title}-${index}`,
+          playQuery: track.playQuery || track.uri || `${track.title} ${track.author}`,
+          addedAt: Date.now(),
+        }));
+        next.playlistDetails = next.playlistDetails || {};
+        next.playlistDetails[id] = { id, name: payload.name, description: "", thumbnail: "", public: false, collaborative: false, isDefault: false, tracks };
+        next.playlists = [...(next.playlists || []), { id, name: payload.name, trackCount: tracks.length, isDefault: false, public: false, collaborative: false, thumbnail: "" }];
+      }
+      if (action === "update_playlist") {
+        const id = Object.keys(next.playlistDetails || {}).find((key) => next.playlistDetails[key].name === payload.name);
+        if (id) {
+          const detail = next.playlistDetails[id];
+          if (!detail.isDefault && payload.newName) detail.name = payload.newName;
+          detail.description = payload.description ?? detail.description;
+          detail.thumbnail = payload.thumbnail ?? detail.thumbnail;
+          if (!detail.isDefault) { detail.public = Boolean(payload.public); detail.collaborative = Boolean(payload.collaborative); }
+          next.playlists = (next.playlists || []).map((playlist) => playlist.id === id ? { ...playlist, name: detail.name, thumbnail: detail.thumbnail, public: detail.public, collaborative: detail.collaborative } : playlist);
+        }
+      }
+      if (action === "remove_playlist_track") {
+        const id = Object.keys(next.playlistDetails || {}).find((key) => next.playlistDetails[key].name === payload.name);
+        if (id) {
+          const detail = next.playlistDetails[id];
+          detail.tracks.splice(Number(payload.position), 1);
+          next.playlists = (next.playlists || []).map((playlist) => playlist.id === id ? { ...playlist, trackCount: detail.tracks.length } : playlist);
+        }
+      }
+      if (action === "delete_playlist") {
+        const id = Object.keys(next.playlistDetails || {}).find((key) => next.playlistDetails[key].name === payload.name && !next.playlistDetails[key].isDefault);
+        if (id) {
+          delete next.playlistDetails[id];
+          next.playlists = (next.playlists || []).filter((playlist) => playlist.id !== id);
         }
       }
       next.player.updatedAt = Date.now();
@@ -2399,21 +2903,37 @@ function App() {
             showToast(action === "clear_queue" ? "Queue cleared" : "Track removed", "info", { label: "Undo", action: "undo_queue", payload: { token: response.result.undoToken } });
           }
           if (action === "undo_queue" && response.result?.success) showToast("Queue restored", "success");
+          return true;
         } else {
           let undoToken = null;
           if (action === "remove_queue" || action === "clear_queue") {
             undoToken = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
             localUndoSnapshots.current.set(undoToken, structuredClone(stateRef.current.player.queue || []));
           }
+          if (action === "save_tracks_as_playlist" && (stateRef.current.playlists || []).some((playlist) => String(playlist.name).toLowerCase() === String(nextPayload.name || "").toLowerCase())) {
+            const taken = new Error(`A playlist named "${nextPayload.name}" already exists.`);
+            taken.userFacing = true;
+            throw taken;
+          }
+          if (action === "get_playlist") {
+            const details = Object.values(stateRef.current.playlistDetails || {});
+            const found = details.find((detail) => detail.name === nextPayload.name);
+            if (found) { setSelectedPlaylistDetail(found); setSelectedPlaylist(found.id); goToView("playlists"); }
+            return true;
+          }
+          if (action === "delete_playlist") { setSelectedPlaylistDetail(null); setSelectedPlaylist(null); }
           localMutation(action, nextPayload);
           const successMessage = getActionFeedback(action, nextPayload, null, stateRef.current);
           if (successMessage) showToast(successMessage, "info");
           if (undoToken) showToast(action === "clear_queue" ? "Queue cleared" : "Track removed", "info", { label: "Undo", action: "undo_queue", payload: { token: undoToken } });
           if (action === "undo_queue") showToast("Queue restored", "success");
+          return true;
         }
       } catch (error) {
-        if (context.mode === "local") { localMutation(action, nextPayload); showToast("Local preview updated. The live gateway is offline.", "info"); }
-        else showToast(error.message, "error");
+        if (error?.userFacing) { showToast(error.message, "error"); return false; }
+        if (context.mode === "local") { localMutation(action, nextPayload); showToast("Local preview updated. The live gateway is offline.", "info"); return true; }
+        showToast(error.message, "error");
+        return false;
       }
     };
     const enqueue = (queue, task) => {
@@ -2624,8 +3144,8 @@ function App() {
           onRetry={gate === "error" ? () => window.location.reload() : null}
         />
       ) : null}
-      {showLoader && !gate ? <ActivityLoader message={connection.message} leaving={!isHydrating} /> : null}
-      <div className="activity-content" aria-hidden={showLoader ? "true" : undefined} inert={showLoader || undefined}>
+      {showLoader && !gate ? <SignalLoader ready={!isHydrating} message={connection.message} onPhase={setLoaderPhase} onDone={hideLoader} /> : null}
+      <div className={`activity-content ${showLoader && loaderPhase === "done" ? "is-arriving" : ""}`} aria-hidden={showLoader && loaderPhase !== "done" ? "true" : undefined} inert={(showLoader && loaderPhase !== "done") || undefined}>
       {isCompact ? <CompactPlayer state={state} /> : <>
         <div ref={appShellRef} className={`app-shell ${leftSidebarOpen ? "left-open" : "left-closed"} ${rightSidebarOpen ? "right-open" : "right-closed"}`}>
           <div
@@ -2657,6 +3177,7 @@ function App() {
                 </div>
                 <div className="stage-actions" aria-label="Player tools">
                   <IconButton label="Room activity" className={`${activeTab === "activity" ? "is-active" : ""} ${hasActivityErrors ? "has-issues" : ""}`} onClick={() => goToView("activity")}><Bell size={17} weight={activeTab === "activity" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  <IconButton label="Playback history" className={activeTab === "history" ? "is-active" : ""} aria-pressed={activeTab === "history"} onClick={() => goToView("history")}><ClockCounterClockwise size={17} weight={activeTab === "history" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                   <IconButton label="Toggle queue" className={rightSidebarOpen ? "is-active" : ""} aria-pressed={rightSidebarOpen} onClick={() => { if (window.matchMedia("(max-width: 900px)").matches) setLeftSidebarOpen(false); setRightSidebarOpen((value) => !value); }}><Queue size={17} weight={rightSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                 </div>
               </div>
@@ -2667,11 +3188,12 @@ function App() {
               {activeTab === "filters" ? <section className={`content-panel panel-surface filters-surface filters-surface-${soundSection}`}><PanelTitle icon={<SlidersHorizontal size={18} aria-hidden="true" />} title="Shape the sound" description="EQ and playful filters are applied to the live player" action={<div className="sound-mode-actions" role="tablist" aria-label="Sound controls"><button type="button" role="tab" aria-selected={soundSection === "effects"} className={soundSection === "effects" ? "is-active" : ""} onClick={() => setSoundSection("effects")}><Faders size={15} aria-hidden="true" /><span>Effects</span></button><button type="button" role="tab" aria-selected={soundSection === "equalizer"} className={soundSection === "equalizer" ? "is-active" : ""} onClick={() => setSoundSection("equalizer")}><SlidersHorizontal size={15} aria-hidden="true" /><span>Equalizer</span></button></div>} /><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading sound controls</span></div>}><LazyFiltersPanel filters={state.player.filters} filterPresets={state.filterPresets} equalizerPresets={state.equalizerPresets} activeSection={soundSection} canAdjust={Boolean(state.player.currentTrack)} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "lyrics" ? <section className="content-panel panel-surface"><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading lyrics</span></div>}><LazyLiveLyricsPanel player={state.player} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "activity" ? <section className="content-panel panel-surface activity-feed-panel"><PanelTitle icon={<Bell size={18} aria-hidden="true" />} title="Room activity" description="Live actions and playback issues from this listening room" action={<ShortcutHelp placement="activity" />} /><ActivityFeedPanel events={activityEvents} /></section> : null}
+              {activeTab === "history" ? <section className="content-panel panel-surface history-panel"><HistoryView history={state.player.history || []} sessionStartedAt={state.player.sessionStartedAt} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} findSources={searchProps.findSources} onAction={onAction} isActionPending={isActionPending} /></section> : null}
               {activeTab === "playlists" ? <section className="content-panel panel-surface"><PlaylistsPanel playlists={state.playlists} currentTrack={state.player.currentTrack} likedTrackIds={state.likedTrackIds || []} selectedPlaylist={selectedPlaylistDetail?.name || selectedPlaylist} playlistDetail={selectedPlaylistDetail} composerOpen={playlistComposerOpen} onComposerClose={closePlaylistComposer} onAction={onAction} /></section> : null}
             </div>
           </section>
           <aside className="sidebar sidebar-right" aria-label="Queue sidebar" role={isDrawerViewport ? "dialog" : undefined} aria-modal={isDrawerViewport && rightSidebarOpen ? "true" : undefined} aria-hidden={isDrawerViewport && !rightSidebarOpen ? "true" : undefined} inert={isDrawerViewport && !rightSidebarOpen || undefined}>
-            <QueueSidebar queue={state.player.queue} history={state.player.history || []} sessionStartedAt={state.player.sessionStartedAt} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} queueOpen={rightSidebarOpen} onToggleQueue={() => setRightSidebarOpen((value) => !value)} onAction={onAction} isActionPending={isActionPending} loading={isHydrating} />
+            <QueueSidebar queue={state.player.queue} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} historyActive={activeTab === "history"} onOpenHistory={() => { goToView("history"); if (isDrawerViewport) setRightSidebarOpen(false); }} onToggleQueue={() => setRightSidebarOpen((value) => !value)} onAction={onAction} isActionPending={isActionPending} loading={isHydrating} />
           </aside>
         </div>
         {activeTab === "home" ? null : <div className="player-bar-shell" aria-hidden={isDrawerViewport && (leftSidebarOpen || rightSidebarOpen) ? "true" : undefined} inert={isDrawerViewport && (leftSidebarOpen || rightSidebarOpen) || undefined}><PlayerBar state={state} onAction={onAction} onView={goToView} onOpenExternalLink={requestExternalLink} isActionPending={isActionPending} /></div>}

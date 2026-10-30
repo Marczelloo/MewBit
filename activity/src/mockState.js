@@ -7,8 +7,71 @@ const tracks = [
   { id: "mock-queue-3", title: "Afterglow Circuit", author: "MewBit Radio", durationMs: 226000, artworkUrl: artwork, source: "deezer", sourceLabel: "Deezer", requester: "MewBit", autoplay: true },
 ];
 
+const SOURCE_LABELS = { youtube: "YouTube", soundcloud: "SoundCloud", spotify: "Spotify", deezer: "Deezer" };
+
+function library(id, title, author, durationMs, source, seed) {
+  return {
+    id,
+    title,
+    author,
+    durationMs,
+    source,
+    sourceLabel: SOURCE_LABELS[source] || source,
+    artworkUrl: `https://picsum.photos/seed/mewbit-${seed}/720/720`,
+    playQuery: `${title} ${author}`,
+  };
+}
+
+const libraryTracks = [
+  library("lib-glass-hours", "Glass Hours", "Nova Static", 214000, "spotify", "glass"),
+  library("lib-night-bus", "Night Bus to Nowhere", "Pale Harbor", 241000, "youtube", "bus"),
+  library("lib-neon-rain", "Neon Rain", "DJ Neko", 198000, "soundcloud", "rain"),
+  library("lib-slow-orbit", "Slow Orbit", "Hana Vale", 267000, "deezer", "orbit"),
+  library("lib-paper-moons", "Paper Moons", "Kuki", 183000, "soundcloud", "moons"),
+  library("lib-tail-lights", "Tail Lights", "Pale Harbor", 229000, "youtube", "lights"),
+  library("lib-static-hearts", "Static Hearts", "Nova Static", 205000, "spotify", "hearts"),
+  library("lib-afterimage", "Afterimage", "Hana Vale", 252000, "deezer", "after"),
+];
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+// Played tracks spread over today, yesterday and a few days back, with a mix of
+// people and autoplay so the History filters and day groups have something to do.
+function createMockHistory(now) {
+  const entries = [
+    [0, 12 * MINUTE, "Local Listener", false],
+    [1, 38 * MINUTE, "MewBit", true],
+    [2, 71 * MINUTE, "Neko", false],
+    [3, 2 * HOUR, "Local Listener", false],
+    [4, DAY + 40 * MINUTE, "Neko", false],
+    [5, DAY + 2 * HOUR, "MewBit", true],
+    [6, DAY + 3 * HOUR, "Local Listener", false],
+    [7, 4 * DAY + HOUR, "Neko", false],
+    [0, 4 * DAY + 2 * HOUR, "MewBit", true],
+    [2, 4 * DAY + 5 * HOUR, "Local Listener", false],
+  ];
+  return entries.map(([index, ago, requester, autoplay]) => ({
+    ...libraryTracks[index],
+    requester,
+    autoplay,
+    playedAt: now - ago,
+  }));
+}
+
+function createMockPlaylistDetails(now) {
+  const nightDrive = libraryTracks.map((track, index) => ({ ...track, addedAt: now - (index + 1) * DAY * 2 }));
+  const liked = [libraryTracks[3], libraryTracks[0], libraryTracks[6], libraryTracks[1], libraryTracks[5]].map((track, index) => ({ ...track, addedAt: now - (index + 1) * 3 * DAY }));
+  return {
+    liked: { id: "liked", name: "Liked Songs", description: "Your saved tracks", thumbnail: "", public: false, collaborative: false, isDefault: true, tracks: liked },
+    "night-drive": { id: "night-drive", name: "Night Drive.exe", description: "Blue lights, no skips. Late-night streets and a slow bassline.", thumbnail: "", public: true, collaborative: true, isDefault: false, tracks: nightDrive },
+  };
+}
+
 export function createMockState({ idle = false } = {}) {
   const currentTrack = idle ? null : tracks[0];
+  const now = Date.now();
   return {
     guild: { id: "demo", name: "MewBit test room", iconUrl: null, voiceChannelName: "Neon Listening Room" },
     botStatus: "the bassline has been peer reviewed",
@@ -33,7 +96,9 @@ export function createMockState({ idle = false } = {}) {
       shuffleActive: false,
       autoplay: !idle,
       currentTrack,
-      queue: idle ? [] : tracks.slice(1).map((track, index) => ({ ...track, index })),
+      queue: idle ? [] : tracks.slice(1).map((track, index) => ({ ...track, index, queueItemId: `mock-queue-item-${index}` })),
+      history: createMockHistory(now),
+      sessionStartedAt: now - 3 * HOUR,
       filters: {
         preset: "rnb",
         effectPreset: "off",
@@ -59,9 +124,10 @@ export function createMockState({ idle = false } = {}) {
     },
     lavalink: { connected: true, latencyMs: 24 },
     playlists: [
-      { id: "liked", name: "Liked Songs", type: "user", description: "Your saved tracks", trackCount: 42, thumbnail: artwork, public: false, collaborative: false, isDefault: true },
-      { id: "night-drive", name: "Night Drive.exe", type: "user", description: "Blue lights, no skips", trackCount: 18, thumbnail: artwork, public: true, collaborative: true, isDefault: false },
+      { id: "liked", name: "Liked Songs", type: "user", description: "Your saved tracks", trackCount: 5, thumbnail: "", public: false, collaborative: false, isDefault: true },
+      { id: "night-drive", name: "Night Drive.exe", type: "user", description: "Blue lights, no skips", trackCount: libraryTracks.length, thumbnail: "", public: true, collaborative: true, isDefault: false },
     ],
+    playlistDetails: createMockPlaylistDetails(now),
     likedTrackIds: ["mock-queue-1"],
     equalizerPresets: [],
     filterPresets: ["nightcore", "vaporwave", "chipmunk", "deepvoice", "eightd", "karaoke", "wobble", "vibrato", "robot", "telephone", "mono", "surround", "meme"],
