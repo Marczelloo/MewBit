@@ -21,6 +21,32 @@ function getTrackId(track) {
   return String(info.identifier || info.uri || `${info.title || "track"}:${info.author || "artist"}`);
 }
 
+const AVATAR_HOSTS = Object.freeze(["cdn.discordapp.com", "discordapp.com", "discordapp.net"]);
+
+// Requester avatars arrive as a full CDN URL (slash commands) or a bare avatar
+// hash (Activity identity). Only Discord CDN URLs are passed on to the client.
+function resolveRequesterAvatarUrl(info, isAutoplay) {
+  if (isAutoplay) return null;
+  const avatar = String(info?.requesterAvatar || "").trim();
+  if (!avatar) return null;
+
+  if (avatar.toLowerCase().startsWith("https://")) {
+    try {
+      const url = new URL(avatar);
+      const host = url.hostname.toLowerCase();
+      const allowed = url.protocol === "https:" && !url.username && !url.password
+        && AVATAR_HOSTS.some((allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`));
+      return allowed ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const id = String(info?.requesterId || "").trim();
+  if (!/^\d{5,25}$/.test(id) || !/^[A-Za-z0-9_]{1,64}$/.test(avatar)) return null;
+  return `https://cdn.discordapp.com/avatars/${id}/${avatar}.${avatar.startsWith("a_") ? "gif" : "png"}?size=64`;
+}
+
 function serializeTrack(track, index = null) {
   if (!track) return null;
 
@@ -29,6 +55,7 @@ function serializeTrack(track, index = null) {
   const source = normalizeSource(info.sourceName || info.source || info.uri);
   const artwork = getArtworkUrls(getTrackArtworkSource(track));
 
+  const isAutoplay = Boolean(track.userData?.autoplay || info.autoplayed);
   const aiDJ = track?.userData?.aiDJ || null;
   const recommendation = aiDJ
     ? {
@@ -58,7 +85,8 @@ function serializeTrack(track, index = null) {
     isStream: Boolean(info.isStream),
     explicit: Boolean(info.isExplicit ?? info.explicit ?? track.pluginInfo?.isExplicit ?? track.pluginInfo?.explicit),
     requester: info.requesterTag || info.requester || null,
-    autoplay: Boolean(track.userData?.autoplay || info.autoplayed),
+    requesterAvatarUrl: resolveRequesterAvatarUrl(info, isAutoplay),
+    autoplay: isAutoplay,
     recommendation,
   };
 }

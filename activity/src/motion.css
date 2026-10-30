@@ -141,11 +141,59 @@
   animation: viewIn var(--d-view) var(--ease-out) backwards;
 }
 .main-content > .now-playing-stage { animation: viewIn var(--d-view) var(--ease-out) backwards; }
-.sidebar,
-.sidebar-content,
-.app-shell { transition-duration: var(--d-modal-in); }
-.sidebar-content { transition-timing-function: var(--ease-in-out); }
 .drawer-scrim { transition-duration: var(--d-modal-in); }
+
+/* Pinned sidebars push the stage. The grid track and the panel share one curve,
+   and each panel is pinned to its outer edge, so it slides exactly as far as its
+   track shrinks instead of travelling twice the distance. The vertical bleed is
+   the same open or closed, so nothing jumps when the class flips. */
+@media (min-width: 901px) {
+  .app-shell {
+    --d-sidebar: 300ms;
+    --ease-sidebar: cubic-bezier(0.32, 0.72, 0, 1);
+    transition: grid-template-columns var(--d-sidebar) var(--ease-sidebar);
+  }
+  .app-shell .sidebar-left,
+  .app-shell .sidebar-right { margin: -12px 0; }
+  .app-shell .sidebar-right .sidebar-content { position: absolute; top: 0; right: 0; height: 100%; }
+  .app-shell .sidebar-left .sidebar-content,
+  .app-shell .sidebar-right .sidebar-content {
+    opacity: 1;
+    transform: translateX(0);
+    transition: transform var(--d-sidebar) var(--ease-sidebar), visibility 0s linear 0s;
+  }
+  .app-shell.left-closed .sidebar-left .sidebar-content,
+  .app-shell.right-closed .sidebar-right .sidebar-content {
+    opacity: 1;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform var(--d-sidebar) var(--ease-sidebar), visibility 0s linear var(--d-sidebar);
+  }
+  .app-shell.left-closed .sidebar-left .sidebar-content { transform: translateX(-100%); }
+  .app-shell.right-closed .sidebar-right .sidebar-content { transform: translateX(100%); }
+}
+
+/* Drawers slide over the stage: in on a soft decelerating curve, out a little
+   quicker on one that commits early, with no fade so the edge stays crisp. */
+@media (max-width: 900px) {
+  .app-shell .sidebar-left .sidebar-content,
+  .app-shell .sidebar-right .sidebar-content {
+    opacity: 1;
+    transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0s;
+  }
+  .app-shell.left-closed .sidebar-left .sidebar-content,
+  .app-shell.right-closed .sidebar-right .sidebar-content {
+    visibility: hidden;
+    transition: transform 240ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 240ms;
+  }
+  .drawer-scrim { transition: opacity 240ms var(--ease-out); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .app-shell .sidebar-left .sidebar-content,
+  .app-shell .sidebar-right .sidebar-content { transition-duration: 0s !important; transition-delay: 0s !important; }
+}
 
 .playlist-composer-backdrop { animation: fadeIn var(--d-modal-in) var(--ease-out) both; }
 .playlist-composer { animation: modalIn var(--d-modal-in) var(--ease-out) 40ms both; }
@@ -185,9 +233,9 @@
 .pl-colh { --row-cols: 40px minmax(0, 1fr) 140px 56px 104px; }
 .track-row-queue {
   --row-cols: 36px minmax(0, 1fr) auto;
-  min-height: 48px;
-  column-gap: 10px;
-  padding: 6px 10px 6px 16px;
+  min-height: 52px;
+  column-gap: 12px;
+  padding: 7px 10px 7px 24px;
 }
 
 .track-row-lead { position: relative; width: 40px; height: 40px; border-radius: 8px; }
@@ -320,6 +368,9 @@
   text-transform: uppercase;
 }
 .track-row-avatar.is-auto { color: var(--cyan); background: rgb(103 227 244 / 0.12); }
+.track-row-avatar { overflow: hidden; }
+.track-row-avatar.has-image { background: var(--surface-soft); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08); }
+.track-row-avatar img { width: 100%; height: 100%; display: block; object-fit: cover; }
 
 .track-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
 .track-act {
@@ -369,19 +420,28 @@
 .track-row-queue:focus-within .track-row-dur,
 .track-row-queue.is-menu-open .track-row-dur { opacity: 0; }
 .track-row-queue .auto-pill { margin-left: 2px; }
+/* The grip lives in its own 24px gutter, centred with 5px clear of the cover. */
 .track-row-drag {
   position: absolute;
-  top: 50%;
-  left: 2px;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
   display: grid;
+  place-items: center;
+  padding-left: 2px;
   color: var(--faint);
   opacity: 0;
   cursor: grab;
   pointer-events: none;
-  transform: translateY(-50%);
-  transition: opacity var(--d-hover-out) var(--ease-out);
+  transform: translateX(-3px);
+  transition: opacity var(--d-hover-out) var(--ease-out), transform var(--d-hover-out) var(--ease-out), color var(--d-hover-out) var(--ease-out);
 }
-.track-row-queue:hover .track-row-drag { opacity: 1; transition-duration: var(--d-hover-in); }
+.track-row-queue:hover .track-row-drag { opacity: 1; transform: none; transition-duration: var(--d-hover-in); }
+.track-row-queue:active .track-row-drag { color: var(--muted-strong); cursor: grabbing; }
+.track-row-queue .track-row-lead .artwork { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06); }
+.track-row-queue .track-row-title strong { font-size: 13.5px; }
+.track-row-queue .track-row-sub { font-size: 12.5px; }
 .queue-list .queue-group-kicker { margin-left: 6px; }
 .queue-sidebar-content .queue-list { gap: 2px; }
 

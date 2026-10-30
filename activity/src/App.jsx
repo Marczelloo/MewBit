@@ -922,7 +922,7 @@ function TrackRow({
       {variant === "history" ? (
         <>
           <div className="track-row-col track-row-who">
-            <span className={`track-row-avatar ${columns.whoAuto ? "is-auto" : ""}`} aria-hidden="true">{columns.whoAuto ? <Sparkle size={12} weight="fill" /> : whoName.charAt(0)}</span>
+            <RequesterAvatar name={whoName} url={columns.whoAvatar} auto={columns.whoAuto} />
             <span>{whoName}</span>
           </div>
           <div className="track-row-col track-row-time">{columns.time || ""}</div>
@@ -959,6 +959,16 @@ function TrackRow({
         />
       </div>
     </div>
+  );
+}
+
+function RequesterAvatar({ name = "", url = null, auto = false }) {
+  const [failed, setFailed] = useState(false);
+  const src = !auto && !failed ? resolveArtworkUrl(url) : null;
+  return (
+    <span className={`track-row-avatar ${auto ? "is-auto" : ""} ${src ? "has-image" : ""}`} aria-hidden="true">
+      {auto ? <Sparkle size={12} weight="fill" /> : src ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : name.charAt(0)}
+    </span>
   );
 }
 
@@ -1756,7 +1766,7 @@ function HistoryView({ history = [], sessionStartedAt = null, playlists = [], li
         <span className="history-summary" aria-live="polite">{summary}</span>
       </div>
       {filtered.length === 0 ? (
-        <div className="empty-state compact queue-history-empty"><ClockCounterClockwise size={28} weight="duotone" aria-hidden="true" /><strong>{history.length ? "No matching tracks" : "Nothing has finished yet"}</strong><span>{history.length ? "Try another person or time range." : "Finished tracks will appear here for this room session."}</span></div>
+        <div className="empty-state compact queue-history-empty"><ClockCounterClockwise size={28} weight="duotone" aria-hidden="true" /><strong>{history.length ? "No matching tracks" : "Nothing has finished yet"}</strong><span>{history.length ? "Try another person or time range." : "Finished tracks will appear here and stay for two weeks."}</span></div>
       ) : (
         <div className="history-days">
           {groups.map((group) => (
@@ -1776,7 +1786,7 @@ function HistoryView({ history = [], sessionStartedAt = null, playlists = [], li
                       likedTrackIds={likedTrackIds}
                       findSources={findSources}
                       isActionPending={isActionPending}
-                      columns={{ who, whoAuto: Boolean(track.autoplay) || who === "MewBit", time: formatClock(track.playedAt) }}
+                      columns={{ who, whoAvatar: track.requesterAvatarUrl, whoAuto: Boolean(track.autoplay) || who === "MewBit", time: formatClock(track.playedAt) }}
                     />
                   );
                 })}
@@ -2266,14 +2276,13 @@ function PlaylistSidebar({ playlists, selectedPlaylist, onSelect, onCreate, onAc
   );
 }
 
-function QueueSidebar({ queue, playlists = [], likedTrackIds = [], historyActive = false, onOpenHistory, onToggleQueue, onAction, isActionPending, loading = false }) {
+function QueueSidebar({ queue, playlists = [], likedTrackIds = [], onToggleQueue, onAction, isActionPending, loading = false }) {
   return (
     <div className="sidebar-content queue-sidebar-content">
       <div className="sidebar-heading"><button className="drawer-close" type="button" aria-label="Close queue panel" onClick={onToggleQueue}><X size={16} aria-hidden="true" /></button>
         <h2>Queue</h2>
         <div className="queue-head-meta">
           <span className="queue-upnext">{loading ? "…" : `${queue.length} up next`}</span>
-          <IconButton label="Open playback history" className={`queue-history-button ${historyActive ? "is-active" : ""}`} onClick={onOpenHistory} disabled={loading} aria-pressed={historyActive}><ClockCounterClockwise size={16} aria-hidden="true" /></IconButton>
           <IconButton label="Clear queue" loading={isActionPending("clear_queue")} onClick={() => onAction("clear_queue")} disabled={loading || !queue.length}><Trash size={16} aria-hidden="true" /></IconButton>
         </div>
       </div>
@@ -2532,7 +2541,12 @@ function App() {
     const current = appliedSnapshot.current;
     if (revision < current.revision || (revision === current.revision && generatedAt < current.generatedAt)) return false;
     appliedSnapshot.current = { revision, generatedAt };
-    setState(nextState);
+    // History is only sent when it changes; keep the last list otherwise.
+    if (nextState.player && !Array.isArray(nextState.player.history)) {
+      setState((previous) => ({ ...nextState, player: { ...nextState.player, history: previous?.player?.history || [] } }));
+    } else {
+      setState(nextState);
+    }
     return true;
   }, []);
 
@@ -3193,7 +3207,7 @@ function App() {
             </div>
           </section>
           <aside className="sidebar sidebar-right" aria-label="Queue sidebar" role={isDrawerViewport ? "dialog" : undefined} aria-modal={isDrawerViewport && rightSidebarOpen ? "true" : undefined} aria-hidden={isDrawerViewport && !rightSidebarOpen ? "true" : undefined} inert={isDrawerViewport && !rightSidebarOpen || undefined}>
-            <QueueSidebar queue={state.player.queue} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} historyActive={activeTab === "history"} onOpenHistory={() => { goToView("history"); if (isDrawerViewport) setRightSidebarOpen(false); }} onToggleQueue={() => setRightSidebarOpen((value) => !value)} onAction={onAction} isActionPending={isActionPending} loading={isHydrating} />
+            <QueueSidebar queue={state.player.queue} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} onToggleQueue={() => setRightSidebarOpen((value) => !value)} onAction={onAction} isActionPending={isActionPending} loading={isHydrating} />
           </aside>
         </div>
         {activeTab === "home" ? null : <div className="player-bar-shell" aria-hidden={isDrawerViewport && (leftSidebarOpen || rightSidebarOpen) ? "true" : undefined} inert={isDrawerViewport && (leftSidebarOpen || rightSidebarOpen) || undefined}><PlayerBar state={state} onAction={onAction} onView={goToView} onOpenExternalLink={requestExternalLink} isActionPending={isActionPending} /></div>}

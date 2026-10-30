@@ -1,6 +1,7 @@
 const { TRACK_HISTORY_LIMIT } = require("./constants");
 const { equalizerState } = require("./equalizerStore");
 const { getTrackIdentity } = require("./trackIdentity");
+const { recordRoomTrack } = require("../history/roomHistory");
 
 const inactivityTimers = new Map();
 const playbackState = new Map();
@@ -88,6 +89,7 @@ const pushTrackHistory = (guildId, track) => {
     autoplayPlayedAt: Date.now(),
   };
   history.push(snapshot);
+  recordRoomTrack(guildId, snapshot);
 
   if (!isAutoplayTrack(track)) {
     state.manualHistory.push(cloneTrack(track));

@@ -10,6 +10,7 @@ const { getUserPresets } = require("../equalizer/customPresets");
 const EQ_PRESET_NAMES = require("../equalizer/presets");
 const guildState = require("../guildState");
 const { getHistory } = require("../history/searchHistory");
+const { getRoomHistory } = require("../history/roomHistory");
 const { replaceQueuedAutoplayTrack, scheduleAutoplayRefresh } = require("../lavalink/autoplay");
 const { fetchAutoplayV3Track } = require("../lavalink/autoplayV3");
 const { EQUALIZER_PRESETS } = require("../lavalink/constants");
@@ -446,6 +447,32 @@ function assertActivePlayback(player, action) {
   }
 }
 
+// Room history can hold hundreds of tracks and state is pushed every 1.5s, so
+// the serialized list is cached per guild and only sent when it changes.
+const serializedHistoryCache = new Map();
+
+function getRoomHistoryKey(entries) {
+  const last = entries[entries.length - 1];
+  return `${entries.length}:${Number(last?.userData?.autoplayPlayedAt) || 0}`;
+}
+
+function getSerializedRoomHistory(guildId, client) {
+  const entries = getRoomHistory(guildId);
+  const key = getRoomHistoryKey(entries);
+  const cached = serializedHistoryCache.get(guildId);
+  if (cached?.key === key) return cached;
+  const next = { key, history: getSerializedPlaybackHistory(entries, client) };
+  serializedHistoryCache.set(guildId, next);
+  return next;
+}
+
+// The client keeps its previous history when a state arrives without one.
+function withoutHistory(state) {
+  if (!state?.player) return state;
+  const { history, ...player } = state.player;
+  return { ...state, player };
+}
+
 function getSerializedPlaybackHistory(history, client) {
   return Array.from(history || [])
     .slice()
@@ -507,6 +534,7 @@ function getSerializedEqualizerPresets(userId) {
 
 function buildActivityState(client, guildId, userId) {
   const player = getPlayer(guildId);
+  const roomHistory = getSerializedRoomHistory(guildId, client);
   const likedSongs = playlistStore.getLikedSongs(userId);
   const livePlaybackState = playbackState.get(guildId);
   const generatedAt = Date.now();
@@ -564,7 +592,8 @@ function buildActivityState(client, guildId, userId) {
       autoplay: Boolean(settings?.autoplay),
       currentTrack,
       queue: getSerializedQueue(player, client),
-      history: getSerializedPlaybackHistory(livePlaybackState?.history, client),
+      history: roomHistory.history,
+      historyKey: roomHistory.key,
       sessionStartedAt: Number(livePlaybackState?.sessionStartedAt) || null,
       filters: serializeFilters(filters),
       lyrics,
@@ -1285,13 +1314,20 @@ function sendSocket(socket, payload) {
   if (socket.readyState === 1) socket.send(stringifyJson(payload));
 }
 
+function sendSocketState(socket, state) {
+  const historyKey = state?.player?.historyKey;
+  const unchanged = historyKey != null && socket.historyKey === historyKey;
+  sendSocket(socket, { type: "state", state: unchanged ? withoutHistory(state) : state });
+  socket.historyKey = historyKey;
+}
+
 function broadcastGuildState(client, guildId) {
   const statesByIdentity = new Map();
   for (const socket of sockets) {
     if (socket.readyState !== 1 || !socket.authorized || socket.guildId !== guildId) continue;
     const identityId = socket.identity.id;
     if (!statesByIdentity.has(identityId)) statesByIdentity.set(identityId, buildActivityState(client, guildId, identityId));
-    sendSocket(socket, { type: "state", state: statesByIdentity.get(identityId) });
+    sendSocketState(socket, statesByIdentity.get(identityId));
   }
 }
 
@@ -1414,7 +1450,7 @@ function createActivityServer(client) {
           const playlist = playlistStore.getPlaylist(identity.id, guildId, detailName);
           if (playlist) result = { ...result, playlist: serializePlaylistDetails(playlist) };
         }
-        return sendJson(response, 200, { ok: true, result: serializeActivityActionResult(body.action, result), state: buildActivityState(client, guildId, identity.id) }, config);
+        return sendJson(response, 200, { ok: true, result: serializeActivityActionResult(body.action, result), state: withoutHistory(buildActivityState(client, guildId, identity.id)) }, config);
       }
 
       return sendJson(response, 404, { ok: false, error: "Not found" }, config);
@@ -1453,7 +1489,8 @@ function createActivityServer(client) {
           registerActivitySession(guildId, socket);
           touchActivitySession(guildId);
           sendSocket(socket, { type: "ready", identity: { id: socket.identity.id, username: socket.identity.username } });
-          sendSocket(socket, { type: "state", state: buildActivityState(client, guildId, socket.identity.id) });
+          socket.historyKey = null;
+          sendSocketState(socket, buildActivityState(client, guildId, socket.identity.id));
           return;
         }
         if (!socket.authorized) return sendSocket(socket, { type: "error", error: "Authenticate the Activity socket first." });
