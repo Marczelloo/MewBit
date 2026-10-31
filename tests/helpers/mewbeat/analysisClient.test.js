@@ -199,6 +199,95 @@ describe("mewbeat analysis client", () => {
     assert.strictEqual(node.calls.length, 1);
   });
 
+  it("evicts the oldest entry from memory after 32 tracks but still serves it from disk", async () => {
+    const tracks = Array.from({ length: 33 }, (_, index) => makeTrack({ identifier: `id${index}` }));
+    const node = fakeNode((route, body) => featuresFor(tracks.find((track) => track.track === body.encodedTrack), { tempo: 100 }));
+    tracks.forEach((track, index) => { track.track = `ENC${index}`; });
+    for (const track of tracks) await client.getFeatures(track, node);
+    assert.strictEqual(node.calls.length, 33);
+
+    // Changing the file shows which source answers: memory would still say 100.
+    fs.writeFileSync(cacheFileOf(tracks[0]), JSON.stringify(featuresFor(tracks[0], { tempo: 77 })));
+    assert.strictEqual((await client.getFeatures(tracks[0], node)).tempo, 77);
+    assert.strictEqual(node.calls.length, 33);
+  });
+
+  it("keeps a recently read entry when the memory cache is full", async () => {
+    const tracks = Array.from({ length: 33 }, (_, index) => makeTrack({ identifier: `id${index}` }));
+    for (const track of tracks.slice(0, 32)) {
+      await client.getFeatures(track, fakeNode(() => featuresFor(track)));
+    }
+    await client.getFeatures(tracks[0], fakeNode(() => assert.fail("must not be called")));
+    await client.getFeatures(tracks[32], fakeNode(() => featuresFor(tracks[32])));
+
+    fs.rmSync(cacheFileOf(tracks[0]));
+    fs.rmSync(cacheFileOf(tracks[1]));
+    assert.ok(client.peek(tracks[0]), "recently read entry survives");
+    assert.strictEqual(client.peek(tracks[1]), null, "least recently used entry is evicted");
+  });
+
+  it("treats a disk file with another featuresVersion as a miss and overwrites it", async () => {
+    const track = makeTrack();
+    fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
+    fs.writeFileSync(cacheFileOf(track), JSON.stringify(featuresFor(track, { featuresVersion: 2 })));
+    assert.strictEqual(client.peek(track), null);
+
+    const node = fakeNode(() => featuresFor(track, { tempo: 120 }));
+    assert.strictEqual((await client.getFeatures(track, node)).tempo, 120);
+    assert.strictEqual(node.calls.length, 1);
+    assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).featuresVersion, 1);
+  });
+
+  it("treats a response with another featuresVersion as a failure for 10 minutes", async () => {
+    const track = makeTrack();
+    const node = fakeNode(() => featuresFor(track, { featuresVersion: 2 }));
+    assert.strictEqual(await client.getFeatures(track, node), null);
+    assert.ok(!fs.existsSync(cacheFileOf(track)));
+    assert.strictEqual(await client.getFeatures(track, node), null);
+    assert.strictEqual(node.calls.length, 1);
+    clock += 10 * MINUTE + 1;
+    await client.getFeatures(track, node);
+    assert.strictEqual(node.calls.length, 2);
+  });
+
+  it("blocks mismatched and missing audio for 10 minutes and warns", async () => {
+    const warnings = [];
+    const recording = createAnalysisClient({
+      dir,
+      now: () => clock,
+      log: { ...silentLog, warning: (...args) => warnings.push(args) },
+    });
+    const mismatched = makeTrack({ identifier: "mismatch" });
+    const missing = makeTrack({ identifier: "missing" });
+    const mismatchedNode = fakeNode(() => featuresFor(mismatched, { audio: { identifier: "mismatch", length: 1 } }));
+    const missingNode = fakeNode(() => {
+      const { audio, ...withoutAudio } = featuresFor(missing);
+      return withoutAudio;
+    });
+
+    for (const [track, node] of [[mismatched, mismatchedNode], [missing, missingNode]]) {
+      assert.strictEqual(await recording.getFeatures(track, node), null);
+      assert.strictEqual(await recording.getFeatures(track, node), null);
+      assert.strictEqual(node.calls.length, 1);
+      clock += 10 * MINUTE + 1;
+      await recording.getFeatures(track, node);
+      assert.strictEqual(node.calls.length, 2);
+    }
+    assert.ok(warnings.length >= 2);
+    assert.match(warnings[0][0], /does not match/);
+    assert.ok(warnings[0].includes("youtube:mismatch:213000"));
+  });
+
+  it("falls through to Lavalink on a corrupt cache file and overwrites it", async () => {
+    const track = makeTrack();
+    fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
+    fs.writeFileSync(cacheFileOf(track), "{not json");
+    const node = fakeNode(() => featuresFor(track, { tempo: 90 }));
+    assert.strictEqual((await client.getFeatures(track, node)).tempo, 90);
+    assert.strictEqual(node.calls.length, 1);
+    assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).tempo, 90);
+  });
+
   describe("peek", () => {
     it("returns null when nothing is cached", () => {
       assert.strictEqual(client.peek(makeTrack()), null);

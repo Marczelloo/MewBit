@@ -9,6 +9,8 @@ const { audioKeyFile, audioKeyOf } = require("./audioKey");
 const ANALYZE_ROUTE = "/v4/mewbeat/analyze";
 const FAILURE_TTL_MS = 10 * 60 * 1000;
 const BUSY_TTL_MS = 30 * 1000;
+const FEATURES_VERSION = 1; // must match the plugin
+const MEMORY_CAPACITY = 32;
 
 function featuresPathOf(dir, key) {
   return path.join(dir, "features", `${audioKeyFile(key)}.json`);
@@ -20,7 +22,7 @@ function parseCacheFile(text) {
   try {
     const value = JSON.parse(text);
     if (value?.uncharted === true) return { uncharted: true, reason: value.reason };
-    if (value?.featuresVersion != null) return { features: value };
+    if (value?.featuresVersion === FEATURES_VERSION) return { features: value };
   } catch {
     // corrupt file: treated as a miss
   }
@@ -40,9 +42,33 @@ function createAnalysisClient({ dir, now = Date.now, log = Log }) {
   const retryAfterByKey = new Map();
   const pendingByKey = new Map();
 
+  // Small LRU over full feature documents; disk is the backing store.
+  function readMemory(key) {
+    const features = featuresByKey.get(key);
+    if (features) {
+      featuresByKey.delete(key);
+      featuresByKey.set(key, features);
+    }
+    return features;
+  }
+
+  function writeMemory(key, features) {
+    featuresByKey.delete(key);
+    featuresByKey.set(key, features);
+    if (featuresByKey.size > MEMORY_CAPACITY) featuresByKey.delete(featuresByKey.keys().next().value);
+  }
+
   function remember(key, entry) {
-    if (entry.features) featuresByKey.set(key, entry.features);
+    if (entry.features) writeMemory(key, entry.features);
     else unchartedKeys.add(key);
+  }
+
+  function isBlocked(key) {
+    const retryAfter = retryAfterByKey.get(key);
+    if (retryAfter === undefined) return false;
+    if (now() <= retryAfter) return true;
+    retryAfterByKey.delete(key);
+    return false;
   }
 
   function failFor(key, ttlMs) {
@@ -62,11 +88,15 @@ function createAnalysisClient({ dir, now = Date.now, log = Log }) {
     }
 
     if (body?.featuresVersion != null) {
+      if (body.featuresVersion !== FEATURES_VERSION) {
+        log.warning("mewbeat features version mismatch", body.featuresVersion);
+        return failFor(key, FAILURE_TTL_MS);
+      }
       if (!audioMatchesTrack(body, track)) {
         log.warning("mewbeat analysed audio does not match the track", key);
         return failFor(key, FAILURE_TTL_MS);
       }
-      featuresByKey.set(key, body);
+      writeMemory(key, body);
       try {
         await writeJsonAtomic(featuresPathOf(dir, key), body);
       } catch (error) {
@@ -108,8 +138,9 @@ function createAnalysisClient({ dir, now = Date.now, log = Log }) {
   function getFeatures(track, node) {
     const key = audioKeyOf(track);
     if (!key || unchartedKeys.has(key)) return Promise.resolve(null);
-    if (featuresByKey.has(key)) return Promise.resolve(featuresByKey.get(key));
-    if (now() <= (retryAfterByKey.get(key) ?? -1)) return Promise.resolve(null);
+    const cached = readMemory(key);
+    if (cached) return Promise.resolve(cached);
+    if (isBlocked(key)) return Promise.resolve(null);
     const pending = pendingByKey.get(key);
     if (pending) return pending;
 
@@ -122,8 +153,9 @@ function createAnalysisClient({ dir, now = Date.now, log = Log }) {
   function peek(track) {
     const key = audioKeyOf(track);
     if (!key || unchartedKeys.has(key)) return null;
-    if (featuresByKey.has(key)) return featuresByKey.get(key);
-    if (now() <= (retryAfterByKey.get(key) ?? -1)) return null;
+    const cached = readMemory(key);
+    if (cached) return cached;
+    if (isBlocked(key)) return null;
     try {
       const entry = parseCacheFile(fs.readFileSync(featuresPathOf(dir, key), "utf8"));
       if (!entry) return null;
