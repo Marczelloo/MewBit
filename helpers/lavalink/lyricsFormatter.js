@@ -1,6 +1,6 @@
 const { lyricsEmbed } = require("../embeds");
 const { getPlayer } = require("./players");
-const { playbackState } = require("./state");
+const { isAwaitingAudio, playbackState } = require("./state");
 
 const MAX_EMBED_DESCRIPTION = 1900;
 const MAX_EMBEDS = 10;
@@ -29,7 +29,7 @@ function getInterpolatedPosition(player, now = Date.now(), lookaheadMs = LYRICS_
   // Use the anchored position while paused. Poru exposes this as isPaused;
   // state.paused also covers the short period between the command and the
   // next Lavalink playerUpdate packet.
-  if (isPlayerPaused(player) || state?.paused) {
+  if (isPlayerPaused(player) || state?.paused || isAwaitingAudio(state, now)) {
     return Math.max(0, Number(state?.lastPosition ?? player.position ?? 0));
   }
 

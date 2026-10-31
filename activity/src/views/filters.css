@@ -1,0 +1,418 @@
+/* Sound panel (Effects + Equalizer). Everything is namespaced `fx-` so the
+   legacy .eq-* / .filter-* rules in styles.css cannot reach this markup. */
+
+.filters-panel.fx-root {
+  --fx-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --fx-thumb-h: 10px; /* thumb length along the fader travel; the curve/track inset is half of it */
+  --fx-cyan-line: rgb(103 227 244 / 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  padding: 2px;
+  margin: -2px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+}
+
+.fx-root.is-unavailable .fx-section { opacity: 0.48; }
+
+.fx-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  animation: fx-section-in 240ms var(--fx-ease) both;
+}
+
+/* ---- Header ------------------------------------------------------------ */
+
+.fx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  min-height: 36px;
+}
+
+.fx-head-copy { min-width: 0; display: grid; gap: 1px; }
+
+.fx-title {
+  margin: 0;
+  color: var(--text);
+  font: 650 15px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif;
+  letter-spacing: -0.005em;
+}
+
+.fx-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  transition: color 200ms var(--fx-ease);
+}
+.fx-status b { color: var(--cyan); font-weight: 650; }
+.fx-status.is-on { color: var(--cyan-soft); }
+
+.fx-head-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.fx-btn {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--muted-strong);
+  background: transparent;
+  font: 600 12px/1 "Hanken Grotesk", "Segoe UI", sans-serif;
+  white-space: nowrap;
+  transition: color 160ms var(--fx-ease), background-color 160ms var(--fx-ease), border-color 160ms var(--fx-ease), transform 160ms var(--fx-ease), opacity 160ms var(--fx-ease);
+}
+.fx-btn:hover:not(:disabled) { color: var(--text); border-color: rgb(255 255 255 / 0.2); background: rgb(255 255 255 / 0.05); }
+.fx-btn:active:not(:disabled) { transform: scale(0.97); }
+.fx-btn:disabled { opacity: 0.4; cursor: default; }
+.fx-btn:focus-visible { outline: 2px solid rgb(103 227 244 / 0.6); outline-offset: 2px; }
+
+/* The shared Dropdown trigger carries several legacy size rules; pin it here. */
+.fx-preset { min-width: 0; }
+.fx-preset .dropdown-trigger {
+  width: auto;
+  min-width: 150px;
+  max-width: 210px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--surface-soft);
+  font: 600 12px/1 "Hanken Grotesk", "Segoe UI", sans-serif;
+}
+.fx-preset .dropdown-trigger:hover:not(:disabled) { border-color: rgb(255 255 255 / 0.2); background: rgb(255 255 255 / 0.07); }
+.fx-preset .dropdown-trigger.is-open { border-color: var(--fx-cyan-line); }
+
+/* ---- Effects ----------------------------------------------------------- */
+
+.fx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-auto-rows: minmax(68px, auto);
+  gap: 8px;
+  align-content: start;
+}
+
+.fx-tile {
+  --fx-tile-bg: var(--surface-raised);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 38px 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  background: var(--fx-tile-bg);
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  transition: transform 180ms var(--fx-ease), border-color 180ms var(--fx-ease), background-color 180ms var(--fx-ease), box-shadow 220ms var(--fx-ease), opacity 160ms var(--fx-ease);
+  animation: fx-tile-in 260ms var(--fx-ease) both;
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+.fx-tile:hover:not(:disabled) {
+  --fx-tile-bg: var(--surface-soft);
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+.fx-tile:active:not(:disabled) { transform: scale(0.98); transition-duration: 90ms; }
+.fx-tile:disabled { cursor: default; opacity: 0.6; }
+.fx-tile:focus-visible { outline: 2px solid rgb(103 227 244 / 0.6); outline-offset: 2px; }
+
+.fx-tile.is-selected {
+  --fx-tile-bg: #0d1a1f;
+  border-color: var(--fx-cyan-line);
+  background-image: linear-gradient(160deg, rgb(103 227 244 / 0.12), rgb(103 227 244 / 0.02) 70%);
+  box-shadow: inset 0 0 26px rgb(103 227 244 / 0.1), 0 0 0 1px rgb(103 227 244 / 0.08);
+}
+.fx-tile.is-selected:disabled { opacity: 1; }
+.fx-tile.is-selected:hover:not(:disabled) { border-color: rgb(103 227 244 / 0.6); }
+
+.fx-tile-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--muted-strong);
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  transition: color 180ms var(--fx-ease), background-color 180ms var(--fx-ease), box-shadow 180ms var(--fx-ease), transform 220ms var(--fx-ease);
+}
+.fx-tile:hover:not(:disabled) .fx-tile-icon { color: var(--text); transform: scale(1.05); }
+.fx-tile.is-selected .fx-tile-icon {
+  color: var(--cyan);
+  background: rgb(103 227 244 / 0.14);
+  box-shadow: inset 0 0 0 1px rgb(103 227 244 / 0.28), 0 0 16px rgb(103 227 244 / 0.16);
+}
+
+.fx-tile-copy { min-width: 0; display: grid; gap: 3px; }
+.fx-tile-copy strong { color: var(--text); font: 650 14px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; }
+.fx-tile-copy small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.fx-tile.is-selected .fx-tile-copy small { color: var(--muted-strong); }
+
+.fx-tile-check {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #04181c;
+  background: var(--cyan);
+  box-shadow: 0 0 12px rgb(103 227 244 / 0.4);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 180ms var(--fx-ease), transform 220ms var(--fx-ease);
+}
+.fx-tile.is-selected .fx-tile-check { opacity: 1; transform: scale(1); }
+
+/* ---- Equalizer --------------------------------------------------------- */
+
+.fx-eq-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgb(103 227 244 / 0.045), transparent 60%),
+    var(--surface-raised);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  overflow: hidden;
+}
+
+.fx-eq-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  padding: 14px 14px 10px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.fx-plot {
+  flex: 1;
+  min-width: 440px;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-rows: minmax(190px, 1fr) auto auto auto;
+  column-gap: 0;
+  row-gap: 0;
+}
+
+.fx-cols { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); }
+
+/* Y axis, inset by half a thumb so labels sit on the exact fader positions. */
+.fx-axis { position: relative; }
+.fx-axis-inner { position: absolute; inset: calc(var(--fx-thumb-h) / 2) 0; }
+.fx-axis-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  color: var(--faint);
+  font: 500 10px/1 "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.fx-axis-label.is-zero { color: var(--muted-strong); }
+
+.fx-stage { position: relative; isolation: isolate; min-height: 0; }
+
+.fx-curve {
+  position: absolute;
+  inset: calc(var(--fx-thumb-h) / 2) 0;
+  width: 100%;
+  height: calc(100% - var(--fx-thumb-h));
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+.fx-curve line, .fx-curve path { vector-effect: non-scaling-stroke; }
+.fx-grid-line { stroke: rgb(255 255 255 / 0.05); stroke-width: 1; }
+.fx-baseline { stroke: rgb(255 255 255 / 0.22); stroke-width: 1; stroke-dasharray: 4 5; }
+.fx-curve-glow { fill: none; stroke: var(--cyan); stroke-width: 7; stroke-opacity: 0.16; stroke-linecap: round; stroke-linejoin: round; }
+.fx-curve-line { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.fx-faders { position: absolute; inset: 0; }
+.fx-fader { position: relative; min-width: 0; }
+
+.fx-track {
+  position: absolute;
+  inset: calc(var(--fx-thumb-h) / 2) auto;
+  left: calc(50% - 2px);
+  width: 4px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.08);
+  z-index: 1;
+}
+.fx-fill {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  border-radius: 99px;
+  background: linear-gradient(180deg, var(--cyan-soft), var(--cyan));
+  box-shadow: 0 0 10px rgb(103 227 244 / 0.35);
+}
+.fx-zero-tick {
+  position: absolute;
+  left: -4px;
+  width: 12px;
+  height: 1px;
+  transform: translateY(-0.5px);
+  background: rgb(255 255 255 / 0.3);
+}
+
+/* Native range input stays the interactive + accessible control; it is
+   vertical, transparent apart from the pill thumb, and fills the column. */
+.fx-fader input[type="range"] {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  cursor: grab;
+  touch-action: pan-x;
+  outline: none;
+}
+.fx-fader input[type="range"]:active { cursor: grabbing; }
+.fx-fader input[type="range"]::-webkit-slider-runnable-track { background: transparent; border: 0; }
+.fx-fader input[type="range"]::-moz-range-track { background: transparent; border: 0; }
+.fx-fader input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: var(--fx-thumb-h);
+  border: 0;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f4f6f9, #b9c2cf);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.5) inset, 0 2px 6px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.35);
+  transition: background 160ms var(--fx-ease), box-shadow 160ms var(--fx-ease), transform 160ms var(--fx-ease);
+}
+.fx-fader input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: var(--fx-thumb-h);
+  border: 0;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f4f6f9, #b9c2cf);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.fx-fader input.is-set::-webkit-slider-thumb {
+  background: linear-gradient(180deg, #eafcff, var(--cyan));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 2px 8px rgb(0 0 0 / 0.5), 0 0 12px rgb(103 227 244 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.3);
+}
+.fx-fader input.is-set::-moz-range-thumb { background: linear-gradient(180deg, #eafcff, var(--cyan)); }
+.fx-fader input[type="range"]:hover::-webkit-slider-thumb { transform: scaleX(1.08); }
+.fx-fader input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.1); }
+.fx-fader input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgb(103 227 244 / 0.55), 0 2px 6px rgb(0 0 0 / 0.55); }
+.fx-fader input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgb(103 227 244 / 0.55); }
+
+/* Rows under the faders */
+.fx-rowlabel {
+  align-self: center;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--faint);
+  font: 500 9px/1 "JetBrains Mono", ui-monospace, Consolas, monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fx-values { margin-top: 10px; }
+.fx-values span {
+  text-align: center;
+  color: var(--faint);
+  font: 500 11px/1.6 "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: color 160ms var(--fx-ease);
+}
+.fx-values span.is-set { color: var(--cyan); font-weight: 600; }
+
+.fx-freqs span {
+  text-align: center;
+  color: var(--muted);
+  font: 500 10.5px/1.6 "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-groups { margin-top: 6px; }
+.fx-groups span {
+  position: relative;
+  margin: 0 5px;
+  padding-top: 7px;
+  text-align: center;
+  color: var(--faint);
+  font: 600 10px/1 "Hanken Grotesk", "Segoe UI", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.fx-groups span::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+}
+
+/* ---- Motion ------------------------------------------------------------ */
+
+@keyframes fx-section-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes fx-tile-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 620px) {
+  .fx-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .fx-tile { gap: 10px; padding-right: 32px; }
+  .fx-tile-icon { width: 34px; height: 34px; }
+  .fx-head-actions { width: 100%; }
+  .fx-preset { flex: 1; }
+  .fx-preset .dropdown-trigger { width: 100%; max-width: none; }
+  .fx-plot { min-width: 430px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-section, .fx-tile { animation: none; }
+  .fx-tile, .fx-tile-icon, .fx-tile-check, .fx-btn, .fx-status, .fx-values span,
+  .fx-fader input[type="range"]::-webkit-slider-thumb { transition: none; }
+  .fx-tile:hover:not(:disabled), .fx-tile:active:not(:disabled), .fx-btn:active:not(:disabled) { transform: none; }
+}

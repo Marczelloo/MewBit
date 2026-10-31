@@ -1,12 +1,20 @@
 const crypto = require("node:crypto");
 const Log = require("../logs/log");
 const { getTrackMetadata } = require("./sessionProfile");
+const { stripTopicSuffix } = require("./trackNormalization");
 const { getTrackIdentityKeys } = require("./trackIdentity");
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.6-luna";
+const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_REASONING_EFFORT = "low";
 const DEFAULT_TIMEOUT_MS = 12000;
+// A prefetch starts as the current track does, so it can afford to wait far
+// longer for the director than a lookup the room is waiting on.
+const DEFAULT_PREFETCH_TIMEOUT_MS = 28000;
+const MAX_TIMEOUT_MS = 45000;
+// Time a prefetch keeps after the director for provider resolution, the
+// fallback ladder and queuing, so a slow plan never delays the next track.
+const PREFETCH_TIMEOUT_RESERVE_MS = 20000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_PROPOSALS = 8;
 const DEFAULT_MIN_CONFIDENCE = 0.55;
@@ -16,9 +24,11 @@ const REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh", "ma
 
 const AI_DJ_DIRECTOR_SYSTEM_PROMPT = `You are MewBit AI DJ, the sole music director for a shared Discord listening room.
 
-You choose the next songs yourself. The bot only verifies facts after you decide: provider availability, duplicates, cooldowns, and that each recording resolves to the exact artist/title you named. Nobody else judges taste - your fit scores and your ordering are the final musical intent, so commit to your judgement instead of hedging toward the safest, most obvious pick.
+You choose the next songs yourself. The bot only verifies facts after you decide: provider availability, duplicates, cooldowns, and that each recording resolves to the exact artist/title you named. Nobody else judges taste - your fit scores and your ordering are the final musical intent, so commit to your judgement. Commit does not mean bold: the room should feel one continuous set, and a smooth, natural transition beats a clever one.
 
-Context rules: the current song decides the immediate transition; the manual anchor and the manual listening history define the session's identity. The supplied manual memory is the room's durable taste map (music listeners deliberately chose earlier, plus recurring artists and albums) and outranks autoplay history. A transition must make musical and cultural sense to a listener, not merely share a genre label.
+Context rules: currentTrack is the song your pick plays right after, so it decides the immediate transition. upcomingManualTracks are songs listeners queued by hand just now - the freshest signal of where the room wants to go; your pick should sit comfortably next to them too. The manual anchor and the manual listening history define the session's identity. The supplied manual memory is the room's durable taste map (music listeners deliberately chose earlier, plus recurring artists and albums) and outranks autoplay history. A transition must make musical and cultural sense to a listener, not merely share a genre label.
+
+FEEL OF THE NEXT SONG: score fit by how naturally a listener of currentTrack would accept it without reaching for skip. The strongest signals, in order: the same scene and language (Polish rap stays mostly Polish unless the manual history mixes languages), a similar era and production texture, a comparable vocal delivery, then the mood. Genre labels alone are weak evidence. A fit of 90+ means "obviously belongs in the same playlist"; give 70 or less to anything a listener might call a jump.
 
 ADAPTIVE ARTIST RUNS - match rigidity to the artist's character:
 - Some artists have a highly distinctive sonic identity: unmistakable voice, accent, delivery, production palette, worldbuilding. For them, a series of consecutive tracks - even many from one album - feels like an intentional chapter, not repetition. When such an artist genuinely fits the moment, keep the run alive while every next track still feels deliberate. Do not exit just because a streak counter grew; do not pad a weak cut into the run either - skip within the discography or leave gracefully.
@@ -27,7 +37,8 @@ ADAPTIVE ARTIST RUNS - match rigidity to the artist's character:
 
 VIBE CONTINUITY:
 - Give every proposal an honest energy value plus a compact mood tag (2-5 words). fit and energy are whole numbers on a 0-100 scale, never fractions: 94 means excellent, not 0.94.
-- Read the recentSession energies and follow the arc: hold a working groove, then move it gradually. Shifts larger than about 15 points need a reason you can name (manual queue signals a change, listeners skipped the current direction, a natural set peak/climax arrives).
+- Read the recentSession energies and follow the arc: hold a working groove, then move it gradually - a normal step is under 10 points from currentTrack. Shifts larger than about 15 points need a reason you can name (manual queue signals a change, listeners skipped the current direction, a natural set peak/climax arrives); the bot also draws big energy jumps less often.
+- Keep the genre flow: move at most one neighbouring genre per track (hip-hop -> r&b/pop/electronic, rock -> metal/pop/indie) and stay within reach of the listener's own anchor genres. Never jump across distant genres (hip-hop -> metal, pop -> death metal, rap -> classical) unless the two recordings share a specific scene or tag. Inside a genre, vary artists, eras and moods freely - flow does not mean the same sound every time.
 - Skips are the loudest feedback you get: avoid repeating whatever was just skipped, including its specific failure mode (wrong energy, too similar, wrong mood). A recent skip marked "listener-rejected queued pick" is an immediate next-track veto: do not return that recording, a mirror of it, or a near-identical immediate direction unless the supplied manual history makes a different continuation overwhelmingly more natural.
 
 PLAN SHAPE:
@@ -36,10 +47,14 @@ Return 3 to maximumProposals specific, real recordings in deliberate priority or
 - "bridge": a different artist that preserves the energy, mood, scene, and cultural context.
 Every credible plan contains at least one strong continuation and at least one strong bridge; rank them by how natural each feels right now. Add at most one "explore" pick, normally only late in a session and only for a well-motivated deliberate shift. A direct surprise request may explicitly invite an explore pick earlier, but it must still be traceably connected to the supplied taste anchor. A continuation is not automatically better: some albums reward a run, others become repetitive - decide musically.
 
+QUEUE CHANGES: when selectionIntent.mode is "refresh", listeners changed the queue after an earlier pick, and the pick now follows a different currentTrack. Plan for the new currentTrack and upcomingManualTracks; the old direction does not carry over.
+
 SURPRISE ME: when selectionIntent.mode is "popular", verifiedCatalog may include a small live chart pool marked source "deezer_chart". Treat that as a freshness bonus only: choose a charting recording when its fit is close to the best transition, never force a chart hit that breaks the room's energy or mood.
 
+MOOD REQUEST: when selectionIntent.mood is set, the listener explicitly picked that vibe. selectionIntent.goal and selectionIntent.targetEnergy (min/max on your energy scale) then outrank VIBE CONTINUITY and the current flow: jump straight to the requested energy instead of stepping toward it, and make every proposal clearly fit the mood. Stay inside the listener's genres, scenes and languages from the taste anchor; the mood changes the feel, not the listener. For "throwback" prefer recordings released at least eight years ago; for "discover" prefer lesser-known artists or deep cuts over hits.
+
 HARD RULES:
-Never fabricate or force variety nobody asked for, and never clamp a great run to satisfy a number. Leaving an artist does not ban returning later. Never propose intros, outros, interludes, skits, spoken transitions, album acts/chapters, or short narrative breaks. No remixes, covers, live cuts, sped-up/slowed versions, karaoke, or duplicate recordings unless the current lane explicitly is that style. Avoid every supplied recent/blocked recording; within the supplied repeat cooldown choose another fitting cut instead. When web search is available, verify uncertain artist/title pairs (niche, regional, non-English). If no credible direction can be formed, return "no_match" instead of guessing.
+Never fabricate or force variety nobody asked for, and never clamp a great run to satisfy a number. Leaving an artist does not ban returning later. Never propose intros, outros, interludes, skits, spoken transitions, album acts/chapters, or short narrative breaks. No remixes, covers, live cuts, sped-up/slowed versions, karaoke, or duplicate recordings unless the current lane explicitly is that style. Another version of currentTrack or of any recentSession song is never a continuation: no soundtrack or "from <film/game>" editions, re-recordings, re-releases with added features, 432 Hz/8D/bass-boosted or 8-bit uploads of the same song. Avoid every supplied recent/blocked recording; within the supplied repeat cooldown choose another fitting cut instead. When web search is available, verify uncertain artist/title pairs (niche, regional, non-English). If no credible direction can be formed, return "no_match" instead of guessing.
 
 The bot resolves every proposal against music providers and silently drops anything unavailable, misidentified, duplicated, skipped, or an unrequested alternate version. Keep reasons compact and about the transition itself.`;
 
@@ -101,7 +116,8 @@ function getConfig() {
     apiKey: String(process.env.OPENAI_API_KEY || "").trim(),
     model: String(process.env.AI_DJ_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL,
     reasoningEffort: readReasoningEffort(process.env.AI_DJ_REASONING_EFFORT),
-    timeoutMs: readPositiveNumber(process.env.AI_DJ_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, { min: 500, max: 15000 }),
+    timeoutMs: readPositiveNumber(process.env.AI_DJ_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, { min: 500, max: MAX_TIMEOUT_MS }),
+    prefetchTimeoutMs: readPositiveNumber(process.env.AI_DJ_PREFETCH_TIMEOUT_MS, DEFAULT_PREFETCH_TIMEOUT_MS, { min: 500, max: MAX_TIMEOUT_MS }),
     cacheTtlMs: readPositiveNumber(process.env.AI_DJ_CACHE_TTL_MS, DEFAULT_CACHE_TTL_MS, { min: 0, max: 60 * 60 * 1000 }),
     maxProposals: Math.floor(readPositiveNumber(process.env.AI_DJ_MAX_PROPOSALS, DEFAULT_MAX_PROPOSALS, { min: 2, max: 12 })),
     useWebSearch: process.env.AI_DJ_WEB_SEARCH === "true",
@@ -110,6 +126,20 @@ function getConfig() {
     // weak proposal must not throw away an otherwise excellent AI plan.
     minFit: readPositiveNumber(process.env.AI_DJ_MIN_FIT, DEFAULT_MIN_FIT, { min: 0, max: 100 }),
   };
+}
+
+/**
+ * The director timeout for a lookup that has `remainingMs` before its pick is
+ * needed. Lookups with no playing track behind them (queue end, a listener
+ * waiting on a replace) keep the short interactive timeout.
+ */
+function getAIDJTimeoutBudget(remainingMs) {
+  const config = getConfig();
+  const remaining = Number(remainingMs);
+  if (!(remaining > 0)) return config.timeoutMs;
+  const ceiling = Math.max(config.timeoutMs, config.prefetchTimeoutMs);
+  const budget = Number.isFinite(remaining) ? remaining - PREFETCH_TIMEOUT_RESERVE_MS : ceiling;
+  return Math.round(Math.min(ceiling, Math.max(config.timeoutMs, budget)));
 }
 
 function compactText(value, limit = 120) {
@@ -122,7 +152,7 @@ function describeTrack(track) {
   const measuredEnergy = Number.isFinite(metadata.features?.energy) ? Math.round(metadata.features.energy * 100) : null;
   return {
     title: compactText(track?.userData?.autoplayReference?.title || track?.info?.title),
-    artist: compactText(track?.userData?.autoplayReference?.artist || track?.info?.author),
+    artist: compactText(track?.userData?.autoplayReference?.artist || stripTopicSuffix(track?.info?.author)),
     album: compactText(metadata.albumTitle),
     genres: metadata.genres.slice(0, 6),
     tempo: Number.isFinite(metadata.features?.tempo) ? Math.round(metadata.features.tempo) : null,
@@ -143,7 +173,7 @@ function describeRecentTrack(track) {
 function describeVerifiedCandidate(candidate) {
   return {
     title: compactText(candidate?.title || candidate?.track?.info?.title),
-    artist: compactText(candidate?.artist || candidate?.track?.info?.author),
+    artist: compactText(candidate?.artist || stripTopicSuffix(candidate?.track?.info?.author)),
     album: compactText(candidate?.albumTitle || candidate?.track?.userData?.albumTitle),
     source: compactText(candidate?.source || candidate?.track?.info?.sourceName, 40),
     genres: Array.isArray(candidate?.genres) ? candidate.genres.slice(0, 5) : [],
@@ -343,6 +373,8 @@ async function requestDirectorPlan(config, prompt) {
 
 async function planNextTrackWithAIDJ(input) {
   const config = getConfig();
+  const timeoutMs = Number(input?.timeoutMs);
+  if (Number.isFinite(timeoutMs) && timeoutMs >= 500) config.timeoutMs = Math.min(timeoutMs, MAX_TIMEOUT_MS);
   if (!config.enabled) return { status: "disabled", plan: null };
   if (!config.apiKey) return { status: "missing-api-key", plan: null };
   if (typeof (fetchForTests || globalThis.fetch) !== "function") return { status: "fetch-unavailable", plan: null };
@@ -351,6 +383,7 @@ async function planNextTrackWithAIDJ(input) {
   const cacheKey = getCacheKey(`${config.model}:director:${config.useWebSearch}`, prompt);
   let plan = getCachedDecision(cacheKey);
   const cached = Boolean(plan);
+  const startedAt = Date.now();
 
   try {
     if (!plan) {
@@ -360,13 +393,16 @@ async function planNextTrackWithAIDJ(input) {
       cacheDecision(cacheKey, plan, config.cacheTtlMs);
     }
   } catch (error) {
-    Log.warning("AI DJ director unavailable; using deterministic fallback ladder", "", `error=${compactText(error.message, 180)}`);
-    return { status: "fallback-error", plan: null };
+    const latencyMs = Date.now() - startedAt;
+    const reason = error?.name === "AbortError" ? `timeout after ${config.timeoutMs}ms` : compactText(error.message, 180);
+    Log.warning("AI DJ director unavailable; using deterministic fallback ladder", "", `error=${reason}`, `latencyMs=${latencyMs}`);
+    return { status: "fallback-error", plan: null, error: reason, latencyMs, timeoutMs: config.timeoutMs };
   }
 
-  if (plan.decision !== "propose" || !plan.candidates.length) return { status: "no-match", plan, cached, model: config.model };
-  if (plan.confidence < config.minConfidence) return { status: "low-confidence", plan, cached, model: config.model };
-  return { status: "planned", plan, cached, model: config.model };
+  const telemetry = { cached, model: config.model, latencyMs: Date.now() - startedAt, timeoutMs: config.timeoutMs };
+  if (plan.decision !== "propose" || !plan.candidates.length) return { status: "no-match", plan, ...telemetry };
+  if (plan.confidence < config.minConfidence) return { status: "low-confidence", plan, ...telemetry };
+  return { status: "planned", plan, ...telemetry };
 }
 
 function clearAIDJCacheForTests() {
@@ -383,6 +419,7 @@ module.exports = {
   buildDirectorInput,
   clearAIDJCacheForTests,
   filterPlanRepeats,
+  getAIDJTimeoutBudget,
   planNextTrackWithAIDJ,
   setAIDJFetchForTests,
 };

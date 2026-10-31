@@ -179,6 +179,123 @@ function getGenreBridgeStrength(left = [], right = []) {
   return { strength: compatible === true ? 1 : 0, specificOverlap: [] };
 }
 
+
+// Neighbouring genre families on the autoplay "map". One step (rap -> r&b,
+// rock -> metal) is a natural DJ move; two steps need the session to already
+// lean that way; three steps (rap -> metal) is the jarring jump listeners
+// complain about.
+const FAMILY_NEIGHBOURS = [
+  ["hiphop", "rnb"],
+  ["hiphop", "pop"],
+  ["hiphop", "electronic"],
+  ["hiphop", "reggae"],
+  ["hiphop", "latin"],
+  ["rnb", "pop"],
+  ["rnb", "jazz"],
+  ["pop", "electronic"],
+  ["pop", "rock"],
+  ["pop", "kpop"],
+  ["pop", "jpop"],
+  ["pop", "latin"],
+  ["pop", "country"],
+  ["electronic", "rock"],
+  ["rock", "metal"],
+  ["rock", "country"],
+  ["jazz", "classical"],
+  ["latin", "reggae"],
+  ["kpop", "jpop"],
+];
+
+const FAMILY_GRAPH = FAMILY_NEIGHBOURS.reduce((graph, [left, right]) => {
+  if (!graph.has(left)) graph.set(left, new Set());
+  if (!graph.has(right)) graph.set(right, new Set());
+  graph.get(left).add(right);
+  graph.get(right).add(left);
+  return graph;
+}, new Map());
+
+function getFamilyDistance(from, to) {
+  if (from === to) return 0;
+  if (!FAMILY_GRAPH.has(from) || !FAMILY_GRAPH.has(to)) return Infinity;
+  const visited = new Set([from]);
+  let frontier = [from];
+  for (let distance = 1; frontier.length; distance += 1) {
+    const next = [];
+    for (const family of frontier) {
+      for (const neighbour of FAMILY_GRAPH.get(family)) {
+        if (neighbour === to) return distance;
+        if (visited.has(neighbour)) continue;
+        visited.add(neighbour);
+        next.push(neighbour);
+      }
+    }
+    frontier = next;
+  }
+  return Infinity;
+}
+
+function getGenreFamilyDistance(left = [], right = []) {
+  if (!left.length || !right.length) return null;
+  let best = Infinity;
+  for (const leftFamily of left) {
+    for (const rightFamily of right) best = Math.min(best, getFamilyDistance(leftFamily, rightFamily));
+  }
+  return best;
+}
+
+/**
+ * Families of the leading genre tags only. Tag lists are ordered by weight,
+ * so a rap track tagged "...rock" far down the list is still a rap track.
+ */
+function getCoreGenreFamilies(genres = [], tagLimit = 2) {
+  const families = new Set();
+  let tagsUsed = 0;
+  for (const genre of normalizeGenreTags(genres)) {
+    const tagFamilies = FAMILY_RULES.filter(([, pattern]) => pattern.test(genre)).map(([family]) => family);
+    if (!tagFamilies.length) continue;
+    tagFamilies.forEach((family) => families.add(family));
+    tagsUsed += 1;
+    if (tagsUsed >= tagLimit) break;
+  }
+  return [...families];
+}
+
+/**
+ * Decides whether a candidate keeps the session's genre flow. The reference
+ * is the track playing now; the anchor is what the listener chose themselves,
+ * which stops a slow drift (pop -> rock -> metal) from walking away from it.
+ *
+ * Returns { allowed, distance, anchorDistance, reason } where distance is null
+ * when the candidate or the session has no usable genre data.
+ */
+function evaluateGenreFlow(candidateGenres = [], referenceGenres = [], anchorGenres = []) {
+  const candidateCore = getCoreGenreFamilies(candidateGenres, 1);
+  const referenceCore = getCoreGenreFamilies(referenceGenres, 2);
+  const anchorCore = getCoreGenreFamilies(anchorGenres, 2);
+  const sessionCore = referenceCore.length ? referenceCore : anchorCore;
+
+  if (!candidateCore.length) return { allowed: true, distance: null, anchorDistance: null, reason: "unknown-candidate" };
+  if (!sessionCore.length) return { allowed: true, distance: null, anchorDistance: null, reason: "unknown-session" };
+
+  // A shared specific tag ("polish hip hop", "shoegaze") is a real bridge even
+  // when the leading families differ.
+  if (findSpecificGenreOverlap(candidateGenres, referenceGenres.length ? referenceGenres : anchorGenres).length) {
+    return { allowed: true, distance: 0, anchorDistance: 0, reason: "shared-tag" };
+  }
+
+  const distance = getGenreFamilyDistance(candidateCore, sessionCore);
+  const anchorDistance = anchorCore.length ? getGenreFamilyDistance(candidateCore, anchorCore) : distance;
+
+  if (distance <= 1 && anchorDistance <= 2) return { allowed: true, distance, anchorDistance, reason: "near" };
+  if (distance === 2 && anchorDistance <= 1) return { allowed: true, distance, anchorDistance, reason: "bridge" };
+  return {
+    allowed: false,
+    distance: Number.isFinite(distance) ? distance : null,
+    anchorDistance: Number.isFinite(anchorDistance) ? anchorDistance : null,
+    reason: distance > 1 ? "genre-jump" : "anchor-drift",
+  };
+}
+
 module.exports = {
   normalizeGenre,
   normalizeGenreTags,
@@ -189,4 +306,7 @@ module.exports = {
   findGenreOverlap,
   findSpecificGenreOverlap,
   getGenreBridgeStrength,
+  getCoreGenreFamilies,
+  getGenreFamilyDistance,
+  evaluateGenreFlow,
 };

@@ -3,7 +3,7 @@ const { markActivityStateChanged } = require("../activity/sync");
 const Log = require("../logs/log");
 const { INACTIVITY_TIMEOUT_MS, PROGRESS_UPDATE_INTERVAL_MS } = require("./constants");
 const { clearRecoverySnapshot } = require("./recovery");
-const { playbackState, inactivityTimers, endActivePlayback } = require("./state");
+const { playbackState, inactivityTimers, endActivePlayback, isAwaitingAudio } = require("./state");
 
 let refreshNowPlayingMessageCached = null;
 
@@ -107,7 +107,7 @@ const scheduleProgressUpdates = (player) => {
     const lastPos = state.lastPosition ?? 0;
     const lastTs = state.lastTimestamp ?? now;
     const elapsed = Math.max(0, now - lastTs);
-    const estimated = Math.min(length, lastPos + (player.isPaused ? 0 : elapsed));
+    const estimated = Math.min(length, lastPos + (player.isPaused || isAwaitingAudio(state, now) ? 0 : elapsed));
 
     state.lastPosition = estimated;
     state.lastTimestamp = now;

@@ -339,6 +339,8 @@ async function lavalinkPlay({ guildId, voiceId, textId, query, requester, prepen
   }
 
   if (!shouldPlayNow && !shouldPrepend) addManualTracksToQueue(player, queueTargets);
+  // The waiting autoplay pick was chosen for the track that used to precede it.
+  if (!shouldPlayNow) require("./autoplay").scheduleAutoplayRefresh(player, textId);
 
   if (shouldPlayNow) {
     await player.skip();

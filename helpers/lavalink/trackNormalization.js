@@ -1,13 +1,13 @@
 const PRESENTATION_LABEL_PATTERN = /^(?:official(?:\s+(?:music\s+)?(?:video|audio|mv|lyric\s+video))?|lyrics?|lyric\s+video|audio|video|visuali[sz]er|hq|hd|4k|8k)$/i;
 const NEUTRAL_TITLE_LABEL_PATTERN = /^(?:original|original\s+version|single(?:\s+version)?|album(?:\s+version)?|explicit)\s*$/i;
 const UPLOADER_CHANNEL_PATTERN = /\b(?:clean\s+songs?|que\s+quality|topic|vevo|official(?:\s+artist)?\s+channel|lyrics?(?:\s+channel)?|music\s+lyrics)\b/i;
-const TRAILING_VARIANT_LABEL_PATTERN = /^(.*?)(?:\s+)(?:remix|remixed|rework|bootleg|acoustic|unplugged|stripped|demo|rehearsal|cover|tribute|instrumental|karaoke|nightcore|slowed|sped\s*up|speed\s*up|chopped\s*(?:and\s*)?(?:screwed|slopped)|choppednotslopped|radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|remaster(?:ed)?|anniversary\s+edition)(?:\s+(?:version|mix))?\s*$/i;
+const TRAILING_VARIANT_LABEL_PATTERN = /^(.*?)(?:\s+)(?:remix|remixed|rework|bootleg|acoustic|unplugged|stripped|demo|rehearsal|cover|tribute|instrumental|karaoke|nightcore|slowed|sped\s*up|speed\s*up|chopped\s*(?:and\s*)?(?:screwed|slopped)|choppednotslopped|radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|remaster(?:ed)?|anniversary\s+edition|\d{3}\s?hz|8d(?:\s+audio)?|bass\s*boost(?:ed)?)(?:\s+(?:version|mix))?\s*$/i;
 
 const VARIANT_DEFINITIONS = [
   ["remix", /\b(?:remix|remixed|rework|bootleg)\b/i],
   ["live", /\b(?:live(?:\s+(?:version|performance|session|at|from))?|concert\s+version|concert)\b/i],
   ["acoustic", /\b(?:acoustic|unplugged|stripped|piano\s+version|orchestral\s+version)\b/i],
-  ["demo", /\b(?:demo|rehearsal|rough\s+mix|early\s+version)\b/i],
+  ["demo", /\b(?:demo|rehearsal|rough\s+mix|early\s+version|(?:work|writing)\s+in\s+progress)\b/i],
   ["cover", /\b(?:cover|tribute)\b/i],
   ["instrumental", /\b(?:instrumental|karaoke|backing\s+track)\b/i],
   ["tempo", /\b(?:nightcore|slowed(?:\s*(?:\+|and)\s*reverb)?|sped\s*up|speed\s*up)\b/i],
@@ -15,6 +15,9 @@ const VARIANT_DEFINITIONS = [
   ["edit", /\b(?:radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|edit)\b/i],
   ["clean", /\b(?:clean|censored|radio\s+version)\b/i],
   ["remaster", /\b(?:remaster(?:ed)?|anniversary\s+edition)\b/i],
+  // Retuned or processed re-uploads (432 Hz, 8D, bass boosted) of a recording.
+  ["pitch", /\b(?:\d{3}\s?hz|8d(?:\s+audio)?|bass\s*boost(?:ed)?)\b/i],
+  ["novelty", /\b(?:(?:8|16)[\s-]?bit|chiptune|emulation|parody|type\s+beat|lullaby|music\s+box|game\s*boy\s+sound)\b/i],
 ];
 
 function normalizeComparableText(value) {
@@ -39,6 +42,13 @@ function cleanArtistName(value) {
     .trim();
 }
 
+// YouTube's auto-generated "Artist - Topic" channels carry the real artist
+// name. Only that suffix goes: unlike cleanArtistName, the rest of the name
+// is shown and sent exactly as the platform has it.
+function stripTopicSuffix(value) {
+  return String(value || "").replace(/\s*-\s*Topic\s*$/i, "").trim();
+}
+
 function getDecoratedSegments(value) {
   const title = String(value || "").trim();
   const segments = [];
@@ -51,7 +61,7 @@ function getDecoratedSegments(value) {
   const suffix = title.match(/\s[-–—|]\s([^–—|]+)$/);
   if (suffix?.[1]?.trim()) {
     const start = title.length - suffix[0].length;
-    segments.push({ value: suffix[1].trim(), start, end: title.length });
+    segments.push({ value: suffix[1].trim(), start, end: title.length, suffix: true });
   }
 
   return segments;
@@ -60,7 +70,7 @@ function getDecoratedSegments(value) {
 function getVariantKinds(value) {
   const title = String(value || "").trim();
   const segments = getDecoratedSegments(title).map((segment) => segment.value);
-  const trailing = title.match(/\b(?:remix|remixed|rework|bootleg|acoustic|unplugged|stripped|demo|rehearsal|cover|tribute|instrumental|karaoke|nightcore|slowed|sped\s*up|speed\s*up|chopped\s*(?:and\s*)?(?:screwed|slopped)|choppednotslopped|radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|clean|censored|radio\s+version|remaster(?:ed)?|anniversary\s+edition)(?:\s+(?:version|mix))?\s*$/i);
+  const trailing = title.match(/\b(?:remix|remixed|rework|bootleg|acoustic|unplugged|stripped|demo|rehearsal|cover|tribute|instrumental|karaoke|nightcore|slowed|sped\s*up|speed\s*up|chopped\s*(?:and\s*)?(?:screwed|slopped)|choppednotslopped|radio\s*edit|extended(?:\s+(?:mix|version))?|club\s+mix|dj\s+mix|clean|censored|radio\s+version|remaster(?:ed)?|anniversary\s+edition|type\s+beat|parody|\d{3}\s?hz|8d(?:\s+audio)?|bass\s*boost(?:ed)?)(?:\s+(?:version|mix))?\s*$/i);
   if (trailing) segments.push(trailing[0]);
 
   const kinds = new Set();
@@ -71,6 +81,24 @@ function getVariantKinds(value) {
   }
 
   return [...kinds];
+}
+
+// A bracket or " - " label read as a whole: "Live" and "8-Bit Emulation"
+// carry no inner label for getVariantKinds to find, yet are the variant.
+function isVariantLabel(label) {
+  return VARIANT_DEFINITIONS.some(([, pattern]) => pattern.test(label));
+}
+
+// Kinds that uploads append to the song name itself ("Artist - Song 432hz"),
+// so a " - " suffix ending in one is still the song, not a credit.
+const APPENDED_VARIANT_KINDS = new Set(["pitch", "tempo", "novelty"]);
+
+// A " - " suffix is the variant when it opens with the label ("Live at
+// Wembley", "Bass Boosted") or ends in a credit ("Mark Ronson Remix").
+function isVariantSuffix(label) {
+  const text = String(label || "").replace(/^\d{4}\s+/, "");
+  if (VARIANT_DEFINITIONS.some(([, pattern]) => pattern.exec(text)?.index === 0)) return true;
+  return getVariantKinds(text).some((kind) => !APPENDED_VARIANT_KINDS.has(kind));
 }
 
 function stripPresentationNoise(value) {
@@ -96,7 +124,8 @@ function stripPresentationNoise(value) {
 function stripVariantDecorators(value) {
   let title = stripPresentationNoise(value);
   const removable = getDecoratedSegments(title)
-    .filter((segment) => getVariantKinds(segment.value).length > 0 || NEUTRAL_TITLE_LABEL_PATTERN.test(segment.value.trim()))
+    .filter((segment) => (segment.suffix ? isVariantSuffix(segment.value) : isVariantLabel(segment.value))
+      || NEUTRAL_TITLE_LABEL_PATTERN.test(segment.value.trim()))
     .sort((left, right) => right.start - left.start);
 
   for (const segment of removable) {
@@ -111,6 +140,21 @@ function stripVariantDecorators(value) {
 
 function getBaseTitle(value) {
   return normalizeComparableText(stripVariantDecorators(value));
+}
+
+// Brackets that tell one song from another: "(Part 2)", "[Vol. 3]", "(2)".
+const DISTINGUISHING_BRACKET_PATTERN = /\d|\b(?:part|pt|vol|chapter|reprise|interlude|intro|outro|skit)\b/i;
+
+/**
+ * The base title with every remaining bracket dropped too: soundtrack and
+ * credit tags ("[Cyberpunk: Edgerunners II] (Talia Yang)") that uploads add
+ * around the same song. Brackets that can tell songs apart stay.
+ */
+function getCoreTitle(value) {
+  const title = stripVariantDecorators(value).replace(/\s*(?:\[([^\]]*)\]|\(([^)]*)\))/g, (match, square, round) =>
+    DISTINGUISHING_BRACKET_PATTERN.test(square || round || "") ? match : " "
+  );
+  return normalizeComparableText(title);
 }
 
 function queryRequestsVariant(query, candidateTitle) {
@@ -187,11 +231,13 @@ module.exports = {
   cleanArtistName,
   cleanTrackMetadata,
   getBaseTitle,
+  getCoreTitle,
   getAutoplayVersionCompatibility,
   getVariantKinds,
   isUnrequestedAlternateVersion,
   normalizeComparableText,
   queryRequestsVariant,
   stripPresentationNoise,
+  stripTopicSuffix,
   stripVariantDecorators,
 };

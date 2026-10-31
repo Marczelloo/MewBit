@@ -4,6 +4,7 @@ const { getGuildState } = require("../guildState");
 const { getRelevantPlayableTrack } = require("./autoplayCandidates");
 const { clearAutoplayExposureForGuild, recordAutoplayExposure } = require("./autoplayExposure");
 const { getTempoDistance } = require("./autoplayMetadata");
+const { getAIDJTimeoutBudget } = require("./aiDj");
 const { fetchAutoplayV3Track } = require("./autoplayV3");
 const { createPoru } = require("./client");
 const { getGenreBridgeStrength, getGenreFamilies, areGenreFamiliesCompatible } = require("./genreUtils");
@@ -232,7 +233,11 @@ async function runLiveAutoplaySoak({
 
   try {
     for (let step = 1; step <= steps; step += 1) {
-      const selected = await selectAutoplayTrack(reference, guildId, { pendingManualTracks });
+      // Each step stands in for the prefetch at the reference's trackStart.
+      const selected = await selectAutoplayTrack(reference, guildId, {
+        pendingManualTracks,
+        aiTimeoutMs: getAIDJTimeoutBudget(reference.info?.length),
+      });
       const stepTrace = {
         step,
         reference: getTrackSummary(reference),

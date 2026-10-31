@@ -3,6 +3,7 @@ const test = require("node:test");
 const { WebSocket } = require("ws");
 const {
   createActivityServer,
+  getActivityHandoff,
   getActivityPosition,
   isAllowedArtworkUrl,
   resolveActivityPlayback,
@@ -86,6 +87,20 @@ test("Activity keeps an explicit ended state instead of resurrecting Poru's trac
   assert.equal(playback.durationMs, 0);
 });
 
+test("Activity holds the ended track until the next one starts", () => {
+  const now = 1_000_000;
+  const ended = { track: "old", info: { identifier: "old", title: "Old", length: 120000 } };
+  const player = { queue: [] };
+  const state = { currentTrack: null, handoffTrack: { track: ended, positionMs: 42_000, since: now - 5_000 } };
+
+  assert.equal(getActivityHandoff(player, state, now)?.track, ended);
+  assert.equal(getActivityHandoff(player, state, now)?.positionMs, 42_000);
+  // The next track started, the player left, or nothing came within the hold.
+  assert.equal(getActivityHandoff(player, { ...state, currentTrack: ended }, now), null);
+  assert.equal(getActivityHandoff(null, state, now), null);
+  assert.equal(getActivityHandoff(player, state, now + 60_000), null);
+});
+
 test("Activity progress follows the event-backed position anchor across view remounts", () => {
   const now = 1_000_000;
   const state = { lastPosition: 46_000, lastTimestamp: now - 3_000, paused: false };
@@ -94,6 +109,15 @@ test("Activity progress follows the event-backed position anchor across view rem
   assert.equal(getActivityPosition(player, state, 180_000, now), 49_000);
   assert.equal(getActivityPosition({ position: 0, isPaused: true }, state, 180_000, now), 46_000);
   assert.equal(getActivityPosition(player, state, 48_000, now), 48_000);
+});
+
+test("Activity holds the position of a track that has not been heard yet", () => {
+  const now = Date.now();
+  const state = { lastPosition: 0, lastTimestamp: now - 3_000, paused: false, audioPendingSince: now - 3_000, audioPendingFrom: 0 };
+  assert.equal(getActivityPosition({ position: 0, isPaused: false }, state, 180_000, now), 0);
+
+  state.audioPendingSince = null;
+  assert.equal(getActivityPosition({ position: 0, isPaused: false }, state, 180_000, now), 3_000);
 });
 
 test("Activity always labels autoplay rows as MewBit even when a provider preserved a user requester", () => {

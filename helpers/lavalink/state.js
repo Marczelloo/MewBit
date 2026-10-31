@@ -1,11 +1,32 @@
 const { TRACK_HISTORY_LIMIT } = require("./constants");
 const { equalizerState } = require("./equalizerStore");
 const { getTrackIdentity } = require("./trackIdentity");
+const { recordRoomTrack } = require("../history/roomHistory");
 
 const inactivityTimers = new Map();
 const playbackState = new Map();
 const lyricsState = new Map();
 const AUTOPLAY_HISTORY_LIMIT = Number(process.env.AUTOPLAY_HISTORY_LIMIT ?? 80);
+
+// TrackStart fires when Lavalink starts loading the track; it is heard only
+// once the position first moves. Until then nothing should count time. The
+// cap keeps a position Lavalink never reports from freezing the clock.
+const AUDIO_START_MAX_WAIT_MS = 15_000;
+
+const markAwaitingAudio = (state, position = 0) => {
+  state.audioPendingSince = Date.now();
+  state.audioPendingFrom = Number(position) || 0;
+};
+
+// Returns true once, when the reported position shows the audio started.
+const confirmAudioStarted = (state, position) => {
+  if (!state?.audioPendingSince || !(Number(position) > state.audioPendingFrom)) return false;
+  state.audioPendingSince = null;
+  return true;
+};
+
+const isAwaitingAudio = (state, now = Date.now()) =>
+  Boolean(state?.audioPendingSince) && now - state.audioPendingSince < AUDIO_START_MAX_WAIT_MS;
 
 const isAutoplayTrack = (track) => Boolean(track?.info?.autoplayed || track?.userData?.autoplay);
 
@@ -68,6 +89,7 @@ const pushTrackHistory = (guildId, track) => {
     autoplayPlayedAt: Date.now(),
   };
   history.push(snapshot);
+  recordRoomTrack(guildId, snapshot);
 
   if (!isAutoplayTrack(track)) {
     state.manualHistory.push(cloneTrack(track));
@@ -88,9 +110,11 @@ const endActivePlayback = (guildId) => {
   const state = ensurePlaybackState(guildId);
   state.currentTrack = null;
   state.lastEndedTrack = null;
+  state.handoffTrack = null;
   state.lastPosition = 0;
   state.lastTimestamp = Date.now();
   state.paused = true;
+  state.audioPendingSince = null;
   playbackState.set(guildId, state);
   return state;
 };
@@ -108,6 +132,9 @@ module.exports = {
   playbackState,
   equalizerState,
   ensurePlaybackState,
+  markAwaitingAudio,
+  confirmAudioStarted,
+  isAwaitingAudio,
   cloneTrack,
   resolveEndedTrack,
   pushTrackHistory,

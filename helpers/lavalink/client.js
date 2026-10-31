@@ -13,12 +13,15 @@ const Log = require("../logs/log");
 const statsStore = require("../stats/store.js");
 const { formatDuration } = require("../utils");
 const { tryQueueFallbackTrack, describeTrack } = require("./fallbacks");
-const { applyNormalizedVolume } = require("./loudness");
+const { applyNormalizedVolume, refineTrackLoudness, resolveTrackLoudness } = require("./loudness");
 const { fetchLyrics } = require("./lyricsClient");
 const { clearRecoverySnapshot } = require("./recovery");
+const { recordSourcePlayback } = require("./sourceHealth");
 const { armTrackStartWatchdog, clearTrackStartWatchdog } = require("./startWatchdog");
 const {
   ensurePlaybackState,
+  markAwaitingAudio,
+  confirmAudioStarted,
   cloneTrack,
   resolveEndedTrack,
   pushTrackHistory,
@@ -26,6 +29,7 @@ const {
   setLyricsState,
   clearLyricsState,
 } = require("./state");
+const { describeSocketClose, startStreamHealthMonitor } = require("./streamHealth");
 const {
   clearInactivityTimer,
   scheduleInactivityDisconnect,
@@ -142,6 +146,8 @@ async function recoverStalledTrackStart(player, stalledTrack) {
     }
   }
 
+  state.handoffTrack = null;
+  markActivityStateChanged(player.guildId, "trackStartGaveUp");
   scheduleInactivityDisconnect(player, "trackStartTimeout");
 }
 
@@ -192,6 +198,20 @@ function createPoru(client) {
 
   poru.on("nodeConnect", (node) => Log.success(`Lavalink node connected ${node.name}`));
 
+  // Voice gateway drops show up as audible gaps; Poru rejoins on 4015/4009.
+  poru.on("socketClose", (player, _track, data) => {
+    const close = describeSocketClose(player, data);
+    Log.warning(
+      "Discord voice connection closed",
+      "",
+      `guild=${close.guildId}`,
+      `code=${close.code}`,
+      `byRemote=${close.byRemote}`
+    );
+  });
+
+  startStreamHealthMonitor(poru);
+
   poru.on("trackError", async (player, track, err) => {
     // Read before Poru's skip() zeroes it; this is where a replay resumes.
     const failedAt = player.position || 0;
@@ -200,6 +220,7 @@ function createPoru(client) {
     const trackTitle = trackInfo.title || "Unknown";
     const source = trackInfo.sourceName || "unknown";
     const activityActive = hasActiveActivitySession(player.guildId);
+    recordSourcePlayback(source, false);
 
     Log.error(
       "❌ Track error",
@@ -327,6 +348,7 @@ function createPoru(client) {
     clearTrackStartWatchdog(player.guildId, "trackStart");
     clearInactivityTimer(player.guildId, "trackStart");
     const replay = consumeReplay(track);
+    recordSourcePlayback(track.info?.sourceName, true);
     player.isPlaying = true;
     player.isPaused = false;
     // Poru zeroes the position on every TrackStart; a replay resumed mid-song.
@@ -338,9 +360,11 @@ function createPoru(client) {
     // Artwork, lyrics and Discord UI updates below may involve network waits.
     const state = ensurePlaybackState(player.guildId);
     state.currentTrack = cloneTrack(track);
+    state.handoffTrack = null;
     state.lastPosition = replay?.resumeAt || 0;
     state.lastTimestamp = Date.now();
     state.paused = Boolean(player.isPaused);
+    markAwaitingAudio(state, state.lastPosition);
     playbackState.set(player.guildId, state);
     markActivityStateChanged(player.guildId, "trackStart");
 
@@ -349,6 +373,12 @@ function createPoru(client) {
     } catch (err) {
       Log.warning("Failed to normalize provider volume", err?.message || String(err), `guild=${player.guildId}`);
     }
+    // Unmeasured tracks get a quick Deezer loudness lookup; the next queued
+    // track is measured now so it starts at the right level.
+    void refineTrackLoudness(player, track).catch((err) => {
+      Log.debug("Track loudness lookup failed", err?.message || String(err), `guild=${player.guildId}`);
+    });
+    if (player.queue[0]) void resolveTrackLoudness(player.queue[0]).catch(() => null);
 
     try {
       await updateTrackVoiceChannelStatus(poru.client, player, track);
@@ -380,7 +410,8 @@ function createPoru(client) {
     // Start fetching the next autoplay track while the current one is still
     // playing. Waiting for queueEnd makes every recommendation fetch audible.
     const guildSettings = getGuildState(player.guildId);
-    if (guildSettings?.autoplay && player.queue.length <= 1) {
+    // prefetchAutoplayTrack also re-picks a waiting pick chosen for another track.
+    if (guildSettings?.autoplay) {
       const { prefetchAutoplayTrack } = require("./autoplay");
       void prefetchAutoplayTrack(player, track, player.textChannel);
     }
@@ -471,6 +502,11 @@ function createPoru(client) {
 
     state.currentTrack = null;
     state.lastEndedTrack = endedTrack ? cloneTrack(endedTrack) : state.lastEndedTrack || null;
+    // The Activity keeps showing the ended track until the next one starts, so
+    // a skip into an autoplay pick does not flash the empty Home screen.
+    state.handoffTrack = state.lastEndedTrack
+      ? { track: state.lastEndedTrack, positionMs: Number(state.lastPosition) || 0, since: Date.now() }
+      : null;
     state.paused = false;
     playbackState.set(player.guildId, state);
     clearLyricsState(player.guildId);
@@ -601,7 +637,7 @@ function createPoru(client) {
       Log.info("🔁 Autoplay fetching", `basedOn=${lastTitle}`, `guild=${player.guildId}`);
 
       const { queueAutoplayTrack, getAutoplayInFlight } = require("./autoplay");
-      const pendingPrefetch = getAutoplayInFlight(player.guildId);
+      const pendingPrefetch = getAutoplayInFlight(player.guildId, player);
       if (pendingPrefetch) {
         Log.info("⏳ Awaiting autoplay prefetch after queue end", `guild=${player.guildId}`);
         const prefetchAdded = await pendingPrefetch.catch(() => false);
@@ -617,6 +653,9 @@ function createPoru(client) {
       }
     }
 
+    // Nothing follows: let the Activity show that playback has ended.
+    state.handoffTrack = null;
+    markActivityStateChanged(player.guildId, "queueEnded");
     scheduleInactivityDisconnect(player, "queueEnd");
   });
 
@@ -625,10 +664,11 @@ function createPoru(client) {
     state.lastPosition = player.position ?? 0;
     state.lastTimestamp = Date.now();
     state.paused = Boolean(player.isPaused);
+    const audioStarted = confirmAudioStarted(state, state.lastPosition);
     playbackState.set(player.guildId, state);
 
     const now = Date.now();
-    if (now - (lastActivityProgressSyncAt.get(player.guildId) || 0) >= 1_000) {
+    if (audioStarted || now - (lastActivityProgressSyncAt.get(player.guildId) || 0) >= 1_000) {
       lastActivityProgressSyncAt.set(player.guildId, now);
       markActivityStateChanged(player.guildId, "playerUpdate");
     }

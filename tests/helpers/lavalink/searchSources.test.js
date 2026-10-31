@@ -181,10 +181,65 @@ describe("Search source selection", () => {
       searchAcrossSources(poru, "Tamagotchi", { preferredSource: "youtube" }),
     ]);
 
-    // Four query normalizations are checked across five provider lanes once,
-    // not twice for the two Activity clients.
+    // Every lane comes back empty, so each provider escalates to its other
+    // lanes and the three accent variants: 20 requests once, not twice for
+    // the two Activity clients.
     assert.strictEqual(calls, 20);
     assert.strictEqual(getSearchCacheSize(), 1);
+  });
+
+  it("asks only the primary lane per provider when it already finds the song", async () => {
+    clearSearchCache();
+    const calls = [];
+    const poru = {
+      resolve: async (options) => {
+        calls.push(options);
+        return {
+          tracks: ["Live", "Studio", "Remaster"].map((tag, index) => ({
+            encoded: `${options.source}-${index}`,
+            info: { title: `Ciepłe Dranie ${tag}`, author: "Kuki" },
+          })),
+        };
+      },
+    };
+
+    const tracks = await searchAcrossSources(poru, "kuki cieple dranie", { preferredSource: "youtube" });
+
+    assert.deepStrictEqual(calls.map((call) => call.source).sort(), ["dzsearch", "scsearch", "spsearch", "ytmsearch"]);
+    assert.ok(calls.every((call) => call.query === "kuki cieple dranie"));
+    assert.strictEqual(tracks.length, 12);
+  });
+
+  it("falls back to regular YouTube when YouTube Music finds nothing relevant", async () => {
+    clearSearchCache();
+    const calls = [];
+    const poru = {
+      resolve: async (options) => {
+        calls.push(options);
+        if (options.source !== "ytsearch") return { tracks: [] };
+        return { tracks: [{ encoded: "yt", info: { title: "Numb", author: "Linkin Park" } }] };
+      },
+    };
+
+    const tracks = await searchSingleSource(poru, "linkin park numb", "youtube");
+
+    assert.deepStrictEqual(calls[0], { query: "linkin park numb", source: "ytmsearch" });
+    assert.ok(calls.some((call) => call.source === "ytsearch" && call.query === "linkin park numb"));
+    assert.deepStrictEqual(tracks.map((track) => track.encoded), ["yt"]);
+  });
+
+  it("keeps the results of a provider whose second pass misses the deadline", async () => {
+    clearSearchCache();
+    const poru = {
+      resolve: (options) => {
+        if (options.source === "ytmsearch") return Promise.resolve({ tracks: [{ encoded: "ytm", info: { title: "Numb", author: "Linkin Park" } }] });
+        return new Promise(() => {});
+      },
+    };
+
+    const tracks = await searchSingleSource(poru, "linkin park numb", "youtube");
+
+    assert.deepStrictEqual(tracks.map((track) => track.encoded), ["ytm"]);
   });
 
   it("parses source-pinned autocomplete values without double-prefixing them", () => {

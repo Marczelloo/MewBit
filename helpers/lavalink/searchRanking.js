@@ -14,6 +14,7 @@ const GENERIC_SEARCH_WORDS = new Set([
   "music",
 ]);
 
+const { matchTokens } = require("./searchMatching");
 const {
   getBaseTitle,
   getVariantKinds,
@@ -42,6 +43,16 @@ const VERSION_PENALTIES = Object.freeze({
   radio: 0,
   explicit: 0,
   remaster: 20,
+  // Kinds trackNormalization reports. Nightcore and slowed uploads are
+  // "tempo", which used to fall through to the 25-point default and so sat
+  // next to the original as if they were a radio edit.
+  tempo: 70,
+  chopped: 70,
+  demo: 45,
+  // 8-bit covers, parodies, type beats and lullaby versions: never the song.
+  novelty: 90,
+  // 432 Hz, 8D and bass-boosted re-uploads of the recording.
+  pitch: 70,
 });
 
 // "YouTube first" is the Activity's default search mode. Spotify remains the
@@ -53,6 +64,30 @@ const SEARCH_PROVIDER_BONUSES = Object.freeze({
   spotify: 22,
 });
 const MIN_PREFERRED_PROVIDER_SCORE = 260;
+// A provider's own first results carry its popularity knowledge, which the
+// metadata does not: for "high forever" every upload is titled the same, and
+// only the providers know the Edgerunners remix is the one people play. A
+// recording that at least two providers list near the top rises above the
+// same-titled uploads; one provider's order alone stays a mere tie-break.
+const PROVIDER_TOP_PICK_BONUSES = Object.freeze([36, 24, 12]);
+const MIN_TOP_PICK_PROVIDERS = 2;
+// A version a provider lists this high for a base-title search is the one
+// people play (YouTube Music puts the Edgerunners "High Forever" remix second),
+// so it is not penalised as an unrequested remix. Its original still leads.
+const VARIANT_TOP_PICK_POSITIONS = 2;
+// Re-uploads that only process the recording (slowed, 432 Hz, 8-bit) are
+// listed high for their views, not because they are the song.
+const PROCESSED_VERSION_KINDS = new Set(["tempo", "chopped", "pitch", "novelty"]);
+// Deezer's play-count rank (searchPopularity.js) separates the song everyone
+// means from same-titled covers: The Weeknd's "Blinding Lights" ranks ~985k,
+// a string quartet's ~430k. The bonus grows with the cube of the share of the
+// pool's best rank, so only recordings close to the top gain much, and only
+// strong matches get it: popularity breaks ties, it never makes a weak match
+// relevant.
+const POPULARITY_BONUS = 70;
+// A song whose main artist the query names only as a guest ("Otwieram wino
+// (feat. Pezet)" for "pezet") is that artist's second-hand result.
+const FEATURED_ONLY_PENALTY = 80;
 
 const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:tutorial|how to|lesson|tips?|tricks?|review|reaction|reacts?|analysis|explained)\b/i,
@@ -61,9 +96,25 @@ const NON_MUSIC_SEARCH_PATTERNS = [
   /\b(?:royalty\s+free|shopping\s+spree|teaches?|dub|prank|challenge|asmr|mukbang)\b/i,
 ];
 
-function normalizeText(value) {
-  return normalizeComparableText(value);
+// Ranking normalises the same query, titles and artists several times per
+// candidate, and cached searches hand back the same titles on every
+// keystroke; keep the results so a 200-track pool costs one pass of regexes.
+const MAX_MEMO_ENTRIES = 5_000;
+
+function memoizeText(transform) {
+  const memo = new Map();
+  return (value) => {
+    const text = String(value || "");
+    const cached = memo.get(text);
+    if (cached !== undefined) return cached;
+    if (memo.size >= MAX_MEMO_ENTRIES) memo.clear();
+    const result = transform(text);
+    memo.set(text, result);
+    return result;
+  };
 }
+
+const normalizeText = memoizeText(normalizeComparableText);
 
 function getTokens(value, { keepGeneric = false } = {}) {
   return normalizeText(value)
@@ -76,6 +127,45 @@ function getUniqueTokens(value, options) {
   return [...new Set(getTokens(value, options))];
 }
 
+// Shorter joins ("a b" → "ab") are too likely to be a different word.
+const MIN_RESPACED_WORD_LENGTH = 4;
+
+function splitLikeQuery(word, queryWords) {
+  if (word.length < MIN_RESPACED_WORD_LENGTH) return [word];
+  for (let start = 0; start < queryWords.length; start += 1) {
+    for (const count of [3, 2]) {
+      const parts = queryWords.slice(start, start + count);
+      if (parts.length === count && parts.join("") === word) return parts;
+    }
+  }
+  return [word];
+}
+
+/**
+ * "kickback" and "KICK BACK" are the same song. Re-spaces candidate words to
+ * the query's spelling: joins neighbours the query writes as one word and
+ * splits a word the query writes as several, so word matching sees them equal.
+ */
+function alignWordSpacing(words, queryWords) {
+  if (!queryWords.length) return words;
+  const joined = new Set(queryWords.filter((word) => word.length >= MIN_RESPACED_WORD_LENGTH));
+  const aligned = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const count = [3, 2].find((size) => index + size <= words.length && joined.has(words.slice(index, index + size).join("")));
+    if (count) {
+      aligned.push(words.slice(index, index + count).join(""));
+      index += count - 1;
+    } else {
+      aligned.push(...splitLikeQuery(words[index], queryWords));
+    }
+  }
+  return aligned;
+}
+
+function alignTextSpacing(text, queryWords) {
+  return alignWordSpacing(String(text || "").split(" ").filter(Boolean), queryWords).join(" ");
+}
+
 function getCoverage(needleTokens, candidateTokens) {
   if (!needleTokens.length) return 0;
 
@@ -84,62 +174,18 @@ function getCoverage(needleTokens, candidateTokens) {
   return matches / needleTokens.length;
 }
 
-function levenshteinDistance(left, right) {
-  if (left === right) return 0;
-  if (!left) return right.length;
-  if (!right) return left.length;
-
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      current[rightIndex] = Math.min(
-        current[rightIndex - 1] + 1,
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
-      );
-    }
-    previous = current;
-  }
-
-  return previous[right.length];
+function getFuzzyCoverage(needleTokens, candidateTokens, options) {
+  return matchTokens(needleTokens, candidateTokens, options).credit;
 }
 
-function getTokenSimilarity(left, right) {
-  if (left === right) return 1;
-  if (left.length < 4 || right.length < 4) return 0;
-
-  const longest = Math.max(left.length, right.length);
-  const similarity = 1 - levenshteinDistance(left, right) / longest;
-  // Keep fuzzy matching deliberately strict: it is for a small typo, not a
-  // licence to accept an unrelated title in autocomplete.
-  return similarity >= 0.78 ? similarity : 0;
-}
-
-function getFuzzyCoverage(needleTokens, candidateTokens) {
-  if (!needleTokens.length) return 0;
-
-  const remaining = [...candidateTokens];
-  let total = 0;
-
-  for (const needle of needleTokens) {
-    let bestIndex = -1;
-    let bestSimilarity = 0;
-
-    for (let index = 0; index < remaining.length; index += 1) {
-      const similarity = getTokenSimilarity(needle, remaining[index]);
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestIndex = index;
-      }
-    }
-
-    if (bestIndex === -1) continue;
-    total += bestSimilarity;
-    remaining.splice(bestIndex, 1);
-  }
-
-  return total / needleTokens.length;
+// The word the user is probably still typing. Only that one may match as a
+// prefix; earlier words are complete and must match as words.
+function getPrefixToken(query) {
+  const text = String(query || "");
+  if (/\s$/.test(text)) return null;
+  const tokens = getTokens(text, { keepGeneric: true });
+  const last = tokens[tokens.length - 1];
+  return last && !GENERIC_SEARCH_WORDS.has(last) ? last : null;
 }
 
 function getPopularity(track) {
@@ -188,20 +234,45 @@ function getVersionTokens(title) {
   return getVariantKinds(title);
 }
 
-function getCanonicalTitle(title) {
-  return getBaseTitle(title);
+const FEATURED_CREDIT_PATTERN = /[([]\s*(?:feat\.?|ft\.?|featuring|with)\s+([^)\]]+)[)\]]|\s(?:feat\.?|ft\.?|featuring)\s+(.+)$/gi;
+
+function getFeaturedCredits(title) {
+  const text = String(title || "");
+  const credits = [...text.matchAll(FEATURED_CREDIT_PATTERN)].map((match) => match[1] || match[2]);
+  return {
+    featuredTokens: getUniqueTokens(credits.join(" ")),
+    mainTitleTokens: getUniqueTokens(text.replace(FEATURED_CREDIT_PATTERN, " ")),
+  };
 }
+
+function getPopularityShare(track, maxRank) {
+  const rank = Number(track?.searchPopularity);
+  return maxRank > 0 && rank > 0 ? Math.min(1, rank / maxRank) : 0;
+}
+
+function getPopularityBonus(entry) {
+  if (!entry?.popularityShare || entry.score < MIN_PREFERRED_PROVIDER_SCORE) return 0;
+  return Math.round(POPULARITY_BONUS * entry.popularityShare ** 3);
+}
+
+const getCanonicalTitle = memoizeText(getBaseTitle);
 
 function getProviderIdentity(track) {
   const source = normalizeText(track?.info?.sourceName || track?.info?.source || "");
   return source || "unknown";
 }
 
+// Versions that sound different enough to be their own recording. A remaster
+// or radio edit is still the song people meant, so it shares the original's key.
+const MIN_DISTINCT_VERSION_PENALTY = 50;
+
 function getConsensusKey(track) {
-  const title = getCanonicalTitle(track?.info?.title || "");
+  const rawTitle = track?.info?.title || "";
+  const title = getCanonicalTitle(rawTitle);
   const author = normalizeText(cleanArtistName(track?.info?.author || ""));
   if (!title || !author) return null;
-  return `${author}|||${title}`;
+  const versions = getVersionTokens(rawTitle).filter((kind) => (VERSION_PENALTIES[kind] ?? 25) >= MIN_DISTINCT_VERSION_PENALTY);
+  return versions.length ? `${author}|||${title}|||${versions.sort().join(",")}` : `${author}|||${title}`;
 }
 
 function getCatalogSourceBonus(track, consensusSources) {
@@ -217,6 +288,81 @@ function getProviderConsensus(track, consensusMap) {
   const key = getConsensusKey(track);
   if (!key || !consensusMap) return 0;
   return consensusMap.get(key)?.size ?? 0;
+}
+
+function getRecordingKey(track) {
+  return getConsensusKey(track) || track?.info?.uri || track?.info?.identifier || null;
+}
+
+/**
+ * Sums, per recording, the bonus for its position in each provider's list,
+ * keeping only recordings that MIN_TOP_PICK_PROVIDERS providers agree on.
+ */
+function getProviderTopPicks(tracks) {
+  const positions = new Map();
+  const picks = new Map();
+  for (const track of tracks) {
+    const provider = getProviderIdentity(track);
+    const position = positions.get(provider) ?? 0;
+    positions.set(provider, position + 1);
+    const key = getRecordingKey(track);
+    if (!key || position >= PROVIDER_TOP_PICK_BONUSES.length) continue;
+    const pick = picks.get(key) || new Map();
+    if (!pick.has(provider)) pick.set(provider, PROVIDER_TOP_PICK_BONUSES[position]);
+    picks.set(key, pick);
+  }
+  const bonuses = new Map();
+  for (const [key, pick] of picks) {
+    if (pick.size >= MIN_TOP_PICK_PROVIDERS) bonuses.set(key, [...pick.values()].reduce((sum, bonus) => sum + bonus, 0));
+  }
+  return bonuses;
+}
+
+/** Each track's position in its own provider's list, in pool order. */
+function getProviderPositions(tracks) {
+  const counts = new Map();
+  return tracks.map((track) => {
+    const provider = getProviderIdentity(track);
+    const position = counts.get(provider) ?? 0;
+    counts.set(provider, position + 1);
+    return position;
+  });
+}
+
+function getRecordingBaseKey(track) {
+  const title = getCanonicalTitle(track?.info?.title || "");
+  const author = normalizeText(cleanArtistName(track?.info?.author || ""));
+  return title && author ? `${author}|||${title}` : null;
+}
+
+/**
+ * Moves an artist's original recording directly above the first of its
+ * versions that outranked it, so a remix lifted as a provider top pick sits
+ * second rather than replacing the song that was searched for.
+ */
+function keepOriginalsAboveVariants(entries) {
+  const result = [...entries];
+  for (let index = 0; index < result.length; index += 1) {
+    const entry = result[index];
+    if (!entry.reasons.some((reason) => reason.startsWith("provider top pick"))) continue;
+    const baseKey = getRecordingBaseKey(entry.track);
+    if (!baseKey) continue;
+    const originalIndex = result.findIndex(
+      (candidate, candidateIndex) =>
+        candidateIndex > index &&
+        !getVersionTokens(candidate.track?.info?.title).length &&
+        getRecordingBaseKey(candidate.track) === baseKey
+    );
+    if (originalIndex === -1) continue;
+    const [original] = result.splice(originalIndex, 1);
+    result.splice(index, 0, original);
+  }
+  return result;
+}
+
+function getTopPickBonus(entry, topPicks) {
+  if (!entry || entry.score < MIN_PREFERRED_PROVIDER_SCORE) return 0;
+  return topPicks.get(getRecordingKey(entry.track)) || 0;
 }
 
 function getSearchProviderBonus(entry) {
@@ -260,19 +406,26 @@ function trimWeakSingleWordMatches(entries, query) {
   return entries.filter((entry) => entry.score >= minimumScore);
 }
 
-function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
+function scoreSearchResult(
+  track,
+  query,
+  index = 0,
+  { consensusMap, providerPosition = Infinity, popularityShare = 0 } = {}
+) {
   const title = track?.info?.title || "";
   const author = track?.info?.author || "";
+  const queryWords = getTokens(query, { keepGeneric: true });
   const normalizedQuery = normalizeText(query);
-  const normalizedTitle = normalizeText(title);
-  const canonicalTitle = getCanonicalTitle(title);
-  const normalizedAuthor = normalizeText(author);
+  const normalizedTitle = alignTextSpacing(normalizeText(title), queryWords);
+  const canonicalTitle = alignTextSpacing(getCanonicalTitle(title), queryWords);
+  const normalizedAuthor = alignTextSpacing(normalizeText(author), queryWords);
   const candidateText = `${normalizedAuthor} ${normalizedTitle}`.trim();
   const queryTokens = getUniqueTokens(query);
-  const titleTokens = getUniqueTokens(title);
-  const authorTokens = getUniqueTokens(author);
+  const titleTokens = getUniqueTokens(normalizedTitle);
+  const authorTokens = getUniqueTokens(normalizedAuthor);
   const explicitQuery = splitExplicitQuery(query);
   const isSingleWordQuery = queryTokens.length === 1;
+  const prefixToken = getPrefixToken(query);
   const popularity = getPopularity(track);
 
   let score = 0;
@@ -321,8 +474,16 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
   }
 
   if (explicitQuery) {
-    const artistCoverage = getCoverage(explicitQuery.artist, authorTokens);
-    const titleCoverage = getCoverage(explicitQuery.title, titleTokens);
+    // A typo in "artist - title" earns most of the credit an exact word does,
+    // but never all of it.
+    const artistCoverage = Math.max(
+      getCoverage(explicitQuery.artist, authorTokens),
+      getFuzzyCoverage(explicitQuery.artist, authorTokens) * 0.9
+    );
+    const titleCoverage = Math.max(
+      getCoverage(explicitQuery.title, titleTokens),
+      getFuzzyCoverage(explicitQuery.title, titleTokens, { prefixToken }) * 0.9
+    );
 
     score += artistCoverage * 105;
     score += titleCoverage * 145;
@@ -333,12 +494,16 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
     const titleCoverage = getCoverage(queryTokens, titleTokens);
     const authorCoverage = getCoverage(queryTokens, authorTokens);
     const combinedCoverage = getCoverage(queryTokens, [...authorTokens, ...titleTokens]);
-    const fuzzyTitleCoverage = getFuzzyCoverage(queryTokens, titleTokens);
-    const fuzzyAuthorCoverage = getFuzzyCoverage(queryTokens, authorTokens);
-    const fuzzyCombinedCoverage = getFuzzyCoverage(queryTokens, [...authorTokens, ...titleTokens]);
-    const authorSet = new Set(authorTokens);
-    const titleTokensAfterArtist = queryTokens.filter((token) => !authorSet.has(token));
+    const fuzzyTitleCoverage = getFuzzyCoverage(queryTokens, titleTokens, { prefixToken });
+    const fuzzyAuthorCoverage = getFuzzyCoverage(queryTokens, authorTokens, { prefixToken });
+    const fuzzyCombinedCoverage = getFuzzyCoverage(queryTokens, [...authorTokens, ...titleTokens], { prefixToken });
+    // Query words that name the artist, typos included, so the rest can be
+    // checked against the title alone.
+    const authorMatch = matchTokens(queryTokens, authorTokens);
+    const titleTokensAfterArtist = queryTokens.filter((_, index) => authorMatch.credits[index] < 0.75);
+    const artistTokenCount = queryTokens.length - titleTokensAfterArtist.length;
     const titleAfterArtistCoverage = getCoverage(titleTokensAfterArtist, titleTokens);
+    const fuzzyTitleAfterArtistCoverage = getFuzzyCoverage(titleTokensAfterArtist, titleTokens, { prefixToken });
 
     score += titleCoverage * 135;
     score += authorCoverage * 80;
@@ -362,6 +527,14 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
     if (authorCoverage > 0 && titleTokensAfterArtist.length > 0 && titleAfterArtistCoverage === 1) {
       score += 180 + authorCoverage * 40;
       reasons.push("artist/title split");
+    } else if (artistTokenCount > 0 && titleTokensAfterArtist.length > 0 && fuzzyTitleAfterArtistCoverage >= 0.8) {
+      // The same split with a misspelt artist or title word ("metalica
+      // nothing else matters", "queen bohemian rapsody"). Scaled down so an
+      // exact split of a different recording still wins.
+      const artistCredits = authorMatch.credits.filter((credit) => credit >= 0.75);
+      const artistQuality = artistCredits.reduce((sum, credit) => sum + credit, 0) / artistCredits.length;
+      score += (180 + (artistTokenCount / queryTokens.length) * 40) * fuzzyTitleAfterArtistCoverage * artistQuality * 0.9;
+      reasons.push("fuzzy artist/title split");
     }
 
     // A multi-word query represented only by the title is ambiguous. Keep it
@@ -373,10 +546,21 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
 
     if (titleCoverage > 0) reasons.push("title tokens");
     if (authorCoverage > 0) reasons.push("artist tokens");
+
+    if (authorCoverage === 0 && titleCoverage === 1) {
+      const { featuredTokens, mainTitleTokens } = getFeaturedCredits(title);
+      if (featuredTokens.length && getCoverage(queryTokens, featuredTokens) === 1 && getCoverage(queryTokens, mainTitleTokens) < 1) {
+        score -= FEATURED_ONLY_PENALTY;
+        reasons.push("featured artist only");
+      }
+    }
   }
 
   const unwantedVersions = getVersionTokens(title).filter((kind) => !queryRequestsVariant(query, title) || !getVersionTokens(query).includes(kind));
-  if (unwantedVersions.length) {
+  const waivable = unwantedVersions.every((kind) => !PROCESSED_VERSION_KINDS.has(kind));
+  if (unwantedVersions.length && waivable && providerPosition < VARIANT_TOP_PICK_POSITIONS) {
+    reasons.push(`provider top pick:${unwantedVersions.join(",")}`);
+  } else if (unwantedVersions.length) {
     const penalty = unwantedVersions.reduce((sum, token) => sum + (VERSION_PENALTIES[token] ?? 25), 0);
     score -= penalty;
     reasons.push(`version penalty:${unwantedVersions.join(",")}`);
@@ -394,10 +578,18 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
     canonicalTitle !== normalizedQuery
   ) {
     // Uploaders are frequently named after a song, album or label. Their
-    // arbitrary uploads must not compete with the actual track title.
-    score -= 220;
-    reasons.push("uploader-only single-word penalty");
+    // arbitrary uploads must not compete with the actual track title. A
+    // recording Deezer itself lists for the query is by an artist of that
+    // name ("pezet", "sanah"), not by a channel that borrowed it.
+    if (popularityShare > 0) {
+      reasons.push("catalogued artist");
+    } else {
+      score -= 220;
+      reasons.push("uploader-only single-word penalty");
+    }
   }
+
+  if (popularityShare > 0) reasons.push(`catalog popularity:${popularityShare.toFixed(2)}`);
 
   const consensusSources = getProviderConsensus(track, consensusMap);
   if (consensusSources > 1) {
@@ -420,6 +612,7 @@ function scoreSearchResult(track, query, index = 0, { consensusMap } = {}) {
     track,
     index,
     popularity,
+    popularityShare,
     score,
     reasons,
   };
@@ -439,16 +632,34 @@ function isRelevantSearchResult(track, query) {
   // needs to occur in the candidate metadata.
   if (!queryTokens.length) return true;
 
-  const candidateTokens = getUniqueTokens(`${track.info.author || ""} ${track.info.title || ""}`);
-  const coverage = getCoverage(queryTokens, candidateTokens);
-  const fuzzyCoverage = getFuzzyCoverage(queryTokens, candidateTokens);
+  // A single letter the user has only started typing ("queen b") says
+  // nothing yet; judge the words before it.
+  const prefixToken = getPrefixToken(query);
+  const needles =
+    prefixToken && prefixToken.length < 2 && queryTokens.length > 1
+      ? queryTokens.filter((token) => token !== prefixToken)
+      : queryTokens;
 
-  if (queryTokens.length === 1) return coverage === 1 || fuzzyCoverage >= 0.8;
+  const candidateTokens = [
+    ...new Set(alignWordSpacing(getTokens(`${track.info.author || ""} ${track.info.title || ""}`), queryTokens)),
+  ];
+  const match = matchTokens(needles, candidateTokens, { prefixToken });
 
-  // A multi-word music query should be represented by all meaningful words.
-  // This removes YouTube clips that merely contain one word such as "hit".
-  const requiredCoverage = queryTokens.length >= 3 ? 1 : 0.75;
-  return coverage >= requiredCoverage || fuzzyCoverage >= Math.max(0.8, requiredCoverage);
+  // A requested version ("clean", "acoustic") is never the tolerated extra
+  // word: the candidate has to be that version.
+  if (needles.some((token, index) => match.credits[index] === 0 && getVersionTokens(token).length)) return false;
+
+  return match.credit >= getRequiredRelevance(needles.length) && (needles.length < 2 || match.strong >= 1);
+}
+
+// Average per-word credit a candidate needs to stay in the results. A typo
+// costs a fraction of a word, so it survives; a missing word costs a whole
+// one, which still removes YouTube clips that merely contain "hit". From four
+// words on, one unrelated extra word ("8 mile") is tolerated.
+function getRequiredRelevance(queryTokenCount) {
+  if (queryTokenCount <= 1) return 0.75;
+  if (queryTokenCount <= 3) return 0.72;
+  return 0.7;
 }
 
 function filterRelevantSearchResults(tracks, query) {
@@ -465,8 +676,9 @@ function filterPlayableSearchResults(tracks, query) {
 }
 
 function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = true } = {}) {
+  const pool = Array.isArray(tracks) ? tracks : [];
   const sourceConsensus = new Map();
-  for (const track of Array.isArray(tracks) ? tracks : []) {
+  for (const track of pool) {
     const key = getConsensusKey(track);
     if (!key) continue;
 
@@ -474,13 +686,25 @@ function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = 
     sourceConsensus.get(key).add(getProviderIdentity(track));
   }
 
-  const ranked = (Array.isArray(tracks) ? tracks : [])
-    .map((track, index) => scoreSearchResult(track, query, index, { consensusMap: sourceConsensus }))
-    .map((entry) => ({ ...entry, providerBonus: getSearchProviderBonus(entry) }))
+  const topPicks = getProviderTopPicks(pool);
+  const providerPositions = getProviderPositions(pool);
+  const maxRank = Math.max(0, ...pool.map((track) => Number(track?.searchPopularity) || 0));
+  const ranked = pool
+    .map((track, index) =>
+      scoreSearchResult(track, query, index, {
+        consensusMap: sourceConsensus,
+        providerPosition: providerPositions[index],
+        popularityShare: getPopularityShare(track, maxRank),
+      })
+    )
+    .map((entry) => ({
+      ...entry,
+      providerBonus: getSearchProviderBonus(entry) + getTopPickBonus(entry, topPicks) + getPopularityBonus(entry),
+    }))
     .map((entry) => ({ ...entry, effectiveScore: entry.score + entry.providerBonus }))
     .sort(compareRankedSearchResults);
 
-  const focusedRanked = trimWeakSingleWordMatches(ranked, query);
+  const focusedRanked = trimWeakSingleWordMatches(keepOriginalsAboveVariants(ranked), query);
   const uniqueRanked = dedupe ? deduplicateRankedSearchResults(focusedRanked) : focusedRanked;
 
   const selected = Number.isInteger(limit) ? uniqueRanked.slice(0, Math.max(0, limit)) : uniqueRanked;
@@ -494,7 +718,10 @@ module.exports = {
   filterRelevantSearchResults,
   filterPlayableSearchResults,
   getFuzzyCoverage,
+  getFeaturedCredits,
   getPopularity,
+  getPopularityBonus,
+  getPopularityShare,
   getProviderConsensus,
   getProviderIdentity,
   getSearchProviderBonus,

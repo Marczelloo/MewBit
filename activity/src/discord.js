@@ -122,7 +122,7 @@ export async function setMewbitPresence(sdk, player) {
   if (!sdk?.commands?.setActivity) return;
 
   const track = player?.currentTrack;
-  const isPlaying = Boolean(track && player?.playing && !player?.paused);
+  const isPlaying = Boolean(track && player?.playing && !player?.paused && !player?.buffering);
   const positionMs = Math.max(0, Number(player?.positionMs) || 0);
   const durationMs = Math.max(positionMs, Number(player?.durationMs || track?.durationMs) || 0);
   const start = Date.now() - positionMs;

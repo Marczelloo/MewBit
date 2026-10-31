@@ -3,9 +3,10 @@ const djStore = require("../../helpers/dj/store");
 const { errorEmbed, successEmbed } = require("../../helpers/embeds");
 const { requireSharedVoice } = require("../../helpers/interactions/voiceGuards");
 const { createPoru, getPlayer } = require("../../helpers/lavalink");
+const { scheduleAutoplayRefresh } = require("../../helpers/lavalink/autoplay");
 const { addManualTracksToQueue, markManualTrack } = require("../../helpers/lavalink/queueOrdering");
-const { searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
-const { filterPlayableSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
+const { AUTOCOMPLETE_VARIANT_LIMIT, searchAcrossSources } = require("../../helpers/lavalink/searchAggregator");
+const { filterRelevantSearchResults, rankSearchResults } = require("../../helpers/lavalink/searchRanking");
 const { generateShareCode, importFromCode, shareWithUser } = require("../../helpers/playlists/sharing");
 const {
   createPlaylist,
@@ -282,13 +283,16 @@ module.exports = {
       try {
         const { createPoru } = require("../../helpers/lavalink");
         const poru = createPoru(interaction.client);
-        const resolved = await searchAcrossSources(poru, query, { preferredSource: "youtube" });
+        const resolved = await searchAcrossSources(poru, query, {
+          preferredSource: "youtube",
+          variantLimit: AUTOCOMPLETE_VARIANT_LIMIT,
+        });
 
         if (!resolved.length) {
           return interaction.respond([]);
         }
 
-        const rankedTracks = rankSearchResults(filterPlayableSearchResults(resolved, query), query, { limit: 25 });
+        const rankedTracks = rankSearchResults(filterRelevantSearchResults(resolved, query), query, { limit: 25 });
         const options = rankedTracks.map((track) => ({
           name: `${track.info.title} - ${track.info.author}`.substring(0, 100),
           value: track.info.uri || track.info.title,
@@ -602,6 +606,7 @@ async function handlePlay(interaction, userId, guildId) {
   } else {
     addManualTracksToQueue(player, tracks);
   }
+  scheduleAutoplayRefresh(player);
 
   // Start playing if not already
   if (!player.isPlaying && !player.isPaused) {

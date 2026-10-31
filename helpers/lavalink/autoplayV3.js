@@ -8,14 +8,16 @@ const {
   getAutoplayReference,
   resolveToPlayable,
 } = require("./autoplayCandidates");
+const { recordAutoplayDecision } = require("./autoplayDecisionLog");
 const { getExposureKey, getAutoplayExposureSnapshot } = require("./autoplayExposure");
-const { getGenreFamilies } = require("./genreUtils");
+const { evaluateGenreFlow, getGenreFamilies } = require("./genreUtils");
 const { getLastFmTagProfile } = require("./lastfmClient");
 const { buildSessionProfile, getTrackMetadata, isAutoplayTrack } = require("./sessionProfile");
 const { getSkipPatterns } = require("./skipLearning");
 const { cloneTrack, ensurePlaybackState, playbackState } = require("./state");
 const { hasTrackIdentity } = require("./trackIdentity");
-const { cleanArtistName, normalizeComparableText } = require("./trackNormalization");
+const { getDisplayTrackMetadata } = require("./displayMetadata");
+const { cleanArtistName, normalizeComparableText, stripTopicSuffix } = require("./trackNormalization");
 const { isValidSong } = require("./trackValidation");
 
 function artistKey(value) {
@@ -38,6 +40,17 @@ const SOFT_ALBUM_EXIT_STREAK = Math.max(Number(process.env.AUTOPLAY_V3_SOFT_ALBU
 const AI_DJ_MIN_FIT = Number(process.env.AI_DJ_MIN_FIT ?? 55);
 const AI_DJ_FIT_BAND = Math.min(Math.max(Number(process.env.AI_DJ_DIVERSITY_FIT_BAND ?? 10), 0), 30);
 const AI_DJ_SKIP_DEMOTION = Math.max(Number(process.env.AI_DJ_SKIP_DEMOTION ?? 12), 0);
+// Energy steps up to this size keep the groove; each 15 points beyond it
+// divides a proposal's draw weight once more.
+const AI_DJ_SMOOTH_ENERGY_STEP = 12;
+
+// Genre flow. Proposals without tags get a short Last.fm lookup so the gate
+// can judge them; a slow lookup never holds the pick back for long.
+const GENRE_TAG_LOOKUP_TIMEOUT_MS = Math.max(Number(process.env.AUTOPLAY_GENRE_TAG_TIMEOUT_MS ?? 2500), 0);
+const GENRE_FLOW_WEIGHTS = Object.freeze({ 0: 1, 1: 0.85, 2: 0.5 });
+const GENRE_FLOW_UNKNOWN_WEIGHT = 0.7;
+const GENRE_FLOW_PENALTIES = Object.freeze({ 0: 0, 1: 4, 2: 12 });
+const RESOLVE_WINDOW_SIZE = Math.min(Math.max(Number(process.env.AUTOPLAY_RESOLVE_WINDOW ?? 3), 1), 6);
 
 function sourceSet(candidate) {
   return new Set([candidate?.source, ...(candidate?.providerSources || [])].filter(Boolean));
@@ -148,6 +161,56 @@ function candidateIdentityKey(candidate) {
 }
 
 /**
+ * Genre-flow verdict for one candidate. Staying with the current artist or
+ * album is a continuation, never a genre jump.
+ */
+function getCandidateGenreFlow(candidate, context, { sameArtist = false, sameAlbum = false } = {}) {
+  if (sameArtist || sameAlbum) return { allowed: true, distance: 0, anchorDistance: 0, reason: "continuation" };
+  const flow = evaluateGenreFlow(candidate.genres || [], context.referenceGenres || [], context.anchorGenres || []);
+  if (context.genreFlowGate === false && !flow.allowed) return { ...flow, allowed: true, reason: "gate-off" };
+  return flow;
+}
+
+function getGenreFlowWeight(flow) {
+  if (!flow) return 1;
+  if (flow.distance === null) return flow.reason === "unknown-candidate" ? GENRE_FLOW_UNKNOWN_WEIGHT : 1;
+  return GENRE_FLOW_WEIGHTS[flow.distance] ?? GENRE_FLOW_WEIGHTS[2];
+}
+
+function getGenreFlowPenalty(flow) {
+  if (!flow || flow.distance === null) return 0;
+  return GENRE_FLOW_PENALTIES[flow.distance] ?? GENRE_FLOW_PENALTIES[2];
+}
+
+function withTimeout(promise, timeoutMs) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Looks up Last.fm tags for AI proposals the catalog could not verify, so the
+ * genre gate has something to judge. Lookups still running at the deadline
+ * keep filling the tag cache for the next pick.
+ */
+async function enrichAIProposalGenres(candidates, { timeoutMs = GENRE_TAG_LOOKUP_TIMEOUT_MS, lookup = getLastFmTagProfile } = {}) {
+  const targets = candidates.filter((candidate) => !candidate.genres?.length && candidate.artist && candidate.title);
+  if (!targets.length || timeoutMs <= 0) return 0;
+
+  const lookups = targets.map(async (candidate) => {
+    const tags = await lookup({ artist: candidate.artist, title: candidate.title, limit: 8 }).catch(() => null);
+    if (tags?.tags?.length && !candidate.genres?.length) {
+      candidate.genres = tags.tags;
+      candidate.metadataProvider ||= tags.source || "lastfm";
+    }
+  });
+  await withTimeout(Promise.all(lookups), timeoutMs);
+  return targets.filter((candidate) => candidate.genres?.length).length;
+}
+
+/**
  * Builds the shared selection context used by both the AI path and the
  * deterministic fallback ladder.
  */
@@ -165,8 +228,12 @@ function buildSelectionContext({ profile, exposure, referenceTrack, recentTracks
     referenceArtist,
     referenceAlbum,
     referenceFamilies: getGenreFamilies(referenceMetadata.genres),
-    // Advisory only: the AI director sees these but nothing is hard-rejected
-    // on their basis anymore. The fallback ladder still weights them softly.
+    referenceGenres: referenceMetadata.genres,
+    anchorGenres: anchorMetadata.genres,
+    // Surprise Me turns this off: the listener asked to be taken somewhere.
+    genreFlowGate: true,
+    // Feeds the director prompt and the fallback genre score; the hard flow
+    // gate reads the raw tags above.
     anchorFamilies: getGenreFamilies(anchorMetadata.genres),
     artistStreak: consecutiveCount(recentTracks, (track) => artistKey(track.userData?.autoplayReference?.artist || track.info?.author) === referenceArtist),
     albumStreak: referenceAlbum ? consecutiveCount(recentTracks, (track) => albumKey(track) === referenceAlbum) : 0,
@@ -192,15 +259,16 @@ function buildSelectionContext({ profile, exposure, referenceTrack, recentTracks
 }
 
 /**
- * Filters the director's proposals down to factual violations only:
- * duplicates, cooldown repeats, and per-candidate minimum fit. Taste-level
- * guards (genre families, streak caps) deliberately do not apply to AI picks -
- * the model was explicitly asked to judge runs and bridges adaptively.
+ * Filters the director's proposals: duplicates, cooldown repeats, minimum
+ * fit, and far genre jumps (rap -> metal). Streak caps deliberately do not
+ * apply to AI picks - the model was asked to judge runs adaptively. Genre
+ * rejects are returned separately as a last resort.
  */
 function filterAICandidates(candidates, context, { minFit = AI_DJ_MIN_FIT, now = Date.now() } = {}) {
   const rejected = {};
   const seen = new Set();
   const accepted = [];
+  const genreRejected = [];
 
   for (const candidate of candidates) {
     const identity = candidateIdentityKey(candidate);
@@ -227,14 +295,38 @@ function filterAICandidates(candidates, context, { minFit = AI_DJ_MIN_FIT, now =
 
     const sameArtist = Boolean(artistKey(candidate.artist) && artistKey(candidate.artist) === context.referenceArtist);
     const sameAlbum = Boolean(candidateAlbumKey(candidate) && candidateAlbumKey(candidate) === context.referenceAlbum);
-    accepted.push({
+    const genreFlow = getCandidateGenreFlow(candidate, context, { sameArtist, sameAlbum });
+    const entry = {
       candidate,
       score: Number(candidate.aiDjFit) || 0,
-      details: { sameArtist, sameAlbum },
-    });
+      details: { sameArtist, sameAlbum, genreFlow },
+    };
+    if (!genreFlow.allowed) {
+      rejected[genreFlow.reason] = (rejected[genreFlow.reason] || 0) + 1;
+      genreRejected.push(entry);
+      continue;
+    }
+    accepted.push(entry);
   }
 
-  return { ranked: accepted, rejected };
+  return { ranked: accepted, rejected, genreRejected };
+}
+
+function getEnergyJumpDivisor(energy, referenceEnergy) {
+  const candidate = Number(energy);
+  const reference = Number(referenceEnergy);
+  if (!Number.isFinite(candidate) || !Number.isFinite(reference)) return 1;
+  const jump = Math.abs(candidate - reference) - AI_DJ_SMOOTH_ENERGY_STEP;
+  return jump > 0 ? 1 + jump / 15 : 1;
+}
+
+// The director's own verdict on the playing track keeps one energy scale
+// across turns; measured features fill in for tracks it never rated.
+function getReferenceEnergy(track) {
+  const declared = Number(track?.userData?.aiDJ?.energy);
+  if (Number.isFinite(declared)) return declared;
+  const measured = getTrackMetadata(track).features?.energy;
+  return Number.isFinite(measured) ? Math.round(measured * 100) : null;
 }
 
 /**
@@ -288,6 +380,8 @@ function orderAIDirectorCandidates(ranked, context, random = Math.random) {
       const sameArtist = entry.details.sameArtist;
       const sameAlbum = entry.details.sameAlbum;
       let weight = Math.max(fit - (bestFit - band) + 1, 1);
+      // Same genre wins most rolls, a neighbouring one keeps some freedom.
+      weight *= getGenreFlowWeight(entry.details.genreFlow);
 
       if ((artistExitWanted || albumExitWanted) && lane !== "continuation" && !sameArtist && !sameAlbum) {
         weight *= exitMultiplier;
@@ -301,6 +395,7 @@ function orderAIDirectorCandidates(ranked, context, random = Math.random) {
       }
       const skips = skipCounts.get(artistKey(entry.candidate.artist)) || 0;
       if (skips > 0) weight /= 1 + (AI_DJ_SKIP_DEMOTION / 100) * Math.min(skips, 3);
+      weight /= getEnergyJumpDivisor(entry.candidate.aiDjEnergy, context.referenceEnergy);
 
       return { entry, index, fit, weight };
     })
@@ -395,13 +490,17 @@ function scoreCandidateV3(candidate, context) {
   const artistExitSteps = sameArtist ? Math.max(0, context.artistStreak - SOFT_ARTIST_EXIT_STREAK + 1) : 0;
   const albumExitSteps = sameAlbum ? Math.max(0, context.albumStreak - SOFT_ALBUM_EXIT_STREAK + 1) : 0;
   const softExitPenalty = artistExitSteps * softArtistExitPenalty + albumExitSteps * softAlbumExitPenalty;
+  const genreFlow = getCandidateGenreFlow(candidate, context, { sameArtist, sameAlbum });
+  const genreFlowPenalty = getGenreFlowPenalty(genreFlow);
 
   return {
     candidate,
-    score: relation + genreScore + continuationScore + diversityScore - continuationPenalty - softExitPenalty,
+    score: relation + genreScore + continuationScore + diversityScore - continuationPenalty - softExitPenalty - genreFlowPenalty,
     details: {
       relation,
       genreScore,
+      genreFlow,
+      genreFlowPenalty,
       continuationScore,
       continuationPenalty,
       softExitPenalty,
@@ -419,6 +518,7 @@ function scoreCandidateV3(candidate, context) {
  */
 function selectFallbackCandidates(candidates, context) {
   const accepted = [];
+  const genreRejected = [];
   const rejected = {};
   const seen = new Set();
   const bump = (reason) => { rejected[reason] = (rejected[reason] || 0) + 1; };
@@ -473,10 +573,29 @@ function selectFallbackCandidates(candidates, context) {
         continue;
       }
     }
-    accepted.push(scoreCandidateV3(candidate, context));
+    const scored = scoreCandidateV3(candidate, context);
+    if (!scored.details.genreFlow.allowed) {
+      bump(scored.details.genreFlow.reason);
+      genreRejected.push(scored);
+      continue;
+    }
+    accepted.push(scored);
   }
 
-  return { ranked: accepted.sort((left, right) => right.score - left.score), rejected };
+  return {
+    ranked: accepted.sort((left, right) => right.score - left.score),
+    rejected,
+    genreRejected: sortByGenreDistance(genreRejected),
+  };
+}
+
+/**
+ * Last-resort order when every candidate broke the genre flow: the closest
+ * jump first, so silence never wins over a slightly wider move.
+ */
+function sortByGenreDistance(entries) {
+  const distance = (entry) => entry.details.genreFlow?.distance ?? 99;
+  return [...entries].sort((left, right) => distance(left) - distance(right) || right.score - left.score);
 }
 
 function getVerifiedCatalogMatch(proposal, catalogCandidates) {
@@ -533,44 +652,145 @@ function isPlayableFullTrack(track, guildId) {
   return false;
 }
 
-async function resolveV3Candidates(ranked, guildId, referenceTrack, anchorTrack, context) {
-  for (const entry of ranked) {
-    const aiDirected = sourceSet(entry.candidate).has("ai_dj");
-    const resolved = await resolveToPlayable(entry.candidate, guildId, {
-      referenceTitle: referenceTrack.info?.title || "",
-      providerSources: aiDirected && !entry.candidate.track ? ["youtube", "deezer", "soundcloud", "spotify"] : null,
-      debugLabel: aiDirected ? `ai-dj:${entry.candidate.artist} - ${entry.candidate.title}` : "v3-candidate",
-    });
-    if (!isPlayableFullTrack(resolved, guildId)) continue;
-    const track = resolved;
-    applyCandidateMetadata(track, entry.candidate);
-    if (hasRecentExposure(track, context.profile, context.exposure, context.referenceTrack)) {
-      Log.info("Autoplay resolved track rejected as a cross-provider repeat", "", `guild=${guildId}`, `track=${track.info?.author || "Unknown"} - ${track.info?.title || "Unknown"}`);
-      continue;
+/**
+ * Cheap metadata check before any provider search: titles that can only be
+ * album breaks or non-music, or a known duration outside the song range.
+ */
+function isLikelyPlayableCandidate(candidate) {
+  const info = candidate?.track?.info || {};
+  // Only a resolved Lavalink track has a trustworthy length in milliseconds.
+  const length = Number(info.length) || undefined;
+  return isValidSong(
+    { title: candidate?.title || info.title || "", author: candidate?.artist || info.author || "", length, isStream: Boolean(info.isStream) },
+    { allowStreams: false, strictDuration: true, excludeInterludes: true }
+  );
+}
+
+async function resolveV3Entry(entry, guildId, referenceTrack, anchorTrack, context) {
+  const aiDirected = sourceSet(entry.candidate).has("ai_dj");
+  const resolved = await resolveToPlayable(entry.candidate, guildId, {
+    referenceTitle: referenceTrack.info?.title || "",
+    providerSources: aiDirected && !entry.candidate.track ? ["youtube", "deezer", "soundcloud", "spotify"] : null,
+    debugLabel: aiDirected ? `ai-dj:${entry.candidate.artist} - ${entry.candidate.title}` : "v3-candidate",
+  });
+  if (!isPlayableFullTrack(resolved, guildId)) return null;
+  const track = resolved;
+  applyCandidateMetadata(track, entry.candidate);
+  if (hasRecentExposure(track, context.profile, context.exposure, context.referenceTrack)) {
+    Log.info("Autoplay resolved track rejected as a cross-provider repeat", "", `guild=${guildId}`, `track=${track.info?.author || "Unknown"} - ${track.info?.title || "Unknown"}`);
+    return null;
+  }
+  if (hasTrackIdentity(context.blockedTracks || [], track, { includeIdentifier: false })) {
+    Log.info("Autoplay resolved track rejected after listener replaced the pick", "", `guild=${guildId}`, `track=${track.info?.author || "Unknown"} - ${track.info?.title || "Unknown"}`);
+    return null;
+  }
+  track.userData = {
+    ...(track.userData || {}),
+    autoplayV3: true,
+    autoplayAnchor: { artist: anchorTrack.info?.author || "Unknown", title: anchorTrack.info?.title || "Unknown" },
+    autoplayScore: entry.score,
+    autoplayScoreDetails: entry.details,
+    aiDJ: entry.candidate.aiDJ || null,
+  };
+  return { track, entry };
+}
+
+/**
+ * Resolves a small window of candidates at once and keeps the best-ranked
+ * one that turns out playable, so one slow or dead proposal no longer costs
+ * a full resolver timeout before the next is even tried.
+ */
+async function resolveV3Candidates(ranked, guildId, referenceTrack, anchorTrack, context, { windowSize = RESOLVE_WINDOW_SIZE } = {}) {
+  const eligible = ranked.filter((entry) => isLikelyPlayableCandidate(entry.candidate));
+  for (let start = 0; start < eligible.length; start += windowSize) {
+    const attempts = eligible
+      .slice(start, start + windowSize)
+      .map((entry) => resolveV3Entry(entry, guildId, referenceTrack, anchorTrack, context).catch(() => null));
+    for (const attempt of attempts) {
+      const resolved = await attempt;
+      if (resolved) return resolved;
     }
-    if (hasTrackIdentity(context.blockedTracks || [], track, { includeIdentifier: false })) {
-      Log.info("Autoplay resolved track rejected after listener replaced the pick", "", `guild=${guildId}`, `track=${track.info?.author || "Unknown"} - ${track.info?.title || "Unknown"}`);
-      continue;
-    }
-    track.userData = {
-      ...(track.userData || {}),
-      autoplayV3: true,
-      autoplayAnchor: { artist: anchorTrack.info?.author || "Unknown", title: anchorTrack.info?.title || "Unknown" },
-      autoplayScore: entry.score,
-      autoplayScoreDetails: entry.details,
-      aiDJ: entry.candidate.aiDJ || null,
-    };
-    return { track, entry };
   }
   return null;
 }
 
+function describeDecisionTrack(track) {
+  if (!track?.info) return null;
+  const display = getDisplayTrackMetadata(track);
+  return { artist: display.author, title: display.title, identifier: track.info.identifier || null };
+}
+
+function countBySource(candidates) {
+  const counts = {};
+  for (const candidate of candidates) {
+    for (const source of sourceSet(candidate)) counts[source] = (counts[source] || 0) + 1;
+  }
+  return counts;
+}
+
+function buildDecisionEntry({
+  guildId, mode, selectionIntent, elapsedMs, anchorTrack, referenceTrack, candidates, context,
+  aiResult, aiCandidates, aiRejected, fallbackRanked, fallbackRejected, relaxedGenreFlow, resolved,
+}) {
+  const plan = aiResult?.plan || null;
+  const winner = resolved?.entry?.candidate || null;
+  const winnerSources = winner ? sourceSet(winner) : new Set();
+  return {
+    guildId,
+    mode,
+    intent: selectionIntent?.mode || null,
+    mood: selectionIntent?.mood || null,
+    elapsedMs,
+    anchor: describeDecisionTrack(anchorTrack),
+    reference: describeDecisionTrack(referenceTrack),
+    candidates: candidates.length,
+    sources: countBySource(candidates),
+    lastFmVia: candidates.some((candidate) => candidate.similarVia === "artist") ? "artist" : null,
+    artistStreak: context.artistStreak,
+    albumStreak: context.albumStreak,
+    referenceEnergy: context.referenceEnergy ?? null,
+    ai: {
+      status: aiResult?.status || null,
+      cached: Boolean(aiResult?.cached),
+      latencyMs: aiResult?.latencyMs ?? null,
+      timeoutMs: aiResult?.timeoutMs ?? null,
+      error: aiResult?.error || null,
+      confidence: plan?.confidence ?? null,
+      summary: plan?.direction?.summary || null,
+      proposals: aiCandidates.slice(0, 4).map((candidate) => ({
+        artist: candidate.artist,
+        title: candidate.title,
+        lane: candidate.aiDjLane || null,
+        fit: candidate.aiDjFit ?? null,
+        energy: candidate.aiDjEnergy ?? null,
+      })),
+      rejected: aiRejected,
+    },
+    fallback: { eligible: fallbackRanked.length, rejected: fallbackRejected },
+    genreFlow: resolved?.entry?.details?.genreFlow
+      ? { reason: resolved.entry.details.genreFlow.reason, distance: resolved.entry.details.genreFlow.distance ?? null }
+      : null,
+    relaxedGenreFlow,
+    winner: resolved ? {
+      ...describeDecisionTrack(resolved.track),
+      via: winnerSources.has("ai_dj") ? "ai-director" : "fallback-ladder",
+      sources: [...winnerSources],
+      lane: winner?.aiDjLane || null,
+      fit: winner?.aiDjFit ?? null,
+      energy: winner?.aiDjEnergy ?? null,
+      reason: winner?.aiDJ?.proposalReason || null,
+    } : null,
+  };
+}
+
 async function fetchAutoplayV3Track(referenceTrack, guildId, {
   pendingManualTracks = [],
+  liveTracks = [],
   blockedTracks = [],
   allowWhenAutoplayDisabled = false,
   selectionIntent = null,
   mode = "normal",
+  aiTimeoutMs = null,
 } = {}) {
   if (!referenceTrack?.info) return null;
   if (!allowWhenAutoplayDisabled && !getGuildState(guildId)?.autoplay) return null;
@@ -584,7 +804,7 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
     : await enrichAnchorGenres(getAnchorTrack(guildId, referenceTrack));
   if (!surpriseMode) await enrichManualAnchorTracks(pendingManualTracks, guildId);
 
-  const profile = buildSessionProfile(guildId, referenceTrack, { pendingManualTracks });
+  const profile = buildSessionProfile(guildId, referenceTrack, { pendingManualTracks, liveTracks });
   profile.autoplayExposure = await getAutoplayExposureSnapshot(guildId);
   profile.guildId = guildId;
 
@@ -592,10 +812,16 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
   const skipPatterns = getSkipPatterns(guildId);
   const context = buildSelectionContext({ profile, exposure: profile.autoplayExposure, referenceTrack, recentTracks, skipPatterns, anchorTrack, blockedTracks });
   context.selectionIntent = selectionIntent;
+  // An explicit mood asks for its own energy, not a smooth step from the seed.
+  const moodEnergy = selectionIntent?.targetEnergy;
+  context.referenceEnergy = moodEnergy && Number.isFinite(moodEnergy.min) && Number.isFinite(moodEnergy.max)
+    ? Math.round((moodEnergy.min + moodEnergy.max) / 2)
+    : getReferenceEnergy(referenceTrack);
   // A chart pick is never a normal-autoplay fallback. It is only a safe,
   // verified escape hatch for Surprise me when personal context is too noisy
   // or the AI request times out.
   context.allowChartFallback = surpriseMode;
+  context.genreFlowGate = !surpriseMode;
   const reference = getAutoplayReference(referenceTrack);
   const candidates = await collectCandidates(referenceTrack, guildId, profile, reference, {
     sources: surpriseMode
@@ -606,17 +832,20 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
   });
   profile.verifiedCatalogCandidates = candidates;
 
-  const aiResult = await planNextTrackWithAIDJ({ guildId, anchorTrack, referenceTrack, profile, context });
+  const aiResult = await planNextTrackWithAIDJ({ guildId, anchorTrack, referenceTrack, profile, context, timeoutMs: aiTimeoutMs });
   const aiCandidates = buildAIDJCandidates(aiResult, candidates);
 
   let resolved = null;
   let aiOrdered = [];
   let aiDeferred = null;
   let aiRejected = {};
+  let aiGenreRejected = [];
 
   if (aiCandidates.length) {
+    if (context.genreFlowGate) await enrichAIProposalGenres(aiCandidates);
     const filtered = filterAICandidates(aiCandidates, context);
     aiRejected = filtered.rejected;
+    aiGenreRejected = filtered.genreRejected;
     const ordered = orderAIDirectorCandidates(filtered.ranked, context);
     aiOrdered = ordered.ranked;
     aiDeferred = ordered.deferred;
@@ -625,11 +854,21 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
 
   let fallbackRejected = {};
   let fallbackRanked = [];
+  let relaxedGenreFlow = false;
   if (!resolved) {
-    const { ranked, rejected } = selectFallbackCandidates(candidates, context);
+    const { ranked, rejected, genreRejected } = selectFallbackCandidates(candidates, context);
     fallbackRanked = ranked;
     fallbackRejected = rejected;
     resolved = await resolveV3Candidates(ranked, guildId, referenceTrack, anchorTrack, context);
+
+    // Nothing kept the flow. Take the closest jump rather than stop the music.
+    if (!resolved) {
+      const relaxed = sortByGenreDistance([...aiGenreRejected, ...genreRejected]);
+      if (relaxed.length) {
+        relaxedGenreFlow = true;
+        resolved = await resolveV3Candidates(relaxed, guildId, referenceTrack, anchorTrack, context);
+      }
+    }
   }
 
   Log.info(
@@ -638,20 +877,40 @@ async function fetchAutoplayV3Track(referenceTrack, guildId, {
     `guild=${guildId}`,
     `mode=${mode}`,
     `elapsedMs=${Date.now() - startedAt}`,
-    `anchor=${anchorTrack.info?.author || "Unknown"} - ${anchorTrack.info?.title || "Unknown"}`,
-    `reference=${referenceTrack.info?.author || "Unknown"} - ${referenceTrack.info?.title || "Unknown"}`,
+    `anchor=${stripTopicSuffix(anchorTrack.info?.author) || "Unknown"} - ${anchorTrack.info?.title || "Unknown"}`,
+    `reference=${stripTopicSuffix(referenceTrack.info?.author) || "Unknown"} - ${referenceTrack.info?.title || "Unknown"}`,
     `candidates=${candidates.length}`,
     `artistStreak=${context.artistStreak}`,
     `albumStreak=${context.albumStreak}`,
     `aiDj=${aiResult.status}${aiResult.plan ? `:${aiResult.plan.confidence}/${aiResult.plan.direction.summary}` : ""}`,
+    `aiLatencyMs=${aiResult.latencyMs ?? "?"}/${aiResult.timeoutMs ?? "?"}${aiResult.cached ? ";cached" : ""}${aiResult.error ? `;${aiResult.error}` : ""}`,
     `aiProposals=${aiCandidates.slice(0, 4).map((candidate) => `${candidate.artist} - ${candidate.title} [${candidate.aiDjLane};fit=${candidate.aiDjFit};e=${candidate.aiDjEnergy}]`).join(" | ") || "none"}`,
     `aiOrder=${aiOrdered.slice(0, 4).map((entry) => `${entry.candidate.artist} - ${entry.candidate.title} [${entry.candidate.aiDjLane};fit=${entry.candidate.aiDjFit}]`).join(" | ") || "none"}`,
     `aiDeferred=${aiDeferred ? `${aiDeferred.artist} - ${aiDeferred.title} [${aiDeferred.fit}]=>${aiDeferred.forArtist} - ${aiDeferred.forTitle} [${aiDeferred.forFit}]` : "none"}`,
     `aiRejected=${Object.entries(aiRejected).map(([key, value]) => `${key}:${value}`).join(",") || "none"}`,
     `fallbackEligible=${fallbackRanked.length}`,
     `fallbackRejected=${Object.entries(fallbackRejected).map(([key, value]) => `${key}:${value}`).join(",") || "none"}`,
-    `winner=${resolved ? `${resolved.track.info?.author} - ${resolved.track.info?.title}${sourceSet(resolved.entry.candidate).has("ai_dj") ? ";ai-director" : ";fallback-ladder"}` : "none"}`
+    `genreFlow=${resolved?.entry.details?.genreFlow ? `${resolved.entry.details.genreFlow.reason}:${resolved.entry.details.genreFlow.distance ?? "?"}` : "none"}${relaxedGenreFlow ? ";relaxed" : ""}`,
+    `winner=${resolved ? `${stripTopicSuffix(resolved.track.info?.author)} - ${resolved.track.info?.title}${sourceSet(resolved.entry.candidate).has("ai_dj") ? ";ai-director" : ";fallback-ladder"}` : "none"}`
   );
+
+  recordAutoplayDecision(buildDecisionEntry({
+    guildId,
+    mode,
+    selectionIntent,
+    elapsedMs: Date.now() - startedAt,
+    anchorTrack,
+    referenceTrack,
+    candidates,
+    context,
+    aiResult,
+    aiCandidates,
+    aiRejected,
+    fallbackRanked,
+    fallbackRejected,
+    relaxedGenreFlow,
+    resolved,
+  }));
 
   return resolved?.track || null;
 }
@@ -671,8 +930,10 @@ module.exports = {
   buildAIDJCandidates,
   buildSelectionContext,
   candidateIdentityKey,
+  enrichAIProposalGenres,
   fetchAutoplayV3Track,
   filterAICandidates,
+  getCandidateGenreFlow,
   getRecentTracks,
   hasRecentExposure,
   orderAIDirectorCandidates,

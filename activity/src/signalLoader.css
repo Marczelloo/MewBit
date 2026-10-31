@@ -1,0 +1,96 @@
+/* Signal loader: canvas light engine + the MewBit lockup born from its flash. */
+.signal-loader {
+  --signal-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --signal-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --signal-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-loader);
+  overflow: hidden;
+  color: var(--text);
+  isolation: isolate;
+  font-family: "Hanken Grotesk", "Segoe UI", sans-serif;
+}
+
+/* The dark the light lives in; it lifts away as the app arrives. */
+.signal-loader::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--bg);
+  transition: opacity 560ms var(--signal-out) 120ms;
+}
+.signal-loader.p-done { pointer-events: none; }
+.signal-loader.p-done::before { opacity: 0; }
+
+.signal-fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: opacity 640ms var(--signal-out); }
+.signal-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgb(0 0 0 / 0) 55%, rgb(0 0 0 / 0.6) 100%); transition: opacity 640ms var(--signal-out); }
+.signal-grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.05; mix-blend-mode: overlay; }
+.p-done .signal-fx, .p-done .signal-vignette, .p-done .signal-grain { opacity: 0; }
+
+/* The lockup sits in the same 1280x720 stage the canvas draws in. */
+.signal-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1280px;
+  height: 720px;
+  margin: -360px 0 0 -640px;
+  transform: scale(var(--signal-scale, 1));
+  pointer-events: none;
+}
+.signal-logo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; opacity: 0; }
+.signal-mark { display: block; color: var(--text); filter: drop-shadow(0 0 18px rgb(103 227 244 / 0.45)); }
+.signal-wordmark {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: transparent;
+  background-image: linear-gradient(100deg, #eef3f8 0%, #eef3f8 40%, #ffffff 48%, #c9f8ff 52%, #eef3f8 60%, #eef3f8 100%);
+  background-size: 280% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.signal-horizon { width: 480px; height: 1px; margin-top: 4px; background: linear-gradient(90deg, rgb(158 239 255 / 0), rgb(200 248 255 / 0.95) 50%, rgb(158 239 255 / 0)); transform: scaleX(0); opacity: 0; }
+
+.p-reveal .signal-logo { opacity: 1; }
+.p-reveal .signal-mark { animation: signal-mark-in 900ms var(--signal-out) both; }
+.p-reveal .signal-wordmark { animation: signal-wordmark-in 1000ms var(--signal-out) 80ms both, signal-sheen 1500ms var(--signal-in-out) 440ms both; }
+.p-reveal .signal-horizon { animation: signal-horizon-in 1200ms var(--signal-out) 200ms both; }
+.p-done .signal-logo { opacity: 1; animation: signal-logo-out 300ms var(--signal-in) both; }
+.p-done .signal-wordmark { background-position: 0 0; }
+.p-done .signal-horizon { transform: scaleX(1); opacity: 0.45; }
+
+/* Status only shows when loading drags on. */
+.signal-status { position: absolute; left: 16px; right: 16px; bottom: 11vh; margin: 0; text-align: center; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--muted); opacity: 0; }
+.p-loading .signal-status { animation: signal-status-in 600ms var(--signal-out) 4s forwards; }
+
+@keyframes signal-mark-in {
+  from { opacity: 0; transform: scale(1.3); filter: blur(14px) drop-shadow(0 0 30px rgb(103 227 244 / 0.9)); }
+  to { opacity: 1; transform: none; filter: blur(0) drop-shadow(0 0 18px rgb(103 227 244 / 0.45)); }
+}
+@keyframes signal-wordmark-in {
+  from { opacity: 0; transform: scale(1.14); letter-spacing: 0.05em; filter: blur(16px); }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: none; letter-spacing: -0.035em; filter: blur(0); }
+}
+@keyframes signal-sheen { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes signal-horizon-in { 0% { transform: scaleX(0); opacity: 0; } 30% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0.45; } }
+@keyframes signal-logo-out { to { opacity: 0; transform: translateY(-8px) scale(0.97); } }
+@keyframes signal-status-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes signal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes signal-fade-out { to { opacity: 0; } }
+
+/* The app arriving behind the light. */
+.activity-content.is-arriving { animation: signal-app-in 620ms var(--signal-out, cubic-bezier(0.22, 1, 0.36, 1)) 140ms both; }
+@keyframes signal-app-in { from { opacity: 0; transform: scale(1.035); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .p-reveal .signal-mark, .p-reveal .signal-wordmark { animation: signal-fade 360ms var(--signal-out) both; }
+  .p-reveal .signal-horizon { animation: none; }
+  .p-done .signal-logo { animation: signal-fade-out 240ms var(--signal-out) both; }
+  .activity-content.is-arriving { animation: signal-fade 360ms var(--signal-out, ease-out) both; }
+}

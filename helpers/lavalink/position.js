@@ -18,6 +18,7 @@ async function lavalinkSeekTo(guildId, positionMs) {
   const state = ensurePlaybackState(guildId);
   state.lastPosition = clamped;
   state.lastTimestamp = Date.now();
+  if (state.audioPendingSince) state.audioPendingFrom = clamped;
   playbackState.set(guildId, state);
   resyncLyricsSession(guildId);
 

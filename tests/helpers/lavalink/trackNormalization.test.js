@@ -6,9 +6,21 @@ const {
   cleanTrackMetadata,
   getAutoplayVersionCompatibility,
   getBaseTitle,
+  getCoreTitle,
   getVariantKinds,
   isUnrequestedAlternateVersion,
+  stripTopicSuffix,
 } = require("../../../helpers/lavalink/trackNormalization");
+
+describe("stripTopicSuffix", () => {
+  it("drops YouTube's auto-generated channel suffix only", () => {
+    assert.strictEqual(stripTopicSuffix("K/DA - Topic"), "K/DA");
+    assert.strictEqual(stripTopicSuffix("Kenshi Yonezu - topic"), "Kenshi Yonezu");
+    assert.strictEqual(stripTopicSuffix("Creepy Nuts"), "Creepy Nuts");
+    assert.strictEqual(stripTopicSuffix("The Topic Band"), "The Topic Band");
+    assert.strictEqual(stripTopicSuffix(null), "");
+  });
+});
 
 describe("Autoplay track normalization", () => {
   it("rejects alternate versions for a base-title query", () => {
@@ -55,6 +67,55 @@ describe("Autoplay track normalization", () => {
       cleanTitle: "Pink Pony Club",
       searchArtist: "Chappell Roan",
     });
+  });
+
+  it("recognises 8-bit, parody, type beat and lullaby uploads as novelty versions", () => {
+    for (const title of [
+      "Not Like Us (8-Bit Emulation)",
+      "Blinding Lights [16 bit]",
+      "Numb - Chiptune",
+      "Not Like Us (Parody)",
+      "Kendrick Lamar Not Like Us Type Beat",
+      "Bohemian Rhapsody (Lullaby Version)",
+      "Smells Like Teen Spirit (Music Box)",
+      "KICK BACK [GAME BOY Sound]",
+    ]) {
+      assert.ok(getVariantKinds(title).includes("novelty"), title);
+      assert.strictEqual(isUnrequestedAlternateVersion(title, "not like us"), true, title);
+    }
+  });
+
+  it("treats a work-in-progress take as a demo", () => {
+    assert.deepStrictEqual(getVariantKinds("One (November 1987, Writing in Progress)"), ["demo"]);
+    assert.deepStrictEqual(getVariantKinds("Song (Work in Progress)"), ["demo"]);
+  });
+
+  it("does not see novelty in ordinary titles", () => {
+    for (const title of ["Bit by Bit", "8 kobiet", "Orbit", "Beat It", "A Little Bit", "Progress"]) {
+      assert.deepStrictEqual(getVariantKinds(title), [], title);
+    }
+  });
+
+  it("reads live, 8-bit and retuned uploads as versions of the song", () => {
+    assert.strictEqual(getBaseTitle("Numb (Live)"), "numb");
+    assert.strictEqual(getBaseTitle("Not Like Us (8-Bit Emulation)"), "not like us");
+    assert.strictEqual(getBaseTitle("Song (8D Audio)"), "song");
+    assert.strictEqual(getBaseTitle("Song - Bass Boosted"), "song");
+    assert.strictEqual(getBaseTitle("Song - Live at Wembley"), "song");
+    assert.strictEqual(getBaseTitle("Song - Mark Ronson Remix"), "song");
+    assert.deepStrictEqual(getVariantKinds("Serce 432hz"), ["pitch"]);
+    assert.deepStrictEqual(getVariantKinds("Numb (Live)"), ["live"]);
+  });
+
+  it("keeps the song in a ' - ' suffix that only ends in a processing label", () => {
+    assert.strictEqual(getBaseTitle("LSO - Serce 432hz"), "lso serce");
+    assert.strictEqual(getBaseTitle("Artist - Song Nightcore"), "artist song");
+  });
+
+  it("drops credit and soundtrack brackets from the core title, not part numbers", () => {
+    assert.strictEqual(getCoreTitle("Syberia TDW/LSO - Serce [Cyberpunk: Edgerunners II] (Talia Yang)"), "syberia tdw lso serce");
+    assert.strictEqual(getCoreTitle("Mask Off (Part 2)"), "mask off part 2");
+    assert.strictEqual(getCoreTitle("Serce 432hz"), "serce");
   });
 });
 
