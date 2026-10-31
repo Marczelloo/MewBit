@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 2;
+const GENERATOR_VERSION = 3;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -35,7 +35,9 @@ const DIFFICULTIES = {
     fineDiv: null,
     fineMinStrength: 0.9,
     laneGapBeats: 1, // same-lane gap, in beats
+    minLaneGapMs: 350, // ...never below this, whatever the tempo
     minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
+    minNoteGapMs: 200, // any-lane gap, never below this (Easy only)
     maxRun: 2, // max consecutive notes in one lane
     // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
     // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
@@ -53,6 +55,7 @@ const DIFFICULTIES = {
     fineDiv: null,
     fineMinStrength: 0.9,
     laneGapBeats: 1 / 2,
+    minLaneGapMs: 200,
     minGapBeats: 1 / 4,
     maxRun: 2,
     bandBias: [1, 1, 0.9, 0.8],
@@ -69,6 +72,7 @@ const DIFFICULTIES = {
     fineDiv: 8,
     fineMinStrength: 0.9,
     laneGapBeats: 1 / 4,
+    minLaneGapMs: 150,
     minGapBeats: 1 / 8,
     maxRun: 3,
     bandBias: [0.9, 1, 1, 1],

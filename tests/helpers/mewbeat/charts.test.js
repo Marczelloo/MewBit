@@ -85,11 +85,13 @@ describe("mewbeat chart generator", () => {
   it("hardIsNotNormalPlusNoise: few Normal notes survive unchanged in Hard", () => {
     // Share of NORMAL notes whose exact (t, lane) also appears in Hard. Shared
     // times are fine (same music); Hard has to differ through its own lanes.
+    // The ceiling is 0.8, not 0.7: the absolute lane-gap floor removed Hard's
+    // sub-150 ms same-lane jacks, which had been a large part of the difference.
     for (const confidence of [0.9, 0.3]) {
       const { normal, hard } = chartsOf(fixture({ confidence }));
       const inHard = new Set(hard.notes.map((n) => `${n.t}:${n.lane}`));
       const shared = normal.notes.filter((n) => inHard.has(`${n.t}:${n.lane}`)).length / normal.notes.length;
-      assert.ok(shared <= 0.7, `confidence ${confidence}: ${shared}`);
+      assert.ok(shared <= 0.8, `confidence ${confidence}: ${shared}`);
     }
   });
 
@@ -160,6 +162,32 @@ describe("mewbeat chart generator", () => {
     assert.ok(minSameLaneGap(all.normal.notes) >= 250 - 2);
     assert.ok(minSameLaneGap(all.hard.notes) >= 125 - 2);
     assert.ok(all.easy.notes.length < all.normal.notes.length && all.normal.notes.length < all.hard.notes.length);
+  });
+
+  describe("absolute playability floors", () => {
+    const MIN_LANE_GAP_MS = { easy: 350, normal: 200, hard: 150 };
+    const MIN_EASY_NOTE_GAP_MS = 200;
+    const scenarios = {
+      "180 BPM confident": () => makeFeatures({ bpm: 180, confidence: 0.9, durationMs: 120000, energy: () => 1 }),
+      "200 BPM confident": () => makeFeatures({ bpm: 200, confidence: 0.9, durationMs: 120000, energy: () => 1 }),
+      "180 BPM low confidence": () => makeFeatures({ bpm: 180, confidence: 0.35, durationMs: 120000, energy: () => 1 }),
+    };
+
+    for (const [name, build] of Object.entries(scenarios)) {
+      it(`keeps same-lane gaps above the per-difficulty floor: ${name}`, () => {
+        for (const chart of Object.values(chartsOf(build()))) {
+          const min = minSameLaneGap(chart.notes);
+          assert.ok(min >= MIN_LANE_GAP_MS[chart.difficulty], `${chart.difficulty}: ${min} ms`);
+        }
+      });
+
+      it(`keeps easy notes at least 200 ms apart in any lane: ${name}`, () => {
+        const times = [...new Set(chartsOf(build()).easy.notes.map((n) => n.t))];
+        for (let i = 1; i < times.length; i++) {
+          assert.ok(times[i] - times[i - 1] >= MIN_EASY_NOTE_GAP_MS, `${times[i - 1]} -> ${times[i]}`);
+        }
+      });
+    }
   });
 
   it("limits same-lane runs to 2 on easy/normal and 3 on hard, chords included", () => {

@@ -233,7 +233,9 @@ function windowPower(windowIndex, energy) {
 function minNoteGap(c, p, timing, energy) {
   const beats = Math.max(p.minGapBeats, 1 / divisionFor(p, c, energy.at(c.t)));
   const floor = beats * FALLBACK_BEAT_MS;
-  return c.snapped ? Math.min(floor, SNAPPED_FLOOR_SLACK * beats * timing.medianMs) : floor;
+  const gap = c.snapped ? Math.min(floor, SNAPPED_FLOOR_SLACK * beats * timing.medianMs) : floor;
+  // The tempo-relative gap shrinks at high BPM; this keeps a human-playable minimum.
+  return Math.max(gap, p.minNoteGapMs ?? 0);
 }
 
 // Keeps the strongest candidates of each window up to the energy-driven target,
@@ -251,7 +253,8 @@ function thin(candidates, p, timing, energy) {
   let carry = 0;
 
   const conflicts = (c) => {
-    const floor = minNoteGap(c, p, timing, energy) - GAP_TOLERANCE_MS;
+    // The rounding slack applies to the tempo-relative gap only, not the absolute floor.
+    const floor = Math.max(minNoteGap(c, p, timing, energy) - GAP_TOLERANCE_MS, p.minNoteGapMs ?? 0);
     const i = lowerBound(chosenTimes, c.t);
     return (i < chosenTimes.length && chosenTimes[i] - c.t < floor) || (i > 0 && c.t - chosenTimes[i - 1] < floor);
   };
@@ -282,9 +285,10 @@ function thin(candidates, p, timing, energy) {
 // --- lanes and chords --------------------------------------------------------
 
 // Same-lane gap for a note: in local beats when its time was snapped, else in
-// 120-BPM beats.
+// 120-BPM beats, but never under the difficulty's absolute floor (a jack
+// faster than that is not playable at any tempo).
 function laneGapMs(c, p, timing) {
-  return p.laneGapBeats * (c.snapped ? timing.beatMsAt(c.t) : FALLBACK_BEAT_MS);
+  return Math.max(p.laneGapBeats * (c.snapped ? timing.beatMsAt(c.t) : FALLBACK_BEAT_MS), p.minLaneGapMs);
 }
 
 function assignLanes(notes, p, timing, energy) {
@@ -297,7 +301,7 @@ function assignLanes(notes, p, timing, energy) {
 
   for (const c of notes) {
     const gapMs = laneGapMs(c, p, timing);
-    const allowed = (lane) => c.t - lastUsed[lane] >= gapMs - GAP_TOLERANCE_MS && runs[lane] < p.maxRun;
+    const allowed = (lane) => c.t - lastUsed[lane] >= Math.max(gapMs - GAP_TOLERANCE_MS, p.minLaneGapMs) && runs[lane] < p.maxRun;
 
     // Hard alternates between the two loudest bands inside a stream of close notes.
     let want = c.band;
