@@ -21,6 +21,9 @@ java {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
     compileJava {
         options.encoding = "UTF-8"
         options.release = 17
@@ -39,8 +42,13 @@ repositories {
     // The plugin-api artifacts are published here; the repository the Lavalink
     // gradle plugin registers by default no longer serves them.
     maven("https://maven.lavalink.dev/releases")
+    mavenCentral()
 }
 
 dependencies {
-    // add your dependencies here
+    testImplementation(platform("org.junit:junit-bom:5.10.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // Lavalink provides Jackson at runtime; the tests only check the JSON shape.
+    testImplementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
 }
