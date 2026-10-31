@@ -21,3 +21,6 @@ web/dist
 
 # Brainstorm mockups
 .superpowers/
+
+# Chart preview tool output
+.mewbeat-preview/
