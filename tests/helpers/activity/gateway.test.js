@@ -13,8 +13,10 @@ const {
   getSerializedQueue,
   findQueueItemIndex,
 } = require("../../../helpers/activity/server");
+const { getActivityEvents } = require("../../../helpers/activity/feed");
 const { resetActivitySessions } = require("../../../helpers/activity/sessions");
 const { getActivityStateRevision, markActivityStateChanged, resetActivityStateRevision } = require("../../../helpers/activity/sync");
+const { installFakePreferences } = require("../mewbeat/fakePreferences");
 
 test("Activity state revisions only move forward for a guild", () => {
   const guildId = "activity-revision-test";
@@ -218,4 +220,81 @@ test("Activity gateway exposes authenticated local state over HTTP and WebSocket
   assert.equal(revisions[1], revisions[0] + 1);
   assert.equal(socketStates[0].activity.active, true);
   resetActivityStateRevision("activity-test-guild");
+});
+
+test("Activity mewbeat unlock and settings are per-account, gated, and stay out of the room feed", async (t) => {
+  const previous = {
+    ACTIVITY_ENABLED: process.env.ACTIVITY_ENABLED,
+    ACTIVITY_ALLOW_DEV: process.env.ACTIVITY_ALLOW_DEV,
+    ACTIVITY_PORT: process.env.ACTIVITY_PORT,
+    ACTIVITY_DEV_GUILD_ID: process.env.ACTIVITY_DEV_GUILD_ID,
+    NODE_ENV: process.env.NODE_ENV,
+  };
+  const guildId = "activity-mewbeat-guild";
+  Object.assign(process.env, {
+    ACTIVITY_ENABLED: "true",
+    ACTIVITY_ALLOW_DEV: "true",
+    ACTIVITY_PORT: "0",
+    ACTIVITY_DEV_GUILD_ID: guildId,
+    NODE_ENV: "test",
+  });
+  const fakePreferences = installFakePreferences();
+
+  const gateway = createActivityServer({ guilds: { cache: new Map() } });
+  const server = gateway.start();
+  t.after(() => {
+    gateway.stop();
+    resetActivitySessions();
+    resetActivityStateRevision(guildId);
+    fakePreferences.restore();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  await waitForListening(server);
+  const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}/api/activity/ws`);
+  t.after(() => socket.close());
+
+  const inbox = [];
+  const waiting = [];
+  socket.on("message", (raw) => {
+    inbox.push(JSON.parse(raw.toString()));
+    while (waiting.length) waiting.shift()();
+  });
+  async function nextMessage(types) {
+    const deadline = Date.now() + 2000;
+    for (;;) {
+      const index = inbox.findIndex((message) => types.includes(message.type));
+      if (index !== -1) return inbox.splice(index, 1)[0];
+      if (Date.now() > deadline) throw new Error(`No ${types.join("/")} message from the Activity socket.`);
+      await new Promise((resolve) => { waiting.push(resolve); setTimeout(resolve, 50); });
+    }
+  }
+
+  await new Promise((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+  socket.send(JSON.stringify({ type: "auth", guildId }));
+  const initial = await nextMessage(["state"]);
+  assert.deepEqual(initial.state.mewbeat.unlocked, false);
+
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 40 } } }));
+  assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
+
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_unlock" }));
+  const unlocked = await nextMessage(["state"]);
+  assert.equal(unlocked.state.mewbeat.unlocked, true);
+  assert.equal(unlocked.state.mewbeat.unlockedAt, undefined);
+
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 40 } } }));
+  const updated = await nextMessage(["state"]);
+  assert.equal(updated.state.mewbeat.settings.offsetMs, 40);
+
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 9999 } } }));
+  assert.match((await nextMessage(["error"])).error, /offset/i);
+
+  assert.equal(JSON.stringify(getActivityEvents(guildId)).toLowerCase().includes("mewbeat"), false);
 });

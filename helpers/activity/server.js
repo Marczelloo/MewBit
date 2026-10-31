@@ -45,6 +45,7 @@ const { skipWithLearning } = require("../lavalink/skipLearning");
 const { cloneTrack, getLyricsState, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
 const Log = require("../logs/log");
+const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
 const playlistStore = require("../playlists/store");
@@ -495,6 +496,12 @@ function getSerializedEqualizerPresets(userId) {
   return [...builtIn, ...custom];
 }
 
+// The unlock time stays server-side; the client only needs to know whether
+// the game is open to this account and how it is set up.
+function serializeMewbeat(record) {
+  return { unlocked: record.unlocked, settings: record.settings };
+}
+
 function buildActivityState(client, guildId, userId) {
   const player = getPlayer(guildId);
   const likedSongs = playlistStore.getLikedSongs(userId);
@@ -564,6 +571,7 @@ function buildActivityState(client, guildId, userId) {
     likedTrackIds: [...new Set((likedSongs.tracks || []).flatMap((track) => playlistStore.getTrackIdentityKeys(track)))],
     filterPresets: FILTER_PRESET_NAMES,
     equalizerPresets: getSerializedEqualizerPresets(userId),
+    mewbeat: serializeMewbeat(getMewbeatRecord(userId)),
   };
 }
 
@@ -950,6 +958,12 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
       userPreferences.setUserPreference(identity.id, "lyricsSyncOffsetMs", offset);
       return { lyricsSyncOffsetMs: offset };
     }
+    // Per-account only: nothing here touches the player, so neither action is
+    // DJ- or voice-guarded, and actionDetail keeps both out of the room feed.
+    case "mewbeat_unlock":
+      return { mewbeat: serializeMewbeat(unlockMewbeat(identity.id)) };
+    case "mewbeat_settings":
+      return { mewbeat: serializeMewbeat(updateMewbeatSettings(identity.id, payload.settings)) };
     case "get_playlist": {
       const playlist = playlistStore.getPlaylist(identity.id, guildId, limitText(payload.name, 80));
       if (!playlist) throw Object.assign(new Error("Playlist not found."), { statusCode: 404 });
