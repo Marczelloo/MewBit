@@ -7,7 +7,10 @@ const tracks = [
   { id: "mock-queue-3", title: "Afterglow Circuit", author: "MewBit Radio", durationMs: 226000, artworkUrl: artwork, source: "deezer", sourceLabel: "Deezer", requester: "MewBit", autoplay: true },
 ];
 
-export function createMockState({ idle = false } = {}) {
+// Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
+const MEWBEAT_DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false };
+
+export function createMockState({ idle = false, locked = false } = {}) {
   const currentTrack = idle ? null : tracks[0];
   return {
     guild: { id: "demo", name: "MewBit test room", iconUrl: null, voiceChannelName: "Neon Listening Room" },
@@ -58,6 +61,7 @@ export function createMockState({ idle = false } = {}) {
       updatedAt: Date.now(),
     },
     lavalink: { connected: true, latencyMs: 24 },
+    mewbeat: { unlocked: !locked, settings: { ...MEWBEAT_DEFAULT_SETTINGS, keys: [...MEWBEAT_DEFAULT_SETTINGS.keys] } },
     playlists: [
       { id: "liked", name: "Liked Songs", type: "user", description: "Your saved tracks", trackCount: 42, thumbnail: artwork, public: false, collaborative: false, isDefault: true },
       { id: "night-drive", name: "Night Drive.exe", type: "user", description: "Blue lights, no skips", trackCount: 18, thumbnail: artwork, public: true, collaborative: true, isDefault: false },

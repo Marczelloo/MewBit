@@ -1,0 +1,224 @@
+/* mewbeat: every class is prefixed mb- so nothing collides with the Activity's global styles.
+   Colour tokens fall back to the Activity palette if a surface is mounted outside :root. */
+.mb-reveal,
+.mb-game,
+.mb-mewbit {
+  --mb-bg: var(--bg, #050608);
+  --mb-surface: var(--surface, #0c0e12);
+  --mb-raised: var(--raised, #111318);
+  --mb-text: var(--text, #f4f6f9);
+  --mb-muted: var(--muted, #9ba4b2);
+  --mb-cyan: var(--cyan, #67e3f4);
+  --mb-violet: var(--violet, #a78bfa);
+  --mb-pink: var(--pink, #ff6ec7);
+  --mb-gold: var(--gold, #ffd479);
+}
+
+/* ---------- shared ---------- */
+.mb-btn {
+  min-height: 40px;
+  padding: 0 20px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 10px;
+  background: var(--mb-raised);
+  color: var(--mb-text);
+  font: 700 14px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out;
+}
+.mb-btn:hover { background: var(--high, #161920); border-color: rgb(255 255 255 / 0.28); }
+.mb-btn:active { transform: scale(0.97); }
+.mb-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+.mb-btn-primary { background: var(--mb-cyan); border-color: var(--mb-cyan); color: #04141a; }
+.mb-btn-primary:hover { background: #8aeaf7; border-color: #8aeaf7; }
+
+/* ---------- unlock reveal ---------- */
+.mb-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgb(5 6 8 / 0.9);
+  color: var(--mb-text);
+  font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.mb-glitch { position: absolute; inset: 0; animation: mb-glitch-flicker var(--mb-glitch-ms, 600ms) steps(2, end) both; }
+.mb-glitch-slice {
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  opacity: 0;
+  animation: mb-slice-tear var(--mb-glitch-ms, 600ms) cubic-bezier(0.2, 0.8, 0.2, 1) var(--mb-delay, 0ms) both;
+}
+.mb-tint-cyan { background: var(--mb-cyan); }
+.mb-tint-pink { background: var(--mb-pink); }
+.mb-tint-violet { background: var(--mb-violet); }
+/* Chromatic split: two full-height bars offset either side of centre. */
+.mb-glitch-split { position: absolute; top: 0; bottom: 0; width: 30%; left: 35%; mix-blend-mode: screen; opacity: 0; }
+.mb-glitch-split-a { background: var(--mb-cyan); animation: mb-split-a var(--mb-glitch-ms, 600ms) steps(6, end) both; }
+.mb-glitch-split-b { background: var(--mb-pink); animation: mb-split-b var(--mb-glitch-ms, 600ms) steps(6, end) both; }
+
+@keyframes mb-glitch-flicker {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  45% { opacity: 0.6; }
+  60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes mb-slice-tear {
+  0% { opacity: 0; transform: translateX(calc(var(--mb-dir) * -18%)); }
+  25% { opacity: 0.85; transform: translateX(calc(var(--mb-dir) * 12%)); }
+  60% { opacity: 0.5; transform: translateX(calc(var(--mb-dir) * -6%)); }
+  100% { opacity: 0; transform: translateX(0); }
+}
+@keyframes mb-split-a {
+  0%, 100% { opacity: 0; transform: translateX(0); }
+  30% { opacity: 0.35; transform: translateX(-14vw); }
+  70% { opacity: 0.25; transform: translateX(-4vw); }
+}
+@keyframes mb-split-b {
+  0%, 100% { opacity: 0; transform: translateX(0); }
+  30% { opacity: 0.35; transform: translateX(14vw); }
+  70% { opacity: 0.25; transform: translateX(4vw); }
+}
+
+.mb-reveal-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(92vw, 420px);
+  padding: 8px 24px 28px;
+  animation: mb-card-in 360ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+.mb-reveal-card .mb-mewbit { width: min(60vw, 280px); }
+.mb-reveal-title {
+  margin: 0;
+  font-size: clamp(28px, 6vw, 40px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-align: center;
+  color: var(--mb-cyan);
+}
+.mb-reveal-copy { margin: 0; max-width: 32ch; color: var(--mb-muted); font-size: 14px; line-height: 1.45; text-align: center; }
+.mb-reveal-actions { display: flex; gap: 10px; margin-top: 8px; }
+.mb-reveal-card-calm { animation: mb-fade-in 240ms ease-out both; }
+
+@keyframes mb-card-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mb-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- game overlay (stub until the game replaces it) ---------- */
+.mb-game {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: var(--mb-bg);
+  color: var(--mb-text);
+  font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+.mb-game-stub { display: grid; justify-items: center; gap: 16px; padding: 28px 36px; border: 1px solid rgb(255 255 255 / 0.1); border-radius: 16px; background: var(--mb-surface); }
+.mb-game-stub-title { margin: 0; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
+
+/* ---------- Mewbit placeholder ---------- */
+.mb-mewbit { position: relative; width: 100%; aspect-ratio: 1; }
+.mb-mewbit-body { width: 100%; height: 100%; transform-origin: 50% 90%; will-change: transform; }
+.mb-mewbit-img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+.mb-mewbit-bubble {
+  position: absolute;
+  top: 4%;
+  right: -4%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--mb-text);
+  color: var(--mb-bg);
+  font: 900 18px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  transform: rotate(6deg);
+  animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.mb-mewbit-off .mb-mewbit-bubble { animation: none; }
+
+@keyframes mb-bubble-pop {
+  from { opacity: 0; transform: rotate(6deg) scale(0.6); }
+  to { opacity: 1; transform: rotate(6deg) scale(1); }
+}
+
+/* One class per pose. Transform and opacity only. --mb-amp scales the motion down in reduced mode. */
+.mb-mewbit { --mb-amp: 1; }
+.mb-mewbit-reduced { --mb-amp: 0.4; }
+
+.mb-motion-neutral { animation: mb-bob 3200ms ease-in-out infinite; }
+.mb-motion-vibe1 { animation: mb-bounce 1100ms ease-in-out infinite; }
+.mb-motion-vibe2 { animation: mb-bounce 720ms ease-in-out infinite; }
+.mb-motion-vibe3 { animation: mb-bounce-big 520ms ease-in-out infinite; }
+.mb-motion-miss { animation: mb-shake 380ms ease-out both; }
+.mb-motion-crushed { animation: mb-crush 520ms cubic-bezier(0.3, 0.9, 0.3, 1) both; }
+.mb-motion-milestone { animation: mb-hop 640ms cubic-bezier(0.25, 1.2, 0.4, 1) both; }
+.mb-motion-fever { animation: mb-fever 360ms ease-in-out infinite; }
+.mb-motion-charting { animation: mb-sway 2400ms ease-in-out infinite; }
+.mb-motion-reveal { animation: mb-reveal-pop 700ms cubic-bezier(0.2, 1.3, 0.35, 1) both; }
+
+@keyframes mb-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(calc(-6px * var(--mb-amp))); }
+}
+@keyframes mb-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(calc(-14px * var(--mb-amp))) rotate(calc(-2deg * var(--mb-amp))); }
+}
+@keyframes mb-bounce-big {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(calc(-26px * var(--mb-amp))) scale(calc(1 + 0.05 * var(--mb-amp))); }
+}
+@keyframes mb-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(calc(-10px * var(--mb-amp))); }
+  40% { transform: translateX(calc(8px * var(--mb-amp))); }
+  60% { transform: translateX(calc(-6px * var(--mb-amp))); }
+  80% { transform: translateX(calc(3px * var(--mb-amp))); }
+}
+@keyframes mb-crush {
+  0% { transform: scale(1, 1); }
+  35% { transform: scale(calc(1 + 0.12 * var(--mb-amp)), calc(1 - 0.2 * var(--mb-amp))); }
+  100% { transform: translateY(calc(10px * var(--mb-amp))) scale(1, calc(1 - 0.08 * var(--mb-amp))); }
+}
+@keyframes mb-hop {
+  0% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(calc(-30px * var(--mb-amp))) scale(calc(1 + 0.06 * var(--mb-amp))); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes mb-fever {
+  0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  25% { transform: translate(calc(-6px * var(--mb-amp)), calc(-10px * var(--mb-amp))) rotate(calc(-3deg * var(--mb-amp))) scale(calc(1 + 0.06 * var(--mb-amp))); }
+  75% { transform: translate(calc(6px * var(--mb-amp)), calc(-10px * var(--mb-amp))) rotate(calc(3deg * var(--mb-amp))) scale(calc(1 + 0.06 * var(--mb-amp))); }
+}
+@keyframes mb-sway {
+  0%, 100% { transform: rotate(calc(-2deg * var(--mb-amp))); }
+  50% { transform: rotate(calc(2deg * var(--mb-amp))); }
+}
+@keyframes mb-reveal-pop {
+  0% { opacity: 0; transform: scale(0.7) rotate(-6deg); }
+  55% { opacity: 1; transform: scale(calc(1 + 0.08 * var(--mb-amp))) rotate(calc(3deg * var(--mb-amp))); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-glitch,
+  .mb-glitch-slice,
+  .mb-glitch-split,
+  .mb-reveal-card,
+  .mb-mewbit-body,
+  .mb-mewbit-bubble { animation: none; }
+  .mb-btn { transition: none; }
+}

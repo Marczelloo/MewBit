@@ -12,6 +12,7 @@ import {
   CopySimple,
   DotsThreeVertical,
   Faders,
+  GameController,
   Globe,
   Heart,
   House,
@@ -48,6 +49,9 @@ import { connectActivitySocket, fetchActivityState, searchActivity, sendActivity
 import { parseMusicLink } from "./musicLink.js";
 import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
+import { createKonamiMatcher } from "./mewbeat/konami.js";
+import { isDesktopClient } from "./mewbeat/platform.js";
+import UnlockReveal from "./mewbeat/UnlockReveal.jsx";
 
 import ActivityGate from "./views/ActivityGate.jsx";
 import Dropdown from "./views/Dropdown.jsx";
@@ -55,12 +59,15 @@ import Dropdown from "./views/Dropdown.jsx";
 const LazyFiltersPanel = lazy(() => import("./views/FiltersPanel.jsx"));
 const LazyHomePanel = lazy(() => import("./views/HomePanel.jsx"));
 const LazyLyricsPanel = lazy(() => import("./views/LyricsPanel.jsx"));
+const LazyMewbeatGame = lazy(() => import("./mewbeat/MewbeatGame.jsx"));
 
 const SOURCE_NAMES = ["auto", "youtube", "soundcloud", "deezer", "spotify"];
 // Mock preview is a dev-only affordance: production builds never render mock
 // data or search results, even if someone appends ?mock=1 to the URL.
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
 const MOCK_IDLE_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("idle");
+// ?mock=1&locked starts without mewbeat unlocked, so the Konami reveal can be checked.
+const MOCK_LOCKED_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("locked");
 // Lets us verify the Discord minimized composition at a fixed desktop viewport.
 // This is intentionally gated by both DEV and ?mock=1.
 const MOCK_COMPACT_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("compact");
@@ -373,6 +380,10 @@ function trackFeedbackLabel(track) {
   const author = String(track?.author || "").trim();
   if (!title) return "";
   return author ? `${title} — ${author}` : title;
+}
+
+function isTypingTarget(target) {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || Boolean(target?.isContentEditable);
 }
 
 function getActionFeedback(action, payload = {}, result = null, state = null) {
@@ -1849,7 +1860,7 @@ function PlayerBar({ state, onAction, onView, onOpenExternalLink, isActionPendin
 function App() {
   const [state, setState] = useState(() => {
     if (!import.meta.env.DEV) return createEmptyState();
-    return createMockState({ idle: MOCK_IDLE_PREVIEW });
+    return createMockState({ idle: MOCK_IDLE_PREVIEW, locked: MOCK_LOCKED_PREVIEW });
   });
   const [context, setContext] = useState({ mode: "local", guildId: "demo", accessToken: null, user: { username: "Local Listener" } });
   const [connection, setConnection] = useState({ status: "connecting", message: "Starting Activity" });
@@ -1879,6 +1890,12 @@ function App() {
   const pendingActionCounts = useRef(new Map());
   const localUndoSnapshots = useRef(new Map());
   const stateRef = useRef(state);
+  const [mewbeatOpen, setMewbeatOpen] = useState(false);
+  const [mewbeatRevealOpen, setMewbeatRevealOpen] = useState(false);
+  // Task 8's link reads the socket through these: it sends via mewbeatSocketRef and receives by setting mewbeatHandlerRef.
+  const mewbeatSocketRef = useRef(null);
+  const mewbeatHandlerRef = useRef(null);
+  const konamiMatcher = useRef(null);
   const seenActivityEventIds = useRef(new Set());
   const activityFeedReady = useRef(false);
   // This timestamp tracks the last accepted player-state snapshot, not the
@@ -2108,9 +2125,13 @@ function App() {
             }
           },
           onReady: () => { if (alive) setConnection({ status: "live", message: "Realtime gateway connected" }); },
+          onMewbeat: (payload) => mewbeatHandlerRef.current?.(payload),
           onConnection: (nextConnection) => { if (alive && nextContext.mode === "discord") setConnection(nextConnection); },
           onError: (error) => { if (alive && nextContext.mode === "discord") setConnection({ status: "reconnecting", message: error.message }); },
         });
+
+        // Keep the raw socket (it carries .send); stopSocket is wrapped below.
+        mewbeatSocketRef.current = stopSocket;
 
         // Socket messages are the state path. HTTP only repairs a socket that
         // became silent (Discord iframe/proxy edge case), on return to the
@@ -2138,6 +2159,7 @@ function App() {
 
     return () => {
       alive = false;
+      mewbeatSocketRef.current = null;
       stopSocket?.();
       window.clearInterval(healthWatchTimer);
       window.clearTimeout(hydrationTimer.current);
@@ -2159,6 +2181,7 @@ function App() {
       if (action === "toggle") next.player.playing = !next.player.playing, next.player.paused = !next.player.playing;
       if (action === "pause") next.player.playing = false, next.player.paused = true;
       if (action === "resume") next.player.playing = true, next.player.paused = false;
+      if (action === "mewbeat_unlock") next.mewbeat = { ...next.mewbeat, unlocked: true };
       if (action === "stop") { next.player.currentTrack = null; next.player.queue = []; next.player.playing = false; next.player.paused = true; next.player.positionMs = 0; }
       if (action === "volume" || action === "volume-preview") {
         next.player.volume = payload.volume;
@@ -2400,9 +2423,8 @@ function App() {
 
   useEffect(() => {
     const onKeyDown = (event) => {
-      const target = event.target;
-      const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
-      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (mewbeatOpen || mewbeatRevealOpen) return;
+      if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "/") {
         event.preventDefault();
         goToView("search");
@@ -2422,7 +2444,28 @@ function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goToView, onAction, state.player.currentTrack]);
+  }, [goToView, mewbeatOpen, mewbeatRevealOpen, onAction, state.player.currentTrack]);
+
+  const mewbeatUnlocked = Boolean(state.mewbeat?.unlocked);
+  const mewbeatDesktop = isDesktopClient(context);
+
+  // Konami code: desktop only. Arrow keys are only swallowed when the code completes.
+  useEffect(() => {
+    if (!mewbeatDesktop || mewbeatOpen || mewbeatRevealOpen) return undefined;
+    konamiMatcher.current ??= createKonamiMatcher();
+    const matcher = konamiMatcher.current;
+    const onKeyDown = (event) => {
+      if (typeof event.key !== "string" || event.repeat) return;
+      if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!matcher.push(event.key)) return;
+      event.preventDefault();
+      if (mewbeatUnlocked) { setMewbeatOpen(true); return; }
+      setMewbeatRevealOpen(true);
+      void onAction("mewbeat_unlock");
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mewbeatDesktop, mewbeatOpen, mewbeatRevealOpen, mewbeatUnlocked, onAction]);
 
   /* Terminal states: the room cannot be joined at all, so the cockpit would be
      a set of controls wired to nothing. */
@@ -2490,6 +2533,7 @@ function App() {
                 </div>
                 <div className="stage-actions" aria-label="Player tools">
                   <IconButton label="Room activity" className={`${activeTab === "activity" ? "is-active" : ""} ${hasActivityErrors ? "has-issues" : ""}`} onClick={() => goToView("activity")}><Bell size={17} weight={activeTab === "activity" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  {mewbeatUnlocked && mewbeatDesktop ? <IconButton label="mewbeat" onClick={() => setMewbeatOpen(true)}><GameController size={17} aria-hidden="true" /></IconButton> : null}
                   <IconButton label="Toggle queue" className={rightSidebarOpen ? "is-active" : ""} aria-pressed={rightSidebarOpen} onClick={() => { if (window.matchMedia("(max-width: 900px)").matches) setLeftSidebarOpen(false); setRightSidebarOpen((value) => !value); }}><Queue size={17} weight={rightSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                 </div>
               </div>
@@ -2511,6 +2555,8 @@ function App() {
       </>}
       </div>
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
+      {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatOpen(true); }} /> : null}
+      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onClose={() => setMewbeatOpen(false)} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>
   );
