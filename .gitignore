@@ -18,3 +18,6 @@ helpers/data/*
 *.sh
 *.ps1
 web/dist
+
+# Brainstorm mockups
+.superpowers/

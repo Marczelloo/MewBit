@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MewBit Beat — mockup ekranu gry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050608; --surface: #0c0e12; --raised: #111318; --high: #161920;
+    --line: rgba(255,255,255,.08); --text: #f4f6f9; --muted: #9ba4b2; --faint: #667081;
+    --cyan: #67e3f4; --violet: #a78bfa; --pink: #ff6ec7; --danger: #ff8098;
+    --pulse: 0; --vibe: 0; --sad: 0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---------- mockup chrome ---------- */
+  .chrome { position: fixed; inset: 0 0 auto 0; height: 52px; display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; background: rgba(5,6,8,.92); border-bottom: 1px solid var(--line); z-index: 50; }
+  .chrome h1 { font-size: 14px; font-weight: 800; margin: 0 8px 0 0; letter-spacing: -.01em; white-space: nowrap; }
+  .chrome .sep { flex: 1; }
+  .btn { font: 600 12.5px "Hanken Grotesk", sans-serif; color: var(--muted); background: var(--raised);
+    border: 0; outline: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { color: var(--text); }
+  .btn.on { color: var(--bg); background: var(--text); outline-color: transparent; }
+  .hint { font-size: 11px; color: var(--faint); white-space: nowrap; }
+
+  /* ---------- stage ---------- */
+  .stage { position: fixed; inset: 52px 0 0 0; overflow: hidden;
+    filter: saturate(calc(1 - var(--sad) * .75)) brightness(calc(1 - var(--sad) * .25)); transition: filter .25s; }
+  .sky { position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 70% at 50% 110%, rgba(255,110,199,calc(.18 + var(--vibe)*.12 + var(--pulse)*.10)), transparent 60%),
+      radial-gradient(80% 60% at 15% 0%, rgba(103,227,244,calc(.10 + var(--vibe)*.06)), transparent 60%),
+      radial-gradient(70% 50% at 90% 10%, rgba(167,139,250,calc(.12 + var(--vibe)*.06)), transparent 60%),
+      linear-gradient(#07080c, #0b0a14 55%, #120a1a); }
+  /* drawn skyline */
+  .skyline { position: absolute; left: -2%; right: -2%; bottom: 30%; height: 34%; opacity: .9; }
+  .skyline .b { position: absolute; bottom: 0; background: #0a0b11; outline: 1px solid rgba(167,139,250,.10); }
+  .skyline .b::after { content: ""; position: absolute; inset: 10% 18%;
+    background-image: radial-gradient(circle, rgba(103,227,244,.55) 1px, transparent 1.6px);
+    background-size: 9px 11px; opacity: calc(.25 + var(--pulse)*.45); }
+  /* spotlights */
+  .spot { position: absolute; top: -10%; width: 22vw; height: 95%; transform-origin: top center;
+    background: linear-gradient(to bottom, rgba(103,227,244,.20), transparent 80%);
+    clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%); mix-blend-mode: screen;
+    opacity: calc(.15 + var(--vibe)*.25 + var(--pulse)*.15); }
+  .spot.l { left: 8%; animation: sweepL 6s ease-in-out infinite; }
+  .spot.r { right: 8%; background: linear-gradient(to bottom, rgba(255,110,199,.22), transparent 80%); animation: sweepR 7s ease-in-out infinite; }
+  @keyframes sweepL { 0%,100% { transform: rotate(-18deg); } 50% { transform: rotate(14deg); } }
+  @keyframes sweepR { 0%,100% { transform: rotate(16deg); } 50% { transform: rotate(-12deg); } }
+  /* floor */
+  .floor { position: absolute; left: 0; right: 0; bottom: 0; height: 32%;
+    background:
+      linear-gradient(rgba(5,6,8,0), rgba(5,6,8,.9)),
+      repeating-linear-gradient(90deg, rgba(103,227,244,calc(.10 + var(--pulse)*.18)) 0 1px, transparent 1px 80px),
+      repeating-linear-gradient(0deg, rgba(167,139,250,calc(.08 + var(--pulse)*.12)) 0 1px, transparent 1px 40px),
+      #0a0910;
+    transform: perspective(500px) rotateX(55deg); transform-origin: top center; }
+  .floorEdge { position: absolute; left: 0; right: 0; bottom: 32%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--pink), var(--cyan), transparent);
+    opacity: calc(.4 + var(--pulse)*.6); }
+  /* speakers */
+  .speaker { position: absolute; bottom: 20%; width: 9vw; max-width: 120px; aspect-ratio: .62;
+    background: linear-gradient(#15161d, #0b0c11); border-radius: 12px; outline: 1px solid rgba(255,255,255,.07);
+    display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; padding: 8px; }
+  .speaker i { display: block; width: 62%; aspect-ratio: 1; border-radius: 50%;
+    background: radial-gradient(circle, #050608 18%, #1d1f29 20%, #0d0e14 60%);
+    outline: 2px solid rgba(103,227,244,calc(.15 + var(--pulse)*.6));
+    transform: scale(calc(1 + var(--pulse)*.09)); }
+  .speaker i + i { width: 40%; }
+  .speaker.l { left: 3%; } .speaker.r { right: 3%; }
+
+  /* ---------- layout C / D: highway always dead centre ---------- */
+  .scene { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr minmax(260px, 400px) 1fr; }
+  .charSlot { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 14%; grid-column: 1; grid-row: 1; }
+  .hwSlot { grid-column: 2; grid-row: 1; z-index: 2; }
+  .sidePanel { grid-column: 3; grid-row: 1; justify-self: end; width: min(100%, 280px); }
+  /* D: Mewbit stands behind the highway, the lanes go translucent */
+  .layoutD .charSlot { grid-column: 1 / 4; z-index: 1; padding-bottom: 6%; }
+  .layoutD .mew { width: min(70vh, 640px); }
+  .layoutD .highway { background: linear-gradient(rgba(12,14,18,.05), rgba(12,14,18,.55) 55%, rgba(12,14,18,.85)); backdrop-filter: blur(1.5px); }
+  .layoutD .mew .tag { bottom: auto; top: -34px; }
+  .layoutD .scoreCard { position: absolute; left: 14px; top: 18px; width: min(26vw, 260px); }
+  /* ---------- Mewbit ---------- */
+  .mew { position: relative; width: min(92%, 400px); aspect-ratio: 1; }
+  .mew .frame { position: absolute; inset: 0; border-radius: 22px; overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000 70%, transparent 98%); mask-image: linear-gradient(#000 70%, transparent 98%);
+    transform-origin: 50% 90%; will-change: transform, filter; }
+  .mew img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mew .aura { position: absolute; inset: -12%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,110,199,calc(var(--vibe)*.35)), rgba(103,227,244,calc(var(--vibe)*.18)) 45%, transparent 70%);
+    transform: scale(calc(1 + var(--pulse)*.06)); }
+  .mew .tag { position: absolute; left: 50%; bottom: -34px; transform: translateX(-50%); white-space: nowrap;
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    background: rgba(5,6,8,.8); outline: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; }
+  .mew .tag b { color: var(--cyan); font-weight: 700; }
+  .mew .bubble { position: absolute; top: 4%; right: -6%; font-weight: 900; font-size: 20px; letter-spacing: -.02em;
+    padding: 8px 12px; border-radius: 14px; background: var(--text); color: var(--bg); transform: rotate(6deg);
+    opacity: 0; transition: opacity .15s, transform .15s; }
+  .mew .bubble.show { opacity: 1; transform: rotate(6deg) scale(1.04); }
+  .mew .tears { position: absolute; inset: 0; pointer-events: none; opacity: var(--sad);
+    background: linear-gradient(rgba(60,90,160,.45), rgba(20,30,60,.55)); border-radius: 22px; mix-blend-mode: multiply; }
+  .mew .rain { position: absolute; left: 10%; right: 10%; top: -6%; height: 40%; opacity: var(--sad); }
+  .mew .rain::before { content: "☁"; position: absolute; left: 50%; top: -10px; transform: translateX(-50%);
+    font-size: 64px; color: #3a3f55; line-height: 1; }
+
+  /* ---------- highway ---------- */
+  .hwSlot { position: relative; display: flex; justify-content: center; padding: 18px 0 0; }
+  .highway { position: relative; width: 100%; height: calc(100% - 18px);
+    background: linear-gradient(rgba(12,14,18,.25), rgba(12,14,18,.92) 30%);
+    outline: 1px solid rgba(255,255,255,.08); border-radius: 18px 18px 0 0; overflow: hidden;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    box-shadow: 0 0 0 1px rgba(103,227,244,calc(var(--pulse)*.25)) inset; }
+  .lane { position: relative; border-right: 1px solid rgba(255,255,255,.05); }
+  .lane:last-child { border-right: 0; }
+  .lane .flash { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; opacity: 0;
+    background: linear-gradient(transparent, var(--c)); transition: opacity .18s; }
+  .lane.press .flash { opacity: .28; transition: none; }
+  .receptor { position: absolute; left: 12%; right: 12%; bottom: 64px; height: 26px; border-radius: 8px;
+    outline: 2px solid var(--c); opacity: .55; display: grid; place-items: center; }
+  .lane.press .receptor { opacity: 1; background: color-mix(in srgb, var(--c) 30%, transparent); }
+  .key { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    font: 700 12px "JetBrains Mono", monospace; color: var(--faint); background: var(--raised);
+    outline: 1px solid var(--line); border-radius: 5px; padding: 4px 8px; }
+  .lane.press .key { color: var(--text); }
+  .note { position: absolute; left: 12%; right: 12%; height: 22px; border-radius: 8px; background: var(--c);
+    box-shadow: 0 3px 0 rgba(0,0,0,.45); will-change: transform; top: 0; }
+  .note::after { content: ""; position: absolute; inset: 5px 30%; border-radius: 4px; background: rgba(255,255,255,.55); }
+  .beatline { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,.07); top: 0; }
+  .l0 { --c: var(--cyan); } .l1 { --c: var(--violet); } .l2 { --c: var(--pink); } .l3 { --c: #f4f6f9; }
+  .judge { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); font-weight: 900;
+    font-size: 30px; letter-spacing: -.03em; pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+  .judge.pop { animation: pop .35s ease-out; }
+  @keyframes pop { 0% { transform: translate(-50%,-50%) scale(1.35); } 100% { transform: translate(-50%,-50%) scale(1); } }
+  .combo { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); text-align: center; pointer-events: none; }
+  .combo b { display: block; font-size: 54px; font-weight: 900; letter-spacing: -.05em; line-height: 1; }
+  .combo span { font-size: 10.5px; letter-spacing: .14em; color: var(--muted); }
+
+  /* ---------- side panel ---------- */
+  .sidePanel { padding: 18px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { background: rgba(12,14,18,.82); outline: 1px solid var(--line); border-radius: 16px; padding: 14px; backdrop-filter: blur(6px); }
+  .lbl { font: 500 10px "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .track b { display: block; font-size: 15px; font-weight: 800; margin-top: 6px; letter-spacing: -.01em; }
+  .track small { color: var(--muted); font-size: 12.5px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--pink); }
+  .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pink); }
+  .prog { height: 3px; background: var(--high); border-radius: 2px; margin-top: 12px; overflow: hidden; }
+  .prog i { display: block; height: 100%; background: var(--text); width: 0; }
+  .score { font-size: 30px; font-weight: 900; letter-spacing: -.03em; margin-top: 4px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .stats b { color: var(--text); font-weight: 700; display: block; font-size: 14px; }
+  .vibe { height: 8px; border-radius: 999px; background: var(--high); overflow: hidden; margin-top: 10px; }
+  .vibe i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(.5); background: linear-gradient(90deg, var(--cyan), var(--violet), var(--pink)); transition: transform .2s; }
+  .players { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .p { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+  .p .av { width: 22px; height: 22px; border-radius: 50%; background: var(--high); outline: 1px solid var(--line);
+    display: grid; place-items: center; font-size: 10px; font-weight: 800; }
+  .p.me { color: var(--text); } .p.me .av { outline-color: var(--cyan); }
+  .p small { color: var(--faint); font-size: 11px; }
+  .p .s { font: 700 12px "JetBrains Mono", monospace; }
+
+  /* multiplier + fever */
+  .mult { display: grid; place-items: center; position: absolute; left: 100%; top: 2px; margin-left: 12px; width: 54px; height: 54px; }
+  .mult svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .mult circle { fill: none; stroke-width: 4; }
+  .mult .bg { stroke: rgba(255,255,255,.08); }
+  .mult .fg { stroke: var(--cyan); stroke-linecap: round; stroke-dasharray: 145; transition: stroke-dashoffset .12s; }
+  .mult b { font: 900 17px "Hanken Grotesk", sans-serif; letter-spacing: -.03em; }
+  .mult.m2 .fg { stroke: var(--violet); } .mult.m3 .fg { stroke: var(--pink); } .mult.m4 .fg { stroke: #ffd479; }
+  .mult.bump { animation: bump .3s ease-out; }
+  @keyframes bump { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+  .vibeHint { font-size: 11.5px; color: var(--faint); margin-top: 6px; min-height: 16px; }
+  .vibeHint.ready { color: #ffd479; font-weight: 700; animation: blinkR .8s steps(1) infinite; }
+  @keyframes blinkR { 50% { opacity: .45; } }
+  .vibe.full i { background: #ffd479; }
+  .feverBanner { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); z-index: 5; pointer-events: none;
+    font: 900 44px "Hanken Grotesk", sans-serif; letter-spacing: -.04em; color: #ffd479; opacity: 0; text-shadow: 0 3px 0 rgba(0,0,0,.55); }
+  body.fever .feverBanner { opacity: 1; animation: feverIn .5s ease-out; }
+  @keyframes feverIn { 0% { transform: translateX(-50%) scale(1.6); opacity: 0; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+  body.fever .sky { filter: hue-rotate(calc(var(--pulse) * 40deg)) saturate(1.5); }
+  body.fever .highway { outline: 2px solid #ffd479; }
+  body.fever .floorEdge { background: linear-gradient(90deg, transparent, #ffd479, var(--pink), #ffd479, transparent); }
+  .feverTime { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: #ffd479; transform-origin: left; transform: scaleX(0); z-index: 3; }
+
+  @media (prefers-reduced-motion: reduce) { .spot { animation: none; } }
+</style>
+</head>
+<body class="layoutC">
+  <div class="chrome">
+    <h1>Mockup · ekran gry v3</h1>
+    <span class="sep"></span>
+    <button class="btn on" id="auto" onclick="toggleAuto()">Autoplay: on</button>
+    <button class="btn" onclick="forceMiss()">Wymuś pudło</button>
+    <button class="btn" id="snd" onclick="toggleSound()">Metronom: off</button>
+    <span class="hint">Graj: D F J K · Fever: SPACJA</span>
+  </div>
+
+  <div class="stage"><div class="feverBanner">FEVER!</div>
+    <div class="sky"></div>
+    <div class="spot l"></div><div class="spot r"></div>
+    <div class="skyline" id="skyline"></div>
+    <div class="floorEdge"></div>
+    <div class="floor"></div>
+    <div class="speaker l"><i></i><i></i></div>
+    <div class="speaker r"><i></i><i></i></div>
+
+    <div class="scene">
+      <div class="charSlot">
+        <div class="mew" id="mew">
+          <div class="aura"></div>
+          <div class="rain"></div>
+          <div class="frame" id="mewFrame">
+            <img src="/files/mewbit.png" alt="Mewbit (placeholder klatki)">
+            <div class="tears"></div>
+          </div>
+          <div class="bubble" id="bubble">nyaa~!</div>
+          <div class="tag">stan: <b id="stateName">idle</b> · placeholder klatek</div>
+        </div>
+      </div>
+
+      <div class="hwSlot">
+        <div class="highway" id="highway">
+          <div class="lane l0" data-lane="0"><div class="flash"></div><div class="receptor"></div><div class="key">D</div></div>
+          <div class="lane l1" data-lane="1"><div class="flash"></div><div class="receptor"></div><div class="key">F</div></div>
+          <div class="lane l2" data-lane="2"><div class="flash"></div><div class="receptor"></div><div class="key">J</div></div>
+          <div class="lane l3" data-lane="3"><div class="flash"></div><div class="receptor"></div><div class="key">K</div></div>
+          <div class="feverTime" id="feverTime"></div>
+          <div class="combo"><b id="combo">0</b><span>COMBO</span>
+            <div class="mult" id="mult"><svg viewBox="0 0 54 54"><circle class="bg" cx="27" cy="27" r="23"/><circle class="fg" id="multRing" cx="27" cy="27" r="23"/></svg><b id="multTxt">×1</b></div></div>
+          <div class="judge" id="judge"></div>
+        </div>
+      </div>
+
+      <div class="sidePanel">
+        <div class="card track">
+          <span class="lbl live">live · normal</span>
+          <b>Neon Afterglow</b>
+          <small>Przykładowy artysta</small>
+          <div class="prog"><i id="prog"></i></div>
+        </div>
+        <div class="card scoreCard">
+          <span class="lbl">Twój wynik</span>
+          <div class="score mono" id="score">0</div>
+          <div class="stats">
+            <div>Celność<b class="mono" id="acc">100.00%</b></div>
+            <div>Max combo<b class="mono" id="maxc">0</b></div>
+          </div>
+          <div class="lbl" style="margin-top:12px">vibe</div>
+          <div class="vibe" id="vibeWrap"><i id="vibeBar"></i></div><div class="vibeHint" id="vibeHint">Nabijaj vibe trafieniami</div>
+        </div>
+        <div class="card">
+          <span class="lbl">Na kanale · 3 grają</span>
+          <div class="players" id="players"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const BPM = 126, BEAT = 60000 / BPM, LEAD = 1350, SONG_MS = 96000;
+  const WINDOWS = [[45, "PERFECT", "#67e3f4", 300], [90, "GREAT", "#a78bfa", 200], [135, "GOOD", "#c3cbd7", 100]];
+  const KEYS = { d: 0, f: 1, j: 2, k: 3 };
+  const lanes = [...document.querySelectorAll(".lane")];
+  const hw = document.getElementById("highway");
+  const $ = (id) => document.getElementById(id);
+
+  // skyline
+  const sky = $("skyline");
+  let x = 0, seed = 7;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  while (x < 104) { const w = 3 + rnd() * 6, h = 30 + rnd() * 70;
+    const b = document.createElement("div"); b.className = "b";
+    b.style.cssText = `left:${x}%;width:${w}%;height:${h}%`; sky.appendChild(b); x += w + 0.4; }
+
+  // chart: deterministic pattern standing in for the generated one
+  let notes = [];
+  function buildChart(start) {
+    seed = 42; notes = [];
+    for (let i = 8; i * BEAT / 2 < SONG_MS; i++) {
+      const t = start + i * BEAT / 2, onBeat = i % 2 === 0, bar = Math.floor(i / 8) % 8;
+      const p = onBeat ? 0.85 : (bar >= 4 ? 0.45 : 0.2);
+      if (rnd() < p) {
+        const lane = Math.floor(rnd() * 4);
+        notes.push({ t, lane, done: false, el: null });
+        if (onBeat && i % 8 === 0 && bar >= 4) notes.push({ t, lane: (lane + 2) % 4, done: false, el: null });
+      }
+    }
+  }
+  let t0 = performance.now() + 1500; buildChart(t0);
+
+  let score = 0, combo = 0, maxCombo = 0, hits = 0, judged = 0, accSum = 0, vibe = 0.2, feverUntil = 0, lastMult = 1;
+  const FEVER_MS = 8000;
+  const multOf = (c) => Math.min(4, 1 + Math.floor(c / 10));
+  let auto = true, sadUntil = 0, sound = false, actx = null, lastBeat = -1;
+
+  function judge(text, color) {
+    const j = $("judge"); j.textContent = text; j.style.color = color;
+    j.classList.remove("pop"); void j.offsetWidth; j.classList.add("pop");
+  }
+  function hit(note, delta) {
+    note.done = true; note.el?.remove(); note.el = null;
+    const w = WINDOWS.find(([ms]) => Math.abs(delta) <= ms);
+    judged++;
+    if (!w) return miss(note);
+    combo++; maxCombo = Math.max(maxCombo, combo); hits++;
+    accSum += w[3] / 300;
+    const fever = performance.now() < feverUntil;
+    score += w[3] * multOf(combo) * (fever ? 2 : 1);
+    if (!fever) vibe = Math.min(1, vibe + [0.03, 0.02, 0.01][WINDOWS.indexOf(w)]);
+    judge(w[1], w[2]);
+  }
+  function miss(note) {
+    if (note) { note.done = true; note.el?.remove(); note.el = null; }
+    if (combo >= 10) sadUntil = performance.now() + 1400;
+    else sadUntil = Math.max(sadUntil, performance.now() + 450);
+    combo = 0; if (performance.now() >= feverUntil) vibe = Math.max(0, vibe - 0.06);
+    judge("MISS", "#ff8098");
+  }
+  window.forceMiss = () => { judged++; miss(null); };
+
+  function press(lane) {
+    lanes[lane].classList.add("press");
+    const now = performance.now();
+    const n = notes.find((n) => !n.done && n.lane === lane && Math.abs(n.t - now) <= 135);
+    if (n) hit(n, n.t - now);
+  }
+  function fever() {
+    if (vibe < 1 || performance.now() < feverUntil) return;
+    feverUntil = performance.now() + FEVER_MS;
+  }
+  addEventListener("keydown", (e) => { if (e.code === "Space") { e.preventDefault(); fever(); } });
+  function release(lane) { lanes[lane].classList.remove("press"); }
+  addEventListener("keydown", (e) => { const l = KEYS[e.key.toLowerCase()]; if (l !== undefined && !e.repeat) press(l); });
+  addEventListener("keyup", (e) => { const l = KEYS[e.key.toLowerCase()]; if (l !== undefined) release(l); });
+
+  window.toggleAuto = () => { auto = !auto; const b = $("auto"); b.textContent = "Autoplay: " + (auto ? "on" : "off"); b.classList.toggle("on", auto); };
+  window.toggleSound = () => { sound = !sound; const b = $("snd"); b.textContent = "Metronom: " + (sound ? "on" : "off"); b.classList.toggle("on", sound);
+    if (sound && !actx) actx = new AudioContext(); };
+  window.setLayout = (l, el) => { document.body.className = "layout" + l;
+    document.querySelectorAll(".lay").forEach((b) => b.classList.toggle("on", b === el));
+    if (window.toggleSelect) window.toggleSelect(el); };
+
+  function tick(freq) {
+    if (!sound || !actx) return;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; g.gain.setValueAtTime(0.18, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.08);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + 0.09);
+  }
+
+  // fake friends
+  const friends = [{ n: "Ty", me: true, s: 0, d: "normal" }, { n: "kuba", s: 0, d: "hard", r: 1.25 }, { n: "ola_", s: 0, d: "easy", r: 0.7 }];
+  function renderPlayers() {
+    friends[0].s = score;
+    const sorted = [...friends].sort((a, b) => b.s - a.s);
+    $("players").innerHTML = sorted.map((p, i) => `<div class="p ${p.me ? "me" : ""}"><span class="av">${i + 1}</span>
+      <span>${p.n} <small>${p.d}</small></span><span class="s">${p.s.toLocaleString("pl-PL")}</span></div>`).join("");
+  }
+
+  const mewFrame = $("mewFrame"), bubble = $("bubble");
+  let lastState = "";
+  function frame(now) {
+    if (now - t0 > SONG_MS + 2000) { t0 = now + 1500; buildChart(t0); score = combo = maxCombo = hits = judged = accSum = 0; vibe = 0.2; feverUntil = 0; friends.forEach((f) => (f.s = 0)); }
+    const H = hw.clientHeight, hitY = H - 64 - 13;
+    const songT = now - t0;
+
+    // beat pulse drives the stage
+    const phase = ((songT % BEAT) + BEAT) % BEAT / BEAT;
+    const pulse = songT > 0 ? Math.exp(-phase * 5) : 0;
+    const beatIdx = Math.floor(songT / BEAT);
+    if (songT > 0 && beatIdx !== lastBeat) { lastBeat = beatIdx; tick(beatIdx % 4 === 0 ? 1320 : 880);
+      friends.forEach((f) => { if (!f.me) f.s += Math.round((260 + Math.random() * 120) * f.r); }); }
+
+    // notes
+    for (const n of notes) {
+      if (n.done) continue;
+      const dt = n.t - now;
+      if (auto && dt <= 0) { hit(n, 0); lanes[n.lane].classList.add("press"); setTimeout(() => release(n.lane), 70); continue; }
+      if (dt < -135) { judged++; miss(n); continue; }
+      if (dt > LEAD) break;
+      if (!n.el) { n.el = document.createElement("div"); n.el.className = "note"; lanes[n.lane].appendChild(n.el); }
+      n.el.style.transform = `translateY(${hitY - (dt / LEAD) * hitY}px)`;
+    }
+
+    const inFever = now < feverUntil;
+    if (auto && vibe >= 1 && !inFever) fever();
+    if (inFever) vibe = Math.max(0, (feverUntil - now) / FEVER_MS);
+    document.body.classList.toggle("fever", inFever);
+    $("feverTime").style.transform = `scaleX(${inFever ? (feverUntil - now) / FEVER_MS : 0})`;
+    const m = multOf(combo), prog = m === 4 ? 1 : (combo % 10) / 10;
+    $("multTxt").textContent = "×" + (m * (inFever ? 2 : 1));
+    $("multRing").style.strokeDashoffset = 145 * (1 - prog);
+    const mel = $("mult");
+    if (m !== lastMult) { mel.className = "mult m" + m; if (m > lastMult) { void mel.offsetWidth; mel.classList.add("bump"); } lastMult = m; }
+    $("vibeWrap").classList.toggle("full", vibe >= 1 && !inFever);
+    const hint = $("vibeHint");
+    hint.className = "vibeHint" + (vibe >= 1 && !inFever ? " ready" : "");
+    hint.textContent = inFever ? `FEVER · punkty ×2 · ${((feverUntil - now) / 1000).toFixed(1)} s` : vibe >= 1 ? "FEVER gotowe — wciśnij SPACJĘ" : "Nabijaj vibe trafieniami";
+
+    // mewbit state
+    const sad = now < sadUntil && !inFever;
+    const lvl = combo >= 60 ? 3 : combo >= 30 ? 2 : combo >= 10 ? 1 : 0;
+    const state = inFever ? "fever" : sad ? (combo === 0 && sadUntil - now > 500 ? "zdruzgotana" : "oops") : (lvl ? "vibe " + lvl : "idle");
+    if (state !== lastState) { $("stateName").textContent = state; lastState = state;
+      bubble.textContent = { "vibe 1": "nyaa~!", "vibe 2": "wooo!!", "vibe 3": "SUGOI!!", fever: "FEVER!!! ✦", zdruzgotana: "nyoo… ;-;", oops: "eep!" }[state] || "";
+      bubble.classList.toggle("show", state !== "idle"); }
+    const amp = inFever ? 0.1 : [0.012, 0.03, 0.055, 0.085][lvl];
+    const bounce = sad ? 0 : Math.sin(phase * Math.PI) * amp;
+    const tilt = sad ? 0 : (lvl >= 2 ? Math.sin(songT / BEAT * Math.PI) * (lvl * 2.2) : 0);
+    const shake = state === "oops" ? Math.sin(now / 18) * 4 : 0;
+    mewFrame.style.transform = sad && state === "zdruzgotana"
+      ? `translateY(18px) scale(.96, .94) rotate(-3deg)`
+      : `translate(${shake}px, ${-bounce * 260}px) scale(${1 + bounce * 0.6}, ${1 - bounce * 0.4}) rotate(${tilt}deg)`;
+
+    root.style.setProperty("--pulse", pulse.toFixed(3));
+    root.style.setProperty("--vibe", (inFever ? 1.4 : sad ? 0 : lvl / 3).toFixed(3));
+    root.style.setProperty("--sad", state === "zdruzgotana" ? 1 : 0);
+
+    $("combo").textContent = combo; $("score").textContent = Math.round(score).toLocaleString("pl-PL");
+    $("acc").textContent = (judged ? (accSum / judged) * 100 : 100).toFixed(2) + "%";
+    $("maxc").textContent = maxCombo; $("vibeBar").style.transform = `scaleX(${vibe})`;
+    $("prog").style.width = Math.max(0, Math.min(100, songT / SONG_MS * 100)) + "%";
+    if (Math.floor(now / 250) !== frame.lp) { frame.lp = Math.floor(now / 250); renderPlayers(); }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
