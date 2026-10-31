@@ -82,11 +82,15 @@ describe("mewbeat chart generator", () => {
     }
   });
 
-  it("hardIsNotNormalPlusNoise", () => {
-    const { normal, hard } = chartsOf(fixture());
-    const inNormal = new Set(normal.notes.map((n) => `${n.t}:${n.lane}`));
-    const shared = hard.notes.filter((n) => inNormal.has(`${n.t}:${n.lane}`)).length / hard.notes.length;
-    assert.ok(shared <= 0.85, `shared share ${shared}`);
+  it("hardIsNotNormalPlusNoise: few Normal notes survive unchanged in Hard", () => {
+    // Share of NORMAL notes whose exact (t, lane) also appears in Hard. Shared
+    // times are fine (same music); Hard has to differ through its own lanes.
+    for (const confidence of [0.9, 0.3]) {
+      const { normal, hard } = chartsOf(fixture({ confidence }));
+      const inHard = new Set(hard.notes.map((n) => `${n.t}:${n.lane}`));
+      const shared = normal.notes.filter((n) => inHard.has(`${n.t}:${n.lane}`)).length / normal.notes.length;
+      assert.ok(shared <= 0.7, `confidence ${confidence}: ${shared}`);
+    }
   });
 
   it("onGridWhenConfident", () => {
@@ -158,24 +162,106 @@ describe("mewbeat chart generator", () => {
     assert.ok(all.easy.notes.length < all.normal.notes.length && all.normal.notes.length < all.hard.notes.length);
   });
 
-  it("limits same-lane runs to 2 on easy/normal and 3 on hard", () => {
+  it("limits same-lane runs to 2 on easy/normal and 3 on hard, chords included", () => {
     const all = chartsOf(fixture({ energy: () => 1 }));
     const maxRun = (chart) => {
-      // Easy has no chords; for the others only single-note moments are compared.
-      const singles = [];
-      const counts = countsByTime(chart.notes);
-      for (const n of chart.notes) if (counts.get(n.t) === 1) singles.push(n.lane);
-      let run = 1;
-      let best = 1;
-      for (let i = 1; i < singles.length; i++) {
-        run = singles[i] === singles[i - 1] ? run + 1 : 1;
-        best = Math.max(best, run);
+      // Longest streak of consecutive note moments (chords are one moment) that use the same lane.
+      const moments = new Map();
+      for (const n of chart.notes) moments.set(n.t, [...(moments.get(n.t) || []), n.lane]);
+      const runs = [0, 0, 0, 0];
+      let best = 0;
+      for (const lanes of moments.values()) {
+        for (let l = 0; l < 4; l++) runs[l] = lanes.includes(l) ? runs[l] + 1 : 0;
+        best = Math.max(best, ...runs);
       }
       return best;
     };
+    assert.ok([...countsByTime(all.hard.notes).values()].some((c) => c === 2), "hard run test needs chords");
     assert.ok(maxRun(all.easy) <= 2);
     assert.ok(maxRun(all.normal) <= 2);
     assert.ok(maxRun(all.hard) <= 3);
+  });
+
+  describe("untrustworthy tempo.beats", () => {
+    const FLOORS = { easy: 250, normal: 125, hard: 62.5 };
+
+    it("keeps its density when beats are missing for 60-120 s", () => {
+      const full = chartsOf(fixture());
+      const gapped = fixture();
+      gapped.tempo.beats = gapped.tempo.beats.filter((t) => t < 60000 || t >= 120000);
+      gapped.tempo.downbeats = gapped.tempo.downbeats.filter((t) => t < 60000 || t >= 120000);
+      const gappedCharts = chartsOf(gapped);
+      for (const d of Object.keys(FLOORS)) {
+        const ratio = rate(gappedCharts[d].notes, 60000, 120000) / rate(full[d].notes, 60000, 120000);
+        assert.ok(ratio >= 0.5 && ratio <= 2, `${d}: ratio ${ratio}`);
+      }
+    });
+
+    it("never moves a note far from its onset when only every 4th beat is kept", () => {
+      const sparse = fixture();
+      sparse.tempo.beats = sparse.tempo.beats.filter((_, i) => i % 4 === 0);
+      const onsets = [...new Set(sparse.bands.flatMap((b) => b.onsets.map((o) => o.t)))].sort((a, b) => a - b);
+      for (const chart of Object.values(chartsOf(sparse))) {
+        for (const n of chart.notes) {
+          const nearest = Math.min(...onsets.filter((t) => Math.abs(t - n.t) <= 200).map((t) => Math.abs(t - n.t)));
+          assert.ok(nearest <= 60, `${chart.difficulty}: note ${n.t} is ${nearest} ms from an onset`);
+        }
+      }
+    });
+
+    it("never puts notes closer than the floor around a near-duplicate beat", () => {
+      const noisy = fixture({ energy: () => 1 });
+      const extra = noisy.tempo.beats.filter((_, i) => i % 6 === 3).map((t) => t + 20);
+      noisy.tempo.beats = [...noisy.tempo.beats, ...extra].sort((a, b) => a - b);
+      for (const chart of Object.values(chartsOf(noisy))) {
+        const times = [...new Set(chart.notes.map((n) => n.t))];
+        for (let i = 1; i < times.length; i++) {
+          // 0.98: a snapped note may sit 2% under the floor (beat jitter), nothing more.
+          assert.ok(
+            times[i] - times[i - 1] >= 0.98 * FLOORS[chart.difficulty] - 1,
+            `${chart.difficulty}: ${times[i - 1]} -> ${times[i]}`,
+          );
+        }
+      }
+    });
+
+    it("applies the note floor on the snapped path too, scaled to the tempo above 120 BPM", () => {
+      // At 180 BPM a beat is 333 ms: the floor is the difficulty's grid step (98%), not 250/125/62.5.
+      const fast = makeFeatures({ bpm: 180, confidence: 0.9, durationMs: 120000, energy: () => 1 });
+      const floors = { easy: 0.98 * 0.5 * 333, normal: 0.98 * 0.25 * 333, hard: 0.98 * 0.125 * 333 };
+      for (const chart of Object.values(chartsOf(fast))) {
+        const times = [...new Set(chart.notes.map((n) => n.t))];
+        for (let i = 1; i < times.length; i++) {
+          assert.ok(times[i] - times[i - 1] >= floors[chart.difficulty] - 2, `${chart.difficulty}: ${times[i]}`);
+        }
+      }
+    });
+  });
+
+  describe("input validation", () => {
+    it("treats non-iterable onsets and null bands as empty", () => {
+      const features = fixture();
+      features.bands.push({ name: "low", onsets: 5 }, { name: "high", onsets: null }, null);
+      assert.doesNotThrow(() => generateAll(features, KEY));
+    });
+
+    it("emits highlightMs only when it is a finite number inside the track", () => {
+      for (const bad of [Number.NaN, -1, 180001, "90000", Infinity, undefined]) {
+        const features = fixture();
+        features.highlightMs = bad;
+        assert.strictEqual(generateChart(features, "easy", KEY).highlightMs, null, String(bad));
+      }
+      assert.strictEqual(generateChart(fixture({ highlightMs: 0 }), "easy", KEY).highlightMs, 0);
+      assert.strictEqual(generateChart(fixture({ highlightMs: 180000 }), "easy", KEY).highlightMs, 180000);
+    });
+
+    it("stays bounded when the first beat is absurdly far from the track", () => {
+      const features = fixture();
+      features.tempo.beats = [1e12, 1e12 + 500, 1e12 + 1000];
+      const started = Date.now();
+      assert.doesNotThrow(() => generateAll(features, KEY));
+      assert.ok(Date.now() - started < 2000);
+    });
   });
 
   it("starsOrder", () => {

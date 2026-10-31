@@ -18,6 +18,9 @@ const CONFIDENT_TEMPO = 0.5; // snap to the beat grid at/above this confidence
 const FALLBACK_BEAT_MS = 500; // 120 BPM, used for gaps when tempo is not trusted
 const BEAT_TOLERANCE_MS = 35; // a note this close to a beat counts as "on" it
 const GAP_TOLERANCE_MS = 1; // rounding slack on the same-lane gap check
+const MAX_SNAP_DISTANCE_MS = 60; // an onset further than this from the grid stays at its raw time
+const BEAT_INTERVAL_TOLERANCE = 0.25; // local beat length must be within +-25% of the median
+const SNAPPED_FLOOR_SLACK = 0.98; // snapped notes may sit this much under the tempo-relative gap floor
 
 // --- Per-difficulty parameters ---------------------------------------------
 
@@ -40,6 +43,7 @@ const DIFFICULTIES = {
     bandBias: [1, 1, 0.85, 0.7],
     beatBias: 0.35,
     chord: null,
+    alternation: null,
   },
   normal: {
     maxNps: 4.5,
@@ -55,6 +59,7 @@ const DIFFICULTIES = {
     beatBias: 0.2,
     // Second note only on a strong downbeat in a loud part.
     chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.6 },
+    alternation: null,
   },
   hard: {
     maxNps: 7.0,
@@ -69,11 +74,16 @@ const DIFFICULTIES = {
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.7, onDownbeat: false, minEnergy: 0 },
+    // Hard's own lane logic: inside a stream (notes within maxGapBeats of each
+    // other) every second note takes the runner-up band's lane instead of the
+    // strongest band's, so patterns alternate between the two loudest bands.
+    alternation: { maxGapBeats: 2 },
   },
 };
 
 module.exports = {
   BANDS,
+  BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
   CONFIDENT_TEMPO,
   DENSITY_WINDOW_MS,
@@ -83,7 +93,9 @@ module.exports = {
   GAP_TOLERANCE_MS,
   GENERATOR_VERSION,
   LEAD_IN_MS,
+  MAX_SNAP_DISTANCE_MS,
   MERGE_WINDOW_MS,
   MIN_NOTES,
   SILENCE_ENERGY,
+  SNAPPED_FLOOR_SLACK,
 };

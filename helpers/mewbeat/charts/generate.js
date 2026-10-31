@@ -1,5 +1,6 @@
 const {
   BANDS,
+  BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
   CONFIDENT_TEMPO,
   DENSITY_WINDOW_MS,
@@ -9,14 +10,16 @@ const {
   GAP_TOLERANCE_MS,
   GENERATOR_VERSION,
   LEAD_IN_MS,
+  MAX_SNAP_DISTANCE_MS,
   MERGE_WINDOW_MS,
   MIN_NOTES,
   SILENCE_ENERGY,
+  SNAPPED_FLOOR_SLACK,
 } = require("./difficulty");
 const { mulberry32, seedFromKey } = require("./rng");
 const { starsOf } = require("./stars");
 
-const MIN_USABLE_BEAT_MS = 100; // beat grids tighter than this are treated as garbage
+const MIN_USABLE_BEAT_MS = 100; // a median beat length below this means garbage beats
 const LANES = 4;
 const NEVER = -1e9;
 
@@ -53,45 +56,62 @@ function clamp01(x) {
 
 // --- timing: beat grid, or none when the tempo is not trustworthy -----------
 
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 // Extends the beat list backwards to 0 and forwards to the end of the track
-// with the nearest known beat length, so the grid also covers the edges.
-function extendBeats(beats, durationMs) {
+// with the median beat length, so the grid also covers the edges. Both loops
+// are bounded by the track length, whatever the beats claim.
+function extendBeats(beats, stepMs, durationMs) {
+  const maxSteps = Math.ceil(durationMs / stepMs) + 2;
   const head = [];
-  const headStep = beats[1] - beats[0];
-  for (let t = beats[0] - headStep; t > -headStep; t -= headStep) head.push(t);
+  for (let t = beats[0] - stepMs; t > -stepMs && head.length < maxSteps; t -= stepMs) head.push(t);
   head.reverse();
   const tail = [];
-  const tailStep = beats[beats.length - 1] - beats[beats.length - 2];
-  for (let t = beats[beats.length - 1] + tailStep; t < durationMs + tailStep; t += tailStep) tail.push(t);
+  const last = beats[beats.length - 1];
+  for (let t = last + stepMs; t < durationMs + stepMs && tail.length < maxSteps; t += stepMs) tail.push(t);
   return [...head, ...beats, ...tail];
 }
+
+const NO_TIMING = Object.freeze({
+  snapped: false,
+  beats: [],
+  downbeats: [],
+  medianMs: FALLBACK_BEAT_MS,
+  gridPoints: () => [],
+  intervalOk: () => false,
+  beatMsAt: () => FALLBACK_BEAT_MS,
+});
 
 function buildTiming(features, durationMs) {
   const tempo = features.tempo || {};
   const beats = cleanTimes(tempo.beats);
-  const usable =
-    Number(tempo.confidence) >= CONFIDENT_TEMPO &&
-    beats.length >= 2 &&
-    beats[1] - beats[0] >= MIN_USABLE_BEAT_MS &&
-    beats[beats.length - 1] - beats[beats.length - 2] >= MIN_USABLE_BEAT_MS;
+  if (!(Number(tempo.confidence) >= CONFIDENT_TEMPO) || beats.length < 2) return NO_TIMING;
 
-  // Below confidence the raw onset times are kept and the beat data is ignored
-  // entirely (no grid, no chords): it is too unreliable to place notes by.
-  if (!usable) {
-    return { snapped: false, beats: [], downbeats: [], beatMsAt: () => FALLBACK_BEAT_MS, gridPoints: () => [] };
-  }
+  const medianMs = median(beats.slice(1).map((t, i) => t - beats[i]));
+  // Below confidence (or with a nonsensical grid) the raw onset times are kept
+  // and the beat data is ignored entirely: no grid, no chords.
+  if (!(medianMs >= MIN_USABLE_BEAT_MS)) return NO_TIMING;
 
-  const extended = extendBeats(beats, durationMs);
+  const extended = extendBeats(beats, medianMs, durationMs);
   const gridCache = new Map();
+  const beatMsAt = (t) => {
+    const i = Math.min(extended.length - 2, Math.max(0, lowerBound(extended, t + GAP_TOLERANCE_MS + 1e-9) - 1));
+    return extended[i + 1] - extended[i];
+  };
   return {
     snapped: true,
     beats: extended,
     downbeats: cleanTimes(tempo.downbeats),
-    // Length of the beat containing t.
-    beatMsAt(t) {
-      const i = Math.min(extended.length - 2, Math.max(0, lowerBound(extended, t + GAP_TOLERANCE_MS + 1e-9) - 1));
-      return extended[i + 1] - extended[i];
-    },
+    medianMs,
+    // A local beat length is only trusted when it is close to the median one.
+    intervalOk: (t) => Math.abs(beatMsAt(t) - medianMs) <= BEAT_INTERVAL_TOLERANCE * medianMs,
+    // Length of the beat containing t, clamped to the median +-25% for gap maths.
+    beatMsAt: (t) =>
+      Math.min((1 + BEAT_INTERVAL_TOLERANCE) * medianMs, Math.max((1 - BEAT_INTERVAL_TOLERANCE) * medianMs, beatMsAt(t))),
     // Subdivision points interpolated between consecutive (non-uniform) beats.
     gridPoints(div) {
       if (!gridCache.has(div)) {
@@ -129,8 +149,8 @@ function buildCandidates(features) {
   const all = [];
   for (const band of features.bands) {
     const lane = BANDS.indexOf(band?.name);
-    if (lane < 0) continue;
-    for (const o of band.onsets ?? []) {
+    if (lane < 0 || !Array.isArray(band.onsets)) continue;
+    for (const o of band.onsets) {
       if (Number.isFinite(o?.t) && Number.isFinite(o?.s)) all.push({ t: Math.round(o.t), s: clamp01(o.s), band: lane });
     }
   }
@@ -141,12 +161,19 @@ function buildCandidates(features) {
   while (i < all.length) {
     const first = all[i];
     let best = first;
-    let j = i + 1;
+    const perBand = new Array(BANDS.length).fill(-1);
+    let j = i;
     while (j < all.length && all[j].t - first.t <= MERGE_WINDOW_MS) {
       if (all[j].s > best.s) best = all[j];
+      perBand[all[j].band] = Math.max(perBand[all[j].band], all[j].s);
       j++;
     }
-    merged.push({ t: best.t, s: best.s, band: best.band });
+    // Runner-up band (lower index wins ties), -1 when only one band fired.
+    let alt = -1;
+    for (let b = 0; b < perBand.length; b++) {
+      if (b !== best.band && perBand[b] >= 0 && (alt < 0 || perBand[b] > perBand[alt])) alt = b;
+    }
+    merged.push({ t: best.t, s: best.s, band: best.band, alt });
     i = j;
   }
   return merged;
@@ -157,18 +184,24 @@ function divisionFor(p, candidate, energy) {
   return energy >= p.highEnergyFrom ? p.energyDiv : p.baseDiv;
 }
 
-// Snaps each candidate to the difficulty's grid; candidates landing on the same
-// grid point collapse into the strongest (ties: the one that moved least).
+// Snaps each candidate to the difficulty's grid, but only where the grid can be
+// trusted: the grid point is close and the local beat length is regular. Other
+// candidates keep their raw time and follow the unsnapped rules. Candidates on
+// the same time collapse into the strongest (ties: the one that moved least).
 function snapToGrid(candidates, p, timing, energy) {
   const byTime = new Map();
   for (const c of candidates) {
     const grid = timing.gridPoints(divisionFor(p, c, energy.at(c.t)));
     const idx = nearestIndex(grid, c.t);
-    if (idx < 0) continue;
-    const t = grid[idx];
-    const dist = Math.abs(t - c.t);
-    const prev = byTime.get(t);
-    if (!prev || c.s > prev.s || (c.s === prev.s && dist < prev.dist)) byTime.set(t, { ...c, t, dist });
+    const trusted =
+      idx >= 0 &&
+      Math.abs(grid[idx] - c.t) <= MAX_SNAP_DISTANCE_MS &&
+      timing.intervalOk(c.t) &&
+      timing.intervalOk(grid[idx]);
+    const snapped = { ...c, t: trusted ? grid[idx] : c.t, snapped: trusted };
+    snapped.dist = Math.abs(snapped.t - c.t);
+    const prev = byTime.get(snapped.t);
+    if (!prev || c.s > prev.s || (c.s === prev.s && snapped.dist < prev.dist)) byTime.set(snapped.t, snapped);
   }
   return [...byTime.values()].sort((a, b) => a.t - b.t);
 }
@@ -192,8 +225,16 @@ function windowPower(windowIndex, energy) {
   return n === 0 ? 0 : sum / n;
 }
 
-// Keeps the strongest candidates of each window up to the energy-driven target.
-// On the unsnapped path it also enforces the minimum note-to-note gap.
+// Minimum gap between any two notes: 1/2, 1/4 or 1/8 beat at 120 BPM. A snapped
+// note may sit a little under it only where the track's own beat is faster than
+// 120 BPM, so the grid itself stays playable.
+function minNoteGap(c, p, timing) {
+  const floor = p.minGapBeats * FALLBACK_BEAT_MS;
+  return c.snapped ? Math.min(floor, SNAPPED_FLOOR_SLACK * p.minGapBeats * timing.medianMs) : floor;
+}
+
+// Keeps the strongest candidates of each window up to the energy-driven target,
+// never closer together than the minimum note gap.
 function thin(candidates, p, timing, energy) {
   const windows = new Map();
   for (const c of candidates) {
@@ -202,14 +243,14 @@ function thin(candidates, p, timing, energy) {
     windows.get(w).push(c);
   }
 
-  const minGap = timing.snapped ? 0 : p.minGapBeats * FALLBACK_BEAT_MS;
   const chosenTimes = [];
   const selected = [];
   let carry = 0;
 
-  const conflicts = (t) => {
-    const i = lowerBound(chosenTimes, t);
-    return (i < chosenTimes.length && chosenTimes[i] - t < minGap) || (i > 0 && t - chosenTimes[i - 1] < minGap);
+  const conflicts = (c) => {
+    const floor = minNoteGap(c, p, timing) - GAP_TOLERANCE_MS;
+    const i = lowerBound(chosenTimes, c.t);
+    return (i < chosenTimes.length && chosenTimes[i] - c.t < floor) || (i > 0 && c.t - chosenTimes[i - 1] < floor);
   };
 
   for (const w of [...windows.keys()].sort((a, b) => a - b)) {
@@ -225,7 +266,7 @@ function thin(candidates, p, timing, energy) {
     let taken = 0;
     for (const c of ranked) {
       if (taken >= quota) break;
-      if (minGap > 0 && conflicts(c.t)) continue;
+      if (conflicts(c)) continue;
       chosenTimes.splice(lowerBound(chosenTimes, c.t), 0, c.t);
       selected.push(c);
       taken++;
@@ -237,42 +278,59 @@ function thin(candidates, p, timing, energy) {
 
 // --- lanes and chords --------------------------------------------------------
 
+// Same-lane gap for a note: in local beats when its time was snapped, else in
+// 120-BPM beats.
+function laneGapMs(c, p, timing) {
+  return p.laneGapBeats * (c.snapped ? timing.beatMsAt(c.t) : FALLBACK_BEAT_MS);
+}
+
 function assignLanes(notes, p, timing, energy) {
   const lastUsed = new Array(LANES).fill(NEVER);
-  let runLane = -1;
-  let runLength = 0;
+  const runs = new Array(LANES).fill(0); // consecutive note moments each lane has appeared in
+  let prevT = NEVER;
+  let streamIndex = 0;
+  let prevLane = -1;
   const out = [];
 
   for (const c of notes) {
-    const gapMs = p.laneGapBeats * (timing.snapped ? timing.beatMsAt(c.t) : FALLBACK_BEAT_MS);
-    const isFree = (lane) => c.t - lastUsed[lane] >= gapMs - GAP_TOLERANCE_MS;
-    const allowed = (lane) => isFree(lane) && !(lane === runLane && runLength >= p.maxRun);
+    const gapMs = laneGapMs(c, p, timing);
+    const allowed = (lane) => c.t - lastUsed[lane] >= gapMs - GAP_TOLERANCE_MS && runs[lane] < p.maxRun;
 
-    let lane = allowed(c.band) ? c.band : -1;
+    // Hard alternates between the two loudest bands inside a stream of close notes.
+    let want = c.band;
+    if (p.alternation) {
+      const streamGap = p.alternation.maxGapBeats * (c.snapped ? timing.beatMsAt(c.t) : FALLBACK_BEAT_MS);
+      streamIndex = c.t - prevT <= streamGap + GAP_TOLERANCE_MS ? streamIndex + 1 : 0;
+      if (streamIndex % 2 === 1 && c.alt >= 0) want = c.alt;
+      // ...and never repeats a lane when the runner-up band offers another one.
+      if (want === prevLane && c.alt >= 0 && c.alt !== prevLane) want = c.alt;
+    }
+    prevT = c.t;
+
+    let lane = allowed(want) ? want : -1;
+    if (lane < 0 && want !== c.band && allowed(c.band)) lane = c.band;
     if (lane < 0) {
       // The free lane that has been idle the longest (ties: lower index).
       for (let l = 0; l < LANES; l++) {
         if (allowed(l) && (lane < 0 || lastUsed[l] < lastUsed[lane])) lane = l;
       }
     }
-    if (lane < 0) continue; // every lane is too recent: skip the note
+    if (lane < 0) continue; // every lane is too recent or too repeated: skip the note
 
-    runLength = lane === runLane ? runLength + 1 : 1;
-    runLane = lane;
-    lastUsed[lane] = c.t;
-    out.push({ t: c.t, lane });
-
-    const second = chordLane(c, lane, p, gapMs, lastUsed, energy);
-    if (second >= 0) {
-      lastUsed[second] = c.t;
-      out.push({ t: c.t, lane: second });
+    prevLane = lane;
+    const second = chordLane(c, lane, p, allowed, energy);
+    const used = second >= 0 ? [lane, second] : [lane];
+    for (let l = 0; l < LANES; l++) runs[l] = used.includes(l) ? runs[l] + 1 : 0;
+    for (const l of used) {
+      lastUsed[l] = c.t;
+      out.push({ t: c.t, lane: l });
     }
   }
   return out;
 }
 
-// Second chord lane: the mirror of the first, else the nearest free lane; -1 for no chord.
-function chordLane(c, lane, p, gapMs, lastUsed, energy) {
+// Second chord lane: the mirror of the first, else the nearest allowed lane; -1 for no chord.
+function chordLane(c, lane, p, allowed, energy) {
   const rule = p.chord;
   if (!rule || c.s < rule.minStrength || energy.at(c.t) < rule.minEnergy) return -1;
   if (!(rule.onDownbeat ? c.isDownbeat : c.isBeat)) return -1;
@@ -280,7 +338,7 @@ function chordLane(c, lane, p, gapMs, lastUsed, energy) {
   const mirror = LANES - 1 - lane;
   let best = -1;
   for (let l = 0; l < LANES; l++) {
-    if (l === lane || c.t - lastUsed[l] < gapMs - GAP_TOLERANCE_MS) continue;
+    if (l === lane || !allowed(l)) continue;
     if (best < 0 || Math.abs(l - mirror) < Math.abs(best - mirror)) best = l;
   }
   return best;
@@ -320,7 +378,9 @@ function generateChart(features, difficulty, audioKey) {
     difficulty,
     durationMs,
     stars: starsOf({ notes }),
-    highlightMs: features.highlightMs ?? null,
+    highlightMs: Number.isFinite(features.highlightMs) && features.highlightMs >= 0 && features.highlightMs <= durationMs
+      ? features.highlightMs
+      : null,
     notes,
   };
 }
