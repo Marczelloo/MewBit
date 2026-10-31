@@ -52,15 +52,14 @@ run("docker", [
   "--no-daemon",
 ]);
 
+// build/libs is a bind mount that is never cleaned, so older versions may
+// still be there. Take exactly the jar of the version that was just built.
 const outputDir = join(projectDir, "build", "libs");
-const builtJar = readdirSync(outputDir).find(
-  (file) =>
-    file.endsWith(".jar") &&
-    !file.endsWith("-plain.jar") &&
-    !file.endsWith("-sources.jar"),
-);
-if (!builtJar) {
-  throw new Error("The mewbeat build completed without a plugin JAR.");
+const builtJar = `mewbeat-${version}.jar`;
+if (!existsSync(join(outputDir, builtJar))) {
+  throw new Error(
+    `The mewbeat build did not produce ${builtJar} in ${outputDir}.`,
+  );
 }
 
 mkdirSync(pluginsDir, { recursive: true });
