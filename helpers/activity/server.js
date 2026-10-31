@@ -672,7 +672,9 @@ function readMewbeatPlayback(guildId) {
     track: playback.track,
     node: player?.node,
     positionMs: getActivityPosition(player, state, playback.durationMs, Date.now()),
-    paused: Boolean(state?.paused || player?.isPaused),
+    // Not heard yet counts as paused: the position is held, so the game clock
+    // must not run ahead and then snap back when the audio starts.
+    paused: Boolean(state?.paused || player?.isPaused || isAwaitingAudio(state)),
     durationMs: playback.durationMs,
   };
 }
