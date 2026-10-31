@@ -8,7 +8,7 @@ const OFFSET_MAX = 700;
 const OFFSET_STEP = 5;
 const SPEED_MIN = 1;
 const SPEED_MAX = 10;
-const OFFSET_DEBOUNCE_MS = 300;
+const DEBOUNCE_MS = 300;
 const MODIFIER_CODES = new Set(["ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"]);
 
 const DIFFICULTIES = [
@@ -64,8 +64,13 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
   const onActionRef = useRef(onAction);
   onActionRef.current = onAction;
   const seqRef = useRef({});
-  const offsetTimerRef = useRef(null);
-  const pendingOffsetRef = useRef(null);
+  const timersRef = useRef({}); // debounce timers by field (offset and scroll speed)
+  const pendingRef = useRef({}); // values waiting out their debounce
+  const latestRef = useRef({}); // the newest requested value of a debounced field until its request settles
+  const keyButtonsRef = useRef([]);
+  const sliderRef = useRef(null);
+  const currentRef = useRef(current);
+  currentRef.current = current;
 
   const valueOf = (field) => (field in draft ? draft[field] : current[field]);
   const keys = valueOf("keys");
@@ -82,6 +87,7 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
       .catch(() => undefined)
       .finally(() => {
         if (seqRef.current[field] !== id) return;
+        delete latestRef.current[field];
         setDraft((previous) => {
           const { [field]: _settled, ...rest } = previous;
           return rest;
@@ -89,29 +95,66 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
       });
   }, []);
 
-  const flushOffset = useCallback(() => {
-    window.clearTimeout(offsetTimerRef.current);
-    offsetTimerRef.current = null;
-    const pending = pendingOffsetRef.current;
-    pendingOffsetRef.current = null;
-    if (pending !== null) send({ offsetMs: pending });
+  const flushField = useCallback((field) => {
+    window.clearTimeout(timersRef.current[field]);
+    delete timersRef.current[field];
+    if (!(field in pendingRef.current)) return;
+    const value = pendingRef.current[field];
+    delete pendingRef.current[field];
+    send({ [field]: value });
   }, [send]);
 
   // Closing the panel must not drop a slider change that is still waiting out its debounce.
-  useEffect(() => flushOffset, [flushOffset]);
+  useEffect(() => () => {
+    for (const field of Object.keys(pendingRef.current)) flushField(field);
+  }, [flushField]);
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
 
-  function changeOffset(value, { immediate }) {
-    const next = Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, Math.round(value / OFFSET_STEP) * OFFSET_STEP));
-    setDraft((previous) => ({ ...previous, offsetMs: next }));
-    pendingOffsetRef.current = next;
-    window.clearTimeout(offsetTimerRef.current);
-    if (immediate) flushOffset();
-    else offsetTimerRef.current = window.setTimeout(flushOffset, OFFSET_DEBOUNCE_MS);
+  // The newest value wins over a stale render: it bumps the field's sequence (so an older request
+  // settling cannot clear this draft) and is remembered in a ref (so two quick nudges add up).
+  function changeDebounced(field, value, { immediate }) {
+    seqRef.current[field] = (seqRef.current[field] ?? 0) + 1;
+    latestRef.current[field] = value;
+    pendingRef.current[field] = value;
+    setDraft((previous) => ({ ...previous, [field]: value }));
+    window.clearTimeout(timersRef.current[field]);
+    if (immediate) flushField(field);
+    else timersRef.current[field] = window.setTimeout(() => flushField(field), DEBOUNCE_MS);
   }
+
+  function nudgeOffset(delta) {
+    const base = latestRef.current.offsetMs ?? currentRef.current.offsetMs;
+    const next = Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, Math.round((base + delta) / OFFSET_STEP) * OFFSET_STEP));
+    changeDebounced("offsetMs", next, { immediate: true });
+    // A button that just disabled itself at a limit would drop focus to the page; the slider keeps it.
+    if (next <= OFFSET_MIN || next >= OFFSET_MAX) sliderRef.current?.focus();
+  }
+
+  // Focus never leaves the panel: when it falls to the page body (a control disabling, a capture
+  // ending), it comes back to the panel.
+  const keepFocus = () => {
+    window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (panel && (document.activeElement === document.body || document.activeElement === null)) panel.focus();
+    });
+  };
+
+  // Escape closes the panel wherever focus is. During a key capture the capture listener below takes
+  // the event first (and stops it), so Escape then only cancels the capture.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape" || event.repeat) return;
+      event.preventDefault();
+      onCloseRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // While a key button waits, the next keydown is the candidate. It is taken in the capture phase so
   // nothing else (a focused button, the focus trap, the game) sees it.
@@ -123,6 +166,8 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
       event.stopPropagation();
       if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || MODIFIER_CODES.has(event.code)) return;
       setCapture(null);
+      // The button keeps focus through the capture.
+      keyButtonsRef.current[lane]?.focus();
       if (event.code === "Escape") return;
       const before = keysRef.current;
       if (event.code === before[lane]) {
@@ -143,19 +188,12 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [capture, send]);
 
-  const onPanelKeyDown = (event) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    onClose();
-  };
-
   const offsetMs = valueOf("offsetMs");
   const scrollSpeed = valueOf("scrollSpeed");
 
   return (
-    <div className="mb-settings-scrim" onKeyDown={onPanelKeyDown} onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="mb-settings" ref={panelRef} role="dialog" aria-label="Game settings" tabIndex={-1}>
+    <div className="mb-settings-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="mb-settings" ref={panelRef} role="dialog" aria-label="Game settings" tabIndex={-1} onBlur={keepFocus}>
         <div className="mb-settings-head">
           <h2 className="mb-settings-title">Settings</h2>
           <button type="button" className="mb-btn" onClick={onClose}>
@@ -169,6 +207,7 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
             {keys.map((code, lane) => (
               <button
                 key={lane}
+                ref={(node) => { keyButtonsRef.current[lane] = node; }}
                 type="button"
                 className={`mb-btn mb-keycap ${capture === lane ? "mb-toggle-on" : ""}`.trim()}
                 aria-label={`Lane ${lane + 1} key`}
@@ -190,9 +229,10 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
             <output className="mb-field-value" htmlFor="mb-offset">{formatOffset(offsetMs)}</output>
           </div>
           <div className="mb-offset-row">
-            <button type="button" className="mb-btn mb-step" aria-label="Offset minus 5 ms" disabled={offsetMs <= OFFSET_MIN} onClick={() => changeOffset(offsetMs - OFFSET_STEP, { immediate: true })}>−5</button>
+            <button type="button" className="mb-btn mb-step" aria-label="Offset minus 5 ms" disabled={offsetMs <= OFFSET_MIN} onClick={() => nudgeOffset(-OFFSET_STEP)}>−5</button>
             <input
               id="mb-offset"
+              ref={sliderRef}
               className="mb-range"
               type="range"
               min={OFFSET_MIN}
@@ -200,9 +240,9 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
               step={OFFSET_STEP}
               value={offsetMs}
               aria-valuetext={formatOffset(offsetMs)}
-              onChange={(event) => changeOffset(Number(event.target.value), { immediate: false })}
+              onChange={(event) => changeDebounced("offsetMs", Number(event.target.value), { immediate: false })}
             />
-            <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => changeOffset(offsetMs + OFFSET_STEP, { immediate: true })}>+5</button>
+            <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => nudgeOffset(OFFSET_STEP)}>+5</button>
           </div>
           <p className="mb-field-help">Raise it if notes reach the line before you hear the beat.</p>
         </section>
@@ -220,7 +260,7 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
             max={SPEED_MAX}
             step={1}
             value={scrollSpeed}
-            onChange={(event) => send({ scrollSpeed: Number(event.target.value) })}
+            onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
           />
         </section>
 

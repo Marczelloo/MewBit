@@ -183,10 +183,12 @@ test("setOffset shifts the FEVER end so it ends at the same song moment", () => 
   assert.notEqual(started, null);
   run.setOffset(100);
   assert.equal(run.snapshot(started).feverLeftMs, 8000);
-  const early = tickAll(run, started + 16, started + 7999, 16);
+  // heard time is 100 ms behind song time now, yet FEVER still ends at song started + 8000
+  const early = tickAll(run, started + 16, started + 7984, 16);
   assert.equal(early.some((e) => e.kind === "feverEnd"), false);
-  const late = tickAll(run, started + 8000, started + 8500, 16);
-  assert.equal(late.filter((e) => e.kind === "feverEnd").length, 1);
+  assert.equal(run.tick(started + 7999).some((e) => e.kind === "feverEnd"), false);
+  assert.equal(run.tick(started + 8000).filter((e) => e.kind === "feverEnd").length, 1);
+  assert.equal(tickAll(run, started + 8016, started + 8500, 16).some((e) => e.kind === "feverEnd"), false);
 });
 
 test("a -200 ms shift skips the notes it jumped over instead of missing them", () => {
