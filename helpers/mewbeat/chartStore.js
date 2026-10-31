@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const fsPromises = require("node:fs/promises");
 const path = require("node:path");
 
 const Log = require("../logs/log");
@@ -14,6 +15,12 @@ const TOO_FEW_NOTES = "too_few_notes";
 
 // The generator version is part of the file name, so a version bump simply
 // stops finding the old files and regenerates from the cached features.
+//
+// The chart file is the source of truth for an audioKey + version: scores
+// refer to it. Features are not bit-reproducible across machines (decoder
+// length drift, JVM math), so wiping only the features cache must not
+// regenerate a chart that already exists, and a deliberate regeneration needs
+// a GENERATOR_VERSION bump.
 function chartsPathOf(dir, key) {
   return path.join(dir, "charts", `${audioKeyFile(key)}.v${GENERATOR_VERSION}.json`);
 }
@@ -35,6 +42,8 @@ function parseChartsFile(text, key) {
   }
 }
 
+const VERSIONED_CHART_FILE = /\.v(\d+)\.json$/; // `.corrupt-` backups end differently and never match
+
 const READY = (charts) => ({ status: "ready", charts });
 const UNCHARTED = (reason) => ({ status: "uncharted", reason });
 
@@ -42,6 +51,31 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   const chartsByKey = new Map();
   const unchartedByKey = new Map(); // key -> reason
   const pendingByKey = new Map();
+  let sweep = null;
+
+  // Charts of other generator versions are never read again; drop them once
+  // per store so each version bump does not leave the old files behind.
+  function sweepOldVersions() {
+    sweep ??= (async () => {
+      const chartsDir = path.join(dir, "charts");
+      let names;
+      try {
+        names = await fsPromises.readdir(chartsDir);
+      } catch {
+        return; // no charts directory yet
+      }
+      for (const name of names) {
+        const match = VERSIONED_CHART_FILE.exec(name);
+        if (!match || Number(match[1]) === GENERATOR_VERSION) continue;
+        await fsPromises.unlink(path.join(chartsDir, name)).catch((error) => {
+          log.warning("mewbeat could not remove old charts", name, error?.message);
+        });
+      }
+    })().catch((error) => {
+      log.warning("mewbeat could not sweep old charts", error?.message);
+    });
+    return sweep;
+  }
 
   function readMemory(key) {
     const charts = chartsByKey.get(key);
@@ -85,6 +119,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   }
 
   async function resolve(track, key, node) {
+    await sweepOldVersions();
     const stored = readDisk(key);
     if (stored) {
       if (stored.uncharted) {

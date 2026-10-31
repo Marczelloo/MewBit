@@ -182,6 +182,49 @@ describe("mewbeat chart store", () => {
     });
   });
 
+  describe("old generator versions", () => {
+    it("removes charts of other generator versions on the first getCharts only", async () => {
+      fs.mkdirSync(chartsDir(), { recursive: true });
+      const stale = chartsPath(GENERATOR_VERSION - 1);
+      const newer = chartsPath(GENERATOR_VERSION + 1);
+      const corrupt = `${chartsPath()}.corrupt-123`;
+      const unrelated = path.join(chartsDir(), "notes.txt");
+      for (const file of [stale, newer, corrupt, unrelated]) fs.writeFileSync(file, "{}");
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+
+      await store.getCharts(track, "node");
+
+      assert.strictEqual(fs.existsSync(stale), false);
+      assert.strictEqual(fs.existsSync(newer), false);
+      assert.ok(fs.existsSync(chartsPath()), "current version stays");
+      assert.ok(fs.existsSync(corrupt), "corrupt backups stay");
+      assert.ok(fs.existsSync(unrelated), "unrelated files stay");
+
+      fs.writeFileSync(stale, "{}");
+      await store.getCharts(makeTrack({ identifier: "second" }), "node");
+      assert.ok(fs.existsSync(stale), "swept once per store");
+    });
+
+    it("works when the charts directory does not exist yet", async () => {
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+
+      assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
+    });
+
+    it("logs and carries on when a file cannot be removed", async () => {
+      const warnings = [];
+      fs.mkdirSync(path.join(chartsDir(), `x.v${GENERATOR_VERSION + 1}.json`), { recursive: true });
+      const store = createChartStore({
+        dir,
+        analysis: fakeAnalysis(),
+        log: { warning: (...args) => warnings.push(args) },
+      });
+
+      assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
+      assert.ok(warnings.some(([message]) => /old charts/.test(message)));
+    });
+  });
+
   describe("peekCharts", () => {
     it("is null when nothing is known and never analyses", () => {
       const analysis = fakeAnalysis();
