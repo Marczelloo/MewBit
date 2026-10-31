@@ -198,6 +198,39 @@ describe("mewbeat analysis client", () => {
     assert.ok(fs.existsSync(cacheFileOf(track)));
   });
 
+  it("gives up on a plugin call that never answers and retries after the busy TTL", async () => {
+    const warnings = [];
+    const impatient = createAnalysisClient({
+      dir,
+      now: () => clock,
+      requestTimeoutMs: 20,
+      log: { ...silentLog, warning: (...args) => warnings.push(args) },
+    });
+    const track = makeTrack();
+    const node = fakeNode(() => new Promise(() => {}));
+
+    assert.strictEqual(await impatient.getFeatures(track, node), null);
+    assert.strictEqual(warnings.length, 1);
+    assert.match(warnings[0][0], /timed out/);
+    assert.strictEqual(await impatient.getFeatures(track, node), null);
+    assert.strictEqual(node.calls.length, 1);
+
+    clock += 30_000 + 1;
+    await impatient.getFeatures(track, node);
+    assert.strictEqual(node.calls.length, 2);
+  });
+
+  it("drops a response that arrives after the timeout", async () => {
+    const impatient = createAnalysisClient({ dir, now: () => clock, requestTimeoutMs: 20, log: silentLog });
+    const track = makeTrack();
+    const node = fakeNode(() => new Promise((resolve) => setTimeout(() => resolve(featuresFor(track)), 60)));
+
+    assert.strictEqual(await impatient.getFeatures(track, node), null);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.strictEqual(impatient.peek(track), null);
+    assert.ok(!fs.existsSync(cacheFileOf(track)));
+  });
+
   it("rejects a response with a different identifier", async () => {
     const track = makeTrack();
     const node = fakeNode(() => featuresFor(track, { audio: { sourceName: "youtube", identifier: "other", length: 213000 } }));

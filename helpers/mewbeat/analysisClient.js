@@ -11,6 +11,10 @@ const FAILURE_TTL_MS = 10 * 60 * 1000;
 const BUSY_TTL_MS = 30 * 1000;
 const FEATURES_VERSION = 1; // must match the plugin
 const MEMORY_CAPACITY = 32;
+// Poru's post is a bare fetch (about 5 minutes before it gives up) while the
+// plugin holds a request for at most ~2 minutes of its own job timeout plus
+// queue wait, so this is the longest we are willing to wait for one track.
+const REQUEST_TIMEOUT_MS = 150_000;
 const DURATION_SLACK_MIN_MS = 2000;
 const DURATION_SLACK_RATIO = 0.05;
 
@@ -46,7 +50,19 @@ function durationMatchesTrack(features, track) {
   return Math.abs(Number(features.durationMs) - expected) <= Math.max(DURATION_SLACK_MIN_MS, DURATION_SLACK_RATIO * expected);
 }
 
-function createAnalysisClient({ dir, now = Date.now, log = Log }) {
+class RequestTimeout extends Error {}
+
+// Rejects with RequestTimeout when the promise has not settled in time; the
+// late result of the original promise is simply ignored.
+function withTimeout(promise, timeoutMs) {
+  let timer;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new RequestTimeout()), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs = REQUEST_TIMEOUT_MS }) {
   const featuresByKey = new Map();
   const unchartedKeys = new Set();
   const retryAfterByKey = new Map();
@@ -91,8 +107,13 @@ function createAnalysisClient({ dir, now = Date.now, log = Log }) {
   async function analyse(track, key, node) {
     let body;
     try {
-      body = await node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track });
+      body = await withTimeout(node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track }), requestTimeoutMs);
     } catch (error) {
+      if (error instanceof RequestTimeout) {
+        // The plugin may still be working on it, so retry soon rather than in 10 minutes.
+        log.warning("mewbeat analysis request timed out", key);
+        return failFor(key, BUSY_TTL_MS);
+      }
       log.warning("mewbeat analysis request failed", error?.message);
       return failFor(key, FAILURE_TTL_MS);
     }
