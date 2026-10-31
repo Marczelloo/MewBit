@@ -64,6 +64,10 @@ logging:
       total-size-cap: 500MB
 
 plugins:
+  mewbeat:
+    maxQueue: 4 # jobs allowed to wait behind the running analysis; more get 503 busy
+    maxTrackMs: 1200000 # longer tracks are refused with 422 too_long
+    debugRoutes: false # true exposes GET /v4/mewbeat/debug/pcm for the preview tool
   lavalyrics:
     sources: # Priority order for lyrics sources (tries in this order)
       - deezer # Try Deezer's native lyrics first

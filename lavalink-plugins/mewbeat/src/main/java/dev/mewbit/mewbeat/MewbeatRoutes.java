@@ -1,10 +1,16 @@
 package dev.mewbit.mewbeat;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Properties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -18,8 +24,13 @@ public class MewbeatRoutes {
 
     private final String version;
     private final int featuresVersion;
+    private final AnalysisWorker worker;
+    private final boolean debugRoutes;
 
-    public MewbeatRoutes() {
+    public MewbeatRoutes(
+            AnalysisWorker worker, @Value("${plugins.mewbeat.debugRoutes:false}") boolean debugRoutes) {
+        this.worker = worker;
+        this.debugRoutes = debugRoutes;
         Properties properties = new Properties();
         try (InputStream in = MewbeatRoutes.class.getResourceAsStream("/mewbeat.properties")) {
             if (in == null) {
@@ -35,8 +46,48 @@ public class MewbeatRoutes {
 
     public record VersionResponse(String plugin, String version, int featuresVersion) {}
 
+    public record AnalyzeRequest(String encodedTrack) {}
+
     @GetMapping("/v4/mewbeat/version")
     public VersionResponse version() {
         return new VersionResponse(PLUGIN_NAME, version, featuresVersion);
+    }
+
+    @PostMapping(value = "/v4/mewbeat/analyze", consumes = "application/json")
+    public void analyze(@RequestBody AnalyzeRequest request, HttpServletResponse response) throws IOException {
+        if (request == null || request.encodedTrack() == null || request.encodedTrack().isBlank()) {
+            respond(
+                    response,
+                    new AnalysisWorker.Outcome(
+                            400,
+                            AnalysisWorker.JSON,
+                            "{\"error\":\"bad_request\",\"message\":\"encodedTrack is required\"}"
+                                    .getBytes(StandardCharsets.UTF_8)));
+            return;
+        }
+        respond(response, worker.analyze(request.encodedTrack()));
+    }
+
+    /** Answers 404 unless {@code plugins.mewbeat.debugRoutes} is true. */
+    @GetMapping("/v4/mewbeat/debug/pcm")
+    public void debugPcm(@RequestParam("track") String encodedTrack, HttpServletResponse response)
+            throws IOException {
+        if (!debugRoutes) {
+            response.setStatus(404);
+            return;
+        }
+        respond(response, worker.pcmWav(encodedTrack));
+    }
+
+    /**
+     * Writes the bytes straight to the servlet response. Lavalink registers a
+     * kotlinx.serialization message converter ahead of the byte[] one, which would
+     * turn a {@code byte[]} body into a JSON array of numbers.
+     */
+    private static void respond(HttpServletResponse response, AnalysisWorker.Outcome outcome) throws IOException {
+        response.setStatus(outcome.status());
+        response.setContentType(outcome.contentType());
+        response.setContentLength(outcome.body().length);
+        response.getOutputStream().write(outcome.body());
     }
 }
