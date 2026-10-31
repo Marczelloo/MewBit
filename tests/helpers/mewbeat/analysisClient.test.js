@@ -177,6 +177,27 @@ describe("mewbeat analysis client", () => {
     assert.strictEqual(client.peek(track), null);
   });
 
+  it("rejects a truncated decode and blocks the track for 10 minutes", async () => {
+    const track = makeTrack({ length: 180000 });
+    const node = fakeNode(() => featuresFor(track, { durationMs: 30000 }));
+    assert.strictEqual(await client.getFeatures(track, node), null);
+    assert.ok(!fs.existsSync(cacheFileOf(track)));
+    assert.strictEqual(client.peek(track), null);
+
+    assert.strictEqual(await client.getFeatures(track, node), null);
+    assert.strictEqual(node.calls.length, 1);
+    clock += 10 * MINUTE + 1;
+    await client.getFeatures(track, node);
+    assert.strictEqual(node.calls.length, 2);
+  });
+
+  it("accepts a decode that drifts by 1.5 seconds", async () => {
+    const track = makeTrack({ length: 180000 });
+    const features = await client.getFeatures(track, fakeNode(() => featuresFor(track, { durationMs: 181500 })));
+    assert.ok(features);
+    assert.ok(fs.existsSync(cacheFileOf(track)));
+  });
+
   it("rejects a response with a different identifier", async () => {
     const track = makeTrack();
     const node = fakeNode(() => featuresFor(track, { audio: { sourceName: "youtube", identifier: "other", length: 213000 } }));

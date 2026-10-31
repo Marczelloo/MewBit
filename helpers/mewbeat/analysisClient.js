@@ -11,6 +11,8 @@ const FAILURE_TTL_MS = 10 * 60 * 1000;
 const BUSY_TTL_MS = 30 * 1000;
 const FEATURES_VERSION = 1; // must match the plugin
 const MEMORY_CAPACITY = 32;
+const DURATION_SLACK_MIN_MS = 2000;
+const DURATION_SLACK_RATIO = 0.05;
 
 function featuresPathOf(dir, key) {
   return path.join(dir, "features", `${audioKeyFile(key)}.json`);
@@ -34,6 +36,14 @@ function audioMatchesTrack(features, track) {
   return Boolean(audio)
     && String(audio.identifier) === String(track.info.identifier)
     && Number(audio.length) === Number(track.info.length);
+}
+
+// A decoder that stops early (dropped connection, a 30 s mirrored preview)
+// still answers 200 with features for the part it got; the length must agree
+// with the track, with slack for the decoder's observed +-0.1 s drift.
+function durationMatchesTrack(features, track) {
+  const expected = Number(track.info.length);
+  return Math.abs(Number(features.durationMs) - expected) <= Math.max(DURATION_SLACK_MIN_MS, DURATION_SLACK_RATIO * expected);
 }
 
 function createAnalysisClient({ dir, now = Date.now, log = Log }) {
@@ -94,6 +104,10 @@ function createAnalysisClient({ dir, now = Date.now, log = Log }) {
       }
       if (!audioMatchesTrack(body, track)) {
         log.warning("mewbeat analysed audio does not match the track", key);
+        return failFor(key, FAILURE_TTL_MS);
+      }
+      if (!durationMatchesTrack(body, track)) {
+        log.warning("mewbeat decoded duration does not match the track", key, body.durationMs);
         return failFor(key, FAILURE_TTL_MS);
       }
       writeMemory(key, body);
