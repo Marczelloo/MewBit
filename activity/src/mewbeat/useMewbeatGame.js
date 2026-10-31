@@ -163,10 +163,11 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       if (!run) return;
       runRef.current = null;
       const snap = run.snapshot(lastSongMsRef.current);
+      feverActiveRef.current = false;
       if (snap.judged >= 1) {
         const { hits, ranked, ...rest } = snap;
-        setEndSummary({ ...rest, title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null });
-        setHud(toHud(snap));
+        setEndSummary({ ...rest, title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
+        setHud({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
       } else {
         setHud(EMPTY_HUD);
       }
@@ -214,7 +215,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       feverActiveRef.current = snap.feverActive;
       setHud(toHud(snap));
       // Autoplay plays the whole game, FEVER included.
-      if (autoplayRef.current && snap.vibe >= 1 && !snap.feverActive) {
+      if (runAutoplayRef.current && snap.vibe >= 1 && !snap.feverActive) {
         const fever = run.fever(songMs);
         if (fever) handleEvents([fever], run.heardTime(songMs));
       }
@@ -253,6 +254,11 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         }
         default:
           break;
+      }
+      // A refused first send or a changed difficulty would leave "charting" stuck; the link dedupes in-flight requests.
+      if (phaseRef.current === "charting" && link.status() === "live") {
+        const key = songClock.audioKey();
+        if (key) link.requestChart(key, cfgRef.current.liveDifficulty);
       }
     });
 
@@ -341,6 +347,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
 
     // ---- render loop ----
     let raf = 0;
+    let lastPercent = -1;
     const emptyFrame = { heardMs: 0, notes: [], lanesDown: [], flashes: [], feverActive: false };
     function frame() {
       raf = window.requestAnimationFrame(frame);
@@ -350,6 +357,11 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       if (progressRef.current) {
         const fraction = songMs !== null && duration > 0 ? Math.min(1, songMs / duration) : 0;
         progressRef.current.style.transform = `scaleX(${fraction})`;
+        const percent = Math.round(fraction * 100);
+        if (percent !== lastPercent) {
+          lastPercent = percent;
+          progressRef.current.parentElement?.setAttribute("aria-valuenow", String(percent));
+        }
       }
 
       const run = runRef.current;

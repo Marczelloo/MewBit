@@ -107,7 +107,6 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
   const showCard = Boolean(endSummary);
   // A run that ended with no card (joined in its last second) just waits.
   const stateCopy = showCard ? null : phase === "ended" ? { title: "Waiting for the next track…" } : copy;
-  const progressLabel = track?.durationMs > 0 ? "Track progress" : undefined;
 
   return (
     <div
@@ -134,7 +133,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
             Exit <kbd className="mb-kbd">Esc</kbd>
           </button>
         </div>
-        <div className="mb-progress" role="presentation" aria-label={progressLabel}>
+        <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
           <i ref={progressRef} />
         </div>
       </header>

@@ -8,6 +8,8 @@ const ROWS = [
 ];
 
 const PHASE_NOTES = {
+  offline: "Reconnecting…",
+  idle: "Nothing is playing.",
   charting: "Charting this track…",
   uncharted: "This track can't be charted.",
   failed: "Charting failed. We'll try the next track.",

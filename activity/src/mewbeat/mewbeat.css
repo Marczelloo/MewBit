@@ -320,11 +320,26 @@
 
 /* narrow widths: stack Mewbit above, HUD below, and let the highway take the width */
 @media (max-width: 900px) {
-  .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; padding: 12px 16px 16px; }
+  /* Mewbit is hidden, so two rows remain: the highway takes the space left, the HUD its own height.
+     The highway never gets less than 260px; on a short viewport the stage scrolls instead of squeezing it. */
+  .mb-stage { overflow-y: auto; }
+  .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) auto; gap: 12px; height: auto; min-height: 100%; padding: 12px 16px 16px; }
   .mb-char { display: none; }
-  .mb-highway-slot { justify-self: center; width: min(100%, 460px); }
-  .mb-side { justify-self: center; width: min(100%, 460px); }
+  .mb-highway-slot { justify-self: center; width: min(100%, 460px); min-height: 260px; }
+  .mb-side { align-self: start; justify-self: center; width: min(100%, 460px); }
   .mb-header { flex-wrap: wrap; padding: 10px 16px 12px; }
+}
+/* short viewports: a one-row HUD so the highway keeps most of the height */
+@media (max-width: 900px) and (max-height: 520px) {
+  .mb-scene { grid-template-rows: minmax(200px, 1fr) auto; gap: 8px; padding: 8px 16px 10px; }
+  .mb-highway-slot { min-height: 200px; }
+  .mb-header { gap: 8px; padding: 6px 16px 9px; }
+  .mb-header .mb-btn { min-height: 32px; }
+  .mb-hud-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 12px; }
+  .mb-hud-card .mb-label, .mb-hud-stats { display: none; }
+  .mb-hud-score { font-size: 22px; }
+  .mb-vibe { flex: 1 1 80px; }
+  .mb-vibe-hint { flex: 1 0 100%; font-size: 11px; }
 }
 @media (max-width: 560px) {
   .mb-header-artist, .mb-header-actions .mb-kbd { display: none; }
