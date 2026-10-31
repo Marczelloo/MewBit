@@ -149,3 +149,64 @@ test("visibleNotes returns the inclusive window with outcomes", () => {
   assert.equal(visible[1].outcome, "pending");
   assert.deepEqual(run.visibleNotes(100, 1500), []);
 });
+
+test("setOffset mid-run moves later presses' errorMs by the offset", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  tickAll(run, 0, 4992);
+  run.setOffset(100);
+  assert.equal(run.heardTime(5250), 5150);
+  // note 13 sits at 5250 in lane 1: heard 5150 is 100 ms early
+  assert.deepEqual(run.press(1, 5250), { kind: "hit", lane: 1, judgement: "good", errorMs: -100, index: 13 });
+});
+
+test("setOffset keeps the score and the judged notes", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(1, 2250);
+  tickAll(run, 0, 2300);
+  const before = run.snapshot(2300);
+  run.setOffset(50);
+  const after = run.snapshot(2300);
+  assert.equal(after.score, before.score);
+  assert.equal(after.combo, before.combo);
+  assert.equal(after.judged, before.judged);
+  assert.equal(after.total, before.total);
+});
+
+test("setOffset shifts the FEVER end so it ends at the same song moment", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0, autoplay: true });
+  let started = null;
+  for (let ms = 0; ms <= 15000 && started === null; ms += 16) {
+    run.tick(ms);
+    if (run.snapshot(ms).vibe >= 1 && run.fever(ms)) started = ms;
+  }
+  assert.notEqual(started, null);
+  run.setOffset(100);
+  assert.equal(run.snapshot(started).feverLeftMs, 8000);
+  const early = tickAll(run, started + 16, started + 7999, 16);
+  assert.equal(early.some((e) => e.kind === "feverEnd"), false);
+  const late = tickAll(run, started + 8000, started + 8500, 16);
+  assert.equal(late.filter((e) => e.kind === "feverEnd").length, 1);
+});
+
+test("a -200 ms shift skips the notes it jumped over instead of missing them", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  tickAll(run, 0, 4992);
+  const before = run.snapshot(4992);
+  run.setOffset(-200);
+  // heard time jumps from 4992 to 5192: the note at 5000 would be past its GOOD window (5135)
+  const events = run.tick(4992);
+  assert.equal(events.filter((e) => e.kind === "miss").length, 0);
+  assert.equal(run.snapshot(4992).total, before.total - 1);
+  assert.equal(run.visibleNotes(5000, 5000)[0].outcome, "skipped");
+});
+
+test("setOffset skips relative to the song time it is given", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.setOffset(-500, 3000);
+  // heard 3500: notes before 3500 - 135 = 3365 are gone (2000..3250 skipped), 3500 stays pending
+  const events = run.tick(3000);
+  assert.equal(events.filter((e) => e.kind === "miss").length, 0);
+  assert.equal(run.visibleNotes(3500, 3500)[0].outcome, "pending");
+  assert.equal(run.visibleNotes(3250, 3250)[0].outcome, "skipped");
+});

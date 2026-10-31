@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { GearSix } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EndCard from "./EndCard.jsx";
 import GameHud, { HighwayReadout } from "./GameHud.jsx";
+import SettingsPanel from "./SettingsPanel.jsx";
 import { createServerClock, createSongClock } from "./clock.js";
+import { keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
 import { createMockLink } from "./mockLink.js";
 import Mewbit from "./mewbit/Mewbit.jsx";
@@ -34,13 +37,12 @@ function createLink(mewbeatSocketRef) {
   });
 }
 
-// "KeyD" -> "D", "Digit1" -> "1"; anything else shows as is.
-function keyLabel(code) {
-  return String(code).replace(/^Key/, "").replace(/^Digit/, "");
-}
-
-export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbeatSocketRef, onClose }) {
+export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
   const dialogRef = useRef(null);
+  const gearRef = useRef(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpenRef = useRef(false);
+  settingsOpenRef.current = settingsOpen;
   const [link] = useState(() => createLink(mewbeatSocketRef));
 
   // The link has to be live before useMewbeatGame mounts its effects, so this effect stays above the hook.
@@ -65,8 +67,14 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
     [trackId, title, artist, durationMs, queued]
   );
 
-  const game = useMewbeatGame({ link, settings, effects: settings?.effects, trackInfo, onExit: onClose });
-  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel } = game;
+  const game = useMewbeatGame({ link, settings, effects: settings?.effects, trackInfo, inputPaused: settingsOpen, onExit: onClose });
+  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio } = game;
+
+  // The panel returns focus to the gear button it was opened from.
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    window.requestAnimationFrame(() => gearRef.current?.focus());
+  }, []);
 
   // The bot sends an anchor on its own schedule; a pause, track change or seek in the state is a reason to ask now.
   const paused = Boolean(player?.paused);
@@ -86,8 +94,9 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
     dialogRef.current?.focus();
     const onKeyDown = (event) => {
       if (event.key !== "Tab") return;
-      const root = dialogRef.current;
-      const buttons = [...(root?.querySelectorAll("button") || [])];
+      // With the settings panel open, Tab stays inside the panel.
+      const root = settingsOpenRef.current ? dialogRef.current?.querySelector(".mb-settings") : dialogRef.current;
+      const buttons = [...(root?.querySelectorAll("button:not(:disabled), input, select") || [])];
       if (!buttons.length) { event.preventDefault(); return; }
       const first = buttons[0];
       const last = buttons[buttons.length - 1];
@@ -117,6 +126,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
       aria-label="mewbeat"
       tabIndex={-1}
       data-phase={phase}
+      onPointerDown={unlockAudio}
     >
       <header className="mb-header">
         <div className="mb-header-track">
@@ -128,6 +138,9 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
           {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
           <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>
             Autoplay
+          </button>
+          <button type="button" className="mb-btn mb-gear" ref={gearRef} aria-label="Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>
+            <GearSix size={18} weight="bold" aria-hidden="true" />
           </button>
           <button type="button" className="mb-btn" onClick={onClose}>
             Exit <kbd className="mb-kbd">Esc</kbd>
@@ -169,6 +182,8 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
           </aside>
         </div>
       </div>
+
+      {settingsOpen ? <SettingsPanel settings={settings} onAction={onAction} onClose={closeSettings} /> : null}
     </div>
   );
 }

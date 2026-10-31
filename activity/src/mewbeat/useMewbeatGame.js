@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { effectiveEffects } from "./effects.js";
 import { approachMsFor, createHighwayRenderer } from "./highway.js";
+import { createHitSounds } from "./hitSounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { createRun } from "./run.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full" };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false };
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -57,11 +59,10 @@ export function poseFor({ phase, feverActive, now, missUntil, crushed, milestone
 // song clock and renders it. The link must already be started when this mounts its effects (the
 // mock link emits its first anchor from start()); it reads the current state on mount instead of
 // waiting for events it may have missed.
-export function useMewbeatGame({ link, settings, effects = "full", trackInfo = null, onExit }) {
+export function useMewbeatGame({ link, settings, effects = "full", trackInfo = null, inputPaused = false, onExit }) {
   const cfg = settingsOf(settings);
   const prefersReduced = usePrefersReducedMotion();
-  // prefers-reduced-motion forces at most "reduced"; "off" always wins.
-  const effectsLevel = effects === "off" ? "off" : prefersReduced ? "reduced" : effects;
+  const effectsLevel = effectiveEffects(effects, prefersReduced);
 
   const [phase, setPhaseState] = useState("connecting");
   const [hud, setHud] = useState(EMPTY_HUD);
@@ -101,7 +102,10 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   trackRef.current = trackInfo;
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
-  const keysKey = cfg.keys.join("|");
+  // While the settings panel is open the game ignores keys so its capture buttons receive them.
+  const inputPausedRef = useRef(inputPaused);
+  inputPausedRef.current = inputPaused;
+  const soundsRef = useRef(null);
 
   const setPhase = useCallback((next) => {
     phaseRef.current = next;
@@ -111,6 +115,32 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   useEffect(() => {
     link.setTrackInfo?.(trackInfo);
   }, [link, trackInfo]);
+
+  // Hit sounds: the AudioContext only comes into being on the first gesture (see unlockAudio).
+  useEffect(() => {
+    const sounds = createHitSounds();
+    soundsRef.current = sounds;
+    return () => {
+      sounds.close();
+      if (soundsRef.current === sounds) soundsRef.current = null;
+    };
+  }, []);
+  const unlockAudio = useCallback(() => soundsRef.current?.unlock(), []);
+
+  // A key held when the panel opens never sends its keyup to the game.
+  useEffect(() => {
+    if (inputPaused) lanesDownRef.current = [false, false, false, false];
+  }, [inputPaused]);
+
+  // A new audio offset applies to the run in progress: score stays, heard time moves.
+  const offsetMs = cfg.offsetMs;
+  useEffect(() => {
+    const run = runRef.current;
+    if (!run) return;
+    const songMs = link.songClock.songTimeAt(performance.now());
+    run.setOffset(offsetMs, songMs ?? undefined);
+    dirtyRef.current = true;
+  }, [link, offsetMs]);
 
   // ---- link events, run lifecycle, render loop ----
   useEffect(() => {
@@ -192,6 +222,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       for (const event of events) {
         if (event.kind === "hit") {
           comboRef.current += 1;
+          if (cfgRef.current.hitSounds) soundsRef.current?.play(event.judgement);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -301,8 +332,10 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     reconcile();
 
     // ---- input ----
-    const route = createKeyRouter({
-      keys: cfgRef.current.keys,
+    // Keys come from cfgRef, so a keys change swaps only the router (the run, chart request and
+    // link subscriptions stay as they are).
+    const buildRouter = (keys) => createKeyRouter({
+      keys,
       onLane: (lane, timeStamp) => {
         lanesDownRef.current[lane] = true;
         const run = runRef.current;
@@ -322,15 +355,23 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       },
       onExit: () => onExitRef.current?.(),
     });
-    const keys = cfgRef.current.keys;
+    let routedKeys = cfgRef.current.keys;
+    let route = buildRouter(routedKeys);
     const onKeyDown = (event) => {
+      soundsRef.current?.unlock();
+      if (inputPausedRef.current) return;
+      if (cfgRef.current.keys !== routedKeys) {
+        routedKeys = cfgRef.current.keys;
+        route = buildRouter(routedKeys);
+      }
       if (route(event)) {
         event.preventDefault();
         event.stopPropagation();
       }
     };
     const onKeyUp = (event) => {
-      const lane = keys.indexOf(event.code);
+      if (inputPausedRef.current) return;
+      const lane = cfgRef.current.keys.indexOf(event.code);
       if (lane >= 0) lanesDownRef.current[lane] = false;
       // Space is FEVER and keydown already took it; keep its keyup from clicking a focused button.
       if (lane >= 0 || event.code === "Space") {
@@ -426,8 +467,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       offChart();
       offStatus();
     };
-    // keysKey rebuilds the router when the bound keys change; link is stable for the screen's life.
-  }, [link, keysKey, setPhase]);
+    // link is stable for the screen's life.
+  }, [link, setPhase]);
 
   // ---- canvas ----
   useEffect(() => {
@@ -468,5 +509,5 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     }
   }, [link]);
 
-  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel };
+  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio };
 }

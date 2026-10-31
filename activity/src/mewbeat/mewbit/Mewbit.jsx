@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { effectiveEffects } from "../effects.js";
 import { MEWBIT_POSES } from "./manifest.js";
 import placeholderUrl from "./mewbit.png";
 import "../mewbeat.css";
@@ -34,8 +35,7 @@ function useFrame(frames, fps, animate) {
 export default function Mewbit({ pose = "neutral", effects = "full", className = "" }) {
   const prefersReduced = usePrefersReducedMotion();
   const entry = MEWBIT_POSES[pose] || MEWBIT_POSES.neutral;
-  // prefers-reduced-motion forces at most "reduced"; "off" always wins.
-  const level = effects === "off" ? "off" : prefersReduced ? "reduced" : effects;
+  const level = effectiveEffects(effects, prefersReduced);
   const animated = level !== "off";
   const frameIndex = useFrame(entry.frames, entry.fps, animated);
   const src = entry.kind === "frames" ? entry.frames?.[frameIndex] ?? placeholderUrl : placeholderUrl;

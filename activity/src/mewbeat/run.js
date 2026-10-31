@@ -31,6 +31,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   let autoCursor = 0;
   let feverEndAt = null;
   let ended = false;
+  let lastSongMs = startSongMs;
 
   function applyHit(result, heardMs) {
     score = applyJudgement(score, result.judgement, heardMs);
@@ -39,6 +40,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   }
 
   function press(lane, songMs) {
+    lastSongMs = songMs;
     if (ended) return null;
     const heardMs = heard(songMs);
     const result = judge.press(lane, heardMs);
@@ -46,6 +48,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   }
 
   function tick(songMs) {
+    lastSongMs = songMs;
     const heardMs = heard(songMs);
     const events = [];
 
@@ -93,6 +96,20 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     skipped += judge.skipBefore(heard(songMs) + JUMP_LEAD_MS);
   }
 
+  // Changes the audio offset mid-run, keeping score and judged notes. FEVER keeps ending at the
+  // same song moment (its end is stored in heard time, so it moves with the offset). When heard
+  // time moves forward (offset down), notes it has already carried past their miss window are
+  // skipped, as in jump(), instead of becoming instant misses. songMs defaults to the last
+  // song time this run saw.
+  function setOffset(nextOffsetMs, songMs = lastSongMs) {
+    const delta = nextOffsetMs - offset;
+    if (delta === 0) return;
+    offset = nextOffsetMs;
+    if (feverEndAt !== null) feverEndAt -= delta;
+    if (score.feverUntil !== null) score = { ...score, feverUntil: score.feverUntil - delta };
+    if (delta < 0 && !ended) skipped += judge.skipBefore(heard(songMs) - WINDOWS.good);
+  }
+
   function snapshot(songMs) {
     const heardMs = heard(songMs);
     const feverActive = score.feverUntil !== null && heardMs < score.feverUntil;
@@ -133,5 +150,5 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     return visible;
   }
 
-  return { press, tick, fever, jump, snapshot, visibleNotes, heardTime: heard };
+  return { press, tick, fever, jump, setOffset, snapshot, visibleNotes, heardTime: heard };
 }

@@ -4,9 +4,12 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
 let createKeyRouter;
+let keyLabel;
+let keysProblem;
+let KEYS_MESSAGE;
 
 test.before(async () => {
-  ({ createKeyRouter } = await import(
+  ({ createKeyRouter, keyLabel, keysProblem, KEYS_MESSAGE } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/input.js")).href
   ));
 });
@@ -63,4 +66,23 @@ test("a held Space or Escape does not repeat", () => {
   assert.equal(route({ code: "Space", repeat: true, timeStamp: 1 }), false);
   assert.equal(route({ code: "Escape", repeat: true, timeStamp: 1 }), false);
   assert.equal(calls.fever + calls.exit, 0);
+});
+
+test("keyLabel shows readable labels", () => {
+  assert.equal(keyLabel("KeyD"), "D");
+  assert.equal(keyLabel("Digit1"), "1");
+  assert.equal(keyLabel("ArrowLeft"), "←");
+  assert.equal(keyLabel("ArrowRight"), "→");
+  assert.equal(keyLabel("Semicolon"), "Semicolon");
+  assert.equal(keyLabel("Numpad1"), "Numpad1");
+});
+
+test("keysProblem refuses Space, Escape, duplicates and the wrong count with the server's message", () => {
+  assert.equal(KEYS_MESSAGE, "Pick four different keys. Space and Escape are taken.");
+  assert.equal(keysProblem(["KeyD", "KeyF", "KeyJ", "KeyK"]), null);
+  assert.equal(keysProblem(["Space", "KeyF", "KeyJ", "KeyK"]), KEYS_MESSAGE);
+  assert.equal(keysProblem(["KeyD", "Escape", "KeyJ", "KeyK"]), KEYS_MESSAGE);
+  assert.equal(keysProblem(["KeyD", "KeyD", "KeyJ", "KeyK"]), KEYS_MESSAGE);
+  assert.equal(keysProblem(["KeyD", "KeyF", "KeyJ"]), KEYS_MESSAGE);
+  assert.equal(keysProblem(["KeyD", "Key F", "KeyJ", "KeyK"]), KEYS_MESSAGE);
 });

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { effectiveEffects } from "./effects.js";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import "./mewbeat.css";
 
@@ -16,7 +17,8 @@ const SLICES = [
 
 export default function UnlockReveal({ onDone, onPlay, effects = "full" }) {
   const prefersReduced = usePrefersReducedMotion();
-  const calm = effects !== "full" || prefersReduced;
+  const level = effectiveEffects(effects, prefersReduced);
+  const calm = level !== "full";
   const [stage, setStage] = useState(calm ? "card" : "glitch");
   const dialogRef = useRef(null);
   const playRef = useRef(null);
@@ -71,7 +73,7 @@ export default function UnlockReveal({ onDone, onPlay, effects = "full" }) {
         </div>
       ) : (
         <div className={`mb-reveal-card ${calm ? "mb-reveal-card-calm" : ""}`.trim()}>
-          <Mewbit pose="reveal" effects={calm && effects === "full" ? "reduced" : effects} />
+          <Mewbit pose="reveal" effects={level} />
           <h2 className="mb-reveal-title">mewbeat unlocked</h2>
           <p className="mb-reveal-copy">A 4-lane rhythm game for whatever is playing in the room.</p>
           <div className="mb-reveal-actions">

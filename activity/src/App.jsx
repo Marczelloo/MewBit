@@ -2184,6 +2184,7 @@ function App() {
       if (action === "pause") next.player.playing = false, next.player.paused = true;
       if (action === "resume") next.player.playing = true, next.player.paused = false;
       if (action === "mewbeat_unlock") next.mewbeat = { ...next.mewbeat, unlocked: true };
+      if (action === "mewbeat_settings") next.mewbeat = { ...next.mewbeat, settings: { ...next.mewbeat?.settings, ...payload.settings } };
       if (action === "stop") { next.player.currentTrack = null; next.player.queue = []; next.player.playing = false; next.player.paused = true; next.player.positionMs = 0; }
       if (action === "volume" || action === "volume-preview") {
         next.player.volume = payload.volume;
@@ -2558,7 +2559,7 @@ function App() {
       </div>
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
       {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatOpen(true); }} /> : null}
-      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onClose={() => setMewbeatOpen(false)} /></Suspense> : null}
+      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={() => setMewbeatOpen(false)} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>
   );
