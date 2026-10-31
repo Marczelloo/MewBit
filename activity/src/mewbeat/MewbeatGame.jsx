@@ -1,8 +1,9 @@
 import { GearSix } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EndCard from "./EndCard.jsx";
-import GameHud, { HighwayReadout } from "./GameHud.jsx";
+import GameHud, { HighwayReadout, TrackCard } from "./GameHud.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
+import Stage from "./Stage.jsx";
 import { createServerClock, createSongClock } from "./clock.js";
 import { keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
@@ -109,6 +110,19 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Hits (not misses) kick the stage pulse. There is no beat clock in the UI, so each new judgement
+  // swaps between two identical CSS animations, which restarts it without per-frame React state.
+  const judgement = hud.judgement;
+  const [pulse, setPulse] = useState({ id: 0, count: 0 });
+  if (judgement && judgement.kind !== "miss" && judgement.id !== pulse.id) setPulse({ id: judgement.id, count: pulse.count + 1 });
+  const pulseClass = pulse.count > 0 && effectsLevel !== "off" ? ` mb-pulse-${pulse.count % 2 ? "a" : "b"}` : "";
+  const sad = mewbitPose === "crushed";
+  // FEVER pushes the vibe look past full, a crushed Mewbit drains it.
+  const stageVibe = hud.feverActive ? 1.4 : sad ? 0 : Math.min(1, Math.max(0, hud.vibe));
+  const feverTimeStyle = hud.feverActive
+    ? { opacity: 1, transform: "scaleX(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
+    : { opacity: 0, transform: "scaleX(1)", transition: "none" };
+
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
   const difficulty = settings?.liveDifficulty ?? "normal";
   const copy = PHASE_COPY[phase];
@@ -129,13 +143,11 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
       onPointerDown={unlockAudio}
     >
       <header className="mb-header">
-        <div className="mb-header-track">
-          <span className="mb-label mb-live">{`live · ${difficulty}`}</span>
-          <b className="mb-header-title">{track?.title ?? "No track"}</b>
-          {track?.artist ? <span className="mb-header-artist">{track.artist}</span> : null}
+        <div className="mb-header-brand">
+          <span className="mb-wordmark">mewbeat</span>
+          {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
         </div>
         <div className="mb-header-actions">
-          {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
           <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>
             Autoplay
           </button>
@@ -146,16 +158,20 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
             Exit <kbd className="mb-kbd">Esc</kbd>
           </button>
         </div>
-        <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
-          <i ref={progressRef} />
-        </div>
       </header>
 
-      <div className="mb-stage">
-        <div className="mb-sky" aria-hidden="true" />
+      <div
+        className={`mb-stage${sad ? " mb-sad" : ""}${hud.feverActive ? " mb-fever" : ""}${pulseClass}`}
+        style={{ "--mb-vibe": stageVibe }}
+      >
+        <Stage />
+        {hud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
         <div className="mb-scene">
           <div className="mb-char">
-            <Mewbit pose={mewbitPose} effects={effectsLevel} />
+            <div className="mb-char-box">
+              <div className="mb-aura" aria-hidden="true" />
+              <Mewbit pose={mewbitPose} effects={effectsLevel} />
+            </div>
           </div>
 
           <div className="mb-highway-slot">
@@ -166,6 +182,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
                   <kbd key={code} className="mb-kbd mb-lanekey">{keyLabel(code)}</kbd>
                 ))}
               </div>
+              <div className="mb-fevertime" style={feverTimeStyle} aria-hidden="true" />
               {running ? <HighwayReadout hud={hud} /> : null}
               {stateCopy ? (
                 <div className="mb-state" role="status">
@@ -178,6 +195,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
           </div>
 
           <aside className="mb-side">
+            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} />
             <GameHud hud={hud} />
           </aside>
         </div>

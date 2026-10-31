@@ -55,6 +55,20 @@ export function HighwayReadout({ hud }) {
   );
 }
 
+// Track card in the right column. The progress bar lives here: the game hook writes into the <i> through progressRef.
+export function TrackCard({ track, difficulty, progressRef }) {
+  return (
+    <section className="mb-card mb-track" aria-label="Track">
+      <span className="mb-label mb-live">{`live · ${difficulty}`}</span>
+      <b className="mb-track-title">{track?.title ?? "No track"}</b>
+      {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
+      <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
+        <i ref={progressRef} />
+      </div>
+    </section>
+  );
+}
+
 export default function GameHud({ hud }) {
   const full = hud.vibe >= 1 && !hud.feverActive;
   const feverSeconds = useFeverSeconds(hud.feverActive, hud.feverLeftMs);
@@ -64,8 +78,8 @@ export default function GameHud({ hud }) {
     : { transform: `scaleX(${hud.vibe})`, transition: "transform 200ms ease-out" };
   return (
     <section className="mb-hud" aria-label="Score">
-      <div className="mb-hud-card">
-        <span className="mb-label">Score</span>
+      <div className="mb-card mb-hud-card">
+        <span className="mb-label">Your score</span>
         <div className="mb-hud-score">{formatScore(hud.score)}</div>
         <div className="mb-hud-stats">
           <div>

@@ -21,8 +21,10 @@ const MAX_PARTICLES = 80;
 
 const CYAN = "#67e3f4";
 const VIOLET = "#a78bfa";
-// Mockup lane colours: cyan, violet, violet, cyan.
-const LANE_COLORS = [CYAN, VIOLET, VIOLET, CYAN];
+const PINK = "#ff6ec7";
+const WHITE = "#f4f6f9";
+// Mockup v3 lane colours: cyan, violet, pink, white.
+const LANE_COLORS = [CYAN, VIOLET, PINK, WHITE];
 const JUDGEMENT_COLORS = { perfect: CYAN, great: VIOLET, good: "#c3cbd7", miss: "#ff8098" };
 
 function roundedRect(ctx, x, y, w, h, r) {
@@ -61,8 +63,9 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
 
   function drawLanes(feverActive, lanesDown, laneWidth, hitY) {
     ctx.clearRect(0, 0, width, height);
-    const top = feverActive ? "rgba(255, 110, 199, 0.12)" : "rgba(12, 14, 18, 0.25)";
-    const bottom = feverActive ? "rgba(255, 212, 121, 0.20)" : "rgba(12, 14, 18, 0.92)";
+    // The highway's dark gradient is CSS behind the canvas; the canvas only tints it during FEVER.
+    const top = feverActive ? "rgba(255, 110, 199, 0.12)" : "rgba(12, 14, 18, 0)";
+    const bottom = feverActive ? "rgba(255, 212, 121, 0.20)" : "rgba(12, 14, 18, 0)";
     const grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, top);
     grad.addColorStop(0.3, bottom);
