@@ -45,6 +45,8 @@ const { skipWithLearning } = require("../lavalink/skipLearning");
 const { cloneTrack, getLyricsState, playbackState, setLyricsState } = require("../lavalink/state");
 const { fetchFreestyleSurpriseTrack, selectSurpriseSeed } = require("../lavalink/surpriseMe");
 const Log = require("../logs/log");
+const { createMewbeatChannel } = require("../mewbeat/activityChannel");
+const { chartStore } = require("../mewbeat/chartStore");
 const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
@@ -602,6 +604,28 @@ function getActivityPosition(player, state, durationMs, now = Date.now()) {
   const duration = Number(durationMs) || Number.MAX_SAFE_INTEGER;
   return Math.max(0, Math.min(estimated, duration));
 }
+
+// The track the room is hearing, with the node that can analyse it. Null when
+// nothing plays.
+function readMewbeatPlayback(guildId) {
+  const player = getPlayer(guildId);
+  const state = playbackState.get(guildId);
+  const playback = resolveActivityPlayback(state?.currentTrack, player?.currentTrack);
+  if (!playback.track) return null;
+  return {
+    track: playback.track,
+    node: player?.node,
+    positionMs: getActivityPosition(player, state, playback.durationMs, Date.now()),
+    paused: Boolean(state?.paused || player?.isPaused),
+    durationMs: playback.durationMs,
+  };
+}
+
+const mewbeatChannel = createMewbeatChannel({
+  readPlayback: readMewbeatPlayback,
+  chartStore,
+  isUnlocked: (userId) => getMewbeatRecord(userId).unlocked,
+});
 
 function limitText(value, max = 200) {
   return String(value || "").trim().slice(0, max);
@@ -1267,6 +1291,13 @@ function createActivityServer(client) {
         if (message.type === "heartbeat") {
           touchActivitySession(socket.guildId);
           return sendSocket(socket, { type: "heartbeat", time: Date.now() });
+        }
+        if (typeof message.type === "string" && message.type.startsWith("mewbeat_")) {
+          const mewbeatLimit = consumeRateLimit(`ws-mewbeat:${socket.identity.id}`, { limit: 600, windowMs: 60_000 });
+          if (!mewbeatLimit.allowed) throw Object.assign(new Error("Too many mewbeat messages. Try again shortly."), { statusCode: 429 });
+          const reply = await mewbeatChannel.handle(socket.guildId, socket.identity.id, message);
+          if (reply) sendSocket(socket, reply);
+          return;
         }
         if (message.type === "action") {
           const actionLimit = consumeRateLimit(`ws-action:${socket.identity.id}`, { limit: 120, windowMs: 60_000 });

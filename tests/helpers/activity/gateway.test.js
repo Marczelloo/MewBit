@@ -298,3 +298,75 @@ test("Activity mewbeat unlock and settings are per-account, gated, and stay out 
 
   assert.equal(JSON.stringify(getActivityEvents(guildId)).toLowerCase().includes("mewbeat"), false);
 });
+
+test("Activity routes mewbeat_ messages to the mewbeat channel", async (t) => {
+  const previous = {
+    ACTIVITY_ENABLED: process.env.ACTIVITY_ENABLED,
+    ACTIVITY_ALLOW_DEV: process.env.ACTIVITY_ALLOW_DEV,
+    ACTIVITY_PORT: process.env.ACTIVITY_PORT,
+    ACTIVITY_DEV_GUILD_ID: process.env.ACTIVITY_DEV_GUILD_ID,
+    NODE_ENV: process.env.NODE_ENV,
+  };
+  const guildId = "activity-mewbeat-sync-guild";
+  Object.assign(process.env, {
+    ACTIVITY_ENABLED: "true",
+    ACTIVITY_ALLOW_DEV: "true",
+    ACTIVITY_PORT: "0",
+    ACTIVITY_DEV_GUILD_ID: guildId,
+    NODE_ENV: "test",
+  });
+  const fakePreferences = installFakePreferences();
+
+  const gateway = createActivityServer({ guilds: { cache: new Map() } });
+  const server = gateway.start();
+  t.after(() => {
+    gateway.stop();
+    resetActivitySessions();
+    resetActivityStateRevision(guildId);
+    fakePreferences.restore();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  await waitForListening(server);
+  const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}/api/activity/ws`);
+  t.after(() => socket.close());
+
+  const inbox = [];
+  const waiting = [];
+  socket.on("message", (raw) => {
+    inbox.push(JSON.parse(raw.toString()));
+    while (waiting.length) waiting.shift()();
+  });
+  async function nextMessage(types) {
+    const deadline = Date.now() + 2000;
+    for (;;) {
+      const index = inbox.findIndex((message) => types.includes(message.type));
+      if (index !== -1) return inbox.splice(index, 1)[0];
+      if (Date.now() > deadline) throw new Error(`No ${types.join("/")} message from the Activity socket.`);
+      await new Promise((resolve) => { waiting.push(resolve); setTimeout(resolve, 50); });
+    }
+  }
+
+  await new Promise((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+  socket.send(JSON.stringify({ type: "mewbeat_sync", id: "early", clientSentAt: 1 }));
+  assert.match((await nextMessage(["error"])).error, /authenticate/i);
+
+  socket.send(JSON.stringify({ type: "auth", guildId }));
+  await nextMessage(["state"]);
+
+  socket.send(JSON.stringify({ type: "mewbeat_sync", id: "sync-1", clientSentAt: 1234 }));
+  const reply = await nextMessage(["mewbeat_sync"]);
+  assert.equal(reply.id, "sync-1");
+  assert.equal(reply.clientSentAt, 1234);
+  assert.equal(typeof reply.serverNow, "number");
+  assert.equal(reply.anchor, null);
+
+  socket.send(JSON.stringify({ type: "mewbeat_chart", audioKey: "youtube:abc:1", difficulty: "easy" }));
+  assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
+});
