@@ -51,7 +51,7 @@ function setup({ ready = true, audioKey = "k" } = {}) {
   const scheduler = createScheduler();
   const sent = [];
   const calls = [];
-  const state = { ready, audioKey };
+  const state = { ready, audioKey, socketReady: true };
   const serverClock = {
     addSample: (sample) => calls.push(["addSample", sample]),
     ready: () => state.ready,
@@ -65,6 +65,7 @@ function setup({ ready = true, audioKey = "k" } = {}) {
   };
   const link = createMewbeatLink({
     send: (payload) => {
+      if (!state.socketReady) return false;
       sent.push({ at: scheduler.now(), payload });
       return true;
     },
@@ -146,6 +147,16 @@ test("requestChart dedupes while in flight", () => {
   assert.deepEqual(charts(sent)[0].payload, { type: "mewbeat_chart", audioKey: "k", difficulty: "normal" });
   link.requestChart("k", "hard");
   assert.equal(charts(sent).length, 2);
+});
+
+test("a chart request the socket refuses is not deduped against", () => {
+  const { link, sent, state } = setup();
+  link.start();
+  state.socketReady = false;
+  assert.equal(link.requestChart("k", "normal"), false);
+  state.socketReady = true;
+  assert.equal(link.requestChart("k", "normal"), true);
+  assert.equal(charts(sent).length, 1);
 });
 
 test("a ready reply notifies listeners and releases the dedupe key", () => {

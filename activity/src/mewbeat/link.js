@@ -96,16 +96,20 @@ export function createMewbeatLink({
     if (running) sendSync();
   }
 
-  function sendChartRequest(request) {
-    send({ type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty });
+  // A send the socket refused (not ready yet) releases the key, so the next
+  // requestChart goes out instead of being deduped against nothing.
+  function sendChartRequest(key, request) {
+    const sent = send({ type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty });
+    if (sent === false) releaseChart(key);
+    return sent !== false;
   }
 
   function requestChart(audioKey, difficulty) {
     const key = chartKey(audioKey, difficulty);
-    if (inflightCharts.has(key)) return;
+    if (inflightCharts.has(key)) return false;
     const request = { audioKey, difficulty };
     inflightCharts.set(key, request);
-    sendChartRequest(request);
+    return sendChartRequest(key, request);
   }
 
   function releaseChart(key) {
@@ -138,7 +142,7 @@ export function createMewbeatLink({
       chartRetries.set(key, setTimer(() => {
         chartRetries.delete(key);
         const request = inflightCharts.get(key);
-        if (request) sendChartRequest(request);
+        if (request) sendChartRequest(key, request);
       }, CHART_RETRY_MS));
     } else {
       releaseChart(key);
