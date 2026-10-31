@@ -779,7 +779,7 @@
   background: rgb(255 255 255 / 0.09);
 }
 .volume-inline-control,
-.bar-volume-control { position: relative; min-width: 0; overflow: visible; }
+.bar-volume-control { position: relative; min-width: 0; display: flex; align-items: center; overflow: visible; }
 .volume-inline-control { width: clamp(90px, 12vw, 170px); }
 .volume-inline-control .range-volume { width: 100%; }
 .bar-volume-control { width: 90px; flex: 0 1 90px; }
@@ -1104,7 +1104,7 @@
 .np-eyebrow.is-playing .np-bars i:nth-child(4) { animation-duration: 820ms; animation-delay: -120ms; }
 @keyframes np-eq { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
 
-.np h1 { --title-lines: 3; margin: 0; max-inline-size: 100%; font-size: clamp(30px, min(7.2cqi, 10dvh), 72px); line-height: 0.98; letter-spacing: -0.045em; overflow-wrap: break-word; hyphens: manual; text-wrap: balance; }
+.np h1 { --title-lines: 3; margin: 0; max-inline-size: 100%; font-size: clamp(30px, min(7.2cqi, 10dvh), 72px); line-height: 0.98; letter-spacing: -0.045em; overflow-wrap: break-word; hyphens: manual; text-wrap: pretty; }
 .np h1[data-length="long"] { font-size: clamp(26px, min(5.4cqi, 8dvh), 52px); line-height: 1.02; letter-spacing: -0.04em; }
 .np h1[data-length="xlong"] { --title-lines: 4; font-size: clamp(22px, min(4.4cqi, 6.4dvh), 38px); line-height: 1.06; letter-spacing: -0.03em; }
 .np-version { margin: clamp(6px, 1dvh, 10px) 0 0; color: var(--muted); font-size: clamp(15px, min(2.4cqi, 3dvh), 20px); line-height: 1.25; overflow-wrap: anywhere; }
@@ -1121,7 +1121,8 @@
 .np-progress .range::-webkit-slider-thumb { width: 12px; height: 12px; margin-top: -4px; }
 .np-progress .range::-moz-range-thumb { width: 12px; height: 12px; }
 
-.np-transport { margin-top: clamp(6px, 1.2dvh, 12px); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; }
+.now-playing-stage.np { max-width: 1120px; }
+.np-transport { margin-top: clamp(6px, 1.2dvh, 12px); display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .np-transport-main, .np-transport-side { min-width: 0; display: flex; align-items: center; gap: 4px; }
 .np-transport-main { gap: 6px; }
 .np .icon-button { width: 38px; height: 38px; border: 0; border-radius: 10px; color: var(--muted-strong); background: transparent; transition-property: background-color, color, transform; transition-duration: 140ms; transition-timing-function: var(--ease); }
@@ -1140,7 +1141,8 @@
 .np-play:disabled { cursor: wait; opacity: 0.74; }
 
 .np-volume { position: relative; display: inline-flex; align-items: center; gap: 4px; }
-.np-volume .volume-inline-control { width: 96px; flex: none; }
+.np-volume { min-width: 0; }
+.np-volume .volume-inline-control { width: 96px; min-width: 56px; flex: 0 1 96px; }
 .np .volume-mobile-trigger { display: none; }
 .np .volume-popover { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 12; display: none; align-items: center; padding: 10px 12px; border-radius: 12px; outline: 1px solid var(--line); background: var(--menu-surface); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 18px 44px rgb(0 0 0 / 0.55); opacity: 0; pointer-events: none; transform: translateY(4px); transition-property: opacity, transform; transition-duration: 160ms; transition-timing-function: var(--ease); }
 .np .volume-popover.is-open { opacity: 1; pointer-events: auto; transform: translateY(0); }
@@ -1188,7 +1190,14 @@
 .player-more-trigger.is-active { color: var(--text); background: rgb(255 255 255 / 0.08); }
 
 /* ---- Main player: stacked layouts ------------------------------------- */
-@container (max-width: 640px) {
+/* Two columns but a narrow body: the slider moves into the popover so the
+   transport keeps one row instead of wrapping its utilities underneath. */
+@container (min-width: 721px) and (max-width: 840px) {
+  .np-volume .volume-inline-control { display: none; }
+  .np .volume-mobile-trigger { display: inline-grid; }
+  .np .volume-popover { display: flex; }
+}
+@container (max-width: 720px) {
   .np-grid { grid-template-columns: minmax(0, 1fr); justify-items: stretch; gap: 20px; }
   .np-cover { width: clamp(150px, min(52cqi, 34dvh), 280px); justify-self: center; }
   .np h1 { font-size: clamp(28px, min(9cqi, 8dvh), 48px); }
@@ -1196,7 +1205,7 @@
   .np h1[data-length="xlong"] { font-size: clamp(21px, min(6cqi, 6dvh), 30px); }
   .np-artist { font-size: clamp(16px, 4cqi, 20px); }
   .np-version { font-size: clamp(14px, 3.4cqi, 17px); }
-  .np-transport { justify-content: center; }
+  .np-transport { flex-wrap: wrap; justify-content: center; }
   .np-transport-side { justify-content: center; }
 }
 @container (max-width: 480px) {
