@@ -342,6 +342,50 @@ describe("mewbeat analysis client", () => {
     assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).tempo, 90);
   });
 
+  describe("statusOf", () => {
+    it("is null when nothing is known, and for tracks without an audio key", () => {
+      assert.strictEqual(client.statusOf(makeTrack()), null);
+      assert.strictEqual(client.statusOf(makeTrack({ isStream: true })), null);
+    });
+
+    it("reports an uncharted track with the plugin's reason, now and from disk", async () => {
+      const track = makeTrack();
+      await client.getFeatures(track, fakeNode(() => ({ error: "uncharted", reason: "too_long" })));
+      assert.deepStrictEqual(client.statusOf(track), { status: "uncharted", reason: "too_long" });
+
+      const fresh = createAnalysisClient({ dir, now: () => clock, log: silentLog });
+      assert.deepStrictEqual(fresh.statusOf(track), { status: "uncharted", reason: "too_long" });
+    });
+
+    it("reports busy for a 503 and for a timeout until the busy TTL passes", async () => {
+      const track = makeTrack();
+      await client.getFeatures(track, fakeNode(() => ({ error: "busy" })));
+      assert.deepStrictEqual(client.statusOf(track), { status: "busy" });
+      clock += 30_000 + 1;
+      assert.strictEqual(client.statusOf(track), null);
+
+      const impatient = createAnalysisClient({ dir, now: () => clock, requestTimeoutMs: 10, log: silentLog });
+      await impatient.getFeatures(track, fakeNode(() => new Promise(() => {})));
+      assert.deepStrictEqual(impatient.statusOf(track), { status: "busy" });
+    });
+
+    it("reports failed for other failures until the failure TTL passes", async () => {
+      const track = makeTrack();
+      await client.getFeatures(track, fakeNode(() => ({ error: "decode_failed" })));
+      assert.deepStrictEqual(client.statusOf(track), { status: "failed" });
+      clock += 10 * MINUTE;
+      assert.deepStrictEqual(client.statusOf(track), { status: "failed" });
+      clock += 1;
+      assert.strictEqual(client.statusOf(track), null);
+    });
+
+    it("is null for a track whose features are cached", async () => {
+      const track = makeTrack();
+      await client.getFeatures(track, fakeNode(() => featuresFor(track)));
+      assert.strictEqual(client.statusOf(track), null);
+    });
+  });
+
   describe("peek", () => {
     it("returns null when nothing is cached", () => {
       assert.strictEqual(client.peek(makeTrack()), null);

@@ -64,8 +64,8 @@ function withTimeout(promise, timeoutMs) {
 
 function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs = REQUEST_TIMEOUT_MS }) {
   const featuresByKey = new Map();
-  const unchartedKeys = new Set();
-  const retryAfterByKey = new Map();
+  const unchartedKeys = new Map(); // key -> reason
+  const blockedByKey = new Map(); // key -> { retryAfter, kind: "busy" | "failed" }
   const pendingByKey = new Map();
 
   // Small LRU over full feature documents; disk is the backing store.
@@ -86,19 +86,20 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
 
   function remember(key, entry) {
     if (entry.features) writeMemory(key, entry.features);
-    else unchartedKeys.add(key);
+    else unchartedKeys.set(key, entry.reason);
   }
 
-  function isBlocked(key) {
-    const retryAfter = retryAfterByKey.get(key);
-    if (retryAfter === undefined) return false;
-    if (now() <= retryAfter) return true;
-    retryAfterByKey.delete(key);
-    return false;
+  // The live (unexpired) negative-cache entry for a key, if any.
+  function blockOf(key) {
+    const block = blockedByKey.get(key);
+    if (!block) return null;
+    if (now() <= block.retryAfter) return block;
+    blockedByKey.delete(key);
+    return null;
   }
 
-  function failFor(key, ttlMs) {
-    retryAfterByKey.set(key, now() + ttlMs);
+  function failFor(key, ttlMs, kind = "failed") {
+    blockedByKey.set(key, { retryAfter: now() + ttlMs, kind });
     return null;
   }
 
@@ -112,7 +113,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
       if (error instanceof RequestTimeout) {
         // The plugin may still be working on it, so retry soon rather than in 10 minutes.
         log.warning("mewbeat analysis request timed out", key);
-        return failFor(key, BUSY_TTL_MS);
+        return failFor(key, BUSY_TTL_MS, "busy");
       }
       log.warning("mewbeat analysis request failed", error?.message);
       return failFor(key, FAILURE_TTL_MS);
@@ -141,7 +142,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     }
 
     if (body?.error === "uncharted") {
-      unchartedKeys.add(key);
+      unchartedKeys.set(key, body.reason);
       try {
         await writeJsonAtomic(featuresPathOf(dir, key), { uncharted: true, reason: body.reason });
       } catch (error) {
@@ -150,7 +151,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
       return null;
     }
 
-    if (body?.error === "busy") return failFor(key, BUSY_TTL_MS);
+    if (body?.error === "busy") return failFor(key, BUSY_TTL_MS, "busy");
 
     log.warning("mewbeat analysis failed", body?.error ?? "no response", body?.message);
     return failFor(key, FAILURE_TTL_MS);
@@ -175,7 +176,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     if (!key || unchartedKeys.has(key)) return Promise.resolve(null);
     const cached = readMemory(key);
     if (cached) return Promise.resolve(cached);
-    if (isBlocked(key)) return Promise.resolve(null);
+    if (blockOf(key)) return Promise.resolve(null);
     const pending = pendingByKey.get(key);
     if (pending) return pending;
 
@@ -190,7 +191,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     if (!key || unchartedKeys.has(key)) return null;
     const cached = readMemory(key);
     if (cached) return cached;
-    if (isBlocked(key)) return null;
+    if (blockOf(key)) return null;
     try {
       const entry = parseCacheFile(fs.readFileSync(featuresPathOf(dir, key), "utf8"));
       if (!entry) return null;
@@ -201,7 +202,28 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     }
   }
 
-  return { getFeatures, peek };
+  // Why getFeatures/peek came back empty, or null when there is no negative
+  // information (not asked yet, or the entry expired). Memory, then the
+  // on-disk uncharted marker; never reaches Lavalink.
+  function statusOf(track) {
+    const key = audioKeyOf(track);
+    if (!key) return null;
+    if (unchartedKeys.has(key)) return { status: "uncharted", reason: unchartedKeys.get(key) };
+    const block = blockOf(key);
+    if (block) return { status: block.kind };
+    try {
+      const entry = parseCacheFile(fs.readFileSync(featuresPathOf(dir, key), "utf8"));
+      if (entry?.uncharted) {
+        remember(key, entry);
+        return { status: "uncharted", reason: entry.reason };
+      }
+    } catch {
+      // no file: nothing known
+    }
+    return null;
+  }
+
+  return { getFeatures, peek, statusOf };
 }
 
 module.exports = {

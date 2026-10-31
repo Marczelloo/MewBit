@@ -18,7 +18,8 @@ function makeTrack(info) {
   };
 }
 
-function fakeAnalysis(features = makeFeatures()) {
+// `status` is what the analysis client would say about a track it has no features for.
+function fakeAnalysis(features = makeFeatures(), status = null) {
   const calls = [];
   return {
     calls,
@@ -26,6 +27,7 @@ function fakeAnalysis(features = makeFeatures()) {
       calls.push({ track, node });
       return features;
     },
+    statusOf: () => status,
   };
 }
 
@@ -60,7 +62,8 @@ describe("mewbeat chart store", () => {
     const first = await store.getCharts(track, "node");
     const second = await store.getCharts(track, "node");
 
-    assert.ok(first.easy.notes.length > 0);
+    assert.strictEqual(first.status, "ready");
+    assert.ok(first.charts.easy.notes.length > 0);
     assert.deepStrictEqual(second, first);
     assert.strictEqual(generate.calls, 1);
     assert.ok(fs.existsSync(chartsPath()));
@@ -72,8 +75,8 @@ describe("mewbeat chart store", () => {
     const generate = spiedGenerate();
     const store = createChartStore({ dir, analysis, generate, log: quietLog });
 
-    assert.ok(store.peekCharts(track));
-    assert.ok(await store.getCharts(track, "node"));
+    assert.strictEqual(store.peekCharts(track).status, "ready");
+    assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
     assert.strictEqual(analysis.calls.length, 0);
     assert.strictEqual(generate.calls, 0);
   });
@@ -85,7 +88,7 @@ describe("mewbeat chart store", () => {
     const store = createChartStore({ dir, analysis: fakeAnalysis(), generate, log: quietLog });
 
     assert.strictEqual(store.peekCharts(track), null);
-    const charts = await store.getCharts(track, "node");
+    const { charts } = await store.getCharts(track, "node");
 
     assert.ok(charts.hard.notes.length > 0);
     assert.strictEqual(generate.calls, 1);
@@ -96,7 +99,7 @@ describe("mewbeat chart store", () => {
     fs.writeFileSync(chartsPath(), "{not json");
     const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
 
-    const charts = await store.getCharts(track, "node");
+    const { charts } = await store.getCharts(track, "node");
 
     assert.ok(charts.normal.notes.length > 0);
     const backups = fs.readdirSync(chartsDir()).filter((name) => name.includes(".corrupt-"));
@@ -110,25 +113,97 @@ describe("mewbeat chart store", () => {
     fs.writeFileSync(chartsPath(), JSON.stringify(other));
     const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
 
-    const charts = await store.getCharts(track, "node");
+    const { charts } = await store.getCharts(track, "node");
 
     assert.strictEqual(charts.easy.audioKey, audioKeyOf(track));
   });
 
-  it("nullFeaturesGiveNull", async () => {
-    const store = createChartStore({ dir, analysis: fakeAnalysis(null), log: quietLog });
+  it("reports pending while the plugin is busy, without persisting anything", async () => {
+    const store = createChartStore({ dir, analysis: fakeAnalysis(null, { status: "busy" }), log: quietLog });
 
-    assert.strictEqual(await store.getCharts(track, "node"), null);
+    assert.deepStrictEqual(await store.getCharts(track, "node"), { status: "pending" });
+    assert.strictEqual(fs.existsSync(chartsPath()), false);
+    assert.strictEqual(store.peekCharts(track), null);
+  });
+
+  it("reports failed when analysis failed or knows nothing", async () => {
+    const failed = createChartStore({ dir, analysis: fakeAnalysis(null, { status: "failed" }), log: quietLog });
+    assert.deepStrictEqual(await failed.getCharts(track, "node"), { status: "failed" });
+
+    const unknown = createChartStore({ dir, analysis: fakeAnalysis(null, null), log: quietLog });
+    assert.deepStrictEqual(await unknown.getCharts(track, "node"), { status: "failed" });
+  });
+
+  it("passes the analysis client uncharted reason through", async () => {
+    const analysis = fakeAnalysis(null, { status: "uncharted", reason: "too_long" });
+    const store = createChartStore({ dir, analysis, log: quietLog });
+
+    assert.deepStrictEqual(await store.getCharts(track, "node"), { status: "uncharted", reason: "too_long" });
     assert.strictEqual(fs.existsSync(chartsPath()), false);
   });
 
-  it("returns null for tracks without an audio key", async () => {
+  it("reports tracks without an audio key as uncharted without analysing", async () => {
     const analysis = fakeAnalysis();
     const store = createChartStore({ dir, analysis, log: quietLog });
+    const stream = makeTrack({ isStream: true });
 
-    assert.strictEqual(await store.getCharts(makeTrack({ isStream: true }), "node"), null);
-    assert.strictEqual(store.peekCharts(makeTrack({ isStream: true })), null);
+    assert.deepStrictEqual(await store.getCharts(stream, "node"), { status: "uncharted", reason: "no_audio_key" });
+    assert.strictEqual(store.peekCharts(stream), null);
     assert.strictEqual(analysis.calls.length, 0);
+  });
+
+  describe("too few notes", () => {
+    const sparse = () => makeFeatures({ durationMs: 8000, onsetEveryBeats: 4 });
+    const expected = { status: "uncharted", reason: "too_few_notes" };
+
+    it("persists an uncharted marker and neither analyses nor generates again", async () => {
+      const analysis = fakeAnalysis(sparse());
+      const generate = spiedGenerate();
+      const store = createChartStore({ dir, analysis, generate, log: quietLog });
+
+      assert.deepStrictEqual(await store.getCharts(track, "node"), expected);
+      assert.deepStrictEqual(await store.getCharts(track, "node"), expected);
+      assert.strictEqual(analysis.calls.length, 1);
+      assert.strictEqual(generate.calls, 1);
+      assert.deepStrictEqual(JSON.parse(fs.readFileSync(chartsPath(), "utf8")), { uncharted: true, reason: "too_few_notes" });
+      assert.deepStrictEqual(store.peekCharts(track), expected);
+    });
+
+    it("is served from disk to a fresh store without analysing", async () => {
+      await createChartStore({ dir, analysis: fakeAnalysis(sparse()), log: quietLog }).getCharts(track, "node");
+      const analysis = fakeAnalysis();
+      const generate = spiedGenerate();
+      const store = createChartStore({ dir, analysis, generate, log: quietLog });
+
+      assert.deepStrictEqual(store.peekCharts(track), expected);
+      assert.deepStrictEqual(await store.getCharts(track, "node"), expected);
+      assert.strictEqual(analysis.calls.length, 0);
+      assert.strictEqual(generate.calls, 0);
+    });
+  });
+
+  describe("peekCharts", () => {
+    it("is null when nothing is known and never analyses", () => {
+      const analysis = fakeAnalysis();
+      const store = createChartStore({ dir, analysis, log: quietLog });
+
+      assert.strictEqual(store.peekCharts(track), null);
+      assert.strictEqual(analysis.calls.length, 0);
+    });
+
+    it("reports an uncharted verdict the analysis client already holds", () => {
+      const analysis = fakeAnalysis(null, { status: "uncharted", reason: "too_short" });
+      const store = createChartStore({ dir, analysis, log: quietLog });
+
+      assert.deepStrictEqual(store.peekCharts(track), { status: "uncharted", reason: "too_short" });
+    });
+
+    it("does not report busy or failed", () => {
+      for (const status of ["busy", "failed"]) {
+        const store = createChartStore({ dir, analysis: fakeAnalysis(null, { status }), log: quietLog });
+        assert.strictEqual(store.peekCharts(track), null);
+      }
+    });
   });
 
   it("generates once for concurrent requests", async () => {
@@ -138,6 +213,7 @@ describe("mewbeat chart store", () => {
     const [a, b] = await Promise.all([store.getCharts(track, "node"), store.getCharts(track, "node")]);
 
     assert.strictEqual(a, b);
+    assert.strictEqual(a.status, "ready");
     assert.strictEqual(generate.calls, 1);
   });
 
@@ -145,9 +221,9 @@ describe("mewbeat chart store", () => {
     fs.writeFileSync(chartsDir(), "a file where the charts directory should be");
     const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
 
-    const charts = await store.getCharts(track, "node");
+    const { charts } = await store.getCharts(track, "node");
 
     assert.ok(charts.easy.notes.length > 0);
-    assert.strictEqual(store.peekCharts(track), charts);
+    assert.strictEqual(store.peekCharts(track).charts, charts);
   });
 });

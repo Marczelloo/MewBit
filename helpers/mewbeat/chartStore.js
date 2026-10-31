@@ -9,6 +9,8 @@ const { GENERATOR_VERSION, generateAll } = require("./charts/generate");
 
 const DIFFICULTIES = ["easy", "normal", "hard"];
 const MEMORY_CAPACITY = 16;
+const NO_AUDIO_KEY = "no_audio_key";
+const TOO_FEW_NOTES = "too_few_notes";
 
 // The generator version is part of the file name, so a version bump simply
 // stops finding the old files and regenerates from the cached features.
@@ -21,19 +23,24 @@ function isChartSet(value, key) {
     value?.[difficulty]?.audioKey === key && Array.isArray(value[difficulty].notes));
 }
 
-// Returns the charts, null for a miss, or false for a file that exists but is
-// unusable (unparseable, or charts for some other audio).
+// Returns the charts, an `{ uncharted: true, reason }` marker, or false for a
+// file that is unusable (unparseable, or charts for some other audio).
 function parseChartsFile(text, key) {
   try {
     const value = JSON.parse(text);
+    if (value?.uncharted === true) return { uncharted: true, reason: value.reason };
     return isChartSet(value, key) ? value : false;
   } catch {
     return false;
   }
 }
 
+const READY = (charts) => ({ status: "ready", charts });
+const UNCHARTED = (reason) => ({ status: "uncharted", reason });
+
 function createChartStore({ dir, analysis, generate = generateAll, log = Log }) {
   const chartsByKey = new Map();
+  const unchartedByKey = new Map(); // key -> reason
   const pendingByKey = new Map();
 
   function readMemory(key) {
@@ -51,6 +58,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     if (chartsByKey.size > MEMORY_CAPACITY) chartsByKey.delete(chartsByKey.keys().next().value);
   }
 
+  // Returns charts, an uncharted marker, null (no file) or false (unusable file).
   function readDisk(key) {
     let text;
     try {
@@ -61,11 +69,30 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     return parseChartsFile(text, key);
   }
 
+  // Memory, then disk, for a verdict that needs no analysis: ready or uncharted.
+  function known(key) {
+    const cached = readMemory(key);
+    if (cached) return READY(cached);
+    if (unchartedByKey.has(key)) return UNCHARTED(unchartedByKey.get(key));
+    const stored = readDisk(key);
+    if (!stored) return null;
+    if (stored.uncharted) {
+      unchartedByKey.set(key, stored.reason);
+      return UNCHARTED(stored.reason);
+    }
+    writeMemory(key, stored);
+    return READY(stored);
+  }
+
   async function resolve(track, key, node) {
     const stored = readDisk(key);
     if (stored) {
+      if (stored.uncharted) {
+        unchartedByKey.set(key, stored.reason);
+        return UNCHARTED(stored.reason);
+      }
       writeMemory(key, stored);
-      return stored;
+      return READY(stored);
     }
     if (stored === false) {
       await backupCorruptFile(chartsPathOf(dir, key)).catch((error) => {
@@ -74,22 +101,42 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     }
 
     const features = await analysis.getFeatures(track, node);
-    if (!features) return null;
+    if (!features) return statusWithoutFeatures(track);
+
     const charts = generate(features, key);
-    if (!charts) return null;
+    if (!charts) {
+      // Remembered like any chart so a spoken-word track is not regenerated per request.
+      unchartedByKey.set(key, TOO_FEW_NOTES);
+      await persist(key, { uncharted: true, reason: TOO_FEW_NOTES }, "uncharted marker");
+      return UNCHARTED(TOO_FEW_NOTES);
+    }
 
     writeMemory(key, charts);
-    await writeJsonAtomic(chartsPathOf(dir, key), charts).catch((error) => {
-      log.warning("mewbeat could not persist charts", error?.message);
+    await persist(key, charts, "charts");
+    return READY(charts);
+  }
+
+  async function persist(key, value, what) {
+    await writeJsonAtomic(chartsPathOf(dir, key), value).catch((error) => {
+      log.warning(`mewbeat could not persist ${what}`, error?.message);
     });
-    return charts;
+  }
+
+  // Why the analysis client had no features: busy means try again soon, an
+  // uncharted verdict is final, anything else (or nothing known) is a failure.
+  function statusWithoutFeatures(track) {
+    const status = analysis.statusOf(track);
+    if (status?.status === "busy") return { status: "pending" };
+    if (status?.status === "uncharted") return UNCHARTED(status.reason);
+    return { status: "failed" };
   }
 
   function getCharts(track, node) {
     const key = audioKeyOf(track);
-    if (!key) return Promise.resolve(null);
+    if (!key) return Promise.resolve(UNCHARTED(NO_AUDIO_KEY));
     const cached = readMemory(key);
-    if (cached) return Promise.resolve(cached);
+    if (cached) return Promise.resolve(READY(cached));
+    if (unchartedByKey.has(key)) return Promise.resolve(UNCHARTED(unchartedByKey.get(key)));
     const pending = pendingByKey.get(key);
     if (pending) return pending;
 
@@ -98,16 +145,15 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     return request;
   }
 
-  // Synchronous lookup for UI hints; never analyses or generates.
+  // Synchronous lookup for UI hints; never analyses or generates. Null means
+  // nothing is known yet (busy and failed are not reported here).
   function peekCharts(track) {
     const key = audioKeyOf(track);
     if (!key) return null;
-    const cached = readMemory(key);
-    if (cached) return cached;
-    const stored = readDisk(key);
-    if (!stored) return null;
-    writeMemory(key, stored);
-    return stored;
+    const verdict = known(key);
+    if (verdict) return verdict;
+    const status = analysis.statusOf(track);
+    return status?.status === "uncharted" ? UNCHARTED(status.reason) : null;
   }
 
   return { getCharts, peekCharts };
