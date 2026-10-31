@@ -208,3 +208,23 @@ test("song clock: a missing duration skips the upper clamp", () => {
   assert.equal(h.clock.songTimeAt(9000), 4900);
   assert.equal(h.clock.songTimeAt(1000), 0);
 });
+
+test("song clock: a server offset change between anchors does not move song time", () => {
+  let perf = 5000;
+  let offset = 0;
+  const clock = createSongClock({ serverTimeAt: (p) => p + offset }, { now: () => perf });
+  clock.setAnchor(playing(1000, 5000));
+  offset = -40;
+  assert.equal(clock.songTimeAt(5500), 1500);
+  // The next anchor slews the drift out instead of jumping.
+  perf = 6000;
+  assert.equal(clock.setAnchor(playing(1960, 6000)), "slew");
+  assert.equal(clock.songTimeAt(6000), 2000);
+});
+
+test("song clock: a perf time before the slew start does not extrapolate the correction", () => {
+  const h = songClockAt();
+  h.setAnchor(playing(1000, 5000), 5000);
+  h.setAnchor(playing(2030, 6000), 6000);
+  assert.equal(h.clock.songTimeAt(5990), 1990);
+});

@@ -46,18 +46,23 @@ export function createSongClock(
   let anchor = null;
   let slewFrom = 0; // perf time the current slew started at
   let slewDelta = 0; // correction added to the new line at slewFrom, fading to 0
+  // Server offset frozen at the anchor, so a new clock sample cannot move the
+  // line between anchors; the next anchor's slew absorbs the drift instead.
+  let lineOffset = 0;
 
   // Unclamped, so slew maths never sees a clamp's kink.
   function rawAt(perfMs) {
     if (anchor.paused) return anchor.positionMs;
-    const line = anchor.positionMs + (serverClock.serverTimeAt(perfMs) - anchor.at);
-    return line + slewDelta * Math.max(0, 1 - (perfMs - slewFrom) / slewMs);
+    const line = anchor.positionMs + (perfMs + lineOffset - anchor.at);
+    const fade = Math.min(1, Math.max(0, 1 - (perfMs - slewFrom) / slewMs));
+    return line + slewDelta * fade;
   }
 
-  function rebase(next, correction = 0) {
+  function rebase(next, correction = 0, t = now()) {
     anchor = next;
-    slewFrom = now();
+    slewFrom = t;
     slewDelta = correction;
+    lineOffset = serverClock.serverTimeAt(t) - t;
   }
 
   function setAnchor(next) {
@@ -82,15 +87,15 @@ export function createSongClock(
     const current = rawAt(t0);
     if (next.paused) {
       const moved = next.positionMs - current;
-      rebase(next);
+      rebase(next, 0, t0);
       return Math.abs(moved) > snapMs ? "snap" : "slew";
     }
     const correction = current - (next.positionMs + (serverClock.serverTimeAt(t0) - next.at));
     if (Math.abs(correction) > snapMs) {
-      rebase(next);
+      rebase(next, 0, t0);
       return "snap";
     }
-    rebase(next, correction);
+    rebase(next, correction, t0);
     return "slew";
   }
 
