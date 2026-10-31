@@ -1,0 +1,460 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { approachMsFor, createHighwayRenderer } from "./highway.js";
+import { createKeyRouter } from "./input.js";
+import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
+import { createRun } from "./run.js";
+
+// Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
+const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full" };
+
+const MISS_POSE_MS = 600;
+const CRUSHED_POSE_MS = 1200;
+const CRUSH_COMBO = 25;
+const MILESTONE_POSE_MS = 900;
+const MISS_LOOKBACK_MS = 500; // misses keep falling past the line this long before the renderer drops them
+const FLASH_KEEP_MS = 400;
+
+const EMPTY_COUNTS = { perfect: 0, great: 0, good: 0, miss: 0 };
+export const EMPTY_HUD = {
+  score: 0,
+  combo: 0,
+  maxCombo: 0,
+  multiplier: 1,
+  vibe: 0,
+  feverActive: false,
+  feverLeftMs: 0,
+  accuracy: null,
+  grade: null,
+  counts: EMPTY_COUNTS,
+  fevers: 0,
+  judged: 0,
+  total: 0,
+  unranked: false,
+  judgement: null,
+};
+
+function settingsOf(settings) {
+  const merged = { ...DEFAULT_SETTINGS, ...settings };
+  if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
+  return merged;
+}
+
+// Which Mewbit pose to show. FEVER beats a recent miss, which beats a multiplier milestone,
+// which beats the combo-driven vibe levels.
+export function poseFor({ phase, feverActive, now, missUntil, crushed, milestoneUntil, combo }) {
+  if (phase === "charting") return "charting";
+  if (phase !== "playing") return "neutral";
+  if (feverActive) return "fever";
+  if (now < missUntil) return crushed ? "crushed" : "miss";
+  if (now < milestoneUntil) return "milestone";
+  if (combo >= 50) return "vibe3";
+  if (combo >= 25) return "vibe2";
+  if (combo >= 10) return "vibe1";
+  return "neutral";
+}
+
+// Drives one mewbeat session: listens to the link, charts each new track, runs the game on the
+// song clock and renders it. The link must already be started when this mounts its effects (the
+// mock link emits its first anchor from start()); it reads the current state on mount instead of
+// waiting for events it may have missed.
+export function useMewbeatGame({ link, settings, effects = "full", trackInfo = null, onExit }) {
+  const cfg = settingsOf(settings);
+  const prefersReduced = usePrefersReducedMotion();
+  // prefers-reduced-motion forces at most "reduced"; "off" always wins.
+  const effectsLevel = effects === "off" ? "off" : prefersReduced ? "reduced" : effects;
+
+  const [phase, setPhaseState] = useState("connecting");
+  const [hud, setHud] = useState(EMPTY_HUD);
+  const [endSummary, setEndSummary] = useState(null);
+  const [mewbitPose, setMewbitPose] = useState("neutral");
+  const [autoplay, setAutoplayState] = useState(false);
+
+  const canvasRef = useRef(null);
+  const progressRef = useRef(null);
+  const rendererRef = useRef(null);
+  const phaseRef = useRef("connecting");
+  const resumePhaseRef = useRef("connecting"); // what "offline" interrupted
+  const runRef = useRef(null);
+  const chartRef = useRef(null);
+  const runAutoplayRef = useRef(false);
+  const autoplayRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const lastSongMsRef = useRef(0);
+  const lanesDownRef = useRef([false, false, false, false]);
+  const flashesRef = useRef([]);
+  const judgementRef = useRef(null);
+  const judgementIdRef = useRef(0);
+  const comboRef = useRef(0);
+  const multiplierRef = useRef(1);
+  const feverActiveRef = useRef(false);
+  const missUntilRef = useRef(0);
+  const crushedRef = useRef(false);
+  const milestoneUntilRef = useRef(0);
+  const poseRef = useRef("neutral");
+  const runTrackRef = useRef(null);
+  const redrawRef = useRef(false); // a resize wipes the canvas, which a paused game must repaint once
+
+  // Latest props for the long-lived callbacks below.
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  const trackRef = useRef(trackInfo);
+  trackRef.current = trackInfo;
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
+  const keysKey = cfg.keys.join("|");
+
+  const setPhase = useCallback((next) => {
+    phaseRef.current = next;
+    setPhaseState(next);
+  }, []);
+
+  useEffect(() => {
+    link.setTrackInfo?.(trackInfo);
+  }, [link, trackInfo]);
+
+  // ---- link events, run lifecycle, render loop ----
+  useEffect(() => {
+    const songClock = link.songClock;
+
+    function resetRunState() {
+      lanesDownRef.current = [false, false, false, false];
+      flashesRef.current = [];
+      judgementRef.current = null;
+      comboRef.current = 0;
+      multiplierRef.current = 1;
+      feverActiveRef.current = false;
+      missUntilRef.current = 0;
+      crushedRef.current = false;
+      milestoneUntilRef.current = 0;
+      dirtyRef.current = false;
+    }
+
+    function toHud(snap) {
+      const { hits, ranked, ...rest } = snap;
+      const skipped = chartRef.current ? snap.total < chartRef.current.notes.length : false;
+      return { ...rest, unranked: runAutoplayRef.current || skipped, judgement: judgementRef.current };
+    }
+
+    function startRun() {
+      const chart = chartRef.current;
+      const songMs = songClock.songTimeAt(performance.now());
+      if (!chart || songMs === null) return;
+      const run = createRun({
+        chart,
+        startSongMs: songMs,
+        offsetMs: cfgRef.current.offsetMs,
+        autoplay: autoplayRef.current,
+      });
+      runRef.current = run;
+      runAutoplayRef.current = autoplayRef.current;
+      runTrackRef.current = trackRef.current;
+      lastSongMsRef.current = songMs;
+      resetRunState();
+      setEndSummary(null);
+      const snap = run.snapshot(songMs);
+      multiplierRef.current = snap.multiplier;
+      setHud(toHud(snap));
+      setPhase(songClock.paused() ? "paused" : "playing");
+    }
+
+    // Drops the current run. A run that judged at least one note leaves its end card.
+    function endRun() {
+      const run = runRef.current;
+      if (!run) return;
+      runRef.current = null;
+      const snap = run.snapshot(lastSongMsRef.current);
+      if (snap.judged >= 1) {
+        const { hits, ranked, ...rest } = snap;
+        setEndSummary({ ...rest, title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null });
+        setHud(toHud(snap));
+      } else {
+        setHud(EMPTY_HUD);
+      }
+    }
+
+    function beginCharting() {
+      const key = songClock.audioKey();
+      if (!key) return;
+      const status = link.status();
+      if (status !== "live") {
+        setPhase(status === "offline" ? "offline" : "connecting");
+        return;
+      }
+      setPhase("charting");
+      link.requestChart(key, cfgRef.current.liveDifficulty);
+    }
+
+    // Applies run events: counters for the pose and flashes, and marks the HUD stale.
+    // Returns true when the run ended.
+    function handleEvents(events, heardMs) {
+      let ended = false;
+      for (const event of events) {
+        if (event.kind === "hit") {
+          comboRef.current += 1;
+          flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
+          judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
+        } else if (event.kind === "miss") {
+          crushedRef.current = comboRef.current >= CRUSH_COMBO;
+          missUntilRef.current = performance.now() + (crushedRef.current ? CRUSHED_POSE_MS : MISS_POSE_MS);
+          comboRef.current = 0;
+          judgementRef.current = { text: "MISS", kind: "miss", id: ++judgementIdRef.current };
+        } else if (event.kind === "end") {
+          ended = true;
+        }
+        dirtyRef.current = true;
+      }
+      return ended;
+    }
+
+    function flushHud(run, songMs) {
+      dirtyRef.current = false;
+      const snap = run.snapshot(songMs);
+      if (snap.multiplier > multiplierRef.current) milestoneUntilRef.current = performance.now() + MILESTONE_POSE_MS;
+      multiplierRef.current = snap.multiplier;
+      feverActiveRef.current = snap.feverActive;
+      setHud(toHud(snap));
+      // Autoplay plays the whole game, FEVER included.
+      if (autoplayRef.current && snap.vibe >= 1 && !snap.feverActive) {
+        const fever = run.fever(songMs);
+        if (fever) handleEvents([fever], run.heardTime(songMs));
+      }
+    }
+
+    // ---- link subscriptions ----
+    function reconcile() {
+      if (runRef.current) return;
+      if (songClock.audioKey()) beginCharting();
+    }
+
+    const offAnchor = link.onAnchor((result) => {
+      switch (result) {
+        case "init":
+        case "keyChange":
+          endRun();
+          chartRef.current = null;
+          beginCharting();
+          break;
+        case "clear":
+          endRun();
+          chartRef.current = null;
+          setPhase("idle");
+          break;
+        case "pause":
+        case "resume":
+          if (runRef.current) setPhase(result === "pause" ? "paused" : "playing");
+          break;
+        case "snap": {
+          const songMs = songClock.songTimeAt(performance.now());
+          if (runRef.current && songMs !== null) {
+            runRef.current.jump(songMs);
+            dirtyRef.current = true;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    });
+
+    const offChart = link.onChart((event) => {
+      if (phaseRef.current !== "charting") return;
+      if (event.audioKey !== songClock.audioKey() || event.difficulty !== cfgRef.current.liveDifficulty) return;
+      if (event.status === "ready" && event.chart?.notes) {
+        chartRef.current = event.chart;
+        startRun();
+      } else if (event.status === "uncharted") {
+        setPhase("uncharted");
+      } else if (event.status === "failed") {
+        setPhase("failed");
+      }
+      // "pending" keeps charting; "stale" belongs to a track that is already gone.
+    });
+
+    const offStatus = link.onStatus((status) => {
+      if (status === "offline") {
+        if (runRef.current || phaseRef.current === "offline") return;
+        resumePhaseRef.current = phaseRef.current;
+        setPhase("offline");
+      } else if (status === "live" && (phaseRef.current === "offline" || phaseRef.current === "connecting")) {
+        if (!songClock.audioKey()) {
+          setPhase(phaseRef.current === "offline" ? "idle" : "connecting");
+        } else if (["uncharted", "failed", "ended", "idle"].includes(resumePhaseRef.current)) {
+          setPhase(resumePhaseRef.current);
+        } else {
+          // A request sent before the drop is never answered; restart the link so it can go out again.
+          if (phaseRef.current === "offline" && resumePhaseRef.current === "charting") {
+            link.stop();
+            link.start();
+          }
+          beginCharting();
+        }
+        resumePhaseRef.current = "connecting";
+      }
+    });
+
+    reconcile();
+
+    // ---- input ----
+    const route = createKeyRouter({
+      keys: cfgRef.current.keys,
+      onLane: (lane, timeStamp) => {
+        lanesDownRef.current[lane] = true;
+        const run = runRef.current;
+        if (!run || phaseRef.current !== "playing") return;
+        const songMs = songClock.songTimeAt(timeStamp);
+        if (songMs === null) return;
+        const hit = run.press(lane, songMs);
+        if (hit) handleEvents([hit], run.heardTime(songMs));
+      },
+      onFever: () => {
+        const run = runRef.current;
+        if (!run || phaseRef.current !== "playing") return;
+        const songMs = songClock.songTimeAt(performance.now());
+        if (songMs === null) return;
+        const fever = run.fever(songMs);
+        if (fever) handleEvents([fever], run.heardTime(songMs));
+      },
+      onExit: () => onExitRef.current?.(),
+    });
+    const keys = cfgRef.current.keys;
+    const onKeyDown = (event) => {
+      if (route(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    const onKeyUp = (event) => {
+      const lane = keys.indexOf(event.code);
+      if (lane >= 0) lanesDownRef.current[lane] = false;
+      // Space is FEVER and keydown already took it; keep its keyup from clicking a focused button.
+      if (lane >= 0 || event.code === "Space") {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    const onBlur = () => {
+      lanesDownRef.current = [false, false, false, false];
+    };
+    window.addEventListener("blur", onBlur);
+
+    // ---- render loop ----
+    let raf = 0;
+    const emptyFrame = { heardMs: 0, notes: [], lanesDown: [], flashes: [], feverActive: false };
+    function frame() {
+      raf = window.requestAnimationFrame(frame);
+      const now = performance.now();
+      const songMs = songClock.songTimeAt(now);
+      const duration = trackRef.current?.durationMs;
+      if (progressRef.current) {
+        const fraction = songMs !== null && duration > 0 ? Math.min(1, songMs / duration) : 0;
+        progressRef.current.style.transform = `scaleX(${fraction})`;
+      }
+
+      const run = runRef.current;
+      const current = phaseRef.current;
+      const renderer = rendererRef.current;
+      const approachMs = approachMsFor(cfgRef.current.scrollSpeed);
+
+      function drawRun(heardMs) {
+        const flashes = flashesRef.current;
+        while (flashes.length && heardMs - flashes[0].at > FLASH_KEEP_MS) flashes.shift();
+        renderer?.render({
+          heardMs,
+          approachMs,
+          notes: run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs),
+          lanesDown: lanesDownRef.current,
+          flashes,
+          feverActive: feverActiveRef.current,
+        });
+      }
+
+      if (run && current === "playing" && songMs !== null) {
+        lastSongMsRef.current = songMs;
+        const heardMs = run.heardTime(songMs);
+        const events = run.tick(songMs);
+        const ended = events.length ? handleEvents(events, heardMs) : false;
+        if (ended) {
+          endRun();
+          setPhase("ended");
+          return;
+        }
+        if (dirtyRef.current) flushHud(run, songMs);
+        drawRun(heardMs);
+      } else if (run && current === "paused") {
+        if (redrawRef.current && songMs !== null) drawRun(run.heardTime(songMs));
+      } else {
+        renderer?.render({ ...emptyFrame, approachMs, lanesDown: lanesDownRef.current });
+      }
+      redrawRef.current = false;
+
+      const pose = poseFor({
+        phase: current,
+        feverActive: feverActiveRef.current,
+        now,
+        missUntil: missUntilRef.current,
+        crushed: crushedRef.current,
+        milestoneUntil: milestoneUntilRef.current,
+        combo: comboRef.current,
+      });
+      if (pose !== poseRef.current) {
+        poseRef.current = pose;
+        setMewbitPose(pose);
+      }
+    }
+    raf = window.requestAnimationFrame(frame);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", onBlur);
+      offAnchor();
+      offChart();
+      offStatus();
+    };
+    // keysKey rebuilds the router when the bound keys change; link is stable for the screen's life.
+  }, [link, keysKey, setPhase]);
+
+  // ---- canvas ----
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const renderer = createHighwayRenderer(canvas, { effects: effectsLevel });
+    rendererRef.current = renderer;
+    renderer.resize();
+    const observer = new ResizeObserver(() => {
+      renderer.resize();
+      redrawRef.current = true;
+    });
+    observer.observe(canvas);
+    return () => {
+      observer.disconnect();
+      renderer.destroy();
+      rendererRef.current = null;
+    };
+  }, [effectsLevel]);
+
+  // Autoplay applies to the next run. A run that has not judged a note yet restarts so it takes effect now.
+  const setAutoplay = useCallback((next) => {
+    const value = Boolean(next);
+    autoplayRef.current = value;
+    setAutoplayState(value);
+    const run = runRef.current;
+    const songMs = link.songClock.songTimeAt(performance.now());
+    if (run && songMs !== null && run.snapshot(songMs).judged === 0 && chartRef.current) {
+      const chart = chartRef.current;
+      const restarted = createRun({ chart, startSongMs: songMs, offsetMs: cfgRef.current.offsetMs, autoplay: value });
+      runRef.current = restarted;
+      runAutoplayRef.current = value;
+      const snap = restarted.snapshot(songMs);
+      const { hits, ranked, ...rest } = snap;
+      setHud({ ...rest, unranked: value || snap.total < chart.notes.length, judgement: null });
+      judgementRef.current = null;
+      flashesRef.current = [];
+    }
+  }, [link]);
+
+  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel };
+}

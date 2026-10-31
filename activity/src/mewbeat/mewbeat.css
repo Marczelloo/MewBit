@@ -12,6 +12,10 @@
   --mb-violet: var(--violet, #a78bfa);
   --mb-pink: var(--magenta, #ff6ec7);
   --mb-gold: #ffd479;
+  --mb-faint: #6b7380;
+  --mb-high: #c3cbd7;
+  --mb-danger: #ff8098;
+  --mb-line: rgb(255 255 255 / 0.1);
 }
 
 /* ---------- shared ---------- */
@@ -115,19 +119,216 @@
 }
 @keyframes mb-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---------- game overlay (stub until the game replaces it) ---------- */
+/* ---------- game screen ---------- */
 .mb-game {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal, 40);
   display: grid;
-  place-items: center;
+  grid-template-rows: auto minmax(0, 1fr);
   background: var(--mb-bg);
   color: var(--mb-text);
   font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  overflow: hidden;
 }
-.mb-game-stub { display: grid; justify-items: center; gap: 16px; padding: 28px 36px; border: 1px solid rgb(255 255 255 / 0.1); border-radius: 16px; background: var(--mb-surface); }
-.mb-game-stub-title { margin: 0; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
+.mb-game:focus { outline: none; }
+.mb-label { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mb-muted); }
+.mb-kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 3px 6px;
+  border: 1px solid var(--mb-line);
+  border-radius: 6px;
+  background: var(--mb-surface);
+  color: var(--mb-high);
+  font: 800 11px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  text-align: center;
+}
+
+/* header */
+.mb-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px 14px;
+  border-bottom: 1px solid var(--mb-line);
+  background: var(--mb-surface);
+}
+.mb-header-track { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.mb-live { color: var(--mb-cyan); white-space: nowrap; }
+.mb-header-title { overflow: hidden; font-size: 16px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.mb-header-artist { overflow: hidden; color: var(--mb-muted); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.mb-header-actions { display: flex; flex: none; align-items: center; gap: 10px; }
+.mb-header-actions .mb-btn { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; }
+.mb-toggle-on { border-color: var(--mb-cyan); background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
+.mb-chip {
+  padding: 5px 10px;
+  border: 1px solid rgb(255 212 121 / 0.45);
+  border-radius: 999px;
+  color: var(--mb-gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mb-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: var(--mb-line); }
+.mb-progress i { display: block; width: 100%; height: 100%; background: var(--mb-cyan); transform: scaleX(0); transform-origin: left center; }
+
+/* stage: Mewbit left, highway centre, HUD right */
+.mb-stage { position: relative; min-height: 0; overflow: hidden; }
+.mb-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 100%, rgb(167 139 250 / 0.16), transparent 55%),
+    radial-gradient(ellipse at 80% 0%, rgb(103 227 244 / 0.1), transparent 50%),
+    var(--mb-bg);
+}
+.mb-scene {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 460px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 24px;
+  height: 100%;
+  padding: 20px 28px 24px;
+}
+.mb-char { align-self: end; justify-self: center; width: min(100%, 300px); }
+.mb-highway-slot { min-height: 0; }
+.mb-side { align-self: center; justify-self: start; width: min(100%, 280px); }
+
+.mb-highway {
+  position: relative;
+  height: 100%;
+  border: 1px solid var(--mb-line);
+  border-radius: 14px;
+  background: var(--mb-surface);
+  overflow: hidden;
+  transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
+}
+.mb-highway-fever { border-color: var(--mb-gold); box-shadow: 0 8px 28px 0 rgb(255 212 121 / 0.28); }
+.mb-fx-off .mb-mult,
+.mb-fx-off .mb-judgement,
+.mb-fx-off .mb-endcard { animation: none; }
+.mb-fx-off .mb-highway,
+.mb-fx-off .mb-mult-fg { transition: none; }
+.mb-fx-off .mb-highway-fever { box-shadow: none; }
+.mb-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.mb-keys { position: absolute; right: 0; bottom: 10px; left: 0; display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; pointer-events: none; }
+.mb-lanekey { background: rgb(12 14 18 / 0.8); }
+
+/* readout over the highway */
+.mb-combo { position: absolute; top: 14px; left: 0; right: 0; display: grid; justify-items: center; gap: 2px; pointer-events: none; }
+.mb-combo-count { font-size: 44px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.mb-combo-label { color: var(--mb-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.2em; }
+.mb-mult { position: relative; width: 54px; height: 54px; margin-top: 8px; animation: mb-mult-pop 260ms cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+.mb-mult svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.mb-mult-bg { fill: none; stroke: var(--mb-line); stroke-width: 4; }
+.mb-mult-fg { fill: none; stroke: var(--mb-cyan); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 145; transition: stroke-dashoffset 160ms ease-out; }
+.mb-mult-text { position: absolute; inset: 0; display: grid; place-items: center; font-size: 15px; font-weight: 900; }
+.mb-mult-2 .mb-mult-fg { stroke: var(--mb-violet); }
+.mb-mult-3 .mb-mult-fg { stroke: var(--mb-pink); }
+.mb-mult-4 .mb-mult-fg { stroke: var(--mb-gold); }
+.mb-mult-4 .mb-mult-text { color: var(--mb-gold); }
+
+.mb-judgement {
+  position: absolute;
+  top: 38%;
+  right: 0;
+  left: 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+  animation: mb-judge-in 520ms ease-out both;
+}
+.mb-j-perfect { color: var(--mb-cyan); }
+.mb-j-great { color: var(--mb-violet); }
+.mb-j-good { color: var(--mb-high); }
+.mb-j-miss { color: var(--mb-danger); }
+
+@keyframes mb-judge-in {
+  0% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  20% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+@keyframes mb-mult-pop {
+  from { transform: scale(0.8); }
+  to { transform: scale(1); }
+}
+
+/* state text and end card sit over the highway */
+.mb-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  background: rgb(12 14 18 / 0.78);
+  text-align: center;
+}
+.mb-state b { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
+.mb-state span { color: var(--mb-muted); font-size: 14px; }
+
+.mb-endcard {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  padding: 24px;
+  background: rgb(12 14 18 / 0.92);
+  animation: mb-fade-in 240ms ease-out both;
+}
+.mb-endcard-main { display: flex; align-items: center; gap: 20px; }
+.mb-grade { font-size: 72px; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
+.mb-grade-S { color: var(--mb-gold); }
+.mb-grade-A { color: var(--mb-cyan); }
+.mb-grade-B { color: var(--mb-violet); }
+.mb-grade-C { color: var(--mb-high); }
+.mb-grade-D, .mb-grade-none { color: var(--mb-danger); }
+.mb-endcard-score { display: grid; }
+.mb-endcard-score b { font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.mb-endcard-score span { color: var(--mb-muted); font-size: 12px; }
+.mb-endcard-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; }
+.mb-endcard-stats div { padding: 10px; border: 1px solid var(--mb-line); border-radius: 10px; }
+.mb-endcard-stats dt { color: var(--mb-muted); font-size: 11px; }
+.mb-endcard-stats dd { margin: 4px 0 0; font-size: 18px; font-weight: 800; }
+.mb-endcard-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.mb-endcard-counts li { display: grid; gap: 2px; font-size: 11px; }
+.mb-endcard-counts b { font-size: 16px; }
+.mb-endcard-note { margin: 0; color: var(--mb-muted); font-size: 13px; }
+
+/* HUD */
+.mb-hud-card { display: grid; gap: 6px; padding: 16px; border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
+.mb-hud-score { font-size: 34px; font-weight: 900; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.mb-hud-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 8px; color: var(--mb-muted); font-size: 11px; }
+.mb-hud-stats b { display: block; margin-top: 2px; color: var(--mb-text); font-size: 17px; font-variant-numeric: tabular-nums; }
+.mb-hud-vibe-label { margin-top: 4px; }
+.mb-vibe { height: 10px; border-radius: 999px; background: var(--mb-line); overflow: hidden; }
+.mb-vibe i { display: block; width: 100%; height: 100%; border-radius: 999px; background: var(--mb-violet); transform-origin: left center; }
+.mb-vibe-full i { background: var(--mb-gold); }
+.mb-vibe-fever i { background: var(--mb-pink); }
+.mb-vibe-hint { color: var(--mb-muted); font-size: 12px; }
+.mb-vibe-hint-ready { color: var(--mb-gold); font-weight: 800; }
+
+/* narrow widths: stack Mewbit above, HUD below, and let the highway take the width */
+@media (max-width: 900px) {
+  .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; padding: 12px 16px 16px; }
+  .mb-char { display: none; }
+  .mb-highway-slot { justify-self: center; width: min(100%, 460px); }
+  .mb-side { justify-self: center; width: min(100%, 460px); }
+  .mb-header { flex-wrap: wrap; padding: 10px 16px 12px; }
+}
+@media (max-width: 560px) {
+  .mb-header-artist, .mb-header-actions .mb-kbd { display: none; }
+}
 
 /* ---------- Mewbit placeholder ---------- */
 .mb-mewbit { position: relative; width: 100%; aspect-ratio: 1; }
@@ -219,6 +420,12 @@
   .mb-glitch-split,
   .mb-reveal-card,
   .mb-mewbit-body,
-  .mb-mewbit-bubble { animation: none; }
-  .mb-btn { transition: none; }
+  .mb-mewbit-bubble,
+  .mb-mult,
+  .mb-judgement,
+  .mb-endcard { animation: none; }
+  .mb-judgement { opacity: 1; }
+  .mb-btn,
+  .mb-highway,
+  .mb-mult-fg { transition: none; }
 }

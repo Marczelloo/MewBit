@@ -1,0 +1,66 @@
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const test = require("node:test");
+const { pathToFileURL } = require("node:url");
+
+let createKeyRouter;
+
+test.before(async () => {
+  ({ createKeyRouter } = await import(
+    pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/input.js")).href
+  ));
+});
+
+const KEYS = ["KeyD", "KeyF", "KeyJ", "KeyK"];
+
+function setup() {
+  const calls = { lane: [], fever: 0, exit: 0 };
+  const route = createKeyRouter({
+    keys: KEYS,
+    onLane: (lane, timeStamp) => calls.lane.push([lane, timeStamp]),
+    onFever: () => { calls.fever += 1; },
+    onExit: () => { calls.exit += 1; },
+  });
+  return { calls, route };
+}
+
+test("a bound key calls onLane with the lane and the event timestamp", () => {
+  const { calls, route } = setup();
+  assert.equal(route({ code: "KeyF", timeStamp: 1234.5 }), true);
+  assert.deepEqual(calls.lane, [[1, 1234.5]]);
+});
+
+test("a repeated key is ignored", () => {
+  const { calls, route } = setup();
+  assert.equal(route({ code: "KeyF", repeat: true, timeStamp: 1 }), false);
+  assert.deepEqual(calls.lane, []);
+});
+
+test("events with a ctrl, meta or alt modifier are ignored", () => {
+  const { calls, route } = setup();
+  assert.equal(route({ code: "KeyD", ctrlKey: true, timeStamp: 1 }), false);
+  assert.equal(route({ code: "KeyD", metaKey: true, timeStamp: 1 }), false);
+  assert.equal(route({ code: "KeyD", altKey: true, timeStamp: 1 }), false);
+  assert.deepEqual(calls.lane, []);
+});
+
+test("Space calls onFever and Escape calls onExit", () => {
+  const { calls, route } = setup();
+  assert.equal(route({ code: "Space", timeStamp: 1 }), true);
+  assert.equal(route({ code: "Escape", timeStamp: 2 }), true);
+  assert.equal(calls.fever, 1);
+  assert.equal(calls.exit, 1);
+});
+
+test("an unbound key returns false and calls nothing", () => {
+  const { calls, route } = setup();
+  assert.equal(route({ code: "KeyQ", timeStamp: 1 }), false);
+  assert.deepEqual(calls, { lane: [], fever: 0, exit: 0 });
+});
+
+test("a held Space or Escape does not repeat", () => {
+  const { calls, route } = setup();
+  assert.equal(route({ code: "Space", repeat: true, timeStamp: 1 }), false);
+  assert.equal(route({ code: "Escape", repeat: true, timeStamp: 1 }), false);
+  assert.equal(calls.fever + calls.exit, 0);
+});
