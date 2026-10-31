@@ -63,8 +63,10 @@ export function sendActivityAction({ guildId, accessToken, action, payload }) {
   );
 }
 
-export function connectActivitySocket({ guildId, accessToken, onState, onReady, onHeartbeat, onConnection, onError }) {
+export function connectActivitySocket({ guildId, accessToken, onState, onReady, onHeartbeat, onConnection, onError, onMewbeat }) {
   let socket = null;
+  // The server rejects mewbeat_ messages until it has answered auth with ready.
+  let authorized = false;
   let reconnectTimer = null;
   let heartbeatTimer = null;
   let stopped = false;
@@ -75,6 +77,7 @@ export function connectActivitySocket({ guildId, accessToken, onState, onReady, 
     socket = new WebSocket(websocketUrl("/api/activity/ws"));
     socket.addEventListener("open", () => {
       retryCount = 0;
+      authorized = false;
       onConnection?.({ status: "connecting", message: "Authorizing realtime connection" });
       socket.send(JSON.stringify({ type: "auth", guildId, token: accessToken }));
       window.clearInterval(heartbeatTimer);
@@ -86,7 +89,11 @@ export function connectActivitySocket({ guildId, accessToken, onState, onReady, 
       try {
         const payload = JSON.parse(event.data);
         if (payload.type === "state") onState(payload.state);
-        if (payload.type === "ready") onReady?.(payload.identity);
+        if (payload.type === "ready") {
+          authorized = true;
+          onReady?.(payload.identity);
+        }
+        if (typeof payload.type === "string" && payload.type.startsWith("mewbeat_")) onMewbeat?.(payload);
         if (payload.type === "heartbeat") onHeartbeat?.(payload.time);
         if (payload.type === "error") onError?.(new Error(payload.error));
       } catch (error) {
@@ -94,6 +101,7 @@ export function connectActivitySocket({ guildId, accessToken, onState, onReady, 
       }
     });
     socket.addEventListener("close", () => {
+      authorized = false;
       window.clearInterval(heartbeatTimer);
       heartbeatTimer = null;
       if (stopped) return;
@@ -108,10 +116,16 @@ export function connectActivitySocket({ guildId, accessToken, onState, onReady, 
   };
 
   connect();
-  return () => {
+  const stop = () => {
     stopped = true;
     window.clearTimeout(reconnectTimer);
     window.clearInterval(heartbeatTimer);
     socket?.close();
   };
+  stop.send = (payload) => {
+    if (!authorized || socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(payload));
+    return true;
+  };
+  return stop;
 }
