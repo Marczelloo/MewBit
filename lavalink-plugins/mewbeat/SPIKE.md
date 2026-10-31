@@ -163,3 +163,63 @@ cause is YouTube throttling repeated fetches of one video. No error and no 403 o
   further or to hold analysis while any player is active.
 - The 120 s hard timeout is only unit tested. A real hang (a source that stalls)
   was not reproduced live.
+
+## Tuning log (Task 9)
+
+Tool: `node scripts/mewbeat-preview.mjs "<query>" --difficulty all` writes
+click-mixed WAVs into `.mewbeat-preview/`; `--from <slug>.json` re-generates from
+the saved features without touching Lavalink. Ten tracks were charted: Adele
+(Someone Like You), Billie Eilish (bad guy), Daft Punk (Around the World), Earth
+Wind & Fire (September), José González (Heartbeats), Kendrick Lamar (HUMBLE.),
+Metallica (Master of Puppets), Pendulum (Watercolour), Queen (Bohemian Rhapsody),
+Rammstein (Du Hast).
+
+### Generator v1 observations
+
+- Tempo confidence splits the set. Daft Punk and EW&F are 1.0, Pendulum 0.92,
+  Rammstein 0.77, Kendrick 0.74, Billie 0.64. Adele (0.14, reads 137 BPM, likely
+  double time), Queen (0.28), José (0.30) and Metallica (0.34) stay on the
+  unsnapped path: no chords, and on-beat share of 32–66 %.
+- On the unsnapped path Hard put 11–23 % of its gaps under 0.2 beat, far from
+  the spec's "occasional 1/8". The gap floor was the flat `minGapBeats`, so an
+  ordinary onset could take a 1/8 slot that only very strong onsets should get.
+- Hard chords were on 25–42 % of note moments: too many for "2-note chords"
+  meant as accents.
+
+### Generator v2 changes
+
+- The minimum gap now follows the grid division the candidate is allowed
+  (`divisionFor`): 1/8 only for onsets at or above `fineMinStrength`, 1/4
+  otherwise on Hard. Hard gaps under 0.2 beat are now at most 4 %.
+- Hard chords need strength 0.95 and energy 0.5 (was 0.8, no energy gate). Hard
+  chords are now 16–25 % of moments on the confident tracks.
+
+### Generator v2 results
+
+| Track | conf | Easy nps / ★ | Normal nps / ★ | Hard nps / ★ |
+|---|---|---|---|---|
+| Adele | 0.14 | 1.35 / 1.9 | 2.43 / 2.8 | 3.67 / 3.7 |
+| Billie Eilish | 0.64 | 1.49 / 1.7 | 2.95 / 3.1 | 4.82 / 4.8 |
+| Daft Punk | 1.00 | 1.76 / 1.9 | 3.54 / 3.6 | 5.97 / 5.6 |
+| EW&F | 1.00 | 1.57 / 1.9 | 3.17 / 3.3 | 5.50 / 5.2 |
+| José González | 0.30 | 1.42 / 1.8 | 2.55 / 2.8 | 3.95 / 3.7 |
+| Kendrick Lamar | 0.74 | 1.57 / 1.7 | 3.16 / 3.1 | 5.25 / 5.0 |
+| Metallica | 0.34 | 1.52 / 1.9 | 2.74 / 3.1 | 4.19 / 4.1 |
+| Pendulum | 0.92 | 1.63 / 1.9 | 3.17 / 3.4 | 4.84 / 4.8 |
+| Queen | 0.28 | 1.01 / 1.9 | 1.82 / 3.0 | 2.74 / 3.9 |
+| Rammstein | 0.77 | 1.60 / 1.9 | 3.21 / 3.6 | 5.28 / 5.1 |
+
+On Easy and Normal, 98–100 % of notes land within 40 ms of a detected onset (Hard 85–100 %).
+Normal and Hard share 30–48 % of their notes, so Hard is its own chart and not
+Normal with extra notes.
+
+### Known open points
+
+- Lanes lean low on Easy (lane 0 at 26–41 %, lane 3 at 10–20 %) because the
+  low bands carry the strongest onsets. José González Hard uses lane 3 for 2 %.
+- Pendulum reads 87 BPM (the song is about 174), so its Hard "16ths" are really
+  8ths at the true tempo, with one 116-note continuous stream. Tempo octave
+  errors are not corrected (Ruling 7).
+- Quiet passages give long empty stretches on Easy (Queen 8.9 s, Adele 6.7 s).
+  This follows the music, but it may feel empty.
+- Low-confidence tracks get no chords at all.

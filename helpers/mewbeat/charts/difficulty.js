@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 1;
+const GENERATOR_VERSION = 2;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -73,7 +73,7 @@ const DIFFICULTIES = {
     maxRun: 3,
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
-    chord: { minStrength: 0.7, onDownbeat: false, minEnergy: 0 },
+    chord: { minStrength: 0.95, onDownbeat: false, minEnergy: 0.5 },
     // Hard's own lane logic: inside a stream (notes within maxGapBeats of each
     // other) every second note takes the runner-up band's lane instead of the
     // strongest band's, so patterns alternate between the two loudest bands.

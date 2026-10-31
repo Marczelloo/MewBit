@@ -225,12 +225,15 @@ function windowPower(windowIndex, energy) {
   return n === 0 ? 0 : sum / n;
 }
 
-// Minimum gap between any two notes: 1/2, 1/4 or 1/8 beat at 120 BPM. A snapped
-// note may sit a little under it only where the track's own beat is faster than
-// 120 BPM, so the grid itself stays playable.
-function minNoteGap(c, p, timing) {
-  const floor = p.minGapBeats * FALLBACK_BEAT_MS;
-  return c.snapped ? Math.min(floor, SNAPPED_FLOOR_SLACK * p.minGapBeats * timing.medianMs) : floor;
+// Minimum gap before a note: the difficulty's floor, raised to the grid
+// division the note would get (so the finest gaps stay reserved for strong
+// onsets and loud parts, snapped or not), in 120-BPM beats. A snapped note may
+// sit a little under it only where the track's own beat is faster than 120 BPM,
+// so the grid itself stays playable.
+function minNoteGap(c, p, timing, energy) {
+  const beats = Math.max(p.minGapBeats, 1 / divisionFor(p, c, energy.at(c.t)));
+  const floor = beats * FALLBACK_BEAT_MS;
+  return c.snapped ? Math.min(floor, SNAPPED_FLOOR_SLACK * beats * timing.medianMs) : floor;
 }
 
 // Keeps the strongest candidates of each window up to the energy-driven target,
@@ -248,7 +251,7 @@ function thin(candidates, p, timing, energy) {
   let carry = 0;
 
   const conflicts = (c) => {
-    const floor = minNoteGap(c, p, timing) - GAP_TOLERANCE_MS;
+    const floor = minNoteGap(c, p, timing, energy) - GAP_TOLERANCE_MS;
     const i = lowerBound(chosenTimes, c.t);
     return (i < chosenTimes.length && chosenTimes[i] - c.t < floor) || (i > 0 && c.t - chosenTimes[i - 1] < floor);
   };
