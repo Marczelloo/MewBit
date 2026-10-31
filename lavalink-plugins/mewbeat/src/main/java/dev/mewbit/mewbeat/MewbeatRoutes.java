@@ -1,5 +1,6 @@
 package dev.mewbit.mewbeat;
 
+import dev.mewbit.mewbeat.dsp.Features;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,7 +24,6 @@ public class MewbeatRoutes {
     private static final String PLUGIN_NAME = "mewbeat";
 
     private final String version;
-    private final int featuresVersion;
     private final AnalysisWorker worker;
     private final boolean debugRoutes;
 
@@ -41,7 +41,6 @@ public class MewbeatRoutes {
             throw new UncheckedIOException(e);
         }
         this.version = properties.getProperty("version");
-        this.featuresVersion = Integer.parseInt(properties.getProperty("featuresVersion"));
     }
 
     public record VersionResponse(String plugin, String version, int featuresVersion) {}
@@ -50,7 +49,7 @@ public class MewbeatRoutes {
 
     @GetMapping("/v4/mewbeat/version")
     public VersionResponse version() {
-        return new VersionResponse(PLUGIN_NAME, version, featuresVersion);
+        return new VersionResponse(PLUGIN_NAME, version, Features.VERSION);
     }
 
     @PostMapping(value = "/v4/mewbeat/analyze", consumes = "application/json")
