@@ -1,0 +1,89 @@
+// Bumped on every change that alters generated charts (tuning included);
+// charts and leaderboards are keyed by it.
+const GENERATOR_VERSION = 1;
+
+// --- Shared tuning constants (Task 9 tunes these by ear) -------------------
+
+const BANDS = ["low", "lowmid", "highmid", "high"]; // band index === base lane
+
+const MERGE_WINDOW_MS = 30; // onsets this close across bands are one candidate
+const LEAD_IN_MS = 1500; // no notes before this
+const SILENCE_ENERGY = 0.08; // no notes where the energy curve is below this
+const MIN_NOTES = 20; // fewer notes than this means "not chartable"
+
+const DENSITY_WINDOW_MS = 2000; // candidates are thinned per window of this size
+const ENERGY_EXPONENT = 1.5; // target notes/s = maxNps * energy^ENERGY_EXPONENT
+
+const CONFIDENT_TEMPO = 0.5; // snap to the beat grid at/above this confidence
+const FALLBACK_BEAT_MS = 500; // 120 BPM, used for gaps when tempo is not trusted
+const BEAT_TOLERANCE_MS = 35; // a note this close to a beat counts as "on" it
+const GAP_TOLERANCE_MS = 1; // rounding slack on the same-lane gap check
+
+// --- Per-difficulty parameters ---------------------------------------------
+
+const DIFFICULTIES = {
+  easy: {
+    maxNps: 2.5,
+    // Grid divisions per beat: baseDiv normally, energyDiv at energy >= highEnergyFrom,
+    // fineDiv for onsets with strength >= fineMinStrength (null = never).
+    baseDiv: 2,
+    energyDiv: 2,
+    highEnergyFrom: 0.6,
+    fineDiv: null,
+    fineMinStrength: 0.9,
+    laneGapBeats: 1, // same-lane gap, in beats
+    minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
+    maxRun: 2, // max consecutive notes in one lane
+    // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
+    // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
+    // raw onset strength across all bands, so its note choice differs from Normal.
+    bandBias: [1, 1, 0.85, 0.7],
+    beatBias: 0.35,
+    chord: null,
+  },
+  normal: {
+    maxNps: 4.5,
+    baseDiv: 2,
+    energyDiv: 4,
+    highEnergyFrom: 0.6,
+    fineDiv: null,
+    fineMinStrength: 0.9,
+    laneGapBeats: 1 / 2,
+    minGapBeats: 1 / 4,
+    maxRun: 2,
+    bandBias: [1, 1, 0.9, 0.8],
+    beatBias: 0.2,
+    // Second note only on a strong downbeat in a loud part.
+    chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.6 },
+  },
+  hard: {
+    maxNps: 7.0,
+    baseDiv: 4,
+    energyDiv: 4,
+    highEnergyFrom: 0.6,
+    fineDiv: 8,
+    fineMinStrength: 0.9,
+    laneGapBeats: 1 / 4,
+    minGapBeats: 1 / 8,
+    maxRun: 3,
+    bandBias: [0.9, 1, 1, 1],
+    beatBias: 0,
+    chord: { minStrength: 0.7, onDownbeat: false, minEnergy: 0 },
+  },
+};
+
+module.exports = {
+  BANDS,
+  BEAT_TOLERANCE_MS,
+  CONFIDENT_TEMPO,
+  DENSITY_WINDOW_MS,
+  DIFFICULTIES,
+  ENERGY_EXPONENT,
+  FALLBACK_BEAT_MS,
+  GAP_TOLERANCE_MS,
+  GENERATOR_VERSION,
+  LEAD_IN_MS,
+  MERGE_WINDOW_MS,
+  MIN_NOTES,
+  SILENCE_ENERGY,
+};
