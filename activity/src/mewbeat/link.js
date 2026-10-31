@@ -96,20 +96,34 @@ export function createMewbeatLink({
     if (running) sendSync();
   }
 
-  // A send the socket refused (not ready yet) releases the key, so the next
-  // requestChart goes out instead of being deduped against nothing.
-  function sendChartRequest(key, request) {
-    const sent = send({ type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty });
-    if (sent === false) releaseChart(key);
-    return sent !== false;
+  function sendChartRequest(request) {
+    return send({ type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty }) !== false;
   }
 
+  // Resends a pending request; a refused send (socket reconnecting) just waits
+  // another round, and a track change in the meantime drops it.
+  function scheduleChartRetry(key) {
+    clearTimer(chartRetries.get(key));
+    chartRetries.set(key, setTimer(() => {
+      chartRetries.delete(key);
+      const request = inflightCharts.get(key);
+      if (!request) return;
+      if (request.audioKey !== songClock.audioKey()) releaseChart(key);
+      else if (!sendChartRequest(request)) scheduleChartRetry(key);
+    }, CHART_RETRY_MS));
+  }
+
+  // Returns false when nothing went out: already in flight, link stopped, or
+  // the socket refused it (not ready yet). A refused key is released, so the
+  // next requestChart goes out instead of being deduped against nothing.
   function requestChart(audioKey, difficulty) {
     const key = chartKey(audioKey, difficulty);
-    if (inflightCharts.has(key)) return false;
+    if (!running || inflightCharts.has(key)) return false;
     const request = { audioKey, difficulty };
     inflightCharts.set(key, request);
-    return sendChartRequest(key, request);
+    if (sendChartRequest(request)) return true;
+    releaseChart(key);
+    return false;
   }
 
   function releaseChart(key) {
@@ -138,12 +152,7 @@ export function createMewbeatLink({
       return;
     }
     if (chartStatus === "pending") {
-      clearTimer(chartRetries.get(key));
-      chartRetries.set(key, setTimer(() => {
-        chartRetries.delete(key);
-        const request = inflightCharts.get(key);
-        if (request) sendChartRequest(key, request);
-      }, CHART_RETRY_MS));
+      scheduleChartRetry(key);
     } else {
       releaseChart(key);
     }

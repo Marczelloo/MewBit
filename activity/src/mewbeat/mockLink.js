@@ -85,6 +85,7 @@ export function createMockLink({
         ? { audioKey, difficulty, status: "ready", chart: buildMockChart(audioKey, difficulty) }
         : { audioKey, difficulty, status: "stale" });
     }, 0);
+    return true;
   }
 
   return {

@@ -195,6 +195,36 @@ test("a pending reply resends the same request after 3000 ms and stays deduped",
   assert.equal(charts(sent).length, 2);
 });
 
+test("a pending retry the socket refuses waits another round", () => {
+  const { link, scheduler, sent, state } = setup();
+  link.start();
+  link.requestChart("k", "normal");
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "pending" });
+  state.socketReady = false;
+  scheduler.advance(3000);
+  state.socketReady = true;
+  assert.equal(charts(sent).length, 1);
+  scheduler.advance(3000);
+  assert.equal(charts(sent).length, 2);
+});
+
+test("a pending retry after a track change is dropped and frees the key", () => {
+  const { link, scheduler, sent, state } = setup();
+  link.start();
+  link.requestChart("k", "normal");
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "pending" });
+  state.audioKey = "other";
+  scheduler.advance(3000);
+  assert.equal(charts(sent).length, 1);
+  assert.equal(link.requestChart("k", "normal"), true);
+});
+
+test("requestChart before start sends nothing", () => {
+  const { link, sent } = setup();
+  assert.equal(link.requestChart("k", "normal"), false);
+  assert.equal(charts(sent).length, 0);
+});
+
 test("a chart reply for another track is dropped and frees the key", () => {
   const { link, sent } = setup({ audioKey: "new" });
   const heard = [];
@@ -313,7 +343,7 @@ test("mock link starts live on a 150 s track, serves its chart, and clears at th
   assert.deepEqual(link.track(), { title: "Demo track", artist: "mewbeat", queued: false });
   assert.equal(link.songClock.songTimeAt(1500), 1500);
 
-  link.requestChart(MOCK_AUDIO_KEY, "hard");
+  assert.equal(link.requestChart(MOCK_AUDIO_KEY, "hard"), true);
   link.requestChart("other", "hard");
   scheduler.advance(0);
   assert.deepEqual(charts.map((r) => [r.audioKey, r.status]), [[MOCK_AUDIO_KEY, "ready"], ["other", "stale"]]);
