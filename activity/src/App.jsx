@@ -2114,6 +2114,8 @@ function App() {
         } finally {
           if (alive) finishHydration();
         }
+        // Cleanup already ran during the await: don't open a socket nobody closes.
+        if (!alive) return;
 
         stopSocket = connectActivitySocket({
           ...nextContext,
@@ -2125,7 +2127,7 @@ function App() {
             }
           },
           onReady: () => { if (alive) setConnection({ status: "live", message: "Realtime gateway connected" }); },
-          onMewbeat: (payload) => mewbeatHandlerRef.current?.(payload),
+          onMewbeat: (payload) => { if (alive) mewbeatHandlerRef.current?.(payload); },
           onConnection: (nextConnection) => { if (alive && nextContext.mode === "discord") setConnection(nextConnection); },
           onError: (error) => { if (alive && nextContext.mode === "discord") setConnection({ status: "reconnecting", message: error.message }); },
         });

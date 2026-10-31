@@ -5,13 +5,13 @@
 .mb-mewbit {
   --mb-bg: var(--bg, #050608);
   --mb-surface: var(--surface, #0c0e12);
-  --mb-raised: var(--raised, #111318);
+  --mb-raised: var(--surface-raised, #111318);
   --mb-text: var(--text, #f4f6f9);
   --mb-muted: var(--muted, #9ba4b2);
   --mb-cyan: var(--cyan, #67e3f4);
   --mb-violet: var(--violet, #a78bfa);
-  --mb-pink: var(--pink, #ff6ec7);
-  --mb-gold: var(--gold, #ffd479);
+  --mb-pink: var(--magenta, #ff6ec7);
+  --mb-gold: #ffd479;
 }
 
 /* ---------- shared ---------- */
@@ -27,7 +27,7 @@
   cursor: pointer;
   transition: transform 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out;
 }
-.mb-btn:hover { background: var(--high, #161920); border-color: rgb(255 255 255 / 0.28); }
+.mb-btn:hover { background: var(--surface-soft, #161920); border-color: rgb(255 255 255 / 0.28); }
 .mb-btn:active { transform: scale(0.97); }
 .mb-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
 .mb-btn-primary { background: var(--mb-cyan); border-color: var(--mb-cyan); color: #04141a; }
@@ -37,7 +37,7 @@
 .mb-reveal {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal, 40);
   display: grid;
   place-items: center;
   background: rgb(5 6 8 / 0.9);
@@ -119,7 +119,7 @@
 .mb-game {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal, 40);
   display: grid;
   place-items: center;
   background: var(--mb-bg);
