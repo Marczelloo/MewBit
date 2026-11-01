@@ -367,3 +367,72 @@ test("visibleNotes reports len and hold state, and keeps a hold in view until it
   other.release(0, 3000);
   assert.equal(other.visibleNotes(2000, 2000)[0].hold, "done");
 });
+
+test("snapshot().skipped counts a skipped tap on a chart with holds (total alone cannot show it)", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  assert.equal(run.snapshot(0).skipped, 0);
+  tickAll(run, 0, 3600);
+  run.jump(3800); // skips only the tap at 4000
+  const snap = run.snapshot(3800);
+  assert.equal(snap.skipped, 1);
+  // 3 notes + 1 tail - 1 skipped = 3: the old `total < notes.length` check misses this.
+  assert.equal(snap.total, holdChart().notes.length);
+});
+
+test("snapshot().skipped counts a whole hold skipped by the lead-in as two", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 1200 });
+  assert.equal(run.snapshot(1200).skipped, 2);
+});
+
+test("two holds in different lanes overlap in a run", () => {
+  const overlap = {
+    notes: [
+      { t: 2000, lane: 0, len: 1000 },
+      { t: 2500, lane: 2, len: 1000 },
+    ],
+  };
+  const run = createRun({ chart: overlap, startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(2, 2500);
+  assert.equal(run.visibleNotes(2600, 2600).filter((n) => n.hold === "held").length, 2);
+  assert.equal(run.release(0, 3000)[0].part, "tail");
+  assert.equal(run.release(2, 3500)[0].part, "tail");
+  const snap = run.snapshot(3500);
+  assert.equal(snap.counts.perfect, 4);
+  assert.equal(snap.combo, 4);
+});
+
+test("a tap on the same lane right after a hold's end is judged separately in a run", () => {
+  const chartWithTap = {
+    notes: [
+      { t: 2000, lane: 0, len: 500 },
+      { t: 2600, lane: 0 },
+    ],
+  };
+  const run = createRun({ chart: chartWithTap, startSongMs: 0 });
+  run.press(0, 2000);
+  run.release(0, 2500);
+  const tap = run.press(0, 2600);
+  assert.equal(tap.part, "head");
+  assert.equal(tap.index, 1);
+  assert.equal(run.snapshot(2600).counts.perfect, 3);
+});
+
+test("autoplay: a stale release from a hold skipped by jump does not drop a newly pressed hold", () => {
+  const twoHolds = {
+    notes: [
+      { t: 2000, lane: 0, len: 1000 },
+      { t: 3100, lane: 0, len: 1000 },
+    ],
+  };
+  const run = createRun({ chart: twoHolds, startSongMs: 0, autoplay: true });
+  tickAll(run, 0, 2100); // hold A pressed, its release queued for 3000
+  run.jump(2800); // skips A's tail (end 3000 < 3100)
+  const events = tickAll(run, 2116, 5200);
+  assert.equal(events.filter((e) => e.kind === "miss").length, 0);
+  assert.deepEqual(
+    events.filter((e) => e.index === 1).map((e) => `${e.kind}:${e.part}:${e.judgement}`),
+    ["hit:head:perfect", "hit:tail:perfect"],
+  );
+  assert.equal(events.filter((e) => e.kind === "end").length, 1);
+});

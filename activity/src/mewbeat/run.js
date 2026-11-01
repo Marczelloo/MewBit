@@ -41,7 +41,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   }
 
   const hits = [];
-  const autoReleases = []; // autoplay: held lanes waiting for their end
+  const autoReleases = []; // autoplay: pressed holds waiting for their end, as { index, lane, end }
   let autoCursor = 0;
   let feverEndAt = null;
   let ended = false;
@@ -85,7 +85,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
             const result = judge.press(note.lane, note.t);
             if (result) {
               events.push(applyOutcome(result, heardMs));
-              if (lenOf(note) > 0) autoReleases.push({ lane: note.lane, end: note.t + lenOf(note) });
+              if (lenOf(note) > 0) autoReleases.push({ index: autoCursor, lane: note.lane, end: note.t + lenOf(note) });
             }
           }
           autoCursor += 1;
@@ -97,6 +97,9 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
             continue;
           }
           autoReleases.splice(i, 1);
+          // A jump or offset change may have settled this tail already; releasing the lane now
+          // would drop whatever hold the player (or autoplay) holds there at present.
+          if (judge.tailOutcomeOf(hold.index) !== "pending") continue;
           for (const result of judge.release(hold.lane, hold.end)) events.push(applyOutcome(result, heardMs));
         }
       }
@@ -163,6 +166,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       fevers: score.fevers,
       judged: perfect + great + good + miss,
       total: notes.length + holdCount - skipped,
+      skipped,
       ranked: false,
       hits: hits.slice(),
     };

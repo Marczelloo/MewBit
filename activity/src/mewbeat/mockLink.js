@@ -6,14 +6,19 @@ const FIRST_NOTE_MS = 2000;
 const LAST_NOTE_MS = 148_000;
 const BEAT_MS = 500; // 120 BPM
 const LANE_CYCLE = [0, 1, 2, 3, 2, 1];
+// Beats whose note is a hold, and for how many beats. A hold ends 100 ms before the beat it
+// spans, so a longer one only sits where the next beat(s) fall in the other hand (lanes 0-1 vs 2-3).
+const HOLD_GAP_MS = 100;
+const HOLDS = { 10: 2, 12: 1, 21: 1, 25: 2 }; // lanes 2, 0, 3, 1
 
-// A fixed 120 BPM chart: a note on every beat, lanes cycling, and a second
-// note in the mirrored lane on every 8th beat. Difficulty doesn't change it.
+// A fixed 120 BPM chart: a note on every beat, lanes cycling, a second note in the
+// mirrored lane on every 8th beat, and four hold notes. Difficulty doesn't change it.
 export function buildMockChart(audioKey, difficulty) {
   const notes = [];
   for (let beat = 0, t = FIRST_NOTE_MS; t <= LAST_NOTE_MS; beat += 1, t += BEAT_MS) {
     const lane = LANE_CYCLE[beat % LANE_CYCLE.length];
-    notes.push({ t, lane });
+    const beats = HOLDS[beat];
+    notes.push(beats ? { t, lane, len: beats * BEAT_MS - HOLD_GAP_MS } : { t, lane });
     if ((beat + 1) % 8 === 0) notes.push({ t, lane: 3 - lane });
   }
   notes.sort((a, b) => a.t - b.t || a.lane - b.lane);

@@ -328,6 +328,20 @@ test("mock chart is deterministic, sorted, with a 2-note chord on every 8th beat
   assert.deepEqual(chord, [{ t: 5500, lane: 1 }, { t: 5500, lane: 2 }]);
 });
 
+test("mock chart has 4 holds, and no note starts inside a hold in that hold's hand", () => {
+  const { notes } = buildMockChart("mock:demo:150000", "easy");
+  const holds = notes.filter((n) => n.len > 0);
+  assert.ok(holds.length >= 4);
+  assert.ok(holds.every((h) => h.len >= 300 && h.len <= 1000));
+  assert.ok(new Set(holds.map((h) => h.lane)).size >= 3, "holds spread over the lanes");
+  assert.ok(holds.some((h) => h.lane <= 1) && holds.some((h) => h.lane >= 2), "both hands hold");
+  const hand = (lane) => (lane <= 1 ? 0 : 1);
+  for (const h of holds) {
+    const inside = notes.filter((n) => n !== h && hand(n.lane) === hand(h.lane) && n.t >= h.t && n.t <= h.t + h.len);
+    assert.deepEqual(inside, [], `a note starts inside the hold at ${h.t}`);
+  }
+});
+
 test("mock link starts live on a 150 s track, serves its chart, and clears at the end", async () => {
   const scheduler = createScheduler();
   const link = createMockLink({ now: scheduler.now, setTimer: scheduler.setTimer, clearTimer: scheduler.clearTimer });

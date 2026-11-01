@@ -106,6 +106,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   const inputPausedRef = useRef(inputPaused);
   inputPausedRef.current = inputPaused;
   const soundsRef = useRef(null);
+  const releaseHeldRef = useRef(() => {}); // set by the link effect: releases every held lane into the run
 
   const setPhase = useCallback((next) => {
     phaseRef.current = next;
@@ -127,9 +128,10 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   }, []);
   const unlockAudio = useCallback(() => soundsRef.current?.unlock(), []);
 
-  // A key held when the panel opens never sends its keyup to the game.
+  // A key held when the panel opens never sends its keyup to the game: release it ourselves,
+  // so a hold being played is judged now instead of staying held forever.
   useEffect(() => {
-    if (inputPaused) lanesDownRef.current = [false, false, false, false];
+    if (inputPaused) releaseHeldRef.current();
   }, [inputPaused]);
 
   // A new audio offset applies to the run in progress: score stays, heard time moves.
@@ -160,9 +162,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     }
 
     function toHud(snap) {
-      const { hits, ranked, ...rest } = snap;
-      const skipped = chartRef.current ? snap.total < chartRef.current.notes.length : false;
-      return { ...rest, unranked: runAutoplayRef.current || skipped, judgement: judgementRef.current };
+      const { hits, ranked, skipped, ...rest } = snap;
+      return { ...rest, unranked: runAutoplayRef.current || skipped > 0, judgement: judgementRef.current };
     }
 
     function startRun() {
@@ -195,7 +196,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       const snap = run.snapshot(lastSongMsRef.current);
       feverActiveRef.current = false;
       if (snap.judged >= 1) {
-        const { hits, ranked, ...rest } = snap;
+        const { hits, ranked, skipped, ...rest } = snap;
         setEndSummary({ ...rest, title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
         setHud({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
       } else {
@@ -222,7 +223,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       for (const event of events) {
         if (event.kind === "hit") {
           comboRef.current += 1;
-          if (cfgRef.current.hitSounds) soundsRef.current?.play(event.judgement);
+          // A tail counts for combo and the popup, but it has no sound of its own.
+          if (cfgRef.current.hitSounds && event.part !== "tail") soundsRef.current?.play(event.judgement);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -331,6 +333,19 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
 
     reconcile();
 
+    // Releases every lane the player is holding, at the current song time, then forgets them all.
+    function releaseHeld() {
+      const run = runRef.current;
+      const songMs = songClock.songTimeAt(performance.now());
+      if (run && songMs !== null) {
+        lanesDownRef.current.forEach((down, lane) => {
+          if (down) handleEvents(run.release(lane, songMs), run.heardTime(songMs));
+        });
+      }
+      lanesDownRef.current = [false, false, false, false];
+    }
+    releaseHeldRef.current = releaseHeld;
+
     // ---- input ----
     // Keys come from cfgRef, so a keys change swaps only the router (the run, chart request and
     // link subscriptions stay as they are).
@@ -372,7 +387,12 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     const onKeyUp = (event) => {
       if (inputPausedRef.current) return;
       const lane = cfgRef.current.keys.indexOf(event.code);
-      if (lane >= 0) lanesDownRef.current[lane] = false;
+      if (lane >= 0) {
+        lanesDownRef.current[lane] = false;
+        const run = runRef.current;
+        const songMs = songClock.songTimeAt(event.timeStamp);
+        if (run && songMs !== null) handleEvents(run.release(lane, songMs), run.heardTime(songMs));
+      }
       // Space is FEVER and keydown already took it; keep its keyup from clicking a focused button.
       if (lane >= 0 || event.code === "Space") {
         event.preventDefault();
@@ -381,9 +401,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     };
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
-    const onBlur = () => {
-      lanesDownRef.current = [false, false, false, false];
-    };
+    const onBlur = () => releaseHeld();
     window.addEventListener("blur", onBlur);
 
     // ---- render loop ----
@@ -463,6 +481,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("blur", onBlur);
+      releaseHeldRef.current = () => {};
       offAnchor();
       offChart();
       offStatus();
@@ -502,8 +521,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       runRef.current = restarted;
       runAutoplayRef.current = value;
       const snap = restarted.snapshot(songMs);
-      const { hits, ranked, ...rest } = snap;
-      setHud({ ...rest, unranked: value || snap.total < chart.notes.length, judgement: null });
+      const { hits, ranked, skipped, ...rest } = snap;
+      setHud({ ...rest, unranked: value || skipped > 0, judgement: null });
       judgementRef.current = null;
       flashesRef.current = [];
     }

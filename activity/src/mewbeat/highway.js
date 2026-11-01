@@ -18,6 +18,10 @@ const HIT_LINE_FROM_BOTTOM = 72; // css px between the hit line and the bottom o
 const NOTE_HEIGHT = 22;
 const DRAWN_OUTCOMES = new Set(["pending", "skipped", "miss"]);
 const MAX_PARTICLES = 80;
+const HOLD_WIDTH = 0.38; // hold tail width, as a fraction of the lane
+const HOLD_ALPHA = 0.55;
+const DROPPED_COLOR = "#5b6170";
+const DROPPED_ALPHA = 0.45;
 
 const CYAN = "#67e3f4";
 const VIOLET = "#a78bfa";
@@ -41,7 +45,7 @@ function roundedRect(ctx, x, y, w, h, r) {
 // access lives in here, so the module's top level stays importable from Node.
 //   effects: "full" | "reduced" | "off". Reduced drops the particles, off drops the hit flashes too.
 //   render({ heardMs, approachMs, notes, lanesDown, flashes, feverActive })
-//     notes: run.visibleNotes() entries; flashes: [{ lane, judgement, at }] with `at` in heard ms.
+//     notes: run.visibleNotes() entries ({ t, lane, outcome, len, hold }); flashes: [{ lane, judgement, at }] with `at` in heard ms.
 //     Keep a flash object stable between frames, it is how particles are spawned only once.
 export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
   const ctx = canvas.getContext("2d");
@@ -103,20 +107,62 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     }
   }
 
-  function drawNote(lane, y, laneWidth, alpha) {
+  function drawNote(lane, y, laneWidth, alpha, color = LANE_COLORS[lane]) {
     const x = lane * laneWidth + laneWidth * 0.12;
     const w = laneWidth * 0.76;
     ctx.globalAlpha = alpha;
     ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     roundedRect(ctx, x, y - NOTE_HEIGHT / 2 + 3, w, NOTE_HEIGHT, 8);
     ctx.fill();
-    ctx.fillStyle = LANE_COLORS[lane];
+    ctx.fillStyle = color;
     roundedRect(ctx, x, y - NOTE_HEIGHT / 2, w, NOTE_HEIGHT, 8);
     ctx.fill();
     ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
     roundedRect(ctx, x + w * 0.3, y - NOTE_HEIGHT / 2 + 5, w * 0.4, NOTE_HEIGHT - 10, 4);
     ctx.fill();
     ctx.globalAlpha = 1;
+  }
+
+  // The body of a hold: a rounded bar between two y values (top is the end, bottom the head or the
+  // receptor). Effects "off" is flat colour; otherwise it shades from the lane colour to white.
+  function drawHoldTail(lane, topY, bottomY, laneWidth, color, alpha, flat) {
+    const w = laneWidth * HOLD_WIDTH;
+    const h = bottomY - topY;
+    if (h <= 0) return;
+    const x = lane * laneWidth + (laneWidth - w) / 2;
+    if (flat) {
+      ctx.fillStyle = color;
+    } else {
+      const grad = ctx.createLinearGradient(0, topY, 0, bottomY);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, "rgba(255, 255, 255, 0.9)");
+      ctx.fillStyle = grad;
+    }
+    ctx.globalAlpha = alpha;
+    roundedRect(ctx, x, topY, w, h, Math.min(w, h) / 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // One hold. pending: tail from the head up to the end, head on top. held: the tail starts at the
+  // receptor and the head is gone. dropped: grey tail and head, fading once the end is past the line.
+  // done: nothing (the tail was completed).
+  function drawHold(note, y, heardMs, approachMs, laneWidth, hitY) {
+    if (note.hold === "done") return;
+    const endY = noteY(note.t + note.len, heardMs, approachMs, hitY);
+    const flat = effects === "off";
+    if (note.hold === "held") {
+      drawHoldTail(note.lane, endY, hitY, laneWidth, LANE_COLORS[note.lane], HOLD_ALPHA, flat);
+    } else if (note.hold === "dropped") {
+      const fade = Math.min(1, 1 - (heardMs - (note.t + note.len)) / MISS_FADE_MS);
+      if (fade <= 0) return;
+      drawHoldTail(note.lane, endY, y, laneWidth, DROPPED_COLOR, DROPPED_ALPHA * fade, true);
+      drawNote(note.lane, y, laneWidth, DROPPED_ALPHA * fade, DROPPED_COLOR);
+    } else {
+      const skipped = note.outcome === "skipped";
+      drawHoldTail(note.lane, endY, y, laneWidth, LANE_COLORS[note.lane], skipped ? SKIPPED_ALPHA * HOLD_ALPHA : HOLD_ALPHA, flat);
+      drawNote(note.lane, y, laneWidth, skipped ? SKIPPED_ALPHA : 1);
+    }
   }
 
   function spawnParticles(flash, laneWidth, hitY) {
@@ -176,9 +222,13 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     drawLanes(feverActive, lanesDown, laneWidth, hitY);
 
     for (const note of notes) {
+      const y = noteY(note.t, heardMs, approachMs, hitY);
+      if (note.len > 0) {
+        drawHold(note, y, heardMs, approachMs, laneWidth, hitY);
+        continue;
+      }
       const outcome = note.outcome ?? "pending";
       if (!DRAWN_OUTCOMES.has(outcome)) continue; // perfect, great and good vanish on the hit
-      const y = noteY(note.t, heardMs, approachMs, hitY);
       if (y < -NOTE_HEIGHT) continue;
       if (outcome === "miss") {
         // A miss keeps falling past the line and fades out.

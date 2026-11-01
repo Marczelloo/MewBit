@@ -201,3 +201,49 @@ test("fromMs inside a hold skips the whole hold", () => {
   assert.equal(judge.tailOutcomeOf(0), "skipped");
   assert.equal(judge.remaining(), 1);
 });
+
+test("two holds in different lanes overlap and are judged independently", () => {
+  const judge = createJudge([
+    { t: 1000, lane: 0, len: 1000 },
+    { t: 1500, lane: 2, len: 1000 },
+  ]);
+  assert.equal(judge.press(0, 1000).judgement, "perfect");
+  assert.equal(judge.press(2, 1500).judgement, "perfect");
+  assert.deepEqual(judge.release(2, 2500), [{ index: 1, judgement: "perfect", errorMs: 0, part: "tail" }]);
+  assert.equal(judge.tailOutcomeOf(0), "pending"); // lane 0 is still held
+  assert.deepEqual(judge.release(0, 2000), [{ index: 0, judgement: "perfect", errorMs: 0, part: "tail" }]);
+  assert.equal(judge.remaining(), 0);
+});
+
+test("dropping one overlapping hold leaves the other intact", () => {
+  const judge = createJudge([
+    { t: 1000, lane: 0, len: 1000 },
+    { t: 1500, lane: 3, len: 1000 },
+  ]);
+  judge.press(0, 1000);
+  judge.press(3, 1500);
+  assert.equal(judge.release(0, 1200)[0].judgement, "miss");
+  assert.equal(judge.tailOutcomeOf(1), "pending");
+  assert.deepEqual(judge.sweep(2500).map((r) => [r.index, r.judgement, r.part]), [[1, "perfect", "tail"]]);
+});
+
+test("a tap on the same lane right after a hold's end is judged as its own note", () => {
+  const judge = createJudge([
+    { t: 1000, lane: 0, len: 500 },
+    { t: 1600, lane: 0 },
+  ]);
+  judge.press(0, 1000);
+  judge.release(0, 1500);
+  assert.deepEqual(judge.press(0, 1600), { index: 1, judgement: "perfect", errorMs: 0, part: "head" });
+  assert.equal(judge.remaining(), 0);
+});
+
+test("a tap right after a hold that auto-completed on sweep is still judged", () => {
+  const judge = createJudge([
+    { t: 1000, lane: 0, len: 500 },
+    { t: 1600, lane: 0 },
+  ]);
+  judge.press(0, 1000);
+  assert.equal(judge.sweep(1550)[0].part, "tail"); // held through the end
+  assert.deepEqual(judge.press(0, 1600), { index: 1, judgement: "perfect", errorMs: 0, part: "head" });
+});
