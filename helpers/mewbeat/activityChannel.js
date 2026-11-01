@@ -9,7 +9,10 @@ function errorReply(message) {
 
 // The mewbeat half of the Activity socket. It owns no state: playback and the
 // chart store are injected, so the server decides where they come from.
-function createMewbeatChannel({ readPlayback, chartStore, isUnlocked, now = Date.now }) {
+// audioLatencyMs is how long the player position runs ahead of what Discord
+// listeners hear (send queue plus voice transport); the anchor says the
+// position is heard that much later.
+function createMewbeatChannel({ readPlayback, chartStore, isUnlocked, now = Date.now, audioLatencyMs = 0 }) {
   function sync(guildId, message) {
     const { id, clientSentAt } = message;
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH || !Number.isFinite(clientSentAt)) {
@@ -23,7 +26,7 @@ function createMewbeatChannel({ readPlayback, chartStore, isUnlocked, now = Date
       ? {
         audioKey,
         positionMs: Math.round(playback.positionMs),
-        at: serverNow,
+        at: serverNow + audioLatencyMs,
         paused: Boolean(playback.paused),
         durationMs: playback.durationMs,
       }

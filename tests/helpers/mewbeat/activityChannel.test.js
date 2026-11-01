@@ -42,6 +42,19 @@ describe("mewbeat activity channel", () => {
     });
   });
 
+  it("dates the anchor by the audio latency so the position is when it is heard", async () => {
+    const channel = createMewbeatChannel({
+      readPlayback: () => ({ track: fakeTrack(), node: "n", positionMs: 1000, paused: false, durationMs: 200000 }),
+      chartStore: { getCharts: async () => ({ status: "ready", charts: {} }) },
+      isUnlocked: () => true,
+      now: () => NOW,
+      audioLatencyMs: 500,
+    });
+    const reply = await channel.handle("g", "u", { type: "mewbeat_sync", id: "s1", clientSentAt: 1 });
+    assert.strictEqual(reply.serverNow, NOW);
+    assert.deepStrictEqual(reply.anchor, { audioKey: KEY, positionMs: 1000, at: NOW + 500, paused: false, durationMs: 200000 });
+  });
+
   it("gives a null anchor when nothing plays", async () => {
     const { channel } = setup({ playback: null });
     const reply = await channel.handle("g", "u", { type: "mewbeat_sync", id: "s1", clientSentAt: 1 });

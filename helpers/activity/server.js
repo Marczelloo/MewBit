@@ -81,6 +81,10 @@ const CLIENT_CACHE_TTL = 5 * 60 * 1000;
 const MAX_IDENTITY_CACHE_ENTRIES = 1_000;
 const MAX_ACTIVITY_SOCKETS = 200;
 const QUEUE_UNDO_TTL_MS = 15_000;
+// Lavalink's send queue (bufferDurationMs 400) plus Discord voice transport.
+const MEWBEAT_AUDIO_LATENCY_MS = process.env.MEWBEAT_AUDIO_LATENCY_MS && Number.isFinite(Number(process.env.MEWBEAT_AUDIO_LATENCY_MS))
+  ? Number(process.env.MEWBEAT_AUDIO_LATENCY_MS)
+  : 500;
 // Player events are emitted at most once a second, so this is only a
 // safety-net for iframe/proxy connections which stayed open but stopped
 // delivering events. It must not become the primary state transport. Keep
@@ -683,6 +687,7 @@ const mewbeatChannel = createMewbeatChannel({
   readPlayback: readMewbeatPlayback,
   chartStore,
   isUnlocked: (userId) => getMewbeatRecord(userId).unlocked,
+  audioLatencyMs: MEWBEAT_AUDIO_LATENCY_MS,
 });
 
 function limitText(value, max = 200) {
