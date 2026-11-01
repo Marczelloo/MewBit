@@ -23,6 +23,8 @@ const LANE_HZ = [700, 1000, 1400, 2000];
 const CLICK_MS = 15;
 const CLICK_FADE_MS = 1;
 const CLICK_GAIN = 0.35;
+const RELEASE_GAIN = 0.5; // a hold's release click, relative to its head click
+const HOLD_TONE_GAIN = 0.08; // the quiet tone held between head and release
 const PCM_ATTEMPTS = 3;
 
 class PreviewError extends Error {}
@@ -95,27 +97,40 @@ export function encodeWav({ sampleRate, channels, samples }) {
 }
 
 // Returns a copy of the audio with a lane-pitched click added at every note.
+// A hold also gets a softer click one octave up at its release and a quiet
+// tone held between head and release.
 export function mixClicks(audio, notes) {
   const { sampleRate, channels } = audio;
   const out = Int16Array.from(audio.samples);
   const frames = out.length / channels;
   const clickFrames = Math.round((sampleRate * CLICK_MS) / 1000);
   const fadeFrames = Math.max(1, Math.round((sampleRate * CLICK_FADE_MS) / 1000));
+  const add = (frame, value) => {
+    if (frame < 0 || frame >= frames) return;
+    for (let c = 0; c < channels; c += 1) {
+      const index = frame * channels + c;
+      out[index] = Math.max(-32768, Math.min(32767, Math.round(out[index] + value)));
+    }
+  };
+  const click = (startFrame, hz, gain) => {
+    for (let i = 0; i < clickFrames; i += 1) {
+      const attack = Math.min(1, i / fadeFrames);
+      const release = 1 - i / clickFrames; // linear fade-out to silence
+      add(startFrame + i, Math.sin((2 * Math.PI * hz * i) / sampleRate) * attack * release * gain * 32767);
+    }
+  };
   for (const note of notes) {
     const hz = LANE_HZ[note.lane] ?? LANE_HZ[0];
     const startFrame = Math.round((note.t / 1000) * sampleRate);
-    for (let i = 0; i < clickFrames; i += 1) {
-      const frame = startFrame + i;
-      if (frame < 0 || frame >= frames) continue;
-      const attack = Math.min(1, i / fadeFrames);
-      const release = 1 - i / clickFrames; // linear fade-out to silence
-      const click =
-        Math.sin((2 * Math.PI * hz * i) / sampleRate) * attack * release * CLICK_GAIN * 32767;
-      for (let c = 0; c < channels; c += 1) {
-        const index = frame * channels + c;
-        out[index] = Math.max(-32768, Math.min(32767, Math.round(out[index] + click)));
-      }
+    click(startFrame, hz, CLICK_GAIN);
+    if (!(note.len > 0)) continue;
+    const endFrame = Math.round(((note.t + note.len) / 1000) * sampleRate);
+    for (let frame = startFrame; frame < endFrame; frame += 1) {
+      const i = frame - startFrame;
+      const edge = Math.min(1, i / fadeFrames, (endFrame - frame) / fadeFrames);
+      add(frame, Math.sin((2 * Math.PI * hz * i) / sampleRate) * edge * HOLD_TONE_GAIN * 32767);
     }
+    click(endFrame, hz * 2, CLICK_GAIN * RELEASE_GAIN);
   }
   return { sampleRate, channels, samples: out };
 }
@@ -227,15 +242,46 @@ async function fetchPcm(encodedTrack, password) {
 
 // --- main --------------------------------------------------------------------
 
-function describe(chart, features) {
+// "lead lead drums" -> "lead×2 drums×1"
+function compressRuns(items) {
+  const runs = [];
+  for (const item of items) {
+    if (runs.length > 0 && runs[runs.length - 1][0] === item) runs[runs.length - 1][1] += 1;
+    else runs.push([item, 1]);
+  }
+  return runs.map(([item, count]) => `${item}×${count}`).join(" ");
+}
+
+// The leader of every phrase, from the same functions the generator uses.
+function leaderSequence(chart, features) {
+  const { buildPhrases, chooseLeaders } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "phrases.js"));
+  const { buildTiming } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "timing.js"));
+  const durationMs = Math.round(features.durationMs ?? chart.durationMs);
+  return chooseLeaders(buildPhrases(features, buildTiming(features, durationMs), durationMs));
+}
+
+export function describe(chart, features) {
+  const { chartMetrics } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "metrics.js"));
+  const { DIFFICULTIES: PARAMS } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "difficulty.js"));
   const seconds = chart.durationMs / 1000;
   const nps = chart.notes.length / seconds;
   const { bpm, confidence } = features.tempo ?? {};
-  return (
+  const metrics = chartMetrics(chart, features);
+  const percent = (share) => `${Math.round(share * 100)}%`;
+  const identities = metrics.repeatIdentity.map((r) => r.identity);
+  const meanIdentity = identities.length === 0 ? null : identities.reduce((a, b) => a + b, 0) / identities.length;
+  const holds = chart.notes.filter((n) => n.len !== undefined).length;
+  const maxNps = PARAMS[chart.difficulty]?.maxNps;
+  return [
     `${chart.difficulty.padEnd(6)} notes=${String(chart.notes.length).padStart(4)} ` +
-    `stars=${chart.stars} nps=${nps.toFixed(2)} ` +
-    `tempo=${bpm?.toFixed?.(1) ?? "?"}bpm conf=${confidence?.toFixed?.(2) ?? "?"}`
-  );
+      `stars=${chart.stars} nps=${nps.toFixed(2)} ` +
+      `tempo=${bpm?.toFixed?.(1) ?? "?"}bpm conf=${confidence?.toFixed?.(2) ?? "?"}`,
+    `       on-layer ${percent(metrics.onLayerShare)}, ` +
+      `repeat identity ${meanIdentity === null ? "n/a" : percent(meanIdentity)} (${metrics.repeatIdentity.length} repeats), ` +
+      `hands L${percent(metrics.handBalance.left)} R${percent(metrics.handBalance.right)}`,
+    `       nps mean ${metrics.nps.mean.toFixed(2)} peak ${metrics.nps.peak.toFixed(2)} / max ${maxNps ?? "?"}, holds ${holds}`,
+    `       leaders ${compressRuns(leaderSequence(chart, features))}`,
+  ].join("\n");
 }
 
 export async function main(argv) {

@@ -77,3 +77,35 @@ test("parseArgs reads the query, options and rejects bad ones", async () => {
   assert.throws(() => parseArgs(["q", "--nope"]), /Unknown option/);
   assert.equal(slugOf("Daft Punk - Around the World!"), "daft-punk-around-the-world");
 });
+
+test("mixClicks adds a softer release click and a quiet tone for a hold", async () => {
+  const { mixClicks } = await loadPreview();
+  const mixed = mixClicks(audio(48000), [{ t: 100, lane: 1, len: 500 }]);
+  const peak = (fromMs, toMs) => {
+    let max = 0;
+    for (let i = fromMs * 24; i < toMs * 24; i += 1) max = Math.max(max, Math.abs(mixed.samples[i]));
+    return max;
+  };
+  const head = peak(100, 116);
+  const release = peak(600, 616);
+  const sustain = peak(300, 500);
+  assert.ok(release > 0, "release click at t + len");
+  assert.ok(release < head, "release click is softer than the head click");
+  assert.ok(sustain > 0 && sustain < release, "a quiet tone between head and release");
+  assert.equal(peak(650, 1000), 0, "nothing after the release");
+});
+
+test("describe prints the chart proxies", async () => {
+  const { describe } = await loadPreview();
+  const { generateAll } = require("../../helpers/mewbeat/charts/generate");
+  const { makeLayeredFeatures } = require("../helpers/mewbeat/fixtures");
+  const features = makeLayeredFeatures({ holdsEveryBeats: 2 });
+  const chart = generateAll(features, "youtube:fixture:preview").normal;
+  const text = describe(chart, features);
+  assert.match(text, /on-layer \d+%/);
+  assert.match(text, /repeat identity \d+% \(\d+ repeats\)/);
+  assert.match(text, /hands L\d+% R\d+%/);
+  assert.match(text, /nps mean [\d.]+ peak [\d.]+ \/ max 4\.5/);
+  assert.match(text, /holds \d+/);
+  assert.match(text, /leaders lead×\d+/);
+});
