@@ -103,7 +103,7 @@ export default function GameHud({ hud }) {
           <i style={vibeStyle} />
         </div>
         <div className={`mb-vibe-hint ${full ? "mb-vibe-hint-ready" : ""}`.trim()}>
-          {hud.feverActive ? `FEVER · double points · ${feverSeconds.toFixed(1)} s` : full ? "Space for FEVER!" : "Fill vibe with hits"}
+          {hud.feverActive ? `FEVER · double points · ${feverSeconds.toFixed(1)} s left` : full ? "Space for FEVER!" : "Fill vibe with hits"}
         </div>
       </div>
     </section>
