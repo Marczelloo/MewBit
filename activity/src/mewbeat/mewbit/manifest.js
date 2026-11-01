@@ -10,18 +10,27 @@ function pose(name, group, order, fps, extra = {}) {
   return { kind: "frames", group, frames, fps, ...extra };
 }
 
+// Files 1..count in order, then back down to `from` when a loop retraces its way to the start.
+function run(count, from) {
+  const up = Array.from({ length: count }, (_, i) => i + 1);
+  return from === undefined ? up : [...up, ...up.slice(from - 1, -1).reverse()];
+}
+
+// Poses a screen shows play at 12 fps, on twos like anime; the tempo comes from the in-betweens per move.
+const TWOS = 12;
+
 export const MEWBIT_POSES = {
-  neutral: pose("neutral", "game", [1, 2, 1, 3], 2.5),
-  vibe1: pose("vibe1", "game", [1, 2, 3, 2], 4, { bubble: "nyaa~!" }),
-  vibe2: pose("vibe2", "game", [1, 2, 3, 4], 6, { bubble: "wooo!!" }),
-  vibe3: pose("vibe3", "game", [1, 2, 3, 4], 8, { bubble: "SUGOI!!" }),
+  neutral: pose("neutral", "game", [1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 8, 9, 10, 11, 12, 13, 12, 11, 10, 9, 8], TWOS),
+  vibe1: pose("vibe1", "game", run(13, 2), TWOS, { bubble: "nyaa~!" }),
+  vibe2: pose("vibe2", "game", run(16), TWOS, { bubble: "wooo!!" }),
+  vibe3: pose("vibe3", "game", run(12), TWOS, { bubble: "SUGOI!!" }),
   // These three fit MISS_POSE_MS, CRUSHED_POSE_MS and MILESTONE_POSE_MS in useMewbeatGame.js.
-  miss: pose("miss", "game", [1, 2, 3], 5, { hold: true, bubble: "eep!" }),
-  crushed: pose("crushed", "game", [1, 2, 3, 4], 3.4, { hold: true, bubble: "nyoo… ;-;" }),
-  milestone: pose("milestone", "game", [1, 2, 3, 4], 4.5, { hold: true }),
-  fever: pose("fever", "game", [1, 2, 3, 4, 3, 5], 8, { bubble: "FEVER!!! ✦" }),
-  charting: pose("charting", "game", [1, 2, 3, 2], 2.5, { bubble: "charting…" }),
-  reveal: pose("reveal", "unlock", [1, 2, 3, 4], 4, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
+  miss: pose("miss", "game", run(7), TWOS, { hold: true, bubble: "eep!" }),
+  crushed: pose("crushed", "game", run(13), TWOS, { hold: true, bubble: "nyoo… ;-;" }),
+  milestone: pose("milestone", "game", run(10), TWOS, { hold: true }),
+  fever: pose("fever", "game", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 11, 12, 13, 14, 15], TWOS, { bubble: "FEVER!!! ✦" }),
+  charting: pose("charting", "game", run(13, 2), TWOS, { bubble: "charting…" }),
+  reveal: pose("reveal", "unlock", run(13), TWOS, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
   // Lobby and results poses from the design spec: no screen renders <Mewbit> with them yet.
   stretch: pose("stretch", "lobby", [1, 2, 3, 2, 4], 2.5),
   adjust: pose("adjust", "lobby", [1, 2, 3], 3),
