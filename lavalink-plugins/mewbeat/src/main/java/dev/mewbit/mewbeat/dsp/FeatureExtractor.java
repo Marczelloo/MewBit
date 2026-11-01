@@ -198,8 +198,9 @@ public final class FeatureExtractor {
             bands.add(new Features.Band(BAND_NAMES[b], onsets));
         }
 
+        float[] combined = combinedFlux();
         TempoEstimator.Result tempo = TempoEstimator.estimate(
-                combinedFlux(), flux[LOW], hops, HOP / (double) sampleRate);
+                combined, flux[LOW], hops, HOP / (double) sampleRate);
         List<Integer> beats = new ArrayList<>();
         for (int hop : tempo.beatHops()) {
             beats.add(hopTimeMs(hop));
@@ -230,7 +231,7 @@ public final class FeatureExtractor {
         pitchNanos += System.nanoTime() - pitchStart;
 
         long repetitionStart = System.nanoTime();
-        List<Features.Phrase> phrases = phrases(beats, downbeats, tempo.confidence(), lines, durationMs, drums);
+        List<Features.Phrase> phrases = phrases(beats, downbeats, tempo.confidence(), lines, durationMs, drums, combined);
         repetitionNanos += System.nanoTime() - repetitionStart;
 
         return new Features(
@@ -271,7 +272,8 @@ public final class FeatureExtractor {
             double tempoConfidence,
             PitchTracker.Lines lines,
             int durationMs,
-            List<Features.Drum> drums) {
+            List<Features.Drum> drums,
+            float[] combined) {
         int n = beats.size();
         if (n < 2) {
             return List.of();
@@ -279,7 +281,6 @@ public final class FeatureExtractor {
         int[] beatMs = beats.stream().mapToInt(Integer::intValue).toArray();
         float[][] beatChroma = new float[n][];
         float[][] beatRhythm = new float[n][];
-        float[] combined = combinedFlux();
         int chromaFrame = 0;
         int fluxHop = 0;
         int[] intervals = new int[n - 1];

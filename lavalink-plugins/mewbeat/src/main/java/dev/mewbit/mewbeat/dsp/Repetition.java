@@ -105,14 +105,19 @@ final class Repetition {
         for (int j = 1; j < starts.length; j++) {
             int length = Math.min(BEATS_PER_PHRASE, (j + 1 < starts.length ? starts[j + 1] : n) - starts[j]);
             double top = 0;
+            boolean scorable = false;
             for (int i = 0; i < j; i++) {
                 Match match = bestShift(starts, i, j, length, n, beatChroma, beatRhythm);
                 if (match != null) {
                     top = Math.max(top, match.similarity);
+                    scorable = true;
                 }
             }
-            sum += top;
-            counted++;
+            // A phrase with no usable source (e.g. the one after a pickup) says nothing about this grid.
+            if (scorable) {
+                sum += top;
+                counted++;
+            }
         }
         return counted == 0 ? 0 : sum / counted;
     }

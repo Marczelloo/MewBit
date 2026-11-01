@@ -13,9 +13,9 @@ import { fileURLToPath } from "node:url";
 // Builds lavalink-plugins/mewbeat inside the gradle Docker image and installs
 // the jar into helpers/lavalink/plugins, which Lavalink mounts as its plugin
 // directory. Pass --test to run the plugin's unit tests before building, and
-// --bench with it to also run the analysis time-budget test.
-const runTests = process.argv.includes("--test");
+// --bench also runs the analysis time-budget test (and implies --test).
 const runBench = process.argv.includes("--bench");
+const runTests = process.argv.includes("--test") || runBench;
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const projectDir = join(repositoryRoot, "lavalink-plugins", "mewbeat");
