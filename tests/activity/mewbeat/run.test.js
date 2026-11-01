@@ -428,11 +428,23 @@ test("autoplay: a stale release from a hold skipped by jump does not drop a newl
   const run = createRun({ chart: twoHolds, startSongMs: 0, autoplay: true });
   tickAll(run, 0, 2100); // hold A pressed, its release queued for 3000
   run.jump(2800); // skips A's tail (end 3000 < 3100)
-  const events = tickAll(run, 2116, 5200);
+  // One tick spans both: it presses B (3100) and finds A's stale release (3000) due.
+  const events = [...run.tick(3200), ...tickAll(run, 3216, 5200)];
   assert.equal(events.filter((e) => e.kind === "miss").length, 0);
   assert.deepEqual(
     events.filter((e) => e.index === 1).map((e) => `${e.kind}:${e.part}:${e.judgement}`),
     ["hit:head:perfect", "hit:tail:perfect"],
   );
   assert.equal(events.filter((e) => e.kind === "end").length, 1);
+});
+
+test("hold: a hit head with a tail skipped by jump reads as done, not as a fresh pending hold", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2000); // head hit, tail pending until 3000
+  run.jump(2800); // skips the tail (end 3000 < 3100)
+  assert.equal(run.snapshot(2800).skipped, 2); // the tail and the tap at 2500
+  assert.equal(run.visibleNotes(2900, 2900).find((n) => n.t === 2000).hold, "done");
+  // A hold skipped whole (head and tail) is still drawn as the faded pending one.
+  const whole = createRun({ chart: holdChart(), startSongMs: 1200 });
+  assert.equal(whole.visibleNotes(2000, 2000)[0].hold, "pending");
 });

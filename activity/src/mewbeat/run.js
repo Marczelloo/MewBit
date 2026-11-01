@@ -175,7 +175,10 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   // "pending" | "held" | "dropped" | "done" for a note; taps and skipped holds are "pending".
   function holdState(i) {
     const tailOutcome = judge.tailOutcomeOf(i);
-    if (tailOutcome === null || tailOutcome === "skipped") return "pending";
+    if (tailOutcome === null) return "pending";
+    // Skipped tail: a hit head means jump/setOffset cut the hold short (nothing left to draw);
+    // a skipped head means the whole hold was skipped (drawn faded, like a skipped tap).
+    if (tailOutcome === "skipped") return judge.outcomeOf(i) === "skipped" ? "pending" : "done";
     if (tailOutcome === "miss") return "dropped";
     if (tailOutcome !== "pending") return "done";
     return judge.outcomeOf(i) === "pending" ? "pending" : "held";
