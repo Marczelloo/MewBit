@@ -3,10 +3,21 @@
 // gap), and depending on the difficulty the other hand is blocked (Easy), spaced
 // half a beat apart (Normal) or free (Hard). Taps carry no `len` key at all.
 const { FALLBACK_BEAT_MS } = require("./difficulty");
+const { nearestIndex } = require("./util");
 
 const MAX_HOLD_BEATS = 4;
-const MAX_HOLD_SHARE = 0.08; // holds are at most this share of a chart's notes: more reads as a held-note chart
+const MAX_HOLD_SHARE = 0.12; // holds are at most this share of a chart's notes: more reads as a held-note chart
 const HOLD_SOURCES = new Set(["bass", "lead"]); // drum events never become holds
+// addSustainHolds: a long, confident bass/lead note turns the tap charted on its start into a hold.
+const SUSTAIN_MIN_BEATS = 1.5;
+const SUSTAIN_MIN_CONF = 0.8;
+const SUSTAIN_MATCH_MS = 40; // a tap this close to the note's start is the one that holds
+const SUSTAIN_DROP_PER_BEAT = 2; // a hold may push out at most this many same-hand taps per beat it runs
+// addGapHolds: a tap whose hand then rests while the music keeps sounding is held through the rest.
+const GAP_MIN_BEATS = 1.25; // the hand's next note at least this far away...
+const GAP_MAX_BEATS = 2; // ...and the hold at most this long
+const GAP_MIN_ENERGY = 0.3; // the music sounds this loud at the start, middle and end of the hold
+const GAP_HOLD_SHARE = 0.1; // gap holds are at most this share of the notes they are placed among
 
 // A support event backs the leader up: a backbone drum hit under a tonal leader ("secondary"), or an event of a
 // support layer in a mixed phrase (patterns.js mixedEvents).
@@ -82,13 +93,16 @@ function clipHolds(notes, limitMs, diff, timing) {
   });
 }
 
-// limitHoldShare(notes) -> notes: the shortest holds become taps until holds are at most MAX_HOLD_SHARE of the notes.
-// A tap is always legal where its hold was (it only frees the time the hold occupied).
-function limitHoldShare(notes) {
-  const allowed = Math.floor(MAX_HOLD_SHARE * notes.length);
+// limitHoldShare(notes, round, preferred) -> notes: the shortest holds become taps until holds are at most
+// MAX_HOLD_SHARE of the notes (rounded down by default; a phrase on its own rounds to nearest, so a short one keeps
+// its one hold). Holds `preferred(note)` says are real sustains go last. A tap is always legal where its hold was (it
+// only frees the time the hold occupied).
+function limitHoldShare(notes, round = Math.floor, preferred = () => false) {
+  const allowed = round(MAX_HOLD_SHARE * notes.length);
   const holds = notes.filter((n) => n.len > 0);
   if (holds.length <= allowed) return notes;
-  const demote = new Set([...holds].sort((a, b) => a.len - b.len || b.t - a.t).slice(0, holds.length - allowed));
+  const order = (a, b) => preferred(a) - preferred(b) || a.len - b.len || b.t - a.t;
+  const demote = new Set([...holds].sort(order).slice(0, holds.length - allowed));
   return notes.map((n) => {
     if (!demote.has(n)) return n;
     const tap = { ...n };
@@ -170,4 +184,110 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
   return items.filter((n) => !dropped.has(n));
 }
 
-module.exports = { beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, planHolds, spacedBlocked };
+// addSustainHolds(notes, features, diff, timing, limitMs) -> notes
+// Every long (>= SUSTAIN_MIN_BEATS), confident bass/lead note whose start has a tap within SUSTAIN_MATCH_MS turns
+// that tap into a hold, whichever layer the phrase was charted from: drum-led phrases get their bass sustains too.
+//   len = min(sustain, MAX_HOLD_BEATS, next note of the lane - minLaneGapMs, limitMs - minLaneGapMs), rounded.
+// Notes the hold forbids are handled like planHolds: the hold is clipped to end before the first one if it stays at
+// least holdMinBeats long; otherwise they are dropped when none sits on a downbeat and there are at most
+// SUSTAIN_DROP_PER_BEAT per beat of the hold; otherwise the tap stays a tap. Existing holds are kept as they are.
+function addSustainHolds(notes, features, diff, timing, limitMs = Infinity) {
+  const laneGap = diff.minLaneGapMs ?? 0;
+  const out = [...notes].sort((a, b) => a.t - b.t || a.lane - b.lane).map((n) => ({ ...n }));
+  const dropped = new Set();
+  const times = out.map((n) => n.t);
+  const sustains = [];
+  for (const layer of HOLD_SOURCES) {
+    for (const e of Array.isArray(features?.[layer]) ? features[layer] : []) {
+      if (Number.isFinite(e?.t) && Number(e.conf) >= SUSTAIN_MIN_CONF && Number(e.len) >= SUSTAIN_MIN_BEATS * beatMsOf(timing, e.t)) sustains.push(e);
+    }
+  }
+  sustains.sort((a, b) => a.t - b.t || b.len - a.len);
+  const isDownbeat = (t) => (timing?.downbeats ?? []).some((d) => Math.abs(d - t) <= 1);
+
+  for (const e of sustains) {
+    const i = nearestIndex(times, e.t);
+    if (i < 0 || Math.abs(times[i] - e.t) > SUSTAIN_MATCH_MS) continue;
+    const at = out.filter((n) => n.t === times[i] && !dropped.has(n));
+    if (at.some((n) => n.len > 0)) continue;
+    // A chord's note in a hand of its own, so the other note stays playable.
+    const c = at.find((n) => !at.some((o) => o !== n && hand(o.lane) === hand(n.lane)));
+    if (!c) continue;
+    const beat = beatMsOf(timing, c.t);
+    const minLen = diff.holdMinBeats * beat;
+    const later = out.filter((o) => !dropped.has(o) && o.t > c.t && o.t < c.t + MAX_HOLD_BEATS * beat + laneGap + (diff.minNoteGapMs ?? 0));
+    let len = Math.min(e.len, MAX_HOLD_BEATS * beat, limitMs - laneGap - c.t);
+    const sameLane = later.find((o) => o.lane === c.lane);
+    if (sameLane) len = Math.min(len, sameLane.t - laneGap - c.t);
+    len = Math.round(len);
+    if (!(len >= minLen)) continue;
+
+    // Earlier holds still running must allow it, as must the notes it would run over.
+    const earlier = out.filter((o) => !dropped.has(o) && o.len > 0 && o.t < c.t);
+    if (earlier.some((h) => holdBlocks(h, { ...c, len }, diff))) continue;
+    const blockersAt = (l) => {
+      const hold = { t: c.t, lane: c.lane, len: l };
+      const pool = later.filter((o) => o.t > c.t);
+      const direct = pool.filter((o) => holdBlocks(hold, o, diff));
+      return [...direct, ...spacingBlockers(hold, pool.filter((o) => !direct.includes(o)), diff, beat / 2)];
+    };
+    let blockers = blockersAt(len);
+    if (blockers.length > 0) {
+      const first = Math.min(...blockers.map((o) => o.t));
+      const gap = Math.max(gapAfterHold(c.lane, blockers.find((o) => o.t === first).lane, diff) ?? 0, 0);
+      const clipped = Math.round(first - gap - c.t);
+      if (clipped >= minLen) {
+        len = clipped;
+        blockers = blockersAt(len);
+      }
+    }
+    if (blockers.length > 0) {
+      const allowed = Math.floor(SUSTAIN_DROP_PER_BEAT * (len / beat));
+      if (blockers.length > allowed || blockers.some((o) => isDownbeat(o.t) || o.len > 0)) continue;
+      for (const o of blockers) dropped.add(o);
+    }
+    c.len = len;
+  }
+  return out.filter((n) => !dropped.has(n));
+}
+
+// addGapHolds(notes, diff, timing, energy, limitMs, fromMs) -> notes: most songs have few long notes the pitch
+// tracker can see (a supersaw or a pad under the drums is not one), so where a tap's hand rests for at least
+// GAP_MIN_BEATS while the music keeps sounding, the tap is held until shortly before that hand's next note (at most
+// GAP_MAX_BEATS). The longest rests are held first, up to GAP_HOLD_SHARE of the notes from `fromMs` on (the notes
+// before it are context: their holds may still run). Nothing is dropped: a hold that would forbid any note (an
+// earlier hold, the other hand's rules) stays a tap.
+function addGapHolds(notes, diff, timing, energy, limitMs = Infinity, fromMs = -Infinity) {
+  const laneGap = diff.minLaneGapMs ?? 0;
+  const out = [...notes].sort((a, b) => a.t - b.t || a.lane - b.lane).map((n) => ({ ...n }));
+  const own = out.filter((n) => n.t >= fromMs);
+  let budget = Math.round(GAP_HOLD_SHARE * own.length) - own.filter((n) => n.len > 0).length;
+  const loud = (t) => (typeof energy?.at === "function" ? energy.at(t) : 1) >= GAP_MIN_ENERGY;
+  const candidates = [];
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i];
+    if (c.len > 0 || c.t < fromMs) continue;
+    if (out.some((o) => o !== c && o.t === c.t && hand(o.lane) === hand(c.lane))) continue;
+    const beat = beatMsOf(timing, c.t);
+    const next = out.find((o, j) => j > i && o.t > c.t && hand(o.lane) === hand(c.lane));
+    const nextT = next ? next.t : limitMs;
+    if (nextT - c.t < GAP_MIN_BEATS * beat) continue;
+    const release = next ? gapAfterHold(c.lane, next.lane, diff) ?? beat / 2 : laneGap;
+    const len = Math.round(Math.min(nextT - release, c.t + GAP_MAX_BEATS * beat, limitMs - laneGap) - c.t);
+    if (!(len >= diff.holdMinBeats * beat) || ![c.t, c.t + len / 2, c.t + len].every(loud)) continue;
+    candidates.push({ c, len, rest: nextT - c.t });
+  }
+  candidates.sort((a, b) => b.rest - a.rest || a.c.t - b.c.t || a.c.lane - b.c.lane);
+  for (const { c, len } of candidates) {
+    if (budget <= 0) break;
+    const reach = GAP_MAX_BEATS * beatMsOf(timing, c.t);
+    const pool = out.filter((o) => o !== c && o.t + (o.len > 0 ? o.len : 0) >= c.t - reach && o.t <= c.t + len + laneGap + reach);
+    if (!holdSafe({ t: c.t, lane: c.lane, len }, pool, diff, timing)) continue;
+    c.len = len;
+    c.gapHold = true; // generate.js tells these from sustains, then drops the mark
+    budget--;
+  }
+  return out;
+}
+
+module.exports = { addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, planHolds, spacedBlocked };

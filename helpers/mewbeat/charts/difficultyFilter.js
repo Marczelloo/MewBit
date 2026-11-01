@@ -266,4 +266,4 @@ function enforceFloors(notes, diff, timing = null) {
   return out;
 }
 
-module.exports = { applyDifficulty, capMoments, enforceFloors, limitJacks };
+module.exports = { applyDifficulty, capMoments, enforceFloors, limitJacks, pulsePowerFloor, selectByFloors };

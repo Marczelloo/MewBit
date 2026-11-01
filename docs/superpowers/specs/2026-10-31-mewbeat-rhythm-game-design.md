@@ -237,7 +237,7 @@ People in the channel who are not in the game keep seeing the normal player. The
 
 ### Gameplay rules
 
-- **Judgement windows** (absolute hit error after offset correction): PERFECT ≤ 45 ms, GREAT ≤ 90 ms, GOOD ≤ 135 ms. Anything later, or no hit, is a MISS.
+- **Judgement windows** (absolute hit error after offset correction): PERFECT ≤ 40 ms, GREAT ≤ 75 ms, GOOD ≤ 110 ms. A press 110–150 ms early takes the note as a MISS (early miss band, as in osu!mania), so mashing ahead of the notes breaks combo; a hold missed this way loses its tail too. Anything later, or no hit, is a MISS.
   - A press with no note within the GOOD window does nothing. There is no penalty for ghost taps.
 - **Base points:** PERFECT 300, GREAT 200, GOOD 100, MISS 0. These are the mockup values, and the builder may tune them.
 - **Combo multiplier:** ×1 to ×4. +1 per 10 combo, so `mult = min(4, 1 + floor(combo / 10))`.

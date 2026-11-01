@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 9;
+const GENERATOR_VERSION = 10;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -51,6 +51,7 @@ const DIFFICULTIES = {
     minNoteGapMs: 200, // any-lane gap between distinct times, never below this (Normal 100, Hard 60)
     maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
+    deriveMaxLevel: 1, // derived from Hard (derive.js): keeps notes up to this grid level (0 beat, 1 half, 2 quarter)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
@@ -77,6 +78,7 @@ const DIFFICULTIES = {
     minNoteGapMs: 100,
     maxJack: 2,
     maxLevel: 1,
+    deriveMaxLevel: 2,
     quarterMinEnergy: 0.6,
     holdMinBeats: 1, // a half-beat hold reads as noise
     pulseNotesPerBeat: 1,
@@ -101,6 +103,7 @@ const DIFFICULTIES = {
     minNoteGapMs: 60,
     maxJack: 3,
     maxLevel: 2,
+    deriveMaxLevel: null, // Hard is charted from the music itself
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 2,

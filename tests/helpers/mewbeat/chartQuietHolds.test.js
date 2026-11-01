@@ -120,10 +120,12 @@ describe("holds on sustained notes of a non-leader layer", () => {
     }
   });
 
-  it("a note that starts on a drum hit is left to the drums", () => {
+  it("a note that starts on a drum hit holds the drum's note", () => {
     const features = withBassNote();
     features.bass = features.bass.map((n) => ({ ...n, t: n.t + BEAT_MS / 2 })); // on the next beat, where a kick falls
-    assert.equal(holdsOf(generateChart(features, "normal", "k")).length, 0);
+    const holds = holdsOf(generateChart(features, "hard", "k"));
+    assert.ok(holds.length > 0);
+    assert.ok(holds.every((h) => features.bass.some((n) => Math.abs(n.t - h.t) <= 40)), JSON.stringify(holds));
   });
 
   it("no hold is shorter than a beat on any difficulty", () => {
@@ -144,18 +146,18 @@ describe("holds on sustained notes of a non-leader layer", () => {
 describe("limitHoldShare", () => {
   const taps = (n) => Array.from({ length: n }, (_, i) => ({ t: i * 500, lane: i % 4 }));
 
-  it("turns the shortest holds into taps until at most 8 % of the notes are held", () => {
-    const notes = taps(100).map((n, i) => (i < 12 ? { ...n, len: 500 + i * 10 } : n));
+  it("turns the shortest holds into taps until at most 12 % of the notes are held", () => {
+    const notes = taps(100).map((n, i) => (i < 16 ? { ...n, len: 500 + i * 10 } : n));
     const out = limitHoldShare(notes);
     const held = out.filter((n) => n.len > 0);
-    assert.equal(held.length, 8);
-    assert.deepEqual(held.map((n) => n.t), [4, 5, 6, 7, 8, 9, 10, 11].map((i) => i * 500)); // the longest stay
+    assert.equal(held.length, 12);
+    assert.deepEqual(held.map((n) => n.t), Array.from({ length: 12 }, (_, k) => (k + 4) * 500)); // the longest stay
     assert.ok(out.every((n) => n.len === undefined || n.len > 0));
     assert.ok(out.slice(0, 4).every((n) => !("len" in n)), "a demoted hold has no len key at all");
   });
 
   it("leaves a chart under the share alone", () => {
-    const notes = taps(100).map((n, i) => (i < 8 ? { ...n, len: 600 } : n));
+    const notes = taps(100).map((n, i) => (i < 12 ? { ...n, len: 600 } : n));
     assert.equal(limitHoldShare(notes), notes);
   });
 });

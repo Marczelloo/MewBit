@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 9", () => {
-    assert.equal(GENERATOR_VERSION, 9);
+  it("is version 10", () => {
+    assert.equal(GENERATOR_VERSION, 10);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -467,7 +467,7 @@ describe("chartMetrics", () => {
 });
 
 describe("holds", () => {
-  // One 2-beat sustain per phrase among beat taps: holds stay under the 8 % share cap, as in a real chart. No drums, so the lead leads.
+  // One 2-beat sustain per phrase among beat taps: holds stay under the 12 % share cap, as in a real chart. No drums, so the lead leads.
   const features = makeLayeredFeatures({ sustainAtBeats: [6], drums: false, durationMs: 192000 });
   const { timing, phrases, leaders } = setup(features);
   const beatMs = 500;
