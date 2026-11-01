@@ -1,6 +1,6 @@
 # mewbeat — Layered, musical charts (with holds)
 
-Date: 2026-11-01. Status: awaiting review.
+Date: 2026-11-01. Status: approved (2026-11-01).
 Branch: `feat/mewbeat` (same rules as the main spec: no merge to `main` until the whole feature is done; test on local Docker, not the Pi).
 Parent spec: `docs/superpowers/specs/2026-10-31-mewbeat-rhythm-game-design.md`. This document **replaces** its "Musicality rules" and "Difficulty rules" subsections (under *Chart generation: bot side*) and extends its *Analysis*, *Chart format* and *Gameplay rules*. Everything else in the parent spec stands.
 
