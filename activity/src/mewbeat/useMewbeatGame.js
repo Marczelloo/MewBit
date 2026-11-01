@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { effectiveEffects } from "./effects.js";
-import { approachMsFor, createHighwayRenderer } from "./highway.js";
+import { approachMsFor, createHighwayRenderer, tempoScrollFactor } from "./highway.js";
 import { createHitSounds } from "./hitSounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
@@ -8,7 +8,7 @@ import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, showMewbit: true };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, showMewbit: true, tempoScroll: true };
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -459,7 +459,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       const run = runRef.current;
       const current = phaseRef.current;
       const renderer = rendererRef.current;
-      const approachMs = approachMsFor(cfgRef.current.scrollSpeed);
+      const tempo = cfgRef.current.tempoScroll === false ? 1 : tempoScrollFactor(chartRef.current?.bpm);
+      const approachMs = Math.floor(approachMsFor(cfgRef.current.scrollSpeed) / tempo);
 
       function drawRun(heardMs) {
         const flashes = flashesRef.current;

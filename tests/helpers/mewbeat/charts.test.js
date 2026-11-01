@@ -161,7 +161,7 @@ describe("mewbeat chart generator", () => {
   });
 
   describe("absolute playability floors", () => {
-    const MIN_LANE_GAP_MS = { easy: 350, normal: 200, hard: 150 };
+    const MIN_LANE_GAP_MS = { easy: 350, normal: 200, hard: 150, hell: 110 };
     const MIN_EASY_NOTE_GAP_MS = 200;
     const scenarios = {
       "180 BPM confident": () => makeFeatures({ bpm: 180, confidence: 0.9, durationMs: 120000, energy: () => 1 }),
@@ -207,7 +207,7 @@ describe("mewbeat chart generator", () => {
   });
 
   describe("untrustworthy tempo.beats", () => {
-    const FLOORS = { easy: 250, normal: 125, hard: 62.5 };
+    const FLOORS = { easy: 250, normal: 125, hard: 62.5, hell: 62.5 };
 
     it("keeps its density when beats are missing for 60-120 s", () => {
       const full = chartsOf(fixture());
@@ -252,7 +252,7 @@ describe("mewbeat chart generator", () => {
     it("applies the note floor on the snapped path too, scaled to the tempo above 120 BPM", () => {
       // At 180 BPM a beat is 333 ms: the floor is the difficulty's grid step (98%), not 250/125/62.5.
       const fast = makeFeatures({ bpm: 180, confidence: 0.9, durationMs: 120000, energy: () => 1 });
-      const floors = { easy: 0.98 * 0.5 * 333, normal: 0.98 * 0.25 * 333, hard: 0.98 * 0.125 * 333 };
+      const floors = { easy: 0.98 * 0.5 * 333, normal: 0.98 * 0.25 * 333, hard: 0.98 * 0.125 * 333, hell: 0.98 * 0.125 * 333 };
       for (const chart of Object.values(chartsOf(fast))) {
         const times = [...new Set(chart.notes.map((n) => n.t))];
         for (let i = 1; i < times.length; i++) {
@@ -297,7 +297,7 @@ describe("mewbeat chart generator", () => {
   it("formatShape", () => {
     const chart = generateChart(fixture(), "normal", KEY);
     assert.deepStrictEqual(Object.keys(chart), [
-      "version", "audioKey", "difficulty", "durationMs", "stars", "highlightMs", "notes",
+      "version", "audioKey", "difficulty", "durationMs", "stars", "bpm", "highlightMs", "notes",
     ]);
     assert.strictEqual(chart.version, GENERATOR_VERSION);
     assert.strictEqual(chart.audioKey, KEY);

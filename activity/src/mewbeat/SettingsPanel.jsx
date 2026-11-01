@@ -19,6 +19,7 @@ const DIFFICULTIES = [
   { value: "easy", label: "Easy" },
   { value: "normal", label: "Normal" },
   { value: "hard", label: "Hard" },
+  { value: "hell", label: "Hell" },
 ];
 const EFFECTS = [
   { value: "full", label: "Full" },
@@ -30,6 +31,10 @@ const HIT_SOUNDS = [
   { value: false, label: "Off" },
 ];
 const AUTO_OFFSET = HIT_SOUNDS;
+const TEMPO_SCROLL = [
+  { value: true, label: "By tempo" },
+  { value: false, label: "Fixed" },
+];
 const SHOW_MEWBIT = [
   { value: true, label: "Show" },
   { value: false, label: "Hide" },
@@ -314,6 +319,8 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
             value={scrollSpeed}
             onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
           />
+          <Segmented label="Scroll speed mode" options={TEMPO_SCROLL} value={valueOf("tempoScroll") !== false} onChange={(value) => send({ tempoScroll: value })} />
+          <p className="mb-field-help">By tempo: faster songs fall a little faster, slower ones a little slower.</p>
         </section>
 
         <section className="mb-field">

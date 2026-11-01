@@ -9,7 +9,7 @@ const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
-const { bridgeSeam, orientDrums } = require("./seams");
+const { fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { lowerBound } = require("./util");
@@ -86,6 +86,7 @@ function chartNotes(ctx, diff) {
   const { features, timing, energy, phrases, leaders, supports, durationMs } = ctx;
   const all = []; // final notes so far, time-ordered
   ctx.drumTimes = new Set(); // the moments of drum hits (Easy and Normal keep their lane roles when they move them)
+  ctx.tonalLayers = new Map(); // moment -> the tonal layer charted there ("bass" | "lead"): what a sung phrase follows
   // Where a bass or lead line plays (or the features cannot tell), a phrase's resting hands hold through the rests;
   // no such hold runs into the next phrase, so a repeat copies it.
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
@@ -97,14 +98,15 @@ function chartNotes(ctx, diff) {
   // A bar that plays like one just before it takes that bar's lanes, so a groove keeps its pattern.
   const grooved = (notes, fromMs, toMs, fixed) => repeatBarLanes(notes, timing, { fromMs, toMs, fixed });
 
-  // Where the leading layer changes (a sung line handing over to an instrument), the drums carry the beat through a
-  // silence at the seam, and a drum pattern starts on the side the hands are on.
+  // Where the charted layer rests (a sung line pausing, a lead dropping out, the leading layer changing at a seam) while
+  // the drums play on, the drums carry the beat through; a drum pattern starts on the side the hands are on.
   const changes = (i) => i > 0 && leaders[i] !== leaders[i - 1];
-  const bridged = (notes, i) => {
-    if (!changes(i)) return notes;
-    const bridge = bridgeSeam(all, notes, phrases[i].startMs, features, timing, energy);
-    for (const n of bridge) ctx.drumTimes.add(n.t);
-    return [...bridge, ...notes];
+  // A copied repeat already carries its source's fills: only the rest before it, up to its start, is filled.
+  const bridged = (notes, i, copy = false) => {
+    const fill = fillGaps(all, notes, features, timing, energy, i === phrases.length - 1 && !copy ? durationMs : null)
+      .filter((n) => !copy || n.t < phrases[i].startMs);
+    for (const n of fill) ctx.drumTimes.add(n.t);
+    return [...fill, ...notes];
   };
 
   for (let i = 0; i < phrases.length; ) {
@@ -115,7 +117,7 @@ function chartNotes(ctx, diff) {
     // A repeat plays like its source.
     const copied = copiedRepeat(ctx, all, i, diff);
     if (copied) {
-      all.push(...copied);
+      all.push(...bridged(copied, i, true));
       i++;
       continue;
     }
@@ -135,7 +137,10 @@ function chartNotes(ctx, diff) {
     const events = patternEvents(phrase, leaders[i], features, timing, supports[i]);
     const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steadyDrums(ctx, i));
     // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
-    for (const e of events) if (e.source === "drums") ctx.drumTimes.add(e.t);
+    for (const e of events) {
+      if (e.source === "drums") ctx.drumTimes.add(e.t);
+      else if ((e.source === "bass" || e.source === "lead") && !ctx.tonalLayers.has(e.t)) ctx.tonalLayers.set(e.t, e.source);
+    }
     let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => ctx.drumTimes.has(n.t));
     if (changes(i) && leaders[i] === "drums" && supports[i].length === 0) patterned = orientDrums(patterned, tail);
     const repeated = limitJacks(patterned, diff, tail, { strict: true, timing });
@@ -176,12 +181,14 @@ function hardNotes(ctx) {
 function notesFor(ctx, difficulty) {
   const diff = diffOf(ctx, difficulty);
   if (difficulty === "hard") return finish(ctx, [...hardNotes(ctx)], diff);
+  if (difficulty === "hell") return finish(ctx, chartNotes(ctx, diff), diff);
   const hard = finish(ctx, [...hardNotes(ctx)], diffOf(ctx, "hard"));
   const derived = deriveNotes(ctx, hard, diff, {
     copyRepeat: (all, i) => copiedRepeat(ctx, all, i, diff),
     steadyPulse: (i) => steadyDrums(ctx, i),
     sustained: sustainedOf(ctx),
     drumHit: (n) => ctx.drumTimes?.has(n.t) ?? false,
+    layerOf: (t) => ctx.tonalLayers?.get(t) ?? null,
   });
   return finish(ctx, derived, diff, false);
 }
@@ -198,6 +205,7 @@ function chartFrom(ctx, difficulty, audioKey) {
     difficulty,
     durationMs,
     stars: starsOf({ notes }),
+    bpm: ctx.timing.snapped ? Math.round(60000 / ctx.timing.medianMs) : null, // the activity scales the fall speed by it
     highlightMs: Number.isFinite(features.highlightMs) && features.highlightMs >= 0 && features.highlightMs <= durationMs
       ? features.highlightMs
       : null,
@@ -221,7 +229,8 @@ function generateAll(features, audioKey) {
   const easy = chartFrom(ctx, "easy", audioKey);
   const normal = chartFrom(ctx, "normal", audioKey);
   const hard = chartFrom(ctx, "hard", audioKey);
-  return easy && normal && hard ? { easy, normal, hard } : null;
+  const hell = chartFrom(ctx, "hell", audioKey);
+  return easy && normal && hard && hell ? { easy, normal, hard, hell } : null;
 }
 
 module.exports = { GENERATOR_VERSION, generateAll, generateChart, starsOf };

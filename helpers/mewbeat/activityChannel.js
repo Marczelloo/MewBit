@@ -1,6 +1,6 @@
 const { audioKeyOf } = require("./audioKey");
 
-const DIFFICULTIES = ["easy", "normal", "hard"];
+const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const MAX_ID_LENGTH = 40;
 
 function errorReply(message) {

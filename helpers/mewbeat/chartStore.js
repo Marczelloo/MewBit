@@ -9,7 +9,7 @@ const { analysisClient } = require("./analysisClient");
 const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
 const { GENERATOR_VERSION, generateAll } = require("./charts/generate");
 
-const DIFFICULTIES = ["easy", "normal", "hard"];
+const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const MEMORY_CAPACITY = 16;
 const NO_AUDIO_KEY = "no_audio_key";
 const TOO_FEW_NOTES = "too_few_notes";

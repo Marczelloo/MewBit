@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   hitSounds: false,
   hitVolume: 40,
   showMewbit: true,
+  tempoScroll: true, // the song's tempo nudges the fall speed (activity highway.js tempoScrollFactor)
 });
 
 const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100] });
@@ -17,7 +18,7 @@ const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10], hitV
 const RESERVED_CODES = Object.freeze(["Space", "Escape"]);
 
 const KEY_CODE_PATTERN = /^[A-Za-z0-9]{1,32}$/;
-const LIVE_DIFFICULTIES = ["easy", "normal", "hard"];
+const LIVE_DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const EFFECT_LEVELS = ["full", "reduced", "off"];
 const SETTING_FIELDS = Object.keys(DEFAULT_SETTINGS);
 
@@ -42,11 +43,12 @@ const FIELD_CHECKS = {
   keys: (value) => (isValidKeys(value) ? null : "Pick four different keys. Space and Escape are taken."),
   offsetMs: (value) => (isIntegerIn(value, LIMITS.offsetMs) ? null : `Offset must be a whole number from ${LIMITS.offsetMs[0]} to ${LIMITS.offsetMs[1]} ms.`),
   scrollSpeed: (value) => (isIntegerIn(value, LIMITS.scrollSpeed) ? null : `Scroll speed must be a whole number from ${LIMITS.scrollSpeed[0]} to ${LIMITS.scrollSpeed[1]}.`),
-  liveDifficulty: (value) => (LIVE_DIFFICULTIES.includes(value) ? null : "Live difficulty must be easy, normal or hard."),
+  liveDifficulty: (value) => (LIVE_DIFFICULTIES.includes(value) ? null : "Live difficulty must be easy, normal, hard or hell."),
   effects: (value) => (EFFECT_LEVELS.includes(value) ? null : "Effects must be full, reduced or off."),
   hitSounds: (value) => (typeof value === "boolean" ? null : "Hit sounds must be on or off."),
   hitVolume: (value) => (isIntegerIn(value, LIMITS.hitVolume) ? null : `Hit sound volume must be a whole number from ${LIMITS.hitVolume[0]} to ${LIMITS.hitVolume[1]}.`),
   showMewbit: (value) => (typeof value === "boolean" ? null : "Show Mewbit must be on or off."),
+  tempoScroll: (value) => (typeof value === "boolean" ? null : "Speed by tempo must be on or off."),
 };
 
 function cloneSettings(settings) {

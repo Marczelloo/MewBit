@@ -39,7 +39,7 @@ function setup(features) {
 
 describe("generator v4", () => {
   it("is version 10", () => {
-    assert.equal(GENERATOR_VERSION, 12);
+    assert.equal(GENERATOR_VERSION, 14);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -71,6 +71,11 @@ describe("generator v4", () => {
 
   it("deterministic: two runs are deep-equal", () => {
     assert.deepEqual(generateAll(makeLayeredFeatures(), KEY), generateAll(makeLayeredFeatures(), KEY));
+  });
+
+  it("tempo: every chart carries the song's BPM for the fall speed", () => {
+    const charts = generateAll(makeLayeredFeatures(), KEY);
+    for (const d of DIFFS) assert.equal(charts[d].bpm, 120, d);
   });
 
   it("noRandomness: the audioKey does not change the notes", () => {
@@ -202,7 +207,7 @@ describe("generator v4", () => {
   it("bandPathWhenNoLayers: v1 features still chart on every difficulty", () => {
     const features = makeFeatures({ durationMs: 120000, energy: () => 0.8 });
     const all = chartsOf(features);
-    const floors = { easy: 350, normal: 200, hard: 150 };
+    const floors = { easy: 350, normal: 200, hard: 150, hell: 110 };
     for (const chart of Object.values(all)) {
       assert.ok(chart.notes.every((n) => n.t >= LEAD_IN_MS));
       const last = [-1e9, -1e9, -1e9, -1e9];
@@ -511,7 +516,7 @@ describe("holds", () => {
           if (n.t >= h.t && n.t <= h.t + h.len && n.lane >> 1 === h.lane >> 1) {
             assert.fail(`${chart.difficulty}: lane ${n.lane} at ${n.t} inside hold ${h.t}+${h.len}`);
           }
-          if (n.t === h.t && chart.difficulty !== "hard") assert.fail(`${chart.difficulty}: hold at ${h.t} is in a chord`);
+          if (n.t === h.t && chart.difficulty !== "hard" && chart.difficulty !== "hell") assert.fail(`${chart.difficulty}: hold at ${h.t} is in a chord`);
         }
         // Its own lane stays busy until the minimum lane gap after it.
         const later = chart.notes.find((n) => n.lane === h.lane && n.t > h.t);

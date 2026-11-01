@@ -38,6 +38,12 @@ describe("mewbeat settings validation", () => {
     assert.strictEqual(merged.showMewbit, false);
   });
 
+  it("follows the tempo by default and accepts a fixed speed", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.tempoScroll, true);
+    assert.strictEqual(validateSettingsPatch({ tempoScroll: false }, DEFAULT_SETTINGS).tempoScroll, false);
+    assert.throws(() => validateSettingsPatch({ tempoScroll: "yes" }, DEFAULT_SETTINGS), /tempo/);
+  });
+
   it("merges a valid patch onto the current settings", () => {
     const keys = ["KeyA", "KeyS", "KeyK", "KeyL"];
     const merged = validateSettingsPatch({ keys }, DEFAULT_SETTINGS);

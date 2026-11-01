@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { patternEvents } = require("../../../helpers/mewbeat/charts/patterns");
-const { BRIDGE_MIN_BEATS, bridgeSeam, orientDrums } = require("../../../helpers/mewbeat/charts/seams");
+const { BRIDGE_MIN_BEATS, bridgeSeam, fillGaps, orientDrums } = require("../../../helpers/mewbeat/charts/seams");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures } = require("./fixtures");
 
@@ -61,6 +61,27 @@ describe("bridgeSeam", () => {
     const far = { ...base, drums: [drum(500, "kick"), drum(9000, "snare"), drum(10500, "kick"), drum(14000, "snare")] };
     const out = bridgeSeam([{ t: 0, lane: 1 }], [{ t: 16000, lane: 2 }], 10000, far, timing, energy);
     assert.deepEqual(out.map((n) => n.t), [9000, 10500]);
+  });
+});
+
+describe("fillGaps", () => {
+  const drums = [500, 1000, 1500, 2000, 2500, 3000, 3500].map((t, k) => drum(t, k % 2 ? "snare" : "kick"));
+  const features = { ...base, drums };
+  const beats = [500, 1000, 1500, 2000, 2500, 3000, 3500];
+
+  it("fills a rest inside a phrase, and the rest after the notes before it, with the drums", () => {
+    assert.deepEqual(fillGaps([], [{ t: 0, lane: 1 }, { t: 4000, lane: 2 }], features, timing, energy).map((n) => n.t), beats);
+    assert.deepEqual(fillGaps([{ t: 0, lane: 1 }], [{ t: 4000, lane: 2 }, { t: 4500, lane: 1 }], features, timing, energy).map((n) => n.t), beats);
+  });
+
+  it("fills the end of the last phrase up to untilMs, and nothing before the first note", () => {
+    assert.deepEqual(fillGaps([], [{ t: 0, lane: 1 }], features, timing, energy, 4000).map((n) => n.t), beats);
+    assert.deepEqual(fillGaps([], [{ t: 4000, lane: 1 }], features, timing, energy), []);
+  });
+
+  it("leaves a short rest and a silent stretch alone", () => {
+    assert.deepEqual(fillGaps([], [{ t: 1500, lane: 0 }, { t: 2400, lane: 1 }], features, timing, energy), []);
+    assert.deepEqual(fillGaps([], [{ t: 0, lane: 0 }, { t: 4000, lane: 1 }], features, timing, { at: () => 0 }), []);
   });
 });
 

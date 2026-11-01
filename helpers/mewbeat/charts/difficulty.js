@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 12;
+const GENERATOR_VERSION = 14;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -52,6 +52,7 @@ const DIFFICULTIES = {
     maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
     deriveMaxLevel: 1, // derived from Hard (derive.js): keeps notes up to this grid level (0 beat, 1 half, 2 quarter)
+    fillRestBeats: 4, // derive.js: a rest this long where Hard plays gets one of Hard's notes back (any grid level)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
@@ -79,6 +80,7 @@ const DIFFICULTIES = {
     maxJack: 2,
     maxLevel: 1,
     deriveMaxLevel: 2,
+    fillRestBeats: 2.5,
     quarterMinEnergy: 0.6,
     holdMinBeats: 1, // a half-beat hold reads as noise
     pulseNotesPerBeat: 1,
@@ -104,6 +106,7 @@ const DIFFICULTIES = {
     maxJack: 3,
     maxLevel: 2,
     deriveMaxLevel: null, // Hard is charted from the music itself
+    fillRestBeats: null, // Hard's rests are filled with the drums (seams.js fillGaps)
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 2,
@@ -114,6 +117,34 @@ const DIFFICULTIES = {
     // Hard's own lane logic: inside a stream (notes within maxGapBeats of each
     // other) every second note takes the runner-up band's lane instead of the
     // strongest band's, so patterns alternate between the two loudest bands.
+    alternation: { maxGapBeats: 2 },
+  },
+  // For fun, beyond Hard. Charted from the music like Hard, not by stacking notes on it: the extra notes are the
+  // music's own sixteenths and accents (finer onsets kept at a lower strength, chords on more of the loud hits,
+  // denser drum pulses), so the chart is harder to play but still follows the song.
+  hell: {
+    maxNps: 13.0,
+    maxNpsCeiling: 16,
+    baseDiv: 4,
+    energyDiv: 4,
+    highEnergyFrom: 0.5,
+    fineDiv: 8,
+    fineMinStrength: 0.7,
+    laneGapBeats: 1 / 4,
+    minLaneGapMs: 110,
+    minGapBeats: 1 / 8,
+    minNoteGapMs: 45,
+    maxJack: 4,
+    maxLevel: 2,
+    deriveMaxLevel: null,
+    fillRestBeats: null,
+    quarterMinEnergy: null,
+    holdMinBeats: 1,
+    pulseNotesPerBeat: 4,
+    holdOtherHand: "free",
+    bandBias: [0.9, 1, 1, 1],
+    beatBias: 0,
+    chord: { minStrength: 0.8, onDownbeat: false, minEnergy: 0.4 },
     alternation: { maxGapBeats: 2 },
   },
 };

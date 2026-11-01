@@ -4,6 +4,17 @@ export function approachMsFor(scrollSpeed) {
   return Math.floor(2200 * 0.85 ** (scrollSpeed - 1));
 }
 
+// A song's tempo nudges the fall speed: notes fall faster in a fast song, so its beats are not crammed together,
+// and slower in a slow one. Gentle (square root around 120 BPM) and bounded, and constant for the whole song, so
+// reading stays predictable. No trusted tempo (bpm null) keeps the player's speed as it is.
+const TEMPO_BASE_BPM = 120;
+const TEMPO_FACTOR_MIN = 0.85;
+const TEMPO_FACTOR_MAX = 1.2;
+export function tempoScrollFactor(bpm) {
+  if (!Number.isFinite(bpm) || bpm <= 0) return 1;
+  return Math.min(TEMPO_FACTOR_MAX, Math.max(TEMPO_FACTOR_MIN, Math.sqrt(bpm / TEMPO_BASE_BPM)));
+}
+
 // Vertical position of a note: 0 at the top when it is approachMs away, hitLineY on the line,
 // below it once it is past.
 export function noteY(t, heardMs, approachMs, hitLineY) {

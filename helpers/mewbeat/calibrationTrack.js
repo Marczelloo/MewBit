@@ -8,7 +8,7 @@ const SOURCE_NAME = "mewbeat";
 const PREFIX = "mewbeat:calibration:";
 const IDENTIFIER = /^mewbeat:calibration:(\d{1,3}):(\d{1,3}):(\d{1,5})$/;
 const CALIBRATION = { bpm: 120, beats: 64, leadInMs: 3000 };
-const DIFFICULTIES = ["easy", "normal", "hard"];
+const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 // The two middle lanes in turn, so either hand can take every other click.
 const LANES = [1, 2];
 
