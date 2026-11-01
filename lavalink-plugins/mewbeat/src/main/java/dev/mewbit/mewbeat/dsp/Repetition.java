@@ -7,7 +7,9 @@ import java.util.List;
  * Splits a track into phrases of 16 beats and finds which phrase repeats which.
  *
  * <p>Each beat is described by its chroma (what is played) and rhythm (when); two beats are similar by
- * {@code 0.6 * cos(chroma) + 0.4 * cos(rhythm)}. A phrase is compared with every earlier one at beat shifts of
+ * {@code 0.6 * cos(chroma) + 0.4 * cos(rhythm)}. The chroma is centred on the song's mean first: every beat of a
+ * song shares its key, so raw chroma vectors all point the same way and any two phrases would look alike.
+ * A phrase is compared with every earlier one at beat shifts of
  * -4..+4, so a repeat that starts a bar late or early still matches; the shift shows up as the lag.
  */
 final class Repetition {
@@ -50,6 +52,7 @@ final class Repetition {
         if (n < MIN_BEATS) {
             return List.of();
         }
+        beatChroma = centred(beatChroma);
         int[] starts;
         if (tempoConfidence >= TRUST_TEMPO_CONFIDENCE && downbeatMs.length > 0) {
             starts = gridStarts(n, indexOf(beatMs, downbeatMs[0]));
@@ -65,6 +68,44 @@ final class Repetition {
             phrases.add(compare(starts, j, lengthBeats, startMs, endMs, beatMs, beatChroma, beatRhythm));
         }
         return phrases;
+    }
+
+    /** Each sounding beat's chroma minus the mean over the sounding beats; silent beats stay all zero. */
+    private static float[][] centred(float[][] beatChroma) {
+        int dims = beatChroma[0].length;
+        double[] mean = new double[dims];
+        int sounding = 0;
+        for (float[] chroma : beatChroma) {
+            if (isSilent(chroma)) {
+                continue;
+            }
+            for (int k = 0; k < dims; k++) {
+                mean[k] += chroma[k];
+            }
+            sounding++;
+        }
+        float[][] out = new float[beatChroma.length][dims];
+        if (sounding == 0) {
+            return out;
+        }
+        for (int i = 0; i < beatChroma.length; i++) {
+            if (isSilent(beatChroma[i])) {
+                continue;
+            }
+            for (int k = 0; k < dims; k++) {
+                out[i][k] = (float) (beatChroma[i][k] - mean[k] / sounding);
+            }
+        }
+        return out;
+    }
+
+    private static boolean isSilent(float[] chroma) {
+        for (float v : chroma) {
+            if (v != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Phrase starts (beat indexes): a pickup before {@code first} when it is a beat or more, then every 16 beats. */

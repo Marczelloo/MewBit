@@ -160,6 +160,27 @@ class RepetitionTest {
     }
 
     @Test
+    void sharedKeyDoesNotMakePhrasesRepeat() {
+        // Every beat rings the tonic loudly on the same sub-beat, as real songs do; only a quieter pitch class
+        // tells A from B. Raw chroma would call B a repeat of A, the song-centred chroma must not.
+        Beats song = new Beats(0, "ABA", 0);
+        for (int i = 0; i < song.beatMs.length; i++) {
+            for (int k = 0; k < 12; k++) {
+                song.chroma[i][k] *= 0.3f;
+            }
+            song.chroma[i][0] += 1;
+            java.util.Arrays.fill(song.rhythm[i], 0);
+            song.rhythm[i][0] = 1;
+        }
+
+        List<Features.Phrase> phrases =
+                Repetition.phrases(song.beatMs, song.downbeatsFrom(0), 0.9, song.chroma, song.rhythm, song.durationMs);
+
+        assertEquals(java.util.Arrays.asList(null, null, 0), repeatsOf(phrases), "phrases " + phrases);
+        assertTrue(phrases.get(1).similarity() < REPEAT_SIMILARITY, "B vs A: " + phrases.get(1));
+    }
+
+    @Test
     void shortTailJoinsPreviousPhrase() {
         Beats song = new Beats(0, "AB", 5);
 
