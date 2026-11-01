@@ -45,6 +45,15 @@ describe("mewbeat chart generator", () => {
     assert.strictEqual(a, b);
   });
 
+  it("does not depend on the audioKey: no RNG in chart generation", () => {
+    const features = fixture({ energy: () => 1 });
+    for (const difficulty of ["easy", "normal", "hard"]) {
+      const a = generateChart(features, difficulty, "a");
+      const b = generateChart(features, difficulty, "b");
+      assert.deepStrictEqual(b, { ...a, audioKey: "b" }, difficulty);
+    }
+  });
+
   it("sameLaneGapRespected", () => {
     const { easy, normal, hard } = chartsOf(fixture());
     assert.ok(minSameLaneGap(easy.notes) >= BEAT_MS - 2);

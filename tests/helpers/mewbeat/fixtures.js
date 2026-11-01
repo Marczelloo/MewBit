@@ -79,4 +79,124 @@ function threeSectionEnergy(ms) {
   return ms >= 60000 && ms < 120000 ? 1.0 : 0.3;
 }
 
-module.exports = { makeFeatures, threeSectionEnergy };
+// --- features v2 (drums / bass / lead / phrases) --------------------------------
+
+const BEATS_PER_PHRASE = 16;
+
+// Per-letter event patterns, in beats from the phrase start. Repeated letters
+// give identical patterns, which is what makes a phrase a "repeat".
+function drumPattern(letter) {
+  const events = [];
+  for (let b = 0; b < BEATS_PER_PHRASE; b++) {
+    if (letter === "A") {
+      events.push({ beat: b, kind: b % 2 === 0 ? "kick" : "snare" });
+      events.push({ beat: b + 0.5, kind: "hat" });
+    } else {
+      events.push({ beat: b, kind: b % 4 === 1 || b % 4 === 3 ? "snare" : "kick" });
+      if (b % 4 === 2) events.push({ beat: b + 0.5, kind: "kick" });
+      if (b % 4 === 3) events.push({ beat: b + 0.5, kind: "perc" });
+    }
+  }
+  return events;
+}
+
+function bassPattern(letter) {
+  const step = letter === "A" ? 2 : 1.5;
+  const roots = letter === "A" ? [40, 43, 38, 45] : [41, 36, 43, 40, 38];
+  const events = [];
+  for (let k = 0, b = 0; b < BEATS_PER_PHRASE; k++, b += step) {
+    events.push({ beat: b, lenBeats: step * 0.75, pitch: roots[k % roots.length] });
+  }
+  return events;
+}
+
+// Without holds a lead note per beat; with holds every holdsEveryBeats-th beat
+// starts a note that is holdsEveryBeats beats long (the beats it covers are empty).
+function leadPattern(letter, holdsEveryBeats) {
+  const scale = letter === "A" ? [60, 62, 64, 67, 65, 64, 62, 60] : [67, 65, 64, 62, 64, 65, 67, 72];
+  const events = [];
+  if (holdsEveryBeats > 0) {
+    for (let b = 0, k = 0; b < BEATS_PER_PHRASE; b += holdsEveryBeats, k++) {
+      events.push({ beat: b, lenBeats: Math.min(holdsEveryBeats, BEATS_PER_PHRASE - b), pitch: scale[k % scale.length] });
+    }
+  } else {
+    for (let b = 0; b < BEATS_PER_PHRASE; b++) events.push({ beat: b, lenBeats: 0.5, pitch: scale[b % scale.length] });
+  }
+  return events;
+}
+
+function strengthOfIndex(index) {
+  return Number((0.6 + (((index * 37) % 13) / 13) * 0.4).toFixed(3));
+}
+
+function makeLayeredFeatures({
+  bpm = 120,
+  durationMs = 64000,
+  structure = "ABAB",
+  leadConfidence = 0.7,
+  drums = true,
+  bass = true,
+  lead = true,
+  holdsEveryBeats = 0,
+} = {}) {
+  const base = makeFeatures({ bpm, durationMs, highlightMs: Math.round(durationMs / 2) });
+  const beatMs = 60000 / bpm;
+  const phraseMs = BEATS_PER_PHRASE * beatMs;
+  const count = Math.floor(durationMs / phraseMs);
+
+  const drumEvents = [];
+  const bassEvents = [];
+  const leadEvents = [];
+  const list = [];
+  const lastOfLetter = new Map();
+  for (let i = 0; i < count; i++) {
+    const letter = structure[i % structure.length];
+    const start = i * phraseMs;
+    const place = (events, into, withConf, enabled) => {
+      if (!enabled) return;
+      // Strength depends on the index inside the phrase, so repeats are identical.
+      for (const [index, e] of events.entries()) {
+        const t = Math.round(start + e.beat * beatMs);
+        const event = { t, s: strengthOfIndex(index) };
+        if (e.kind) event.kind = e.kind;
+        if (withConf !== null) {
+          event.len = Math.round(e.lenBeats * beatMs);
+          event.pitch = e.pitch;
+          event.conf = withConf;
+        }
+        into.push(event);
+      }
+    };
+    place(drumPattern(letter), drumEvents, null, drums);
+    place(bassPattern(letter), bassEvents, 0.7, bass);
+    place(leadPattern(letter, holdsEveryBeats), leadEvents, leadConfidence, lead);
+
+    const source = lastOfLetter.get(letter);
+    lastOfLetter.set(letter, i);
+    list.push({
+      startMs: Math.round(start),
+      endMs: Math.round(start + phraseMs),
+      repeatOf: source === undefined ? null : source,
+      similarity: source === undefined ? 0 : 0.95,
+      lagMs: source === undefined ? 0 : Math.round(start - source * phraseMs),
+      activity: {
+        drums: drums ? (letter === "A" ? 0.8 : 0.9) : 0,
+        bass: bass ? (letter === "A" ? 0.6 : 0.4) : 0,
+        lead: lead ? (letter === "A" ? 0.7 : 0.8) : 0,
+      },
+      confidence: { drums: drums ? 0.8 : 0, bass: bass ? 0.7 : 0, lead: lead ? leadConfidence : 0 },
+    });
+  }
+
+  return {
+    ...base,
+    featuresVersion: 2,
+    analysisTier: "full",
+    drums: drumEvents,
+    bass: bassEvents,
+    lead: leadEvents,
+    phrases: { beatsPerPhrase: BEATS_PER_PHRASE, list },
+  };
+}
+
+module.exports = { makeFeatures, makeLayeredFeatures, threeSectionEnergy };

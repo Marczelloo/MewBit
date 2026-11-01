@@ -9,7 +9,7 @@ const { audioKeyFile, audioKeyOf } = require("./audioKey");
 const ANALYZE_ROUTE = "/v4/mewbeat/analyze";
 const FAILURE_TTL_MS = 10 * 60 * 1000;
 const BUSY_TTL_MS = 30 * 1000;
-const FEATURES_VERSION = 1; // must match the plugin
+const FEATURES_VERSION = 2; // must match the plugin
 const MEMORY_CAPACITY = 32;
 // Poru's post is a bare fetch (about 5 minutes before it gives up) while the
 // plugin holds a request for at most ~2 minutes of its own job timeout plus

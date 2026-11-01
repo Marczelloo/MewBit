@@ -18,7 +18,7 @@ function makeTrack(info) {
 
 function featuresFor(track, extra = {}) {
   return {
-    featuresVersion: 1,
+    featuresVersion: 2,
     durationMs: track.info.length,
     audio: { sourceName: "youtube", identifier: track.info.identifier, length: track.info.length },
     ...extra,
@@ -283,18 +283,18 @@ describe("mewbeat analysis client", () => {
   it("treats a disk file with another featuresVersion as a miss and overwrites it", async () => {
     const track = makeTrack();
     fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
-    fs.writeFileSync(cacheFileOf(track), JSON.stringify(featuresFor(track, { featuresVersion: 2 })));
+    fs.writeFileSync(cacheFileOf(track), JSON.stringify(featuresFor(track, { featuresVersion: 1 })));
     assert.strictEqual(client.peek(track), null);
 
     const node = fakeNode(() => featuresFor(track, { tempo: 120 }));
     assert.strictEqual((await client.getFeatures(track, node)).tempo, 120);
     assert.strictEqual(node.calls.length, 1);
-    assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).featuresVersion, 1);
+    assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).featuresVersion, 2);
   });
 
   it("treats a response with another featuresVersion as a failure for 10 minutes", async () => {
     const track = makeTrack();
-    const node = fakeNode(() => featuresFor(track, { featuresVersion: 2 }));
+    const node = fakeNode(() => featuresFor(track, { featuresVersion: 1 }));
     assert.strictEqual(await client.getFeatures(track, node), null);
     assert.ok(!fs.existsSync(cacheFileOf(track)));
     assert.strictEqual(await client.getFeatures(track, node), null);
