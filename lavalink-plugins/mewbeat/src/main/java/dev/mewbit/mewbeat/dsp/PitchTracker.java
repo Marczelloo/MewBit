@@ -13,7 +13,8 @@ import java.util.List;
  * after the bass's first harmonics are taken out, so a sustained bass does not read as a lead an octave above.
  *
  * <p>Frames become notes in {@link #finish}: a note runs while the line is voiced and its pitch stays put, is cut
- * by pitch changes and by the broadband onsets the caller supplies, has its edges trimmed to where its level
+ * by pitch changes and by the broadband onsets the caller supplies that are re-strikes of the line (its own level
+ * rises across them; a drum hit over a held note does not cut it), has its edges trimmed to where its level
  * crosses half of its plateau (the 4096-sample window smears the edges by up to 85 ms), and starts on the
  * nearest onset when there is one within 50 ms. Only the per-frame results are kept, never the audio.
  *
@@ -62,6 +63,12 @@ final class PitchTracker {
     /** Same-pitch fragments closer than this, with no onset between, are one note (a glitch frame split them). */
     private static final int MERGE_GAP_MS = 80;
     /**
+     * Same-pitch fragments that no re-strike separates are also one note across a gap of up to this long when a
+     * broadband onset falls in it: a snare's noise buries a held bass for a window's length (about 130 ms), and
+     * a note that was really struck again would have been cut by its own rise.
+     */
+    private static final int MASKED_MERGE_GAP_MS = 200;
+    /**
      * A note followed by another within this many ms is stretched to meet it: the level edge only says where the
      * window stopped seeing the note, up to a frame early. Well under the 50 ms gaps a staccato line leaves, so those
      * stay gaps even on the light tier (43 ms hop).
@@ -70,6 +77,14 @@ final class PitchTracker {
     /** A note's edge is where its level crosses this fraction of the note's plateau level. */
     private static final double EDGE_LEVEL_SHARE = 0.5;
     private static final double PLATEAU_PERCENTILE = 0.8;
+    /**
+     * A broadband onset cuts a running note only when the line's own salience rises across it: the largest salience
+     * in the onset frame and the two after it is at least this many times the smaller of the two frames before it.
+     * The 4096-point window spreads a re-strike over several frames: a bass note plucked again at half its level
+     * reads about 1.5 here, while a kick or snare over a held note stays within 1.05 (a lead that happens to sit on
+     * a bass harmonic, 1.15).
+     */
+    private static final double RESTRIKE_RISE = 1.3;
     private static final double SALIENCE_REFERENCE_PERCENTILE = 0.95;
 
     /**
@@ -298,12 +313,21 @@ final class PitchTracker {
         return best;
     }
 
+    /** {@code 12 * log2(m)}: the semitones from a pitch up to its m-th harmonic, indexed by m. */
+    private static final double[] HARMONIC_SEMITONES = new double[MASKED_BASS_HARMONICS + 1];
+
+    static {
+        for (int m = 1; m <= MASKED_BASS_HARMONICS; m++) {
+            HARMONIC_SEMITONES[m] = 12 * Math.log(m) / Math.log(2);
+        }
+    }
+
     private static boolean isBassHarmonic(double midi, double bassMidi) {
         if (Double.isNaN(bassMidi)) {
             return false;
         }
         for (int m = 1; m <= MASKED_BASS_HARMONICS; m++) {
-            double harmonicMidi = bassMidi + 12 * Math.log(m) / Math.log(2);
+            double harmonicMidi = bassMidi + HARMONIC_SEMITONES[m];
             if (Math.abs(midi - harmonicMidi) <= MASKED_HARMONIC_SEMITONES) {
                 return true;
             }
@@ -389,15 +413,16 @@ final class PitchTracker {
     }
 
     private List<Features.Note> notes(Track track, int[] onsets) {
+        boolean[] struck = restrikes(track, onsets);
         List<Draft> drafts = new ArrayList<>();
-        for (int[] range : segments(track, onsets)) {
+        for (int[] range : segments(track, struck)) {
             Draft draft = new Draft(range[0], range[1]);
             trim(track, draft);
             if (draft.endMs - draft.startMs >= MIN_NOTE_MS) {
                 drafts.add(draft);
             }
         }
-        drafts = merge(drafts, onsets, track);
+        drafts = merge(drafts, struck, onsets, track);
 
         List<Draft> snapped = new ArrayList<>();
         for (Draft draft : drafts) {
@@ -444,8 +469,35 @@ final class PitchTracker {
         return notes;
     }
 
-    /** Runs of voiced frames, cut where the pitch moves or an onset falls inside the frame. */
-    private List<int[]> segments(Track track, int[] onsets) {
+    /**
+     * Marks the frames in which a broadband onset re-strikes this line: the onset falls inside the frame and the
+     * line's salience rises by {@link #RESTRIKE_RISE} across it.
+     */
+    private boolean[] restrikes(Track track, int[] onsets) {
+        boolean[] struck = new boolean[track.count];
+        if (track.count < 2) {
+            return struck;
+        }
+        double origin = frameMs(0) - hopMs / 2;
+        for (int onset : onsets) {
+            int f = (int) Math.floor((onset - origin) / hopMs);
+            if (f < 1 || f >= track.count) {
+                continue;
+            }
+            float before = Math.min(track.salience[f - 1], f >= 2 ? track.salience[f - 2] : Float.MAX_VALUE);
+            float after = 0;
+            for (int k = f; k <= Math.min(f + 2, track.count - 1); k++) {
+                after = Math.max(after, track.salience[k]);
+            }
+            if (after >= RESTRIKE_RISE * before) {
+                struck[f] = true;
+            }
+        }
+        return struck;
+    }
+
+    /** Runs of voiced frames, cut where the pitch moves or the line is re-struck. */
+    private List<int[]> segments(Track track, boolean[] struck) {
         List<int[]> ranges = new ArrayList<>();
         int start = -1;
         double sum = 0;
@@ -460,8 +512,7 @@ final class PitchTracker {
             }
             if (start >= 0) {
                 boolean moved = Math.abs(track.pitch[i] - sum / n) > PITCH_CHANGE_SEMITONES;
-                boolean struck = hasOnset(onsets, frameMs(i) - hopMs / 2, frameMs(i) + hopMs / 2);
-                if (moved || struck) {
+                if (moved || struck[i]) {
                     ranges.add(new int[] {start, i - 1});
                     start = -1;
                 }
@@ -538,14 +589,16 @@ final class PitchTracker {
     }
 
     /** Joins neighbours of the same pitch that nothing struck between: a glitch frame had split them. */
-    private List<Draft> merge(List<Draft> drafts, int[] onsets, Track track) {
+    private List<Draft> merge(List<Draft> drafts, boolean[] struck, int[] onsets, Track track) {
         List<Draft> merged = new ArrayList<>();
         for (Draft draft : drafts) {
             Draft previous = merged.isEmpty() ? null : merged.get(merged.size() - 1);
             if (previous != null
                     && Math.abs(medianPitch(track, previous) - medianPitch(track, draft)) <= PITCH_CHANGE_SEMITONES
-                    && draft.startMs - previous.endMs <= MERGE_GAP_MS
-                    && !hasOnset(onsets, previous.endMs, draft.startMs + hopMs)) {
+                    && !anyStruck(struck, previous.last + 1, draft.first)
+                    && (draft.startMs - previous.endMs <= MERGE_GAP_MS
+                            || draft.startMs - previous.endMs <= MASKED_MERGE_GAP_MS
+                                    && hasOnset(onsets, previous.endMs - hopMs, draft.startMs + hopMs))) {
                 previous.last = draft.last;
                 previous.endMs = draft.endMs;
             } else {
@@ -553,6 +606,16 @@ final class PitchTracker {
             }
         }
         return merged;
+    }
+
+    /** True when a re-strike was marked in frames {@code from..to}. */
+    private static boolean anyStruck(boolean[] struck, int from, int to) {
+        for (int i = Math.max(0, from); i <= Math.min(to, struck.length - 1); i++) {
+            if (struck[i]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static double medianPitch(Track track, Draft draft) {

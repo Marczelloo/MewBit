@@ -91,7 +91,14 @@ final class Synth {
     /** A bass note: a sine at {@code midi} plus harmonics 2 and 3 at half and a quarter of its amplitude. */
     static void addBassNote(float[] buffer, double atSeconds, double durationSeconds, double midi, double amplitude) {
         double[] harmonics = {1, 0.5, 0.25};
-        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, 0);
+        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, 0, 0);
+    }
+
+    /** A struck bass note: as {@link #addBassNote}, but its level decays by 1/e every {@code decaySeconds}. */
+    static void addPluckedBassNote(float[] buffer, double atSeconds, double durationSeconds, double midi,
+            double amplitude, double decaySeconds) {
+        double[] harmonics = {1, 0.5, 0.25};
+        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, 0, decaySeconds);
     }
 
     /**
@@ -101,11 +108,11 @@ final class Synth {
     static void addLeadNote(float[] buffer, double atSeconds, double durationSeconds, double midi, double amplitude,
             double vibratoCents) {
         double[] harmonics = {1, 1.0 / 2, 1.0 / 3, 1.0 / 4, 1.0 / 5, 1.0 / 6};
-        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, vibratoCents);
+        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, vibratoCents, 0);
     }
 
     private static void addTone(float[] buffer, double atSeconds, double durationSeconds, double midi,
-            double amplitude, double[] harmonics, double vibratoCents) {
+            double amplitude, double[] harmonics, double vibratoCents, double decaySeconds) {
         int start = (int) Math.round(atSeconds * SAMPLE_RATE);
         int length = (int) Math.round(durationSeconds * SAMPLE_RATE);
         double baseHz = midiToHz(midi);
@@ -115,6 +122,9 @@ final class Synth {
             double hz = baseHz * Math.pow(2, vibratoCents * Math.sin(2 * Math.PI * 5.5 * t) / 1200);
             phase += 2 * Math.PI * hz / SAMPLE_RATE;
             double envelope = Math.min(1.0, Math.min(t, durationSeconds - t) / NOTE_RAMP_SECONDS);
+            if (decaySeconds > 0) {
+                envelope *= Math.exp(-t / decaySeconds);
+            }
             double value = 0;
             for (int h = 0; h < harmonics.length; h++) {
                 value += harmonics[h] * Math.sin((h + 1) * phase);

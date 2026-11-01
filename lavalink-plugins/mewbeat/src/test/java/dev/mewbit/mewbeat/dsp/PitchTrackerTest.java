@@ -82,14 +82,13 @@ class PitchTrackerTest {
     @Test
     void leadOverBass() {
         float[] signal = Synth.silence(2.5);
-        List<Played> bass = new ArrayList<>();
+        List<Played> bass = List.of(new Played(0.5, 1.6, 40));
         List<Played> lead = new ArrayList<>();
         double[] melody = {64, 67, 71, 67};
+        Synth.addBassNote(signal, 0.5, 1.6, 40, 0.4);
         for (int i = 0; i < melody.length; i++) {
             double start = 0.5 + i * 0.4;
-            Synth.addBassNote(signal, start, 0.4, 40, 0.4);
             Synth.addLeadNote(signal, start, 0.4, melody[i], 0.3, 0);
-            bass.add(new Played(start, 0.4, 40));
             lead.add(new Played(start, 0.4, melody[i]));
         }
 
@@ -97,6 +96,42 @@ class PitchTrackerTest {
 
         assertLine(lines.bass(), bass);
         assertLine(lines.lead(), lead);
+    }
+
+    @Test
+    void sustainedBassUnderDrumsIsOneNote() {
+        float[] signal = Synth.silence(3);
+        Random random = new Random(5);
+        Synth.addBassNote(signal, 0.5, 1.6, 40, 0.4);
+        List<Integer> onsets = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            double t = 0.5 + i * 0.4;
+            if (i % 2 == 0) {
+                Synth.addThump(signal, t, 0.6);
+            } else {
+                Synth.addSnare(signal, t, 0.5, random);
+            }
+            onsets.add((int) Math.round(t * 1000));
+        }
+
+        PitchTracker.Lines lines = track(signal, onsets.stream().mapToInt(Integer::intValue).toArray(), AnalysisTier.FULL);
+
+        assertLine(lines.bass(), List.of(new Played(0.5, 1.6, 40)));
+    }
+
+    @Test
+    void restruckBassSplits() {
+        float[] signal = Synth.silence(3);
+        List<Played> played = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            double start = 0.5 + i * 0.4;
+            Synth.addPluckedBassNote(signal, start, 0.4, 40, 0.4, 0.6);
+            played.add(new Played(start, 0.4, 40));
+        }
+
+        PitchTracker.Lines lines = track(signal, onsetsOf(played), AnalysisTier.FULL);
+
+        assertLine(lines.bass(), played);
     }
 
     @Test
