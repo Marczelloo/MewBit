@@ -1,6 +1,7 @@
 const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
 const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
+const { clipHolds } = require("./holds");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders } = require("./phrases");
 const { copyRepeat } = require("./repeats");
@@ -65,7 +66,8 @@ function chartNotes(ctx, diff) {
       const source = phrases[phrase.repeatOf];
       const sourceNotes = inWindow(all, source.startMs, source.endMs);
       if (sourceNotes.length > 0) {
-        const copied = copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase));
+        // A copy may end sooner than its source (or the song): its holds are clipped to fit.
+        const copied = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase)), Math.min(phrase.endMs, durationMs), diff, timing);
         all.push(...copied.filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY));
         i++;
         continue;
@@ -79,7 +81,7 @@ function chartNotes(ctx, diff) {
       while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
       const notes = bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs });
-      all.push(...limitJacks(notes, diff, tail, { strict: false }));
+      all.push(...limitJacks(notes, diff, tail, { strict: false, timing }));
       i = last + 1;
       continue;
     }
@@ -89,7 +91,8 @@ function chartNotes(ctx, diff) {
     i++;
   }
 
-  return enforceFloors(all.sort(byTime), diff, timing);
+  // No hold runs past the end of the song, whatever produced it.
+  return enforceFloors(clipHolds(all.sort(byTime), durationMs, diff, timing), diff, timing);
 }
 
 // --- public API --------------------------------------------------------------

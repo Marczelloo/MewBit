@@ -4,7 +4,7 @@
 // > never 3-note chords > repeat identity > jack limit at phrase seams.
 const { DENSITY_WINDOW_MS, ENERGY_EXPONENT, LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { gridSlot } = require("./grid");
-const { holdBlocks, holdSafe, planHolds, spacedBlocked } = require("./holds");
+const { beatMsOf, holdBlocks, holdSafe, planHolds, spacedBlocked } = require("./holds");
 const { lowerBound } = require("./util");
 
 const LANES = 4;
@@ -81,7 +81,7 @@ function laneClear(lane, t, gap, pool, ignore) {
 // ({t, lane, source?}), time-ordered; `prevNotes` seed the run state. A note that
 // has no free lane keeps its lane (lenient) or is dropped (strict). Lane moves
 // respect minLaneGapMs on both sides.
-function limitJacks(notes, diff, prevNotes, { strict }) {
+function limitJacks(notes, diff, prevNotes, { strict, timing = null }) {
   const maxJack = diff.maxJack ?? LANES;
   const minLane = diff.minLaneGapMs ?? 0;
   const seed = trailingRuns(prevNotes);
@@ -102,7 +102,7 @@ function limitJacks(notes, diff, prevNotes, { strict }) {
         const free = alternatives(lane, note.source).filter((l) => !taken.has(l) && runOf(l) <= maxJack);
         // A held note may only move where it (and the notes around it) keep the hold rules.
         const clear = free.find(
-          (l) => laneClear(l, note.t, minLane, pool, note) && holdSafe({ t: note.t, lane: l, len: note.len }, pool.filter((n) => n !== note), diff),
+          (l) => laneClear(l, note.t, minLane, pool, note) && holdSafe({ t: note.t, lane: l, len: note.len }, pool.filter((n) => n !== note), diff, timing),
         );
         const choice = clear ?? (strict ? undefined : free[0]);
         if (choice === undefined) {
@@ -214,10 +214,10 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
     .map((e) => ({ ...e }));
 
   items = capMoments(items, diff.chord ? 2 : 1);
-  items = limitJacks(items, diff, prev, { strict: false });
+  items = limitJacks(items, diff, prev, { strict: false, timing });
   items = selectByFloors(items, diff, energy, prev);
   items = planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs);
-  items = limitJacks(items, diff, prev, { strict: true });
+  items = limitJacks(items, diff, prev, { strict: true, timing });
   return items.sort(byTime).map((n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane }));
 }
 
@@ -237,8 +237,8 @@ function enforceFloors(notes, diff, timing = null) {
     if (note.t !== lastT && note.t - lastT < noteGap) continue;
     if (note.t - laneFree[note.lane] < laneGap) continue;
     active = active.filter((h) => h.t + h.len + reach > note.t);
-    const beat = typeof timing?.beatMsAt === "function" ? timing.beatMsAt(note.t) : 500;
-    if (active.some((h) => holdBlocks(h, note, diff) || spacedBlocked(h, note, out, diff, beat / 2))) continue;
+    const halfBeat = beatMsOf(timing, note.t) / 2;
+    if (active.some((h) => holdBlocks(h, note, diff) || spacedBlocked(h, note, out, diff, halfBeat))) continue;
     if (note.len > 0 && out.some((o) => o.t === note.t && holdBlocks(note, o, diff))) continue;
     out.push(note);
     lastT = note.t;

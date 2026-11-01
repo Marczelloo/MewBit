@@ -31,30 +31,47 @@ function holdBlocks(h, n, diff) {
 }
 
 // Normal: while a hold runs, a note of the other hand within half a beat of an earlier
-// note of that hand (inside the hold) is forbidden. `others` are the notes kept so far.
+// note of that hand (inside the hold), or at the same time as one (a chord would be a
+// third key), is forbidden. `others` are the notes kept so far.
 function spacedBlocked(h, n, others, diff, halfBeatMs) {
   if (diff.holdOtherHand !== "spaced" || !(h.len > 0)) return false;
   if (hand(n.lane) === hand(h.lane) || n.t <= h.t || n.t >= h.t + h.len) return false;
-  return others.some((o) => o !== n && o !== h && hand(o.lane) !== hand(h.lane) && o.t > h.t && o.t < n.t && n.t - o.t < halfBeatMs);
+  return others.some((o) => o !== n && o !== h && hand(o.lane) !== hand(h.lane) && o.t > h.t && o.t <= n.t && n.t - o.t < halfBeatMs);
 }
 
-// The notes (time-sorted) that `spaced` mode forbids inside hold h, simulated in order.
+// The notes that `spaced` mode forbids inside hold h, simulated in time order (at one
+// time the more important note, lower level, is kept first and so wins).
 function spacingBlockers(h, notes, diff, halfBeatMs) {
-  if (diff.holdOtherHand !== "spaced") return [];
+  const kept = [];
   const out = [];
-  let lastKept = -Infinity;
-  for (const n of notes) {
-    if (hand(n.lane) === hand(h.lane) || n.t <= h.t || n.t >= h.t + h.len) continue;
-    if (n.t !== lastKept && n.t - lastKept < halfBeatMs) out.push(n);
-    else lastKept = n.t;
+  for (const n of [...notes].sort((a, b) => a.t - b.t || (a.level ?? 0) - (b.level ?? 0))) {
+    if (spacedBlocked(h, n, kept, diff, halfBeatMs)) out.push(n);
+    else kept.push(n);
   }
   return out;
 }
 
 // Would placing `moved` ({t, lane, len?}) clash with a hold in `pool`, or its own
-// hold with a note in `pool`?
-function holdSafe(moved, pool, diff) {
-  return pool.every((o) => !holdBlocks(o, moved, diff) && !holdBlocks(moved, o, diff));
+// hold with a note in `pool`? Normal's half-beat spacing counts too.
+function holdSafe(moved, pool, diff, timing = null) {
+  const halfBeat = (t) => beatMsOf(timing, t) / 2;
+  if (!pool.every((o) => !holdBlocks(o, moved, diff) && !holdBlocks(moved, o, diff))) return false;
+  if (pool.some((o) => spacedBlocked(o, moved, pool, diff, halfBeat(o.t)))) return false;
+  return !(moved.len > 0) || spacingBlockers(moved, pool, diff, halfBeat(moved.t)).length === 0;
+}
+
+// clipHolds(notes, limitMs, diff, timing) -> notes: no hold runs past `limitMs - minLaneGapMs`.
+// A hold that gets shorter than its minimum becomes a tap (no `len` key). Taps are untouched.
+function clipHolds(notes, limitMs, diff, timing) {
+  const laneGap = diff.minLaneGapMs ?? 0;
+  return notes.map((n) => {
+    if (!(n.len > 0) || n.t + n.len + laneGap <= limitMs) return n;
+    const len = Math.round(limitMs - laneGap - n.t);
+    if (len > 0 && len >= diff.holdMinBeats * beatMsOf(timing, n.t)) return { ...n, len };
+    const tap = { ...n };
+    delete tap.len;
+    return tap;
+  });
 }
 
 // planHolds(items, diff, timing, prev, phraseEndMs) -> items still standing.
@@ -127,4 +144,4 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
   return items.filter((n) => !dropped.has(n));
 }
 
-module.exports = { gapAfterHold, holdBlocks, holdSafe, planHolds, spacedBlocked };
+module.exports = { beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, planHolds, spacedBlocked };
