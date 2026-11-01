@@ -4,7 +4,8 @@
 //   0 strong (on a beat, or a main accent), 1 on the 1/2 or 1/4 grid, 2 fine (hats, 1/8).
 const { BEAT_TOLERANCE_MS } = require("./difficulty");
 const { TONAL_MIN_CONF } = require("./phrases");
-const { beatInBar, gridSlot, snapToQuarterGrid } = require("./grid");
+const { capMoments } = require("./difficultyFilter");
+const { gridSlot, snapToQuarterGrid } = require("./grid");
 const { median, nearestIndex } = require("./util");
 
 const LANES = 4;
@@ -16,7 +17,6 @@ const TRILL_MIN_GAP_MS = 250; // a repeated pitch closer than max(1/2 beat, this
 const HAT_CLEARANCE_BEATS = 1 / 8; // hats stay this far from a kick/snare
 const SECONDARY_MIN_ENERGY = 0.6; // phrases at least this loud add drums under a tonal leader
 const SECONDARY_CLEARANCE_BEATS = 1 / 4; // ...into slots this far from any leader event
-const BEAT_FLOOR_EPS = 0.02; // beatInBar rounding slack before floor()
 
 const KICK_LANES = [0, 3];
 const SNARE_LANES = [1, 2];
@@ -29,7 +29,8 @@ const list = (value) => (Array.isArray(value) ? value : []);
 // --- drums ---------------------------------------------------------------------
 
 // Kick / snare / perc hits of the phrase on the quarter grid with their lanes.
-// Without a beat grid the lane pair alternates per hit.
+// The lane pair alternates per class: the n-th earlier kick (or snare/perc) of the
+// phrase picks pair n % 2, so kicks use lanes 0/3 and snares 1/2 on any meter.
 function hitsOf(phrase, features, timing) {
   const hits = [];
   for (const d of list(features.drums)) {
@@ -40,10 +41,11 @@ function hitsOf(phrase, features, timing) {
     hits.push({ t: snapped.t, eighth: snapped.eighth, s: Number(d.s) || 0, kick: d.kind === "kick" });
   }
   hits.sort((a, b) => a.t - b.t || Number(b.kick) - Number(a.kick));
-  hits.forEach((h, i) => {
-    const pair = timing?.snapped ? Math.floor(beatInBar(timing, h.t) + BEAT_FLOOR_EPS) % 2 : i % 2;
-    h.lane = (h.kick ? KICK_LANES : SNARE_LANES)[pair];
-  });
+  const seen = { kick: 0, snare: 0 };
+  for (const h of hits) {
+    const cls = h.kick ? "kick" : "snare";
+    h.lane = (h.kick ? KICK_LANES : SNARE_LANES)[seen[cls]++ % 2];
+  }
   return hits;
 }
 
@@ -139,8 +141,13 @@ function tonalLanes(notes, minRepeatGapMs) {
       base.push(contour ? CONTOUR_START_LANE : pitchLane(pitches[0], min, max));
       lanes.push(base[0]);
     } else if (stair[i] !== 0) {
-      if (runStart[i]) walkDir = stair[i];
-      const step = bounce(lanes[i - 1], walkDir);
+      let from = lanes[i - 1];
+      if (runStart[i]) {
+        walkDir = stair[i];
+        // Re-anchor on the pitch lane of the run's first note, so lanes keep tracking pitch.
+        if (!contour) from = pitchLane(pitches[i - 1], min, max);
+      }
+      const step = bounce(from, walkDir);
       walkDir = step.dir;
       base.push(step.lane);
       lanes.push(step.lane);
@@ -227,22 +234,6 @@ function withChords(events, phrase, timing) {
   return out;
 }
 
-// At most two events share a time (best level, then strongest, then lowest lane).
-function capMoments(events) {
-  const better = (a, b) => a.level - b.level || b.s - a.s || (a.source === "secondary") - (b.source === "secondary") || a.lane - b.lane;
-  const byTime = new Map();
-  for (const e of events) byTime.set(e.t, [...(byTime.get(e.t) ?? []), e]);
-  const out = [];
-  for (const here of byTime.values()) {
-    const kept = [];
-    for (const e of [...here].sort(better)) {
-      if (kept.length < 2 && !kept.some((k) => k.lane === e.lane)) kept.push(e);
-    }
-    out.push(...kept);
-  }
-  return out.sort((a, b) => a.t - b.t || a.lane - b.lane);
-}
-
 // patternEvents(phrase, leader, features, timing) -> Event[], time-ordered.
 // Event = { t, lane, level: 0|1|2, s, source: "drums"|"bass"|"lead"|"secondary", sustainMs? }
 function patternEvents(phrase, leader, features, timing) {
@@ -258,7 +249,7 @@ function patternEvents(phrase, leader, features, timing) {
   } else {
     return [];
   }
-  return capMoments(withChords(events, phrase, timing));
+  return capMoments(withChords(events, phrase, timing), 2);
 }
 
 module.exports = { patternEvents };

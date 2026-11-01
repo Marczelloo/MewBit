@@ -43,11 +43,11 @@ function capMoments(items, limit) {
 
 // --- jacks -----------------------------------------------------------------------------
 
-// Lanes in order of preference when a note has to leave `lane`: a drum hit first
+// Lanes in order of preference when a note has to leave `lane`: a drum hit (or secondary drum) first
 // takes its role partner (kick 0<->3, snare 1<->2), then the lane ^ 1 neighbour,
 // then the rest by distance.
 function alternatives(lane, source) {
-  const order = source === "drums" ? [LANES - 1 - lane, lane ^ 1] : [lane ^ 1];
+  const order = source === "drums" || source === "secondary" ? [LANES - 1 - lane, lane ^ 1] : [lane ^ 1];
   const rest = [0, 1, 2, 3].sort((a, b) => Math.abs(a - lane) - Math.abs(b - lane) || a - b);
   return [...new Set([...order, ...rest])].filter((l) => l !== lane);
 }
@@ -233,4 +233,4 @@ function enforceFloors(notes, diff) {
   return out;
 }
 
-module.exports = { applyDifficulty, enforceFloors, limitJacks };
+module.exports = { applyDifficulty, capMoments, enforceFloors, limitJacks };

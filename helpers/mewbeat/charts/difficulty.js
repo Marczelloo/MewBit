@@ -37,7 +37,7 @@ const DIFFICULTIES = {
     laneGapBeats: 1, // same-lane gap, in beats
     minLaneGapMs: 350, // ...never below this, whatever the tempo
     minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
-    minNoteGapMs: 200, // any-lane gap, never below this (Easy only)
+    minNoteGapMs: 200, // any-lane gap between distinct times, never below this (Normal 100, Hard 60)
     maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy

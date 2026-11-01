@@ -101,8 +101,7 @@ describe("generator v4", () => {
 
       it("hardIsFullerThanNormal", () => {
         const { easy, normal, hard } = chartsOf(features);
-        if (energy) assert.ok(hard.notes.length > normal.notes.length, `${hard.notes.length} vs ${normal.notes.length}`);
-        assert.ok(hard.notes.length >= normal.notes.length);
+        assert.ok(hard.notes.length > normal.notes.length, `${hard.notes.length} vs ${normal.notes.length}`);
         assert.ok(normal.notes.length > easy.notes.length);
         const inNormal = new Set(normal.notes.map((n) => n.t));
         const shared = easy.notes.filter((n) => inNormal.has(n.t)).length / easy.notes.length;
@@ -124,6 +123,38 @@ describe("generator v4", () => {
       });
     });
   }
+
+  it("drumLaneSpread: Normal on a drums-led song uses all four lanes", () => {
+    const features = makeLayeredFeatures({ lead: false, bass: false });
+    const { normal } = chartsOf(features);
+    const counts = [0, 0, 0, 0];
+    for (const n of normal.notes) counts[n.lane]++;
+    counts.forEach((c, lane) => assert.ok(c / normal.notes.length >= 0.15, `lane ${lane}: ${counts}`));
+  });
+
+  it("copySeam: a copy after a different phrase is identical and breaks no floor", () => {
+    const features = makeLayeredFeatures({ structure: "ABCA" });
+    const { list } = features.phrases;
+    const copies = list.map((p, i) => [p, i]).filter(([p, i]) => p.repeatOf !== null && list[i - 1].repeatOf === null);
+    assert.ok(copies.length > 0, "a repeat directly after a non-repeat phrase");
+    for (const chart of Object.values(chartsOf(features))) {
+      const p = DIFFICULTIES[chart.difficulty];
+      for (const [phrase, i] of copies) {
+        const source = list[phrase.repeatOf];
+        const expected = notesIn(chart.notes, source.startMs, source.endMs).map((n) => ({ t: n.t + phrase.lagMs, lane: n.lane }));
+        assert.ok(expected.length > 0);
+        assert.deepEqual(notesIn(chart.notes, phrase.startMs, phrase.endMs), expected, `${chart.difficulty}: phrase ${i}`);
+      }
+      // Jacks at a seam are allowed; breaking a gap floor is not.
+      const times = momentTimes(chart.notes);
+      for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= p.minNoteGapMs, `${chart.difficulty}: ${times[i]}`);
+      const last = [-1e9, -1e9, -1e9, -1e9];
+      for (const n of chart.notes) {
+        assert.ok(n.t - last[n.lane] >= p.minLaneGapMs, `${chart.difficulty}: lane ${n.lane} at ${n.t}`);
+        last[n.lane] = n.t;
+      }
+    }
+  });
 
   it("floorsHoldAt220Bpm: Easy keeps its gaps, density and the folded grid", () => {
     const features = makeLayeredFeatures({ bpm: 220 });
@@ -180,12 +211,13 @@ describe("patternEvents", () => {
   const features = makeLayeredFeatures({ lead: false, bass: false });
   const { timing, phrases } = setup(features);
 
-  it("drums: kick/snare pair by beat, hats opposite the previous hand, 4 levels of detail", () => {
+  it("drums: kick/snare pairs alternate per class, hats opposite the previous hand, 3 levels of detail", () => {
     const events = patternEvents(phrases[0], "drums", features, timing);
     const at = (t) => events.filter((e) => e.t === t);
-    assert.deepEqual(at(0).map((e) => e.lane), [0]); // beat 0: kick, pair 0
-    assert.deepEqual(at(500).map((e) => e.lane), [2]); // beat 1: snare, pair 1
-    assert.deepEqual(at(1000).map((e) => e.lane), [0]); // beat 2: kick
+    assert.deepEqual(at(0).map((e) => e.lane), [0]); // first kick: pair 0
+    assert.deepEqual(at(500).map((e) => e.lane), [1]); // first snare: pair 0
+    assert.deepEqual(at(1000).map((e) => e.lane), [3]); // second kick: pair 1
+    assert.deepEqual(at(1500).map((e) => e.lane), [2]); // second snare: pair 1
     const hat = at(250)[0]; // hat after the kick on lane 0 -> the other hand
     assert.equal(hat.level, 2);
     assert.ok(hat.lane >> 1 === 1);
@@ -194,7 +226,6 @@ describe("patternEvents", () => {
   });
 
   it("never emits three events at one time", () => {
-    const loud = { ...phrases[0], energy: 0.9 };
     const withAll = makeLayeredFeatures();
     const s = setup(withAll);
     for (const leader of ["drums", "bass", "lead"]) {
@@ -202,7 +233,6 @@ describe("patternEvents", () => {
       for (const e of patternEvents({ ...s.phrases[1], energy: 0.9 }, leader, withAll, s.timing)) counts.set(e.t, (counts.get(e.t) || 0) + 1);
       assert.ok([...counts.values()].every((c) => c <= 2), leader);
     }
-    assert.ok(loud);
   });
 
   it("returns nothing for the band-path leader", () => {
@@ -238,6 +268,21 @@ describe("patternEvents", () => {
     it("climbs one lane per step on a run of three or more steps", () => {
       const stairs = lanesOf(line([60, 61, 62, 63, 64, 90]));
       assert.deepEqual(stairs.slice(0, 5), [0, 1, 2, 3, 2]);
+    });
+
+    it("keeps lanes tracking pitch: a rising scale never falls, low pitch on lane 0/1, high on 2/3", () => {
+      const lanes = lanesOf(line([60, 62, 64, 66, 68]));
+      assert.deepEqual(lanes, [0, 1, 2, 3, 2]); // up one lane per step, bouncing only at the edge
+      assert.ok(lanes[0] <= 1 && lanes[lanes.length - 1] >= 2);
+      // Longer scales climb to the edge before they bounce.
+      const long = lanesOf(line([60, 62, 64, 66, 68, 70, 72]));
+      assert.deepEqual(long.slice(0, 4), [0, 1, 2, 3]);
+      // A stair run that starts mid-phrase re-anchors on its first note's pitch lane.
+      const mixed = lanesOf(line([72, 60, 61, 62, 63, 72, 60]));
+      assert.equal(mixed[0], 3);
+      assert.deepEqual(mixed.slice(1, 5), [0, 1, 2, 3]);
+      const pitches = [72, 60, 61, 62, 63, 72, 60];
+      assert.ok(mixed[pitches.indexOf(60)] <= 1 && mixed[pitches.lastIndexOf(72)] >= 2);
     });
 
     it("keeps the sustain length and ignores low-confidence notes", () => {
