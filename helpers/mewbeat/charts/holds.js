@@ -8,8 +8,12 @@ const MAX_HOLD_BEATS = 4;
 const MAX_HOLD_SHARE = 0.08; // holds are at most this share of a chart's notes: more reads as a held-note chart
 const HOLD_SOURCES = new Set(["bass", "lead"]); // drum events never become holds
 
-// Does note `o` give way to hold candidate `c`: a backbone drum hit, or a less important note of another layer?
-const yields = (o, c) => o.source === "secondary" || (o.source !== c.source && o.level > c.level);
+// A support event backs the leader up: a backbone drum hit under a tonal leader ("secondary"), or an event of a
+// support layer in a mixed phrase (patterns.js mixedEvents).
+const isSupport = (e) => e.source === "secondary" || e.support === true;
+
+// Does note `o` give way to hold candidate `c`: a support event of another layer, or a less important note of one?
+const yields = (o, c) => o.source !== c.source && (isSupport(o) || o.level > c.level);
 
 const hand = (lane) => lane >> 1;
 const beatMsOf = (timing, t) => (typeof timing?.beatMsAt === "function" ? timing.beatMsAt(t) : FALLBACK_BEAT_MS);
@@ -166,4 +170,4 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
   return items.filter((n) => !dropped.has(n));
 }
 
-module.exports = { beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, limitHoldShare, planHolds, spacedBlocked };
+module.exports = { beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, planHolds, spacedBlocked };

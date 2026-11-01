@@ -17,6 +17,9 @@ const VOCAL_PHRASE_SHARE = 0.3;
 const VOCAL_MIN_CONF = 0.8;
 const VOCAL_MIN_RATE = 1; // lead onsets per second
 const HYSTERESIS = 0.8; // the previous leader stays while its score >= this share of the best
+// A present layer other than the leader backs it up (supportLayers) when its score is at least this share of the
+// leader's: then the phrase is charted from everything that plays, not from one layer.
+const SUPPORT_MIN_SHARE = 0.3;
 
 const FULL_DRUM_EVENTS_PER_BEAT = 2; // drum density at which the drum layer counts as fully busy
 // A layer leading a phrase of energy E should offer about this many notes per second times E^ENERGY_EXPONENT (the
@@ -275,21 +278,27 @@ function softDrumsLift(p) {
   return Math.min(SOFT_DRUMS_MAX_LIFT, 1 / Math.max(clamp01(finite(p.energy)), SOFT_DRUMS_MIN_ENERGY));
 }
 
+// The score and presence of every layer of a phrase: what chooseLeaders and supportLayers both read.
+function layerScores(p, vocal) {
+  const score = {};
+  const present = [];
+  for (const layer of LAYERS) {
+    const lift = layer === "drums" && !vocal ? softDrumsLift(p) : 1;
+    const a = clamp01(finite(p.activity?.[layer]) * lift);
+    const c = clamp01(finite(p.confidence?.[layer]) * lift);
+    score[layer] = scoreOf(p, layer, a, c);
+    if (isPresent(layer, a, c)) present.push(layer);
+  }
+  return { score, present };
+}
+
 // chooseLeaders(phrases) -> Array<"drums"|"bass"|"lead"|"bands">, aligned to phrases.
 function chooseLeaders(phrases) {
   const leaders = [];
   const vocal = isVocalSong(phrases);
   for (let i = 0; i < phrases.length; i++) {
     const p = phrases[i];
-    const score = {};
-    const present = [];
-    for (const layer of LAYERS) {
-      const lift = layer === "drums" && !vocal ? softDrumsLift(p) : 1;
-      const a = clamp01(finite(p.activity?.[layer]) * lift);
-      const c = clamp01(finite(p.confidence?.[layer]) * lift);
-      score[layer] = scoreOf(p, layer, a, c);
-      if (isPresent(layer, a, c)) present.push(layer);
-    }
+    const { score, present } = layerScores(p, vocal);
 
     let leader = "bands";
     if (present.length > 0) {
@@ -313,4 +322,22 @@ function chooseLeaders(phrases) {
   return leaders;
 }
 
-module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse };
+// A clearly sung line: the same test isVocalSong counts phrases by.
+const isSung = (p) => finite(p.confidence?.lead) >= VOCAL_MIN_CONF && finite(p.rate?.lead) >= VOCAL_MIN_RATE;
+
+// supportLayers(phrase, leader, vocal) -> the other present layers that play comparably to the leader (score at
+// least SUPPORT_MIN_SHARE of its), strongest first. Empty when the leader is dominant: nothing comes close, there
+// is no layer to lead ("bands"), or `vocal` (see isVocalSong) and the phrase's lead is a sung line, which leads
+// by design.
+function supportLayers(phrase, leader, vocal = false) {
+  if (!LAYERS.includes(leader)) return [];
+  if (vocal && leader === "lead" && isSung(phrase)) return [];
+  const { score, present } = layerScores(phrase, vocal);
+  if (!present.includes(leader)) return [];
+  const floor = SUPPORT_MIN_SHARE * score[leader];
+  return present
+    .filter((layer) => layer !== leader && score[layer] > 0 && score[layer] >= floor)
+    .sort((a, b) => score[b] - score[a]);
+}
+
+module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers };

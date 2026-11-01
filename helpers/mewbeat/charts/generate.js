@@ -5,7 +5,7 @@ const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilt
 const { clipHolds, limitHoldShare } = require("./holds");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
-const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders, hasSteadyPulse } = require("./phrases");
+const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -22,6 +22,8 @@ function analyse(raw) {
   const durationMs = Math.round(features.durationMs);
   const timing = buildTiming(features, durationMs);
   const phrases = buildPhrases(features, timing, durationMs);
+  const leaders = chooseLeaders(phrases);
+  const vocal = isVocalSong(phrases);
   return {
     features,
     durationMs,
@@ -29,7 +31,8 @@ function analyse(raw) {
     energy: energyLookup(features),
     busy: busyFactor(features),
     phrases,
-    leaders: chooseLeaders(phrases),
+    leaders,
+    supports: phrases.map((phrase, i) => supportLayers(phrase, leaders[i], vocal)), // the layers charted beside the leader
     eventTimes: sortedEventTimes(features),
   };
 }
@@ -58,7 +61,7 @@ function phraseEventTimes(ctx, phrase) {
 }
 
 function chartNotes(ctx, diff) {
-  const { features, timing, energy, phrases, leaders, durationMs } = ctx;
+  const { features, timing, energy, phrases, leaders, supports, durationMs } = ctx;
   const all = []; // final notes so far, time-ordered
 
   for (let i = 0; i < phrases.length; ) {
@@ -97,7 +100,7 @@ function chartNotes(ctx, diff) {
       continue;
     }
 
-    const events = patternEvents(phrase, leaders[i], features, timing);
+    const events = patternEvents(phrase, leaders[i], features, timing, supports[i]);
     all.push(...applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, leaders[i] === "drums" && hasSteadyPulse(phrase)));
     i++;
   }

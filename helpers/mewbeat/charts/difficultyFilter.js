@@ -4,7 +4,7 @@
 // > never 3-note chords > repeat identity > jack limit at phrase seams.
 const { DENSITY_WINDOW_MS, ENERGY_EXPONENT, LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { gridSlot } = require("./grid");
-const { beatMsOf, holdBlocks, holdSafe, planHolds, spacedBlocked } = require("./holds");
+const { beatMsOf, holdBlocks, holdSafe, isSupport, planHolds, spacedBlocked } = require("./holds");
 const { lowerBound } = require("./util");
 
 const LANES = 4;
@@ -17,7 +17,7 @@ const asLookup = (energyAt) => (typeof energyAt === "function" ? { hopMs: 500, a
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const byPriority = (a, b) =>
-  a.level - b.level || b.s - a.s || (a.source === "secondary") - (b.source === "secondary") || a.t - b.t || a.lane - b.lane;
+  a.level - b.level || (a.turn ?? 0) - (b.turn ?? 0) || b.s - a.s || isSupport(a) - isSupport(b) || a.t - b.t || a.lane - b.lane;
 
 function groupByTime(items) {
   const moments = [];
@@ -49,8 +49,9 @@ function capMoments(items, limit) {
 // Lanes in order of preference when a note has to leave `lane`: a drum hit (or secondary drum) first
 // takes its role partner (kick 0<->3, snare 1<->2), then the lane ^ 1 neighbour,
 // then the rest by distance.
-function alternatives(lane, source) {
-  const order = source === "drums" || source === "secondary" ? [LANES - 1 - lane, lane ^ 1] : [lane ^ 1];
+function alternatives(lane, source, hand) {
+  // A note of a mixed phrase (it has a hand) stays in its hand: the neighbour lane first.
+  const order = hand === undefined && (source === "drums" || source === "secondary") ? [LANES - 1 - lane, lane ^ 1] : [lane ^ 1];
   const rest = [0, 1, 2, 3].sort((a, b) => Math.abs(a - lane) - Math.abs(b - lane) || a - b);
   return [...new Set([...order, ...rest])].filter((l) => l !== lane);
 }
@@ -101,7 +102,7 @@ function limitJacks(notes, diff, prevNotes, { strict, timing = null }) {
       let lane = note.lane;
       if (runOf(lane) > maxJack) {
         const pool = [...prevNotes, ...out.filter((n) => !dropped.has(n))];
-        const free = alternatives(lane, note.source).filter((l) => !taken.has(l) && runOf(l) <= maxJack);
+        const free = alternatives(lane, note.source, note.hand).filter((l) => !taken.has(l) && runOf(l) <= maxJack);
         // A held note may only move where it (and the notes around it) keep the hold rules.
         const clear = free.find(
           (l) => laneClear(l, note.t, minLane, pool, note) && holdSafe({ t: note.t, lane: l, len: note.len }, pool.filter((n) => n !== note), diff, timing),
