@@ -30,6 +30,14 @@ describe("mewbeat settings validation", () => {
     assert.deepStrictEqual(DEFAULT_SETTINGS.keys, ["KeyD", "KeyF", "KeyJ", "KeyK"]);
   });
 
+  it("defaults to quiet hit sounds and a visible Mewbit, and accepts both changed", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.hitVolume, 40);
+    assert.strictEqual(DEFAULT_SETTINGS.showMewbit, true);
+    const merged = validateSettingsPatch({ hitVolume: 0, showMewbit: false }, DEFAULT_SETTINGS);
+    assert.strictEqual(merged.hitVolume, 0);
+    assert.strictEqual(merged.showMewbit, false);
+  });
+
   it("merges a valid patch onto the current settings", () => {
     const keys = ["KeyA", "KeyS", "KeyK", "KeyL"];
     const merged = validateSettingsPatch({ keys }, DEFAULT_SETTINGS);
@@ -50,6 +58,10 @@ describe("mewbeat settings validation", () => {
     "an unknown difficulty": { liveDifficulty: "expert" },
     "an unknown effects level": { effects: "neon" },
     "a non-boolean hit sounds": { hitSounds: "yes" },
+    "hit volume above 100": { hitVolume: 101 },
+    "a negative hit volume": { hitVolume: -5 },
+    "a fractional hit volume": { hitVolume: 12.5 },
+    "a non-boolean show Mewbit": { showMewbit: 1 },
     "an unknown field": { colour: 1 },
   };
   for (const [name, patch] of Object.entries(refused)) {

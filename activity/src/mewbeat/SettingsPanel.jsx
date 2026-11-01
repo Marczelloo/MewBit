@@ -9,6 +9,9 @@ const OFFSET_MAX = 700;
 const OFFSET_STEP = 5;
 const SPEED_MIN = 1;
 const SPEED_MAX = 10;
+const VOLUME_MIN = 0;
+const VOLUME_MAX = 100;
+const VOLUME_STEP = 5;
 const DEBOUNCE_MS = 300;
 const MODIFIER_CODES = new Set(["ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"]);
 
@@ -27,6 +30,10 @@ const HIT_SOUNDS = [
   { value: false, label: "Off" },
 ];
 const AUTO_OFFSET = HIT_SOUNDS;
+const SHOW_MEWBIT = [
+  { value: true, label: "Show" },
+  { value: false, label: "Hide" },
+];
 
 export function formatOffset(ms) {
   return `${ms > 0 ? "+" : ""}${ms} ms`;
@@ -52,7 +59,7 @@ function Segmented({ label, options, value, onChange }) {
 
 // The settings drawer. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -193,6 +200,8 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
 
   const offsetMs = valueOf("offsetMs");
   const scrollSpeed = valueOf("scrollSpeed");
+  const hitSounds = Boolean(valueOf("hitSounds"));
+  const hitVolume = valueOf("hitVolume");
 
   return (
     <div className="mb-settings-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -319,8 +328,36 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
         </section>
 
         <section className="mb-field">
+          <div className="mb-field-head"><span className="mb-label">Mewbit</span></div>
+          <Segmented label="Mewbit" options={SHOW_MEWBIT} value={valueOf("showMewbit") !== false} onChange={(value) => send({ showMewbit: value })} />
+        </section>
+
+        <section className="mb-field">
           <div className="mb-field-head"><span className="mb-label">Hit sounds</span></div>
-          <Segmented label="Hit sounds" options={HIT_SOUNDS} value={Boolean(valueOf("hitSounds"))} onChange={(value) => send({ hitSounds: value })} />
+          <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
+        </section>
+
+        <section className="mb-field">
+          <div className="mb-field-head">
+            <label className="mb-label" htmlFor="mb-hit-volume">Hit sound volume</label>
+            <output className="mb-field-value" htmlFor="mb-hit-volume">{hitVolume}%</output>
+          </div>
+          <input
+            id="mb-hit-volume"
+            className="mb-range"
+            type="range"
+            min={VOLUME_MIN}
+            max={VOLUME_MAX}
+            step={VOLUME_STEP}
+            value={hitVolume}
+            disabled={!hitSounds}
+            aria-valuetext={`${hitVolume}%`}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              changeDebounced("hitVolume", value, { immediate: false });
+              onPreviewHit?.(value);
+            }}
+          />
         </section>
       </div>
     </div>

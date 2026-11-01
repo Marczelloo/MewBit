@@ -3,7 +3,8 @@
 // AudioContext is created lazily on the first user gesture (autoplay policy); the module touches no
 // browser global at load time.
 export const HIT_S = 0.09;
-const VOLUME = 0.35;
+const MAX_GAIN = 0.35; // volume 100
+export const DEFAULT_VOLUME = 40; // same default as hitVolume in helpers/mewbeat/userSettings.js
 const BODY_HZ = 180; // the tok settles here...
 const BODY_DROP_HZ = 260; // ...falling from BODY_HZ + this
 const TICK_HZ = 2200;
@@ -32,6 +33,13 @@ export function renderHit(sampleRate) {
   }
   if (peak > 0) for (let i = 0; i < length; i += 1) samples[i] *= 0.9 / peak;
   return samples;
+}
+
+// The gain for a 0-100 volume setting. Squared, so the slider's lower half still has room between
+// barely there and quiet (loudness follows the gain's log, not the gain).
+export function gainOf(volume) {
+  const v = Number.isFinite(volume) ? Math.min(100, Math.max(0, volume)) : DEFAULT_VOLUME;
+  return MAX_GAIN * (v / 100) ** 2;
 }
 
 export function createHitSounds({ AudioContextClass } = {}) {
@@ -69,14 +77,16 @@ export function createHitSounds({ AudioContextClass } = {}) {
     hitBuffer(audio);
   }
 
-  function play() {
+  function play(volume = DEFAULT_VOLUME) {
+    const gainValue = gainOf(volume);
+    if (gainValue <= 0) return;
     const audio = context();
     if (!audio) return;
     if (audio.state === "suspended") audio.resume?.()?.catch?.(() => {});
     const source = audio.createBufferSource();
     const gain = audio.createGain();
     source.buffer = hitBuffer(audio);
-    gain.gain.value = VOLUME;
+    gain.gain.value = gainValue;
     source.connect(gain);
     gain.connect(audio.destination);
     source.start();

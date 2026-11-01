@@ -8,9 +8,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   liveDifficulty: "normal",
   effects: "full",
   hitSounds: false,
+  hitVolume: 40,
+  showMewbit: true,
 });
 
-const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10] });
+const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100] });
 // Space is FEVER; Escape leaves the game.
 const RESERVED_CODES = Object.freeze(["Space", "Escape"]);
 
@@ -43,6 +45,8 @@ const FIELD_CHECKS = {
   liveDifficulty: (value) => (LIVE_DIFFICULTIES.includes(value) ? null : "Live difficulty must be easy, normal or hard."),
   effects: (value) => (EFFECT_LEVELS.includes(value) ? null : "Effects must be full, reduced or off."),
   hitSounds: (value) => (typeof value === "boolean" ? null : "Hit sounds must be on or off."),
+  hitVolume: (value) => (isIntegerIn(value, LIMITS.hitVolume) ? null : `Hit sound volume must be a whole number from ${LIMITS.hitVolume[0]} to ${LIMITS.hitVolume[1]}.`),
+  showMewbit: (value) => (typeof value === "boolean" ? null : "Show Mewbit must be on or off."),
 };
 
 function cloneSettings(settings) {

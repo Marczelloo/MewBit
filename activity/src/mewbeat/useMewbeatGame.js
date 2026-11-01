@@ -8,7 +8,7 @@ import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, showMewbit: true };
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -134,6 +134,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     };
   }, []);
   const unlockAudio = useCallback(() => soundsRef.current?.unlock(), []);
+  // One hit at the given volume, so the settings slider can be heard while it moves.
+  const previewHit = useCallback((volume) => soundsRef.current?.play(volume), []);
 
   // A key held when the panel opens never sends its keyup to the game: release it ourselves,
   // so a hold being played is judged now instead of staying held forever.
@@ -235,7 +237,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
           comboRef.current += 1;
           // The player's presses sound on the key (see onLane); autoplay has no keys, so its heads
           // sound here. A tail counts for combo and the popup, but it has no sound of its own.
-          if (cfgRef.current.hitSounds && runAutoplayRef.current && event.part !== "tail") soundsRef.current?.play();
+          if (cfgRef.current.hitSounds && runAutoplayRef.current && event.part !== "tail") soundsRef.current?.play(cfgRef.current.hitVolume);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -376,7 +378,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         const run = runRef.current;
         if (!run || phaseRef.current !== "playing") return;
         // Every press sounds, hit or not, as in osu!mania: the sound answers the key.
-        if (cfgRef.current.hitSounds && !runAutoplayRef.current) soundsRef.current?.play();
+        if (cfgRef.current.hitSounds && !runAutoplayRef.current) soundsRef.current?.play(cfgRef.current.hitVolume);
         const songMs = songClock.songTimeAt(timeStamp);
         if (songMs === null) return;
         // Calibration hides the notes, so a tap is aimed by ear alone (a player watching the notes
@@ -564,5 +566,5 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     setTiming(tapTiming.estimate());
   }, [tapTiming]);
 
-  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming, calibrating };
+  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
 }

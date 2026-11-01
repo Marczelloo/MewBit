@@ -6,9 +6,11 @@ const { pathToFileURL } = require("node:url");
 let createHitSounds;
 let renderHit;
 let HIT_S;
+let gainOf;
+let DEFAULT_VOLUME;
 
 test.before(async () => {
-  ({ createHitSounds, renderHit, HIT_S } = await import(
+  ({ createHitSounds, renderHit, HIT_S, gainOf, DEFAULT_VOLUME } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/hitSounds.js")).href
   ));
 });
@@ -97,6 +99,22 @@ test("every play replays one rendered buffer quietly", () => {
     assert.equal(source.started, 1);
   }
   for (const gain of audio.gains) assert.ok(gain.gain.value <= 0.5);
+});
+
+test("the volume setting scales the gain, quiet by default and silent at 0", () => {
+  const { FakeContext, made } = fakeAudio();
+  const sounds = createHitSounds({ AudioContextClass: FakeContext });
+  sounds.play();
+  sounds.play(100);
+  sounds.play(10);
+  sounds.play(0);
+  const [byDefault, full, low] = made[0].gains.map((g) => g.gain.value);
+  assert.equal(made[0].sources.length, 3, "volume 0 plays nothing");
+  assert.equal(byDefault, gainOf(DEFAULT_VOLUME));
+  assert.ok(byDefault < full / 5, "the default is far below full volume");
+  assert.ok(low < byDefault && low > 0);
+  assert.equal(gainOf(250), gainOf(100));
+  assert.equal(gainOf(Number.NaN), gainOf(DEFAULT_VOLUME));
 });
 
 test("a missing AudioContext makes everything a no-op", () => {

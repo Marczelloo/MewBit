@@ -72,7 +72,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
   );
 
   const game = useMewbeatGame({ link, settings, effects: settings?.effects, trackInfo, inputPaused: settingsOpen, onExit: onClose });
-  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming, calibrating } = game;
+  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
 
   // Auto offset (this session only): every AUTO_OFFSET_EVERY new taps, a suggestion that differs
   // enough from the saved offset is saved as the offset.
@@ -184,10 +184,12 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
         {hud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
         <div className="mb-scene">
           <div className="mb-char">
-            <div className="mb-char-box">
-              <div className="mb-aura" aria-hidden="true" />
-              <Mewbit pose={mewbitPose} effects={effectsLevel} />
-            </div>
+            {settings?.showMewbit === false ? null : (
+              <div className="mb-char-box">
+                <div className="mb-aura" aria-hidden="true" />
+                <Mewbit pose={mewbitPose} effects={effectsLevel} />
+              </div>
+            )}
           </div>
 
           <div className="mb-highway-slot">
@@ -234,6 +236,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
           autoOffset={autoOffset}
           onAutoOffset={setAutoOffset}
           onResetTiming={resetTiming}
+          onPreviewHit={previewHit}
         /> : null}
     </div>
   );

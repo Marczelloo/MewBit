@@ -1,5 +1,6 @@
 const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
+const { repeatBarLanes } = require("./barRepeats");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { deriveNotes } = require("./derive");
 const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
@@ -83,6 +84,7 @@ const steadyDrums = (ctx, i) => ctx.leaders[i] === "drums" && hasSteadyPulse(ctx
 function chartNotes(ctx, diff) {
   const { features, timing, energy, phrases, leaders, supports, durationMs } = ctx;
   const all = []; // final notes so far, time-ordered
+  ctx.drumTimes = new Set(); // the moments of drum hits (Easy and Normal keep their lane roles when they move them)
   // Where a bass or lead line plays (or the features cannot tell), a phrase's resting hands hold through the rests;
   // no such hold runs into the next phrase, so a repeat copies it.
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
@@ -90,6 +92,9 @@ function chartNotes(ctx, diff) {
     tonal(p)
       ? addGapHolds([...tail, ...notes], diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs)
       : notes;
+
+  // A bar that plays like one just before it takes that bar's lanes, so a groove keeps its pattern.
+  const grooved = (notes, fromMs, toMs, fixed) => repeatBarLanes(notes, timing, { fromMs, toMs, fixed });
 
   for (let i = 0; i < phrases.length; ) {
     const phrase = phrases[i];
@@ -110,7 +115,7 @@ function chartNotes(ctx, diff) {
       let last = i;
       while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
-      const notes = bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs });
+      const notes = grooved(bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs }), phrase.startMs, toMs);
       all.push(...withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs));
       i = last + 1;
       continue;
@@ -118,7 +123,10 @@ function chartNotes(ctx, diff) {
 
     const events = patternEvents(phrase, leaders[i], features, timing, supports[i]);
     const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steadyDrums(ctx, i));
-    all.push(...withGapHolds(charted, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
+    // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
+    for (const e of events) if (e.source === "drums") ctx.drumTimes.add(e.t);
+    const repeated = limitJacks(grooved(charted, phrase.startMs, phrase.endMs, (n) => ctx.drumTimes.has(n.t)), diff, tail, { strict: true, timing });
+    all.push(...withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
     i++;
   }
   // Long bass/lead notes become holds wherever they were charted, drum-led phrases included. Those holds (and the
@@ -130,11 +138,15 @@ function chartNotes(ctx, diff) {
   return notes;
 }
 
-// No hold runs past the end of the song, whatever produced it. Derived charts cap their hold share per phrase (a cap
-// over the whole song would demote holds unevenly and break the repeats).
+// No hold runs past the end of the song, whatever produced it. The hold share is capped per phrase (a cap over the
+// whole song would demote holds unevenly and break the repeats); derived charts did that while thinning.
 const finish = (ctx, notes, diff, capHolds = true) => {
   const floored = enforceFloors(clipHolds(notes.sort(byTime), ctx.durationMs, diff, ctx.timing), diff, ctx.timing);
-  return capHolds ? limitHoldShare(floored, Math.floor, sustainedOf(ctx)) : floored;
+  if (!capHolds) return floored;
+  const last = ctx.phrases.length - 1;
+  const inPhrase = (n, i) => (i === 0 || n.t >= ctx.phrases[i].startMs) && (i === last || n.t < ctx.phrases[i].endMs);
+  if (last < 0) return limitHoldShare(floored, Math.floor, sustainedOf(ctx));
+  return ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, sustainedOf(ctx))).sort(byTime);
 };
 
 // Is a note one of Hard's sustain holds (not a gap hold)?
@@ -156,6 +168,7 @@ function notesFor(ctx, difficulty) {
     copyRepeat: (all, i) => copiedRepeat(ctx, all, i, diff),
     steadyPulse: (i) => steadyDrums(ctx, i),
     sustained: sustainedOf(ctx),
+    drumHit: (n) => ctx.drumTimes?.has(n.t) ?? false,
   });
   return finish(ctx, derived, diff, false);
 }

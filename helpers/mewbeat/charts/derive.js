@@ -5,7 +5,8 @@
 // density cap, so a quiet passage keeps its beats and a loud one fills in towards the halves and quarters.
 const { DENSITY_WINDOW_MS } = require("./difficulty");
 const { beatMsOf, gapAfterHold, holdBlocks, holdSafe, limitHoldShare, spacedBlocked } = require("./holds");
-const { limitJacks, pulsePowerFloor, selectByFloors } = require("./difficultyFilter");
+const { repeatBars } = require("./barRepeats");
+const { enforceFloors, limitJacks, pulsePowerFloor, selectByFloors } = require("./difficultyFilter");
 const { gridSlot } = require("./grid");
 
 const LEVEL_BEAT = 0;
@@ -75,8 +76,9 @@ function fitHolds(notes, diff, timing) {
 
 // A repeat is copied as its source played, so a same-lane run across the seam into it is fixed on this side: the
 // last note of the phrase before it moves to a lane that neither continues the run into the copy's first notes nor
-// makes one with the notes before it (within the floors and hold rules), when there is such a lane.
-function clearSeam(notes, nextLanes, diff, timing) {
+// makes one with the notes before it (within the floors and hold rules), when there is such a lane. A drum hit keeps
+// its lane role (kicks outside, snares inside).
+function clearSeam(notes, nextLanes, diff, timing, drumHit) {
   if (notes.length === 0 || nextLanes.length === 0) return;
   const maxJack = diff.maxJack ?? 4;
   const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
@@ -93,8 +95,9 @@ function clearSeam(notes, nextLanes, diff, timing) {
     if (n.len > 0 || !nextLanes.includes(n.lane) || runOf(n.lane, lastIndex) + 1 <= maxJack) continue;
     const taken = new Set(last.map((m) => m.lane));
     const pool = notes.filter((m) => m !== n);
+    const outer = (l) => l === 0 || l === 3;
     const lane = [0, 1, 2, 3].find((l) =>
-      !taken.has(l) && !nextLanes.includes(l) && runOf(l, lastIndex - 1) + 1 <= maxJack &&
+      (!drumHit(n) || outer(l) === outer(n.lane)) && !taken.has(l) && !nextLanes.includes(l) && runOf(l, lastIndex - 1) + 1 <= maxJack &&
       pool.every((m) => m.lane !== l || Math.abs(m.t + (m.len > 0 ? m.len : 0) - n.t) >= laneGap) &&
       holdSafe({ t: n.t, lane: l }, pool, diff, timing));
     if (lane !== undefined) n.lane = lane;
@@ -107,8 +110,9 @@ const strip = (n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.
 // `ctx` is generate.js's analysis (phrases, timing, energy). `copyRepeat(all, i)` returns the notes of phrase i copied
 // from its source in `all` (the derived notes so far), or null when it is not a repeat or the copy failed.
 // `steadyPulse(i)` says whether phrase i gets the difficulty's pulse density floor; `sustained(note)` whether a hold is
-// one of Hard's real sustains (kept before its gap holds when a phrase has too many).
-function deriveNotes(ctx, hardNotes, diff, { copyRepeat, steadyPulse, sustained = () => false }) {
+// one of Hard's real sustains (kept before its gap holds when a phrase has too many); `drumHit(note)` whether a note is a
+// drum hit (a jack moves it within its lane role: kicks outside, snares inside).
+function deriveNotes(ctx, hardNotes, diff, { copyRepeat, steadyPulse, sustained = () => false, drumHit = () => false }) {
   const { phrases, timing, energy } = ctx;
   const hard = [...hardNotes].sort(byTime);
   const all = [];
@@ -131,14 +135,18 @@ function deriveNotes(ctx, hardNotes, diff, { copyRepeat, steadyPulse, sustained 
     const items = rankedItems(source, diff, timing, energy, phrase.energy, lastLanes);
     const powerFloor = steadyPulse(i) ? pulsePowerFloor(diff, timing) : 0;
     // Thinning leaves same-lane runs Hard did not have; the phrase is finished here, so a repeat copies it as played.
-    const kept = fitHolds(selectByFloors(items, diff, energy, tail, powerFloor).map(strip), diff, timing);
+    // A bar that plays like one before it (on Hard's moments) is charted like it, so a groove keeps its pattern.
+    const selected = repeatBars(selectByFloors(items, diff, energy, tail, powerFloor).map(strip), source, timing, { fromMs: phrase.startMs, toMs: end });
+    // The notes a hold still blocks go before the jack check, so dropping them later cannot join two runs into a jack.
+    const kept = enforceFloors([...tail, ...fitHolds(selected, diff, timing)], diff, timing).filter((n) => n.t >= phrase.startMs);
     // Hard's holds are kept first, so a thinned phrase would be mostly holds: its share is capped here, per phrase.
-    const done = limitHoldShare(limitJacks(kept, diff, tail, { strict: true, timing }).sort(byTime), Math.round, sustained).map(strip);
+    const tagged = kept.map((n) => (drumHit(n) ? { ...n, source: "drums" } : n));
+    const done = limitHoldShare(limitJacks(tagged, diff, tail, { strict: true, timing }).sort(byTime), Math.round, sustained).map(strip);
     all.push(...done);
     const next = i + 1 < phrases.length ? copyRepeat(all, i + 1) : null;
     if (next && next.length > 0) {
       const first = Math.min(...next.map((n) => n.t));
-      clearSeam(done, next.filter((n) => n.t === first).map((n) => n.lane), diff, timing);
+      clearSeam(done, next.filter((n) => n.t === first).map((n) => n.lane), diff, timing, drumHit);
     }
   }
   return all.sort(byTime);
