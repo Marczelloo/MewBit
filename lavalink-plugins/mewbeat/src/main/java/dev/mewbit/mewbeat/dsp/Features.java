@@ -31,4 +31,7 @@ public record Features(
     public record Energy(int hopMs, List<Double> values) {}
 
     public record Section(int startMs, int endMs, double energy) {}
+
+    /** A drum hit at {@code t} ms, strength {@code s} 0..1; {@code kind} is kick, snare, hat or perc. */
+    public record Drum(int t, double s, String kind) {}
 }
