@@ -1,13 +1,15 @@
 export const WINDOWS = { perfect: 45, great: 90, good: 135 };
+// Hold tails are judged against the tap windows scaled by this factor.
+export const HOLD_WINDOW_SCALE = 1.5;
 export const BASE_POINTS = { perfect: 300, great: 200, good: 100, miss: 0 };
 export const VIBE_DELTA = { perfect: 0.03, great: 0.02, good: 0.01, miss: -0.06 };
 export const ACCURACY_WEIGHT = { perfect: 100, great: 66.7, good: 33.3, miss: 0 };
 export const FEVER_MS = 8000;
 
-export function judgementFor(absErrorMs) {
-  if (absErrorMs <= WINDOWS.perfect) return "perfect";
-  if (absErrorMs <= WINDOWS.great) return "great";
-  if (absErrorMs <= WINDOWS.good) return "good";
+export function judgementFor(absErrorMs, scale = 1) {
+  if (absErrorMs <= WINDOWS.perfect * scale) return "perfect";
+  if (absErrorMs <= WINDOWS.great * scale) return "great";
+  if (absErrorMs <= WINDOWS.good * scale) return "good";
   return null;
 }
 

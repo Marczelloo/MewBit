@@ -23,20 +23,38 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
 
   const judge = createJudge(notes, { fromMs: heard(startSongMs) + START_LEAD_MS });
   let score = createScore();
+  // Every hold is two judgements (head and tail); a tap is one.
+  const lenOf = (note) => (note.len > 0 ? note.len : 0);
+  let holdCount = 0;
+  let maxLen = 0;
+  let endAfterMs = -Infinity;
+  for (const note of notes) {
+    const len = lenOf(note);
+    if (len > 0) holdCount += 1;
+    maxLen = Math.max(maxLen, len);
+    endAfterMs = Math.max(endAfterMs, note.t + len + WINDOWS.good);
+  }
   let skipped = 0;
-  for (let i = 0; i < notes.length; i += 1) if (judge.outcomeOf(i) === "skipped") skipped += 1;
+  for (let i = 0; i < notes.length; i += 1) {
+    if (judge.outcomeOf(i) === "skipped") skipped += 1;
+    if (judge.tailOutcomeOf(i) === "skipped") skipped += 1;
+  }
 
   const hits = [];
-  const endAfterMs = notes.length ? notes[notes.length - 1].t + WINDOWS.good : -Infinity;
+  const autoReleases = []; // autoplay: held lanes waiting for their end
   let autoCursor = 0;
   let feverEndAt = null;
   let ended = false;
   let lastSongMs = startSongMs;
 
-  function applyHit(result, heardMs) {
+  // Head and tail judgements both go through applyJudgement, at the moment they are judged.
+  // Only head hits are recorded in snapshot().hits (timing data); tails are in the counts.
+  function applyOutcome(result, heardMs) {
+    const lane = notes[result.index].lane;
     score = applyJudgement(score, result.judgement, heardMs);
-    hits.push({ index: result.index, errorMs: result.errorMs });
-    return { kind: "hit", lane: notes[result.index].lane, ...result };
+    if (result.judgement === "miss") return { kind: "miss", lane, index: result.index, part: result.part };
+    if (result.part === "head") hits.push({ index: result.index, errorMs: result.errorMs });
+    return { kind: "hit", lane, ...result };
   }
 
   function press(lane, songMs) {
@@ -44,7 +62,14 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     if (ended) return null;
     const heardMs = heard(songMs);
     const result = judge.press(lane, heardMs);
-    return result ? applyHit(result, heardMs) : null;
+    return result ? applyOutcome(result, heardMs) : null;
+  }
+
+  function release(lane, songMs) {
+    lastSongMs = songMs;
+    if (ended) return [];
+    const heardMs = heard(songMs);
+    return judge.release(lane, heardMs).map((result) => applyOutcome(result, heardMs));
   }
 
   function tick(songMs) {
@@ -58,15 +83,24 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
           const note = notes[autoCursor];
           if (judge.outcomeOf(autoCursor) === "pending") {
             const result = judge.press(note.lane, note.t);
-            if (result) events.push(applyHit(result, heardMs));
+            if (result) {
+              events.push(applyOutcome(result, heardMs));
+              if (lenOf(note) > 0) autoReleases.push({ lane: note.lane, end: note.t + lenOf(note) });
+            }
           }
           autoCursor += 1;
         }
+        for (let i = 0; i < autoReleases.length; ) {
+          const hold = autoReleases[i];
+          if (hold.end > heardMs) {
+            i += 1;
+            continue;
+          }
+          autoReleases.splice(i, 1);
+          for (const result of judge.release(hold.lane, hold.end)) events.push(applyOutcome(result, heardMs));
+        }
       }
-      for (const miss of judge.sweep(heardMs)) {
-        score = applyJudgement(score, "miss", heardMs);
-        events.push({ kind: "miss", lane: notes[miss.index].lane, index: miss.index });
-      }
+      for (const result of judge.sweep(heardMs)) events.push(applyOutcome(result, heardMs));
     }
 
     // A FEVER still running when the chart ends gets its closing event.
@@ -128,27 +162,41 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       counts: { ...score.counts },
       fevers: score.fevers,
       judged: perfect + great + good + miss,
-      total: notes.length - skipped,
+      total: notes.length + holdCount - skipped,
       ranked: false,
       hits: hits.slice(),
     };
   }
 
-  // Notes with fromHeardMs <= t <= toHeardMs; binary search for the first one.
+  // "pending" | "held" | "dropped" | "done" for a note; taps and skipped holds are "pending".
+  function holdState(i) {
+    const tailOutcome = judge.tailOutcomeOf(i);
+    if (tailOutcome === null || tailOutcome === "skipped") return "pending";
+    if (tailOutcome === "miss") return "dropped";
+    if (tailOutcome !== "pending") return "done";
+    return judge.outcomeOf(i) === "pending" ? "pending" : "held";
+  }
+
+  // Notes with t <= toHeardMs whose end (t + len) is >= fromHeardMs, so a hold stays listed until
+  // its tail has left the window. Binary search for the first t that can qualify (the longest
+  // hold bounds how far back that is).
   function visibleNotes(fromHeardMs, toHeardMs) {
+    const earliest = fromHeardMs - maxLen;
     let lo = 0;
     let hi = notes.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (notes[mid].t < fromHeardMs) lo = mid + 1;
+      if (notes[mid].t < earliest) lo = mid + 1;
       else hi = mid;
     }
     const visible = [];
     for (let i = lo; i < notes.length && notes[i].t <= toHeardMs; i += 1) {
-      visible.push({ t: notes[i].t, lane: notes[i].lane, outcome: judge.outcomeOf(i) });
+      const len = lenOf(notes[i]);
+      if (notes[i].t + len < fromHeardMs) continue;
+      visible.push({ t: notes[i].t, lane: notes[i].lane, outcome: judge.outcomeOf(i), len, hold: holdState(i) });
     }
     return visible;
   }
 
-  return { press, tick, fever, jump, setOffset, snapshot, visibleNotes, heardTime: heard };
+  return { press, release, tick, fever, jump, setOffset, snapshot, visibleNotes, heardTime: heard };
 }

@@ -33,7 +33,7 @@ test("startSongMs skips every note before the lead-in", () => {
 test("a positive offset shifts the press into heard time", () => {
   const run = createRun({ chart: chart(), startSongMs: 0, offsetMs: 100 });
   assert.equal(run.heardTime(2100), 2000);
-  assert.deepEqual(run.press(0, 2100), { kind: "hit", lane: 0, judgement: "perfect", errorMs: 0, index: 0 });
+  assert.deepEqual(run.press(0, 2100), { kind: "hit", lane: 0, judgement: "perfect", errorMs: 0, index: 0, part: "head" });
 });
 
 test("a ghost tap returns null and changes nothing", () => {
@@ -78,7 +78,7 @@ test("no presses gives every note a miss", () => {
   const events = tickAll(run, 0, 15000);
   const misses = events.filter((e) => e.kind === "miss");
   assert.equal(misses.length, 40);
-  assert.deepEqual(misses[1], { kind: "miss", lane: 1, index: 1 });
+  assert.deepEqual(misses[1], { kind: "miss", lane: 1, index: 1, part: "head" });
   assert.equal(events.filter((e) => e.kind === "end").length, 1);
   const snap = run.snapshot(15000);
   assert.equal(snap.accuracy, 0);
@@ -145,7 +145,7 @@ test("visibleNotes returns the inclusive window with outcomes", () => {
     visible.map((n) => n.t),
     [3000, 3250, 3500, 3750, 4000],
   );
-  assert.deepEqual(visible[0], { t: 3000, lane: 0, outcome: "perfect" });
+  assert.deepEqual(visible[0], { t: 3000, lane: 0, outcome: "perfect", len: 0, hold: "pending" });
   assert.equal(visible[1].outcome, "pending");
   assert.deepEqual(run.visibleNotes(100, 1500), []);
 });
@@ -156,7 +156,7 @@ test("setOffset mid-run moves later presses' errorMs by the offset", () => {
   run.setOffset(100);
   assert.equal(run.heardTime(5250), 5150);
   // note 13 sits at 5250 in lane 1: heard 5150 is 100 ms early
-  assert.deepEqual(run.press(1, 5250), { kind: "hit", lane: 1, judgement: "good", errorMs: -100, index: 13 });
+  assert.deepEqual(run.press(1, 5250), { kind: "hit", lane: 1, judgement: "good", errorMs: -100, index: 13, part: "head" });
 });
 
 test("setOffset keeps the score and the judged notes", () => {
@@ -211,4 +211,159 @@ test("setOffset skips relative to the song time it is given", () => {
   assert.equal(events.filter((e) => e.kind === "miss").length, 0);
   assert.equal(run.visibleNotes(3500, 3500)[0].outcome, "pending");
   assert.equal(run.visibleNotes(3250, 3250)[0].outcome, "skipped");
+});
+
+// Holds: one hold in lane 0 (head 2000, end 3000), taps around it.
+const holdChart = () => ({
+  notes: [
+    { t: 2000, lane: 0, len: 1000 },
+    { t: 2500, lane: 1 },
+    { t: 4000, lane: 2 },
+  ],
+});
+
+test("hold: head PERFECT then release at the end is a PERFECT tail", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  const head = run.press(0, 2000);
+  assert.equal(head.part, "head");
+  assert.equal(head.judgement, "perfect");
+  const events = run.release(0, 3000);
+  assert.deepEqual(events, [{ kind: "hit", lane: 0, index: 0, part: "tail", judgement: "perfect", errorMs: 0 }]);
+  const snap = run.snapshot(3000);
+  assert.equal(snap.counts.perfect, 2);
+  assert.equal(snap.judged, 2);
+  assert.equal(snap.combo, 2);
+  assert.equal(snap.accuracy, 100);
+});
+
+test("hold: an early release drops it - tail miss, combo 0, vibe -0.06", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(1, 2500);
+  const before = run.snapshot(2700);
+  assert.equal(before.combo, 2);
+  const events = run.release(0, 2700);
+  assert.deepEqual(events, [{ kind: "miss", lane: 0, index: 0, part: "tail" }]);
+  const snap = run.snapshot(2700);
+  assert.equal(snap.combo, 0);
+  assert.equal(Math.round((before.vibe - snap.vibe) * 1e6) / 1e6, 0.06);
+  assert.equal(snap.counts.miss, 1);
+});
+
+test("hold: a release inside the tail window still counts", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2000);
+  // 100 ms early: GREAT with windows x1.5 (68 .. 135); on a tap it would only be GOOD
+  const [event] = run.release(0, 2900);
+  assert.equal(event.kind, "hit");
+  assert.equal(event.judgement, "great");
+  assert.equal(event.errorMs, -100);
+});
+
+test("hold: holding past the end auto-completes on tick", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2000);
+  const events = run.tick(3001);
+  const tail = events.find((e) => e.part === "tail");
+  assert.deepEqual(tail, { kind: "hit", lane: 0, index: 0, part: "tail", judgement: "perfect", errorMs: 0 });
+  assert.deepEqual(run.release(0, 3100), []);
+});
+
+test("hold: a missed head also misses the tail, in the same tick", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  const events = run.tick(2200);
+  assert.deepEqual(
+    events.filter((e) => e.index === 0),
+    [
+      { kind: "miss", lane: 0, index: 0, part: "head" },
+      { kind: "miss", lane: 0, index: 0, part: "tail" },
+    ],
+  );
+  assert.equal(run.snapshot(2200).counts.miss, 2);
+});
+
+test("hold: release with nothing active is a no-op", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  assert.deepEqual(run.release(0, 2500), []);
+  assert.deepEqual(run.release(3, 2500), []);
+  run.press(0, 2000);
+  run.tick(3001);
+  assert.deepEqual(run.release(0, 3100), []);
+});
+
+test("hold: jumping into the middle of a hold skips it whole and the run still ends", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  assert.equal(run.snapshot(0).total, 4);
+  tickAll(run, 0, 1900);
+  run.jump(2300); // skips everything before 2600: head, tail and the tap at 2500
+  assert.equal(run.snapshot(2300).total, 1);
+  assert.equal(run.visibleNotes(2000, 2000)[0].outcome, "skipped");
+  const events = tickAll(run, 2316, 6000);
+  assert.equal(events.filter((e) => e.kind === "miss" && e.index !== 2).length, 0);
+  assert.equal(events.filter((e) => e.kind === "end").length, 1);
+});
+
+test("hold: startSongMs inside a hold skips it whole", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 1200 }); // judged from 2200
+  assert.equal(run.snapshot(1200).total, 2); // taps at 2500 and 4000
+});
+
+test("hold: autoplay presses the head and releases at the end", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0, autoplay: true });
+  const events = tickAll(run, 0, 6000);
+  const hits = events.filter((e) => e.kind === "hit");
+  assert.equal(hits.length, 4);
+  assert.ok(hits.every((e) => e.judgement === "perfect"));
+  assert.deepEqual(
+    hits.filter((e) => e.index === 0).map((e) => e.part),
+    ["head", "tail"],
+  );
+  const snap = run.snapshot(6000);
+  assert.equal(snap.counts.perfect, 4);
+  assert.equal(snap.accuracy, 100);
+  assert.equal(events.filter((e) => e.kind === "end").length, 1);
+});
+
+test("tap-only chart: same events and score as before", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(1, 2280);
+  const events = tickAll(run, 0, 15000);
+  const snap = run.snapshot(15000);
+  assert.equal(events.filter((e) => e.kind === "miss").length, 38);
+  assert.equal(events.filter((e) => e.kind === "hit").length, 0);
+  assert.ok(events.every((e) => e.part === undefined || e.part === "head"));
+  assert.equal(snap.total, 40);
+  assert.equal(snap.judged, 40);
+  assert.equal(snap.counts.perfect, 2);
+  assert.equal(snap.counts.miss, 38);
+  assert.equal(snap.score, 600);
+});
+
+test("a key held down before the head is a ghost: the head misses", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  assert.equal(run.press(0, 1500), null); // 500 ms early
+  assert.deepEqual(run.release(0, 1900), []);
+  const events = tickAll(run, 0, 2300);
+  assert.deepEqual(
+    events.filter((e) => e.index === 0).map((e) => `${e.kind}:${e.part}`),
+    ["miss:head", "miss:tail"],
+  );
+});
+
+test("visibleNotes reports len and hold state, and keeps a hold in view until its end", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  assert.deepEqual(run.visibleNotes(2000, 2000)[0], { t: 2000, lane: 0, outcome: "pending", len: 1000, hold: "pending" });
+  run.press(0, 2000);
+  const mid = run.visibleNotes(2600, 2700); // after the tap at 2500, before the hold's end
+  assert.deepEqual(mid.map((n) => n.t), [2000]);
+  assert.equal(mid[0].hold, "held");
+  run.release(0, 2500);
+  assert.equal(run.visibleNotes(2600, 2700)[0].hold, "dropped");
+  assert.deepEqual(run.visibleNotes(3100, 3200), []);
+
+  const other = createRun({ chart: holdChart(), startSongMs: 0 });
+  other.press(0, 2000);
+  other.release(0, 3000);
+  assert.equal(other.visibleNotes(2000, 2000)[0].hold, "done");
 });

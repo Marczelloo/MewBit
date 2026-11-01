@@ -17,14 +17,14 @@ const sample = () => [
 
 test("press takes the earliest note in the lane and reports a signed error", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.press(0, 1050), { index: 0, judgement: "great", errorMs: 50 });
+  assert.deepEqual(judge.press(0, 1050), { index: 0, judgement: "great", errorMs: 50, part: "head" });
   assert.equal(judge.outcomeOf(0), "great");
   assert.equal(judge.outcomeOf(1), "pending");
 });
 
 test("an early press has a negative error", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.press(1, 970), { index: 2, judgement: "perfect", errorMs: -30 });
+  assert.deepEqual(judge.press(1, 970), { index: 2, judgement: "perfect", errorMs: -30, part: "head" });
 });
 
 test("a press with no note in reach is a ghost tap", () => {
@@ -38,10 +38,10 @@ test("sweep misses notes only once past the GOOD window, in index order", () => 
   const judge = createJudge(sample());
   assert.deepEqual(judge.sweep(1135), []);
   assert.deepEqual(judge.sweep(1136), [
-    { index: 0, judgement: "miss", errorMs: null },
-    { index: 2, judgement: "miss", errorMs: null },
+    { index: 0, judgement: "miss", errorMs: null, part: "head" },
+    { index: 2, judgement: "miss", errorMs: null, part: "head" },
   ]);
-  assert.deepEqual(judge.sweep(1236), [{ index: 1, judgement: "miss", errorMs: null }]);
+  assert.deepEqual(judge.sweep(1236), [{ index: 1, judgement: "miss", errorMs: null, part: "head" }]);
   assert.equal(judge.remaining(), 0);
   assert.deepEqual(judge.sweep(5000), []);
 });
@@ -50,12 +50,12 @@ test("sweep does not re-miss a note that press already judged ahead of it", () =
   const judge = createJudge(sample());
   judge.press(0, 1100); // index 0, 100ms late -> good
   judge.press(0, 1100); // index 1, perfect
-  assert.deepEqual(judge.sweep(1236), [{ index: 2, judgement: "miss", errorMs: null }]);
+  assert.deepEqual(judge.sweep(1236), [{ index: 2, judgement: "miss", errorMs: null, part: "head" }]);
 });
 
 test("a late press can hit a note that has not been swept yet", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.press(1, 1135), { index: 2, judgement: "good", errorMs: 135 });
+  assert.deepEqual(judge.press(1, 1135), { index: 2, judgement: "good", errorMs: 135, part: "head" });
   assert.equal(judge.press(1, 1136), null);
 });
 
@@ -75,7 +75,7 @@ test("skipBefore returns how many notes it skipped and leaves judged ones alone"
   assert.equal(judge.outcomeOf(0), "perfect");
   assert.equal(judge.outcomeOf(2), "skipped");
   assert.equal(judge.skipBefore(1050), 0);
-  assert.deepEqual(judge.sweep(1236), [{ index: 1, judgement: "miss", errorMs: null }]);
+  assert.deepEqual(judge.sweep(1236), [{ index: 1, judgement: "miss", errorMs: null, part: "head" }]);
 });
 
 test("a chord can be hit on both lanes", () => {
@@ -102,4 +102,102 @@ test("sweep stays fast on a 5000-note chart", () => {
   const elapsed = performance.now() - started;
   assert.equal(missed, 5000);
   assert.ok(elapsed < 200, `sweep took ${elapsed.toFixed(1)}ms`);
+});
+
+// Holds: head at 1000, end at 2000 (lane 0). A tap in lane 1 at 3000.
+const withHold = () => [
+  { t: 1000, lane: 0, len: 1000 },
+  { t: 3000, lane: 1 },
+];
+
+test("a hold head is judged like a tap and makes the hold active", () => {
+  const judge = createJudge(withHold());
+  assert.deepEqual(judge.press(0, 1010), { index: 0, judgement: "perfect", errorMs: 10, part: "head" });
+  assert.equal(judge.tailOutcomeOf(0), "pending");
+  assert.equal(judge.tailOutcomeOf(1), null);
+  assert.equal(judge.remaining(), 2); // tail + tap
+});
+
+test("release at the end is a PERFECT tail", () => {
+  const judge = createJudge(withHold());
+  judge.press(0, 1000);
+  assert.deepEqual(judge.release(0, 2000), [{ index: 0, judgement: "perfect", errorMs: 0, part: "tail" }]);
+  assert.equal(judge.tailOutcomeOf(0), "perfect");
+  assert.equal(judge.outcomeOf(0), "perfect");
+});
+
+test("tail windows are the tap windows times 1.5", () => {
+  const at = (songMs) => {
+    const judge = createJudge(withHold());
+    judge.press(0, 1000);
+    return judge.release(0, songMs)[0].judgement;
+  };
+  assert.equal(at(2000 - 67.5), "perfect");
+  assert.equal(at(2000 - 68), "great");
+  assert.equal(at(2000 - 135), "great");
+  assert.equal(at(2000 - 136), "good");
+  assert.equal(at(2000 - 150), "good");
+  assert.equal(at(2000 - 202.5), "good");
+  assert.equal(at(2000 - 203), "miss");
+  assert.equal(at(2000 + 100), "great");
+  assert.equal(at(2000 + 500), "good"); // late beyond the window still counts
+});
+
+test("an early release is a drop: tail MISS and the hold is dead", () => {
+  const judge = createJudge(withHold());
+  judge.press(0, 1000);
+  assert.deepEqual(judge.release(0, 1700), [{ index: 0, judgement: "miss", errorMs: null, part: "tail" }]);
+  assert.equal(judge.tailOutcomeOf(0), "miss");
+  assert.deepEqual(judge.release(0, 1800), []);
+  assert.deepEqual(judge.sweep(5000).map((o) => o.index), [1]);
+});
+
+test("holding past the end auto-completes on sweep", () => {
+  const judge = createJudge(withHold());
+  judge.press(0, 1000);
+  assert.deepEqual(judge.sweep(1999), []);
+  assert.deepEqual(judge.sweep(2000), [{ index: 0, judgement: "perfect", errorMs: 0, part: "tail" }]);
+  assert.deepEqual(judge.release(0, 2100), []);
+});
+
+test("a missed head misses its tail in the same sweep", () => {
+  const judge = createJudge(withHold());
+  assert.deepEqual(judge.sweep(1136), [
+    { index: 0, judgement: "miss", errorMs: null, part: "head" },
+    { index: 0, judgement: "miss", errorMs: null, part: "tail" },
+  ]);
+  assert.equal(judge.tailOutcomeOf(0), "miss");
+  assert.equal(judge.remaining(), 1);
+});
+
+test("release without an active hold is a no-op", () => {
+  const judge = createJudge(withHold());
+  assert.deepEqual(judge.release(0, 1500), []);
+  assert.deepEqual(judge.release(2, 1500), []);
+});
+
+test("skipBefore in the middle of a hold skips it whole", () => {
+  const judge = createJudge(withHold());
+  assert.equal(judge.skipBefore(1500), 2);
+  assert.equal(judge.outcomeOf(0), "skipped");
+  assert.equal(judge.tailOutcomeOf(0), "skipped");
+  assert.equal(judge.remaining(), 1);
+  assert.deepEqual(judge.release(0, 2000), []);
+  assert.deepEqual(judge.sweep(2500), []);
+});
+
+test("skipBefore skips the tail of an active hold whose end has passed", () => {
+  const judge = createJudge(withHold());
+  judge.press(0, 1000);
+  assert.equal(judge.skipBefore(1500), 0); // still active
+  assert.equal(judge.skipBefore(2100), 1);
+  assert.equal(judge.tailOutcomeOf(0), "skipped");
+  assert.deepEqual(judge.release(0, 2100), []);
+});
+
+test("fromMs inside a hold skips the whole hold", () => {
+  const judge = createJudge(withHold(), { fromMs: 1500 });
+  assert.equal(judge.outcomeOf(0), "skipped");
+  assert.equal(judge.tailOutcomeOf(0), "skipped");
+  assert.equal(judge.remaining(), 1);
 });
