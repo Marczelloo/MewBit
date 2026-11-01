@@ -8,6 +8,7 @@ const { chartMetrics } = require("../../../helpers/mewbeat/charts/metrics");
 const { patternEvents } = require("../../../helpers/mewbeat/charts/patterns");
 const { buildPhrases, chooseLeaders } = require("../../../helpers/mewbeat/charts/phrases");
 const { copyRepeat } = require("../../../helpers/mewbeat/charts/repeats");
+const { starsOf } = require("../../../helpers/mewbeat/charts/stars");
 const { buildTiming, energyLookup } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
@@ -72,7 +73,7 @@ describe("generator v4", () => {
           list.forEach((p, i) => {
             if (p.repeatOf === null) return;
             const source = list[p.repeatOf];
-            const expected = notesIn(notes, source.startMs, source.endMs).map((n) => ({ t: n.t + p.lagMs, lane: n.lane }));
+            const expected = notesIn(notes, source.startMs, source.endMs).map((n) => ({ ...n, t: n.t + p.lagMs }));
             assert.ok(expected.length > 0, `${d}: source ${p.repeatOf} has notes`);
             assert.deepEqual(notesIn(notes, p.startMs, p.endMs), expected, `${d}: phrase ${i} vs ${p.repeatOf}`);
             checked++;
@@ -141,7 +142,7 @@ describe("generator v4", () => {
       const p = DIFFICULTIES[chart.difficulty];
       for (const [phrase, i] of copies) {
         const source = list[phrase.repeatOf];
-        const expected = notesIn(chart.notes, source.startMs, source.endMs).map((n) => ({ t: n.t + phrase.lagMs, lane: n.lane }));
+        const expected = notesIn(chart.notes, source.startMs, source.endMs).map((n) => ({ ...n, t: n.t + phrase.lagMs }));
         assert.ok(expected.length > 0);
         assert.deepEqual(notesIn(chart.notes, phrase.startMs, phrase.endMs), expected, `${chart.difficulty}: phrase ${i}`);
       }
@@ -390,5 +391,194 @@ describe("chartMetrics", () => {
     assert.ok(Math.abs(metrics.handBalance.left + metrics.handBalance.right - 1) < 1e-9);
     assert.ok(metrics.nps.mean > 0 && metrics.nps.peak >= metrics.nps.mean);
     assert.deepEqual(metrics.repeatIdentity.map((r) => [r.phrase, r.source]), [[2, 0], [3, 1], [4, 0], [5, 1], [6, 0], [7, 1]]);
+  });
+});
+
+describe("holds", () => {
+  const features = makeLayeredFeatures({ holdsEveryBeats: 2 });
+  const { timing, phrases, leaders } = setup(features);
+  const beatMs = 500;
+  const holdsOf = (notes) => notes.filter((n) => n.len !== undefined);
+
+  it("holdsFollowSustainedNotes: Normal turns kept sustained lead notes into holds", () => {
+    const { normal } = chartsOf(features);
+    assert.ok(holdsOf(normal.notes).length >= 20, `${holdsOf(normal.notes).length} holds`);
+    const leadTimes = new Set(features.lead.filter((n) => n.len >= beatMs / 2).map((n) => n.t));
+    phrases.forEach((p, i) => {
+      assert.equal(leaders[i], "lead");
+      const onLead = notesIn(normal.notes, p.startMs, p.endMs).filter((n) => leadTimes.has(n.t));
+      const taps = onLead.filter((n) => n.len === undefined);
+      assert.ok(taps.length <= 1, `phrase ${i}: ${taps.length} lead notes stayed taps`);
+      assert.ok(onLead.length - taps.length >= 3, `phrase ${i}: holds ${onLead.length - taps.length}`);
+    });
+    for (const n of holdsOf(normal.notes)) {
+      assert.ok(Number.isInteger(n.len) && n.len >= beatMs / 2 && n.len <= 4 * beatMs, `len ${n.len} at ${n.t}`);
+    }
+  });
+
+  it("easyHoldsAreAloneAndLong: a hold is at least a beat and nothing starts until it is over", () => {
+    const { easy } = chartsOf(features);
+    const holds = holdsOf(easy.notes);
+    assert.ok(holds.length >= 10, `${holds.length} holds`);
+    for (const h of holds) {
+      assert.ok(h.len >= beatMs, `len ${h.len} at ${h.t}`);
+      assert.ok(!easy.notes.some((n) => n.t > h.t && n.t <= h.t + h.len), `a note starts inside the hold at ${h.t}`);
+      const next = easy.notes.find((n) => n.t > h.t + h.len);
+      if (next) assert.ok(next.t - (h.t + h.len) >= DIFFICULTIES.easy.minNoteGapMs, `gap after hold at ${h.t}`);
+    }
+  });
+
+  it("noSameHandNotesDuringHold: on every difficulty, and Easy/Normal holds are never in a chord", () => {
+    for (const chart of Object.values(chartsOf(features))) {
+      const p = DIFFICULTIES[chart.difficulty];
+      const holds = holdsOf(chart.notes);
+      assert.ok(holds.length > 0, chart.difficulty);
+      for (const h of holds) {
+        for (const n of chart.notes) {
+          if (n === h) continue;
+          if (n.t >= h.t && n.t <= h.t + h.len && n.lane >> 1 === h.lane >> 1) {
+            assert.fail(`${chart.difficulty}: lane ${n.lane} at ${n.t} inside hold ${h.t}+${h.len}`);
+          }
+          if (n.t === h.t && chart.difficulty !== "hard") assert.fail(`${chart.difficulty}: hold at ${h.t} is in a chord`);
+        }
+        // Its own lane stays busy until the minimum lane gap after it.
+        const later = chart.notes.find((n) => n.lane === h.lane && n.t > h.t);
+        if (later) assert.ok(later.t - (h.t + h.len) >= p.minLaneGapMs, `${chart.difficulty}: lane gap after ${h.t}`);
+      }
+    }
+  });
+
+  it("Normal: the other hand is spaced at least half a beat apart while a hold runs", () => {
+    const { normal } = chartsOf(features);
+    for (const h of holdsOf(normal.notes)) {
+      const other = normal.notes.filter((n) => n.lane >> 1 !== h.lane >> 1 && n.t > h.t && n.t < h.t + h.len);
+      for (let i = 1; i < other.length; i++) {
+        assert.ok(other[i].t === other[i - 1].t || other[i].t - other[i - 1].t >= beatMs / 2, `at ${other[i].t}`);
+      }
+    }
+  });
+
+  it("holdsSurviveRepeats: the repeat identity includes len", () => {
+    const charts = chartsOf(features);
+    const { list } = features.phrases;
+    for (const d of DIFFS) {
+      const { notes } = charts[d];
+      list.forEach((p, i) => {
+        if (p.repeatOf === null) return;
+        const source = list[p.repeatOf];
+        const expected = notesIn(notes, source.startMs, source.endMs).map((n) => ({ ...n, t: n.t + p.lagMs }));
+        assert.ok(expected.some((n) => n.len !== undefined), `${d}: source ${p.repeatOf} has holds`);
+        assert.deepEqual(notesIn(notes, p.startMs, p.endMs), expected, `${d}: phrase ${i} vs ${p.repeatOf}`);
+      });
+    }
+  });
+
+  it("starsCountHolds: the same notes with holds get more stars", () => {
+    const { normal } = chartsOf(features);
+    const flat = { notes: normal.notes.map((n) => ({ t: n.t, lane: n.lane })) };
+    assert.ok(starsOf(normal) > starsOf(flat), `${starsOf(normal)} vs ${starsOf(flat)}`);
+    const all = { notes: flat.notes.map((n) => ({ ...n, len: 400 })) };
+    assert.ok(starsOf(all) - starsOf(flat) <= 0.41);
+    const dense = { notes: Array.from({ length: 400 }, (_, i) => ({ t: i * 100, lane: i % 4, len: 50 })) };
+    assert.ok(starsOf(dense) <= 10);
+  });
+
+  it("tapChartsHaveNoLenKey: a drums-only song has no len keys at all", () => {
+    for (const chart of Object.values(chartsOf(makeLayeredFeatures({ lead: false, bass: false })))) {
+      assert.ok(chart.notes.length > 0);
+      assert.ok(chart.notes.every((n) => Object.keys(n).join() === "t,lane"), chart.difficulty);
+    }
+  });
+
+  it("a hold's len is an integer and never present as undefined", () => {
+    for (const chart of Object.values(chartsOf(features))) {
+      for (const n of chart.notes) {
+        assert.ok(!("len" in n) || (Number.isInteger(n.len) && n.len > 0), `${chart.difficulty} ${JSON.stringify(n)}`);
+      }
+    }
+  });
+
+  describe("applyDifficulty", () => {
+    const lead = (t, lane, sustainMs, extra = {}) => ({ t, lane, level: 0, s: 1, source: "lead", sustainMs, ...extra });
+    const run = (events, diff, prev = [], endMs = Infinity) =>
+      applyDifficulty(events, DIFFICULTIES[diff], timing, () => 0.9, prev, null, endMs);
+
+    it("a sustained tonal event becomes a hold, a short one or a drum hit does not", () => {
+      assert.deepEqual(run([lead(3000, 0, 1000)], "normal"), [{ t: 3000, lane: 0, len: 1000 }]);
+      assert.deepEqual(run([lead(3000, 0, 200)], "normal"), [{ t: 3000, lane: 0 }]);
+      assert.deepEqual(run([lead(3000, 0, 400)], "easy"), [{ t: 3000, lane: 0 }]); // under a beat
+      assert.deepEqual(run([lead(3000, 0, 1000, { source: "drums" })], "normal"), [{ t: 3000, lane: 0 }]);
+    });
+
+    it("len is capped at 4 beats and by the next note of the same lane", () => {
+      assert.equal(run([lead(3000, 0, 5000)], "hard")[0].len, 2000);
+      const out = run([lead(3000, 0, 1500), lead(4000, 0, 200)], "normal");
+      assert.equal(out[0].len, 1000 - DIFFICULTIES.normal.minLaneGapMs);
+    });
+
+    it("a hold is clipped to leave room before the next note of its hand", () => {
+      const out = run([lead(3000, 0, 1500), lead(3800, 1, 200, { level: 1 })], "normal");
+      assert.deepEqual(out.map((n) => [n.t, n.lane, n.len]), [[3000, 0, 700], [3800, 1, undefined]]);
+    });
+
+    it("a hold drops lower-priority notes it cannot be clipped around, and is demoted by higher-priority ones", () => {
+      // The other note is only 100 ms after the hold starts: no room for a clip.
+      const lowerPriority = run([lead(3000, 0, 1000), lead(3100, 1, 200, { level: 1 })], "hard");
+      assert.deepEqual(lowerPriority, [{ t: 3000, lane: 0, len: 1000 }]);
+      const higher = run([lead(3000, 0, 1000, { level: 1 }), lead(3100, 1, 200, { level: 0 })], "hard");
+      assert.deepEqual(higher, [{ t: 3000, lane: 0 }, { t: 3100, lane: 1 }]);
+    });
+
+    it("a hold never costs a note of its own level: legato lines stay taps on Easy", () => {
+      const legato = [3000, 3500, 4000, 4500].map((t, i) => lead(t, i % 2, 500));
+      const out = run(legato, "easy");
+      assert.deepEqual(out.map((n) => n.t), [3000, 3500, 4000, 4500]);
+      assert.ok(out.slice(0, 3).every((n) => n.len === undefined)); // the last note has room for its hold
+    });
+
+    it("Hard lets the other hand play over a hold, Normal spaces it, Easy blocks it", () => {
+      const events = [lead(3000, 0, 2000), lead(3500, 2, 200), lead(3600, 3, 200, { level: 1 })];
+      assert.deepEqual(run(events, "hard").map((n) => n.t), [3000, 3500, 3600]);
+      assert.deepEqual(run(events, "normal").map((n) => n.t), [3000, 3500]);
+      // Easy: the other note is as important as the hold, so the hold gives way and both stay taps.
+      assert.deepEqual(run(events, "easy"), [{ t: 3000, lane: 0 }, { t: 3500, lane: 2 }]);
+    });
+
+    it("a hold from the previous phrase blocks its hand and (on Easy) every lane", () => {
+      const prev = [{ t: 2000, lane: 0, len: 1500 }];
+      assert.deepEqual(run([lead(3000, 1, 200), lead(3300, 2, 200)], "normal", prev).map((n) => n.lane), [2]);
+      assert.deepEqual(run([lead(3000, 2, 200)], "easy", prev), []);
+    });
+
+    it("a hold is clipped to the end of its phrase", () => {
+      const out = run([lead(3000, 0, 1500)], "normal", [], 4000);
+      assert.equal(out[0].len, 1000 - DIFFICULTIES.normal.minLaneGapMs);
+    });
+  });
+
+  describe("enforceFloors", () => {
+    it("drops later notes inside a hold's hand, and on Easy in every lane, until the gap after it", () => {
+      const notes = [{ t: 2000, lane: 0, len: 1000 }, { t: 2500, lane: 1 }, { t: 2600, lane: 2 }, { t: 3100, lane: 3 }, { t: 3300, lane: 3 }];
+      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.hard).map((n) => n.t), [2000, 2600, 3100, 3300]);
+      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.easy).map((n) => n.t), [2000, 3300]);
+    });
+
+    it("a hold occupies its own lane until t + len + minLaneGapMs", () => {
+      const notes = [{ t: 2000, lane: 0, len: 1000 }, { t: 3100, lane: 0 }, { t: 3200, lane: 0 }];
+      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.normal).map((n) => n.t), [2000, 3200]);
+    });
+
+    it("a hold does not share its time with a note of its hand, nor (Normal) with any note", () => {
+      const sameHand = [{ t: 2000, lane: 0 }, { t: 2000, lane: 1, len: 500 }];
+      assert.equal(enforceFloors(sameHand, DIFFICULTIES.hard).length, 1);
+      const chord = [{ t: 2000, lane: 0, len: 500 }, { t: 2000, lane: 3 }];
+      assert.equal(enforceFloors(chord, DIFFICULTIES.hard).length, 2);
+      assert.equal(enforceFloors(chord, DIFFICULTIES.normal).length, 1);
+    });
+
+    it("Normal spaces the other hand by half a beat while a hold runs", () => {
+      const notes = [{ t: 2000, lane: 0, len: 1500 }, { t: 2300, lane: 2 }, { t: 2400, lane: 3 }, { t: 2600, lane: 2 }];
+      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.normal).map((n) => n.t), [2000, 2300, 2600]);
+    });
   });
 });

@@ -42,6 +42,7 @@ const DIFFICULTIES = {
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
+    holdOtherHand: "blocked", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
     // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
     // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
     // raw onset strength across all bands, so its note choice differs from Normal.
@@ -65,6 +66,7 @@ const DIFFICULTIES = {
     maxLevel: 1,
     quarterMinEnergy: 0.6,
     holdMinBeats: 0.5,
+    holdOtherHand: "spaced",
     bandBias: [1, 1, 0.9, 0.8],
     beatBias: 0.2,
     // Second note only on a strong downbeat in a loud part.
@@ -86,6 +88,7 @@ const DIFFICULTIES = {
     maxLevel: 2,
     quarterMinEnergy: null,
     holdMinBeats: 0.5,
+    holdOtherHand: "free",
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.95, onDownbeat: false, minEnergy: 0.5 },

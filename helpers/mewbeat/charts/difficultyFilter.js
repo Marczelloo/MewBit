@@ -4,6 +4,7 @@
 // > never 3-note chords > repeat identity > jack limit at phrase seams.
 const { DENSITY_WINDOW_MS, ENERGY_EXPONENT, LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { gridSlot } = require("./grid");
+const { holdBlocks, holdSafe, planHolds, spacedBlocked } = require("./holds");
 const { lowerBound } = require("./util");
 
 const LANES = 4;
@@ -99,7 +100,10 @@ function limitJacks(notes, diff, prevNotes, { strict }) {
       if (runOf(lane) > maxJack) {
         const pool = [...prevNotes, ...out.filter((n) => !dropped.has(n))];
         const free = alternatives(lane, note.source).filter((l) => !taken.has(l) && runOf(l) <= maxJack);
-        const clear = free.find((l) => laneClear(l, note.t, minLane, pool, note));
+        // A held note may only move where it (and the notes around it) keep the hold rules.
+        const clear = free.find(
+          (l) => laneClear(l, note.t, minLane, pool, note) && holdSafe({ t: note.t, lane: l, len: note.len }, pool.filter((n) => n !== note), diff),
+        );
         const choice = clear ?? (strict ? undefined : free[0]);
         if (choice === undefined) {
           if (strict) {
@@ -186,16 +190,17 @@ function selectByFloors(items, diff, energy, prevNotes) {
 
 // --- public API ----------------------------------------------------------------------------
 
-// applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy) -> [{ t, lane }]
-// `prevNotes` is the previous phrase's tail (gaps and jacks hold across the seam).
+// applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy, phraseEndMs) -> [{ t, lane, len? }]
+// `prevNotes` is the previous phrase's tail (gaps, jacks and holds carry across the seam).
 // `phraseEnergy` (optional) is the phrase's mean energy for Normal's quarter-grid rule;
-// without it the energy at the event's time is used.
-function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null) {
+// without it the energy at the event's time is used. `phraseEndMs` (optional) keeps holds
+// inside their phrase. A sustained bass/lead event becomes a hold (see holds.js).
+function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity) {
   const energy = asLookup(energyAt);
   const tail = (Array.isArray(prevNotes) ? prevNotes : []).filter((n) => Number.isFinite(n?.t) && Number.isInteger(n?.lane));
   const sorted = [...events].sort(byTime);
   const lastKept = sorted.length > 0 ? sorted[0].t - SEAM_LOOKBACK_MS : 0;
-  const prev = tail.filter((n) => n.t >= lastKept);
+  const prev = tail.filter((n) => n.t >= lastKept || n.t + (n.len > 0 ? n.len : 0) >= lastKept);
 
   let items = sorted
     .filter((e) => e.level <= diff.maxLevel)
@@ -211,24 +216,34 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   items = capMoments(items, diff.chord ? 2 : 1);
   items = limitJacks(items, diff, prev, { strict: false });
   items = selectByFloors(items, diff, energy, prev);
+  items = planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs);
   items = limitJacks(items, diff, prev, { strict: true });
-  return items.sort(byTime).map((n) => ({ t: n.t, lane: n.lane }));
+  return items.sort(byTime).map((n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane }));
 }
 
 // Final whole-song pass: drops only notes that break minNoteGapMs (any lane,
-// between distinct times) or minLaneGapMs (same lane). The earlier note wins.
-function enforceFloors(notes, diff) {
+// between distinct times), minLaneGapMs (same lane, counted from the end of a hold)
+// or a hold's rules (see holds.js). The earlier note wins. `timing` (optional) gives
+// the beat length for Normal's half-beat spacing next to a hold.
+function enforceFloors(notes, diff, timing = null) {
   const noteGap = diff.minNoteGapMs ?? 0;
   const laneGap = diff.minLaneGapMs ?? 0;
-  const lastInLane = new Array(LANES).fill(-Infinity);
+  const reach = Math.max(noteGap, laneGap);
+  const laneFree = new Array(LANES).fill(-Infinity); // when each lane's last note (or hold) ends
   let lastT = -Infinity;
+  let active = []; // kept holds that can still constrain later notes
   const out = [];
   for (const note of [...notes].sort(byTime)) {
     if (note.t !== lastT && note.t - lastT < noteGap) continue;
-    if (note.t - lastInLane[note.lane] < laneGap) continue;
+    if (note.t - laneFree[note.lane] < laneGap) continue;
+    active = active.filter((h) => h.t + h.len + reach > note.t);
+    const beat = typeof timing?.beatMsAt === "function" ? timing.beatMsAt(note.t) : 500;
+    if (active.some((h) => holdBlocks(h, note, diff) || spacedBlocked(h, note, out, diff, beat / 2))) continue;
+    if (note.len > 0 && out.some((o) => o.t === note.t && holdBlocks(note, o, diff))) continue;
     out.push(note);
     lastT = note.t;
-    lastInLane[note.lane] = note.t;
+    laneFree[note.lane] = note.t + (note.len > 0 ? note.len : 0);
+    if (note.len > 0) active.push(note);
   }
   return out;
 }

@@ -2,6 +2,7 @@
 const BASE_STARS = 0.5;
 const STARS_PER_NPS = 0.55;
 const STARS_PER_CHORD_RATIO = 2;
+const STARS_PER_HOLD_RATIO = 0.3; // times the share of notes that are holds
 const PEAK_WINDOW_MS = 8000;
 const MAX_STARS = 10;
 
@@ -28,10 +29,15 @@ function chordRatio(notes) {
   return moments === 0 ? 0 : chords / moments;
 }
 
+// Share of notes that are holds (a hold counts as one note everywhere else).
+function holdRatio(notes) {
+  return notes.filter((n) => n.len > 0).length / notes.length;
+}
+
 function starsOf(chart) {
   const notes = chart?.notes ?? [];
   if (notes.length === 0) return 0;
-  const raw = BASE_STARS + STARS_PER_NPS * peakNps(notes) + STARS_PER_CHORD_RATIO * chordRatio(notes);
+  const raw = BASE_STARS + STARS_PER_NPS * peakNps(notes) + STARS_PER_CHORD_RATIO * chordRatio(notes) + STARS_PER_HOLD_RATIO * holdRatio(notes);
   return Math.round(Math.min(MAX_STARS, Math.max(0, raw)) * 10) / 10;
 }
 

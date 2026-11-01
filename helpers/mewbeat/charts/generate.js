@@ -57,7 +57,8 @@ function chartNotes(ctx, diff) {
 
   for (let i = 0; i < phrases.length; ) {
     const phrase = phrases[i];
-    const tail = inWindow(all, phrase.startMs - DENSITY_WINDOW_MS, phrase.startMs);
+    // The previous notes that still matter here: the last 2 s, and any hold still running.
+    const tail = all.filter((n) => n.t < phrase.startMs && Math.max(n.t, n.t + (n.len ?? 0)) >= phrase.startMs - DENSITY_WINDOW_MS);
 
     // A repeat plays like its source.
     if (isRepeat(phrase, i)) {
@@ -84,11 +85,11 @@ function chartNotes(ctx, diff) {
     }
 
     const events = patternEvents(phrase, leaders[i], features, timing);
-    all.push(...applyDifficulty(events, diff, timing, energy, tail, phrase.energy));
+    all.push(...applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs));
     i++;
   }
 
-  return enforceFloors(all.sort(byTime), diff);
+  return enforceFloors(all.sort(byTime), diff, timing);
 }
 
 // --- public API --------------------------------------------------------------
