@@ -16,6 +16,8 @@ import "./mewbeat.css";
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
 
 const POSITION_JUMP_MS = 1500;
+const AUTO_OFFSET_EVERY = 16; // new taps between auto offset updates
+const AUTO_OFFSET_MIN_CHANGE_MS = 10; // smaller drifts are tap noise, not a wrong offset
 const DEFAULT_KEYS = ["KeyD", "KeyF", "KeyJ", "KeyK"];
 
 const PHASE_COPY = {
@@ -69,7 +71,19 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
   );
 
   const game = useMewbeatGame({ link, settings, effects: settings?.effects, trackInfo, inputPaused: settingsOpen, onExit: onClose });
-  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio } = game;
+  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming } = game;
+
+  // Auto offset (this session only): every AUTO_OFFSET_EVERY new taps, a suggestion that differs
+  // enough from the saved offset is saved as the offset.
+  const [autoOffset, setAutoOffset] = useState(false);
+  const appliedAtRef = useRef(0); // timing.total when auto offset last looked
+  const savedOffset = settings?.offsetMs ?? 0;
+  useEffect(() => {
+    if (!autoOffset || timing.offsetMs === null || timing.total - appliedAtRef.current < AUTO_OFFSET_EVERY) return;
+    appliedAtRef.current = timing.total;
+    if (Math.abs(timing.offsetMs - savedOffset) < AUTO_OFFSET_MIN_CHANGE_MS) return;
+    onAction?.("mewbeat_settings", { settings: { offsetMs: timing.offsetMs } });
+  }, [autoOffset, timing, savedOffset, onAction]);
 
   // The panel returns focus to the gear button it was opened from.
   const closeSettings = useCallback(() => {
@@ -201,7 +215,15 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
         </div>
       </div>
 
-      {settingsOpen ? <SettingsPanel settings={settings} onAction={onAction} onClose={closeSettings} /> : null}
+      {settingsOpen ? <SettingsPanel
+          settings={settings}
+          onAction={onAction}
+          onClose={closeSettings}
+          timing={timing}
+          autoOffset={autoOffset}
+          onAutoOffset={setAutoOffset}
+          onResetTiming={resetTiming}
+        /> : null}
     </div>
   );
 }

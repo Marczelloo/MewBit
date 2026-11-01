@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MIN_TAPS } from "./calibration.js";
 import { keyLabel, keysProblem } from "./input.js";
 import { DEFAULT_SETTINGS } from "./useMewbeatGame.js";
 
@@ -25,6 +26,7 @@ const HIT_SOUNDS = [
   { value: true, label: "On" },
   { value: false, label: "Off" },
 ];
+const AUTO_OFFSET = HIT_SOUNDS;
 
 function formatOffset(ms) {
   return `${ms > 0 ? "+" : ""}${ms} ms`;
@@ -50,7 +52,7 @@ function Segmented({ label, options, value, onChange }) {
 
 // The settings drawer. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -245,6 +247,34 @@ export default function SettingsPanel({ settings, onAction, onClose }) {
             <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => nudgeOffset(OFFSET_STEP)}>+5</button>
           </div>
           <p className="mb-field-help">Raise it if notes reach the line before you hear the beat.</p>
+        </section>
+
+        <section className="mb-field">
+          <div className="mb-field-head">
+            <span className="mb-label">Calibrate from taps</span>
+            {timing?.offsetMs !== null && timing?.offsetMs !== undefined ? (
+              <output className="mb-field-value">{formatOffset(timing.offsetMs)}</output>
+            ) : null}
+          </div>
+          <Segmented label="Auto offset" options={AUTO_OFFSET} value={autoOffset} onChange={(value) => onAutoOffset?.(value)} />
+          <p className="mb-field-help" role="status">
+            {timing?.offsetMs === null || !timing
+              ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
+              : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
+          </p>
+          <div className="mb-calib-row">
+            <button
+              type="button"
+              className="mb-btn"
+              disabled={timing?.offsetMs === null || !timing || timing.offsetMs === offsetMs}
+              onClick={() => changeDebounced("offsetMs", timing.offsetMs, { immediate: true })}
+            >
+              Apply suggestion
+            </button>
+            <button type="button" className="mb-btn" disabled={!timing?.taps} onClick={() => onResetTiming?.()}>
+              Reset taps
+            </button>
+          </div>
         </section>
 
         <section className="mb-field">

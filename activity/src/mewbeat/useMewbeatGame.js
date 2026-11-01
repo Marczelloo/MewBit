@@ -4,6 +4,7 @@ import { approachMsFor, createHighwayRenderer } from "./highway.js";
 import { createHitSounds } from "./hitSounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
+import { createTapTiming, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
@@ -69,6 +70,10 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   const [endSummary, setEndSummary] = useState(null);
   const [mewbitPose, setMewbitPose] = useState("neutral");
   const [autoplay, setAutoplayState] = useState(false);
+  // Tap timing outlives runs: calibration gathers over every song played this session.
+  const [tapTiming] = useState(createTapTiming);
+  const [timing, setTiming] = useState(() => tapTiming.estimate());
+  const timingDirtyRef = useRef(false);
 
   const canvasRef = useRef(null);
   const progressRef = useRef(null);
@@ -197,7 +202,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       feverActiveRef.current = false;
       if (snap.judged >= 1) {
         const { hits, ranked, skipped, ...rest } = snap;
-        setEndSummary({ ...rest, title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
+        setEndSummary({ ...rest, timingMs: runTimingOf(hits), title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
         setHud({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
       } else {
         setHud(EMPTY_HUD);
@@ -242,6 +247,10 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
 
     function flushHud(run, songMs) {
       dirtyRef.current = false;
+      if (timingDirtyRef.current) {
+        timingDirtyRef.current = false;
+        setTiming(tapTiming.estimate());
+      }
       const snap = run.snapshot(songMs);
       if (snap.multiplier > multiplierRef.current) milestoneUntilRef.current = performance.now() + MILESTONE_POSE_MS;
       multiplierRef.current = snap.multiplier;
@@ -357,6 +366,11 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         if (!run || phaseRef.current !== "playing") return;
         const songMs = songClock.songTimeAt(timeStamp);
         if (songMs === null) return;
+        // Autoplay judges its own notes; only the player's presses say where they hear the beat.
+        if (!runAutoplayRef.current && chartRef.current && tapTiming.add(chartRef.current.notes, lane, songMs, cfgRef.current.offsetMs) !== null) {
+          timingDirtyRef.current = true;
+          dirtyRef.current = true;
+        }
         const hit = run.press(lane, songMs);
         if (hit) handleEvents([hit], run.heardTime(songMs));
       },
@@ -487,7 +501,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       offStatus();
     };
     // link is stable for the screen's life.
-  }, [link, setPhase]);
+  }, [link, setPhase, tapTiming]);
 
   // ---- canvas ----
   useEffect(() => {
@@ -528,5 +542,10 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     }
   }, [link]);
 
-  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio };
+  const resetTiming = useCallback(() => {
+    tapTiming.reset();
+    setTiming(tapTiming.estimate());
+  }, [tapTiming]);
+
+  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming };
 }

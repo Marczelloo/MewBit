@@ -15,6 +15,12 @@ const PHASE_NOTES = {
   failed: "Charting failed. We'll try the next track.",
 };
 
+// "12 ms late", "8 ms early" or "On time" for a run's median hit error.
+function formatTiming(ms) {
+  if (Math.abs(ms) < 5) return "On time";
+  return `${Math.abs(ms)} ms ${ms > 0 ? "late" : "early"}`;
+}
+
 // Results of the run that just ended. It stays up until the next run starts, so what the
 // game is waiting for goes in its footer.
 export default function EndCard({ summary, phase, queued }) {
@@ -44,6 +50,12 @@ export default function EndCard({ summary, phase, queued }) {
           <dt>Fevers</dt>
           <dd>{summary.fevers}</dd>
         </div>
+        {Number.isFinite(summary.timingMs) ? (
+          <div>
+            <dt>Timing</dt>
+            <dd>{formatTiming(summary.timingMs)}</dd>
+          </div>
+        ) : null}
       </dl>
       <ul className="mb-endcard-counts">
         {ROWS.map(([key, label]) => (

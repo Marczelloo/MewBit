@@ -447,7 +447,7 @@
 .mb-endcard-score { display: grid; }
 .mb-endcard-score b { font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .mb-endcard-score span { color: var(--mb-muted); font-size: 12px; }
-.mb-endcard-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; }
+.mb-endcard-stats { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 10px; margin: 0; }
 .mb-endcard-stats div { padding: 10px; border: 1px solid var(--mb-line); border-radius: 10px; }
 .mb-endcard-stats dt { color: var(--mb-muted); font-size: 11px; }
 .mb-endcard-stats dd { margin: 4px 0 0; font-size: 18px; font-weight: 800; }
@@ -552,6 +552,7 @@
 .mb-field-error { margin: 0; color: var(--mb-danger); font-size: 12px; font-weight: 700; line-height: 1.4; }
 .mb-keycaps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .mb-keycap { padding: 0 6px; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.mb-calib-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .mb-offset-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .mb-step { min-width: 48px; padding: 0 10px; font-variant-numeric: tabular-nums; }
 .mb-step:disabled { opacity: 0.4; cursor: default; }
