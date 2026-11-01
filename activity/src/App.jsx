@@ -392,6 +392,7 @@ function getActionFeedback(action, payload = {}, result = null, state = null) {
     case "play": return payload.playNow ? (track ? `Playing now: ${track}` : "Playing now") : (track ? `Added to queue: ${track}` : "Added to queue");
     case "surprise_me": return track ? `Picked ${result?.surpriseMoodLabel ? `a ${result.surpriseMoodLabel.toLowerCase()} pick` : result?.surpriseIntent && result.surpriseIntent !== "freestyle" ? "for this room" : "from today’s chart"}: ${track}` : "Picked a verified surprise track";
     case "stop": return "Playback stopped and queue cleared";
+    case "mewbeat_calibrate": return result?.status === "queued" ? "Calibration clicks play next" : "Calibration clicks are playing: tap along";
     case "skip": return "Skipped to the next track";
     case "previous": return "Restarted the current track";
     case "shuffle": return "Queue shuffled";

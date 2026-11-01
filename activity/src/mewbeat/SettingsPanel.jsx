@@ -28,7 +28,7 @@ const HIT_SOUNDS = [
 ];
 const AUTO_OFFSET = HIT_SOUNDS;
 
-function formatOffset(ms) {
+export function formatOffset(ms) {
   return `${ms > 0 ? "+" : ""}${ms} ms`;
 }
 
@@ -62,6 +62,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   const [draft, setDraft] = useState({});
   const [capture, setCapture] = useState(null); // lane index waiting for a key
   const [keyError, setKeyError] = useState(null);
+  const [clicksPending, setClicksPending] = useState(false);
   const panelRef = useRef(null);
   const onActionRef = useRef(onAction);
   onActionRef.current = onAction;
@@ -262,7 +263,19 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
               ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
               : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
           </p>
+          <p className="mb-field-help">Calibration clicks: the bot plays a metronome in voice and charts one note per click. Close settings and tap each click as you hear it.</p>
           <div className="mb-calib-row">
+            <button
+              type="button"
+              className="mb-btn"
+              disabled={clicksPending}
+              onClick={() => {
+                setClicksPending(true);
+                Promise.resolve(onActionRef.current?.("mewbeat_calibrate")).finally(() => setClicksPending(false));
+              }}
+            >
+              Play calibration clicks
+            </button>
             <button
               type="button"
               className="mb-btn"

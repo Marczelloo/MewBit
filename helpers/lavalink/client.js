@@ -10,6 +10,7 @@ const {
 const { errorEmbed } = require("../embeds");
 const { getGuildState } = require("../guildState.js");
 const Log = require("../logs/log");
+const { isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const statsStore = require("../stats/store.js");
 const { formatDuration } = require("../utils");
 const { tryQueueFallbackTrack, describeTrack } = require("./fallbacks");
@@ -347,6 +348,9 @@ function createPoru(client) {
 
     clearTrackStartWatchdog(player.guildId, "trackStart");
     clearInactivityTimer(player.guildId, "trackStart");
+    // The mewbeat calibration clicks are a tool, not a song: no lyrics,
+    // loudness lookup, autoplay seed, stats or history.
+    const calibration = isCalibrationTrack(track);
     const replay = consumeReplay(track);
     recordSourcePlayback(track.info?.sourceName, true);
     player.isPlaying = true;
@@ -375,7 +379,7 @@ function createPoru(client) {
     }
     // Unmeasured tracks get a quick Deezer loudness lookup; the next queued
     // track is measured now so it starts at the right level.
-    void refineTrackLoudness(player, track).catch((err) => {
+    if (!calibration) void refineTrackLoudness(player, track).catch((err) => {
       Log.debug("Track loudness lookup failed", err?.message || String(err), `guild=${player.guildId}`);
     });
     if (player.queue[0]) void resolveTrackLoudness(player.queue[0]).catch(() => null);
@@ -386,7 +390,7 @@ function createPoru(client) {
       Log.warning("Failed to update voice channel status", err?.message || String(err), `guild=${player.guildId}`);
     }
 
-    const lyricsPayload = await fetchLyrics(player, track.info).catch(() => null);
+    const lyricsPayload = calibration ? null : await fetchLyrics(player, track.info).catch(() => null);
     setLyricsState(player.guildId, lyricsPayload);
     markActivityStateChanged(player.guildId, "lyricsReady");
 
@@ -411,13 +415,13 @@ function createPoru(client) {
     // playing. Waiting for queueEnd makes every recommendation fetch audible.
     const guildSettings = getGuildState(player.guildId);
     // prefetchAutoplayTrack also re-picks a waiting pick chosen for another track.
-    if (guildSettings?.autoplay) {
+    if (guildSettings?.autoplay && !calibration) {
       const { prefetchAutoplayTrack } = require("./autoplay");
       void prefetchAutoplayTrack(player, track, player.textChannel);
     }
 
     // A replay continues a song whose session and play count already exist.
-    if (!replay) {
+    if (!replay && !calibration) {
       try {
         const voiceChannel = player.poru.client.guilds.cache.get(player.guildId)?.channels.cache.get(player.voiceChannel);
 
@@ -452,7 +456,7 @@ function createPoru(client) {
     const reasonCode = typeof reason === "string" ? reason : reason?.reason ?? null;
     const isLoadFailure = reasonCode === "loadFailed" || reasonCode === "load_failed";
 
-    if (endedTrack?.track && reasonCode !== "replaced" && !isLoadFailure) {
+    if (endedTrack?.track && reasonCode !== "replaced" && !isLoadFailure && !isCalibrationTrack(endedTrack)) {
       pushTrackHistory(player.guildId, endedTrack);
 
       const updatedState = playbackState.get(player.guildId);
@@ -572,7 +576,9 @@ function createPoru(client) {
     Log.info("🏁 Queue ended", `guild=${player.guildId}`);
 
     const state = ensurePlaybackState(player.guildId);
-    const lastTrack = state.currentTrack || state.lastEndedTrack || null;
+    const endedTrack = state.currentTrack || state.lastEndedTrack || null;
+    // Autoplay after the calibration clicks follows the last real song.
+    const lastTrack = isCalibrationTrack(endedTrack) ? state.history?.[state.history.length - 1] ?? null : endedTrack;
 
     Log.debug(
       "Queue end state",

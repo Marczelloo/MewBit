@@ -279,7 +279,7 @@ module.exports = {
       const duration = info.isStream ? "Live" : formatDuration(info.length);
 
       lines.push(
-        `**Now Playing:** [${info.title}](${info.uri}) • \`${duration}\` • requested by <@${
+        `**Now Playing:** ${info.uri ? `[${info.title}](${info.uri})` : info.title} • \`${duration}\` • requested by <@${
           info.requesterId ?? requesterId
         }>`,
         ""
@@ -299,7 +299,7 @@ module.exports = {
         const position = start + idx + 1;
 
         lines.push(
-          `**${position}.** [${info.title}](${info.uri}) • \`${duration}\` • requested by <@${
+          `**${position}.** ${info.uri ? `[${info.title}](${info.uri})` : info.title} • \`${duration}\` • requested by <@${
             info.requesterId ?? requesterId
           }>`
         );

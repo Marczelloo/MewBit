@@ -6,6 +6,7 @@ const Log = require("../logs/log");
 const { backupCorruptFile, writeJsonAtomic } = require("../data/atomicJson");
 const { audioKeyFile, audioKeyOf } = require("./audioKey");
 const { analysisClient } = require("./analysisClient");
+const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
 const { GENERATOR_VERSION, generateAll } = require("./charts/generate");
 
 const DIFFICULTIES = ["easy", "normal", "hard"];
@@ -169,6 +170,8 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   function getCharts(track, node) {
     const key = audioKeyOf(track);
     if (!key) return Promise.resolve(UNCHARTED(NO_AUDIO_KEY));
+    // The calibration clicks are charted from their identifier, never analysed.
+    if (isCalibrationTrack(track)) return Promise.resolve(READY(calibrationCharts(track)));
     const cached = readMemory(key);
     if (cached) return Promise.resolve(READY(cached));
     if (unchartedByKey.has(key)) return Promise.resolve(UNCHARTED(unchartedByKey.get(key)));
@@ -185,6 +188,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   function peekCharts(track) {
     const key = audioKeyOf(track);
     if (!key) return null;
+    if (isCalibrationTrack(track)) return READY(calibrationCharts(track));
     const verdict = known(key);
     if (verdict) return verdict;
     const status = analysis.statusOf(track);

@@ -4,6 +4,7 @@ import EndCard from "./EndCard.jsx";
 import GameHud, { HighwayReadout, TrackCard } from "./GameHud.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
 import Stage from "./Stage.jsx";
+import { MIN_TAPS } from "./calibration.js";
 import { createServerClock, createSongClock } from "./clock.js";
 import { keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
@@ -71,7 +72,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
   );
 
   const game = useMewbeatGame({ link, settings, effects: settings?.effects, trackInfo, inputPaused: settingsOpen, onExit: onClose });
-  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming } = game;
+  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming, calibrating } = game;
 
   // Auto offset (this session only): every AUTO_OFFSET_EVERY new taps, a suggestion that differs
   // enough from the saved offset is saved as the offset.
@@ -160,6 +161,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
         <div className="mb-header-brand">
           <span className="mb-wordmark">mewbeat</span>
           {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
+          {calibrating && running ? <span className="mb-chip">calibration · {timing.taps}/{MIN_TAPS} taps</span> : null}
         </div>
         <div className="mb-header-actions">
           <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>
@@ -204,7 +206,16 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
                   {stateCopy.detail ? <span>{stateCopy.detail}</span> : null}
                 </div>
               ) : null}
-              {showCard ? <EndCard summary={endSummary} phase={phase} queued={Boolean(track?.queued)} /> : null}
+              {showCard ? (
+                <EndCard
+                  summary={endSummary}
+                  phase={phase}
+                  queued={Boolean(track?.queued)}
+                  timing={timing}
+                  savedOffset={savedOffset}
+                  onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { offsetMs } })}
+                />
+              ) : null}
             </div>
           </div>
 

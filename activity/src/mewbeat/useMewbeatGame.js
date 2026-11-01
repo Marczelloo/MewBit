@@ -74,6 +74,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   const [tapTiming] = useState(createTapTiming);
   const [timing, setTiming] = useState(() => tapTiming.estimate());
   const timingDirtyRef = useRef(false);
+  const runCalibrationRef = useRef(false);
+  const [calibrating, setCalibrating] = useState(false); // the run in progress plays the calibration clicks
 
   const canvasRef = useRef(null);
   const progressRef = useRef(null);
@@ -184,6 +186,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       runRef.current = run;
       runAutoplayRef.current = autoplayRef.current;
       runTrackRef.current = trackRef.current;
+      runCalibrationRef.current = Boolean(chartRef.current?.calibration);
+      setCalibrating(runCalibrationRef.current);
       lastSongMsRef.current = songMs;
       resetRunState();
       setEndSummary(null);
@@ -198,11 +202,12 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       const run = runRef.current;
       if (!run) return;
       runRef.current = null;
+      setCalibrating(false);
       const snap = run.snapshot(lastSongMsRef.current);
       feverActiveRef.current = false;
       if (snap.judged >= 1) {
         const { hits, ranked, skipped, ...rest } = snap;
-        setEndSummary({ ...rest, timingMs: runTimingOf(hits), title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
+        setEndSummary({ ...rest, calibration: runCalibrationRef.current, timingMs: runTimingOf(hits), title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
         setHud({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
       } else {
         setHud(EMPTY_HUD);
@@ -309,6 +314,11 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       if (event.audioKey !== songClock.audioKey() || event.difficulty !== cfgRef.current.liveDifficulty) return;
       if (event.status === "ready" && event.chart?.notes) {
         chartRef.current = event.chart;
+        // The clicks measure the offset on their own: taps from earlier songs would blur it.
+        if (event.chart.calibration) {
+          tapTiming.reset();
+          timingDirtyRef.current = true;
+        }
         startRun();
       } else if (event.status === "uncharted") {
         setPhase("uncharted");
@@ -547,5 +557,5 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     setTiming(tapTiming.estimate());
   }, [tapTiming]);
 
-  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming };
+  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, timing, resetTiming, calibrating };
 }

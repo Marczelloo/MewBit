@@ -1,4 +1,6 @@
+import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
+import { formatOffset } from "./SettingsPanel.jsx";
 
 const ROWS = [
   ["perfect", "Perfect"],
@@ -21,9 +23,31 @@ function formatTiming(ms) {
   return `${Math.abs(ms)} ms ${ms > 0 ? "late" : "early"}`;
 }
 
+// After the calibration clicks: what the taps say the offset should be.
+function CalibrationResult({ timing, savedOffset, onApplyOffset }) {
+  if (!timing || timing.offsetMs === null) {
+    return (
+      <p className="mb-endcard-note" role="status">
+        Only {timing?.taps ?? 0}/{MIN_TAPS} taps landed near a click. Play the clicks again and tap each one as you hear it.
+      </p>
+    );
+  }
+  const applied = timing.offsetMs === savedOffset;
+  return (
+    <div className="mb-endcard-calib" role="status">
+      <p className="mb-endcard-note">
+        Your {timing.taps} taps suggest <b>{formatOffset(timing.offsetMs)}</b> (spread ±{timing.spreadMs} ms). Saved: {formatOffset(savedOffset)}.
+      </p>
+      <button type="button" className="mb-btn" disabled={applied} onClick={() => onApplyOffset?.(timing.offsetMs)}>
+        {applied ? "Applied" : "Apply offset"}
+      </button>
+    </div>
+  );
+}
+
 // Results of the run that just ended. It stays up until the next run starts, so what the
 // game is waiting for goes in its footer.
-export default function EndCard({ summary, phase, queued }) {
+export default function EndCard({ summary, phase, queued, timing = null, savedOffset = 0, onApplyOffset }) {
   const note = PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null);
   return (
     <div className="mb-endcard" role="group" aria-label="Run results">
@@ -65,6 +89,7 @@ export default function EndCard({ summary, phase, queued }) {
           </li>
         ))}
       </ul>
+      {summary.calibration ? <CalibrationResult timing={timing} savedOffset={savedOffset} onApplyOffset={onApplyOffset} /> : null}
       {note ? <p className="mb-endcard-note" role="status">{note}</p> : null}
     </div>
   );

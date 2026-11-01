@@ -308,10 +308,17 @@ test("Activity mewbeat unlock and settings are per-account, gated, and stay out 
   socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 40 } } }));
   assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
 
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_calibrate" }));
+  assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
+
   socket.send(JSON.stringify({ type: "action", action: "mewbeat_unlock" }));
   const unlocked = await nextMessage(["state"]);
   assert.equal(unlocked.state.mewbeat.unlocked, true);
   assert.equal(unlocked.state.mewbeat.unlockedAt, undefined);
+
+  // Unlocked, but the clicks play in voice like any other track.
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_calibrate" }));
+  assert.match((await nextMessage(["error"])).error, /voice channel/i);
 
   socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 40 } } }));
   const updated = await nextMessage(["state"]);

@@ -455,6 +455,8 @@
 .mb-endcard-counts li { display: grid; gap: 2px; font-size: 11px; }
 .mb-endcard-counts b { font-size: 16px; }
 .mb-endcard-note { margin: 0; color: var(--mb-muted); font-size: 13px; }
+.mb-endcard-calib { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.mb-endcard-calib b { color: var(--mb-text); }
 
 /* right column */
 .mb-side { display: flex; flex-direction: column; gap: 12px; justify-self: end; width: min(100%, 280px); padding: 18px 14px; }

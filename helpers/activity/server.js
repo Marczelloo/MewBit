@@ -54,6 +54,7 @@ const { hasTrackIdentity } = require("../lavalink/trackIdentity");
 const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormalization");
 const Log = require("../logs/log");
 const { createMewbeatChannel } = require("../mewbeat/activityChannel");
+const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { chartStore } = require("../mewbeat/chartStore");
 const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
@@ -367,6 +368,7 @@ function assertControlPermission(guildId, identity, action) {
     "change_source",
     "play_playlist",
     "queue_tracks",
+    "mewbeat_calibrate",
   ]);
 
   if (guardedActions.has(action)) {
@@ -410,7 +412,7 @@ function assertPlayerVoiceAccess(player, identity, action) {
     "pause", "resume", "toggle", "skip", "previous", "stop", "remove_queue", "replace_autoplay", "play_next",
     "move_queue", "clear_queue", "undo_queue", "shuffle", "volume", "toggle_mute", "seek", "filter",
     "equalizer", "equalizer_preset", "loop", "autoplay", "play", "surprise_me", "play_playlist",
-    "queue_tracks", "change_source",
+    "queue_tracks", "change_source", "mewbeat_calibrate",
   ]);
   if (!guardedActions.has(action)) return;
   if (identity.member?.voice?.channelId !== player.voiceChannel) {
@@ -1107,6 +1109,31 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
       return { mewbeat: serializeMewbeat(unlockMewbeat(identity.id)) };
     case "mewbeat_settings":
       return { mewbeat: serializeMewbeat(updateMewbeatSettings(identity.id, payload.settings)) };
+    case "mewbeat_calibrate": {
+      if (!getMewbeatRecord(identity.id).unlocked) throw Object.assign(new Error("Unlock mewbeat first."), { statusCode: 403 });
+      const settings = guildState.getGuildState(guildId);
+      const voiceId = player?.voiceChannel || identity.member?.voice?.channelId;
+      const textId = settings?.playerChannel || player?.textChannel || null;
+      if (!voiceId) throw Object.assign(new Error("Join a voice channel before starting the calibration clicks."), { statusCode: 400 });
+      if (!textId) throw Object.assign(new Error("Set the player channel first with /setup player channel."), { statusCode: 400 });
+      if (isCalibrationTrack(player?.currentTrack)) return { status: "playing" };
+
+      // Resolved directly: the play path would send a bare identifier to a search provider.
+      const res = await getPoru().resolve({ query: calibrationQuery(), source: MEWBEAT_SOURCE });
+      const track = (Array.isArray(res?.tracks) ? res.tracks : []).find(isCalibrationTrack) ?? null;
+      if (!track) throw Object.assign(new Error("The calibration clicks are not available on this server."), { statusCode: 503 });
+      const clone = cloneTrack(track);
+      const queued = Boolean(player?.currentTrack);
+      await lavalinkPlay({
+        guildId,
+        voiceId,
+        textId,
+        prepend: true,
+        resolution: { tracks: [clone], track: clone, isPlaylist: false, playlistInfo: null, playlistUrl: null, playlistTrackCount: 1, playlistDurationMs: 0 },
+        requester: { id: identity.id, tag: identity.tag || identity.username, avatar: identity.avatar },
+      });
+      return { status: queued ? "queued" : "playing" };
+    }
     case "get_playlist": {
       const playlist = playlistStore.getPlaylist(identity.id, guildId, limitText(payload.name, 80));
       if (!playlist) throw Object.assign(new Error("Playlist not found."), { statusCode: 404 });

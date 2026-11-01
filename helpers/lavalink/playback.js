@@ -297,10 +297,12 @@ async function lavalinkResolveTracks(query, source = "deezer") {
   };
 }
 
-async function lavalinkPlay({ guildId, voiceId, textId, query, requester, prepend = false, playNow = false, source = "deezer" }) {
+// `resolution` skips the search for a caller that already resolved its tracks
+// (same shape as lavalinkResolveTracks returns).
+async function lavalinkPlay({ guildId, voiceId, textId, query, requester, prepend = false, playNow = false, source = "deezer", resolution: resolved = null }) {
   const player = await ensurePlayer(guildId, voiceId, textId);
 
-  const resolution = await lavalinkResolveTracks(query, source);
+  const resolution = resolved ?? await lavalinkResolveTracks(query, source);
   const tracksToAdd = resolution.tracks.map((track) => cloneTrack(track));
 
   if (!tracksToAdd.length) {
