@@ -10,7 +10,12 @@ const REPEAT_SIMILARITY = 0.85; // a repeat at least this similar takes the lead
 const TONAL_MIN_CONF = 0.45; // below this a bass/lead line is not trusted enough to lead
 const DRUMS_MIN_ACTIVITY = 0.15;
 const DRUMS_MIN_CONF = 0.3;
-const LEAD_PREFERRED_SCORE = 0.35; // a present lead scoring at least this leads outright
+const LEAD_PREFERRED_SCORE = 0.5; // in a vocal song a present lead scoring at least this leads outright
+// A song is "vocal" when this share of its phrases carry a clearly sung line: lead confidence and onset rate
+// at least the two values below. Instrumental songs keep their drum/bass leaders.
+const VOCAL_PHRASE_SHARE = 0.3;
+const VOCAL_MIN_CONF = 0.8;
+const VOCAL_MIN_RATE = 1; // lead onsets per second
 const HYSTERESIS = 0.8; // the previous leader stays while its score >= this share of the best
 
 const FULL_DRUM_EVENTS_PER_BEAT = 2; // drum density at which the drum layer counts as fully busy
@@ -206,19 +211,30 @@ function isPresent(layer, activity, confidence) {
 }
 
 // How a layer's score counts: drum activity already carries the hits' strength, so confidence only gates
-// drums; a tonal line covers the phrase (activity) and is trusted (confidence). Either way a layer with too
+// drums; a bass line covers the phrase (activity) and is trusted (confidence). A sung lead is trusted alone:
+// it covers only 6-45 % of a phrase by nature, so coverage would bury it. Either way a layer with too
 // few onsets for the phrase's energy scores less: a held bass note covers a loud phrase but gives a thin chart.
 function scoreOf(p, layer, a, c) {
-  const base = layer === "drums" ? a : a * c;
+  const base = layer === "drums" ? a : layer === "lead" ? c : a * c;
   const rate = p.rate?.[layer];
   if (!Number.isFinite(rate)) return base;
   const need = BUSY_NOTES_PER_SEC * Math.pow(clamp01(finite(p.energy)), 1.5);
   return need > 0 ? base * Math.min(1, rate / need) : base;
 }
 
+// Does a meaningful share of the song's phrases carry a confident, busy-enough lead line?
+function isVocalSong(phrases) {
+  if (phrases.length === 0) return false;
+  const sung = phrases.filter(
+    (p) => finite(p.confidence?.lead) >= VOCAL_MIN_CONF && finite(p.rate?.lead) >= VOCAL_MIN_RATE,
+  ).length;
+  return sung / phrases.length >= VOCAL_PHRASE_SHARE;
+}
+
 // chooseLeaders(phrases) -> Array<"drums"|"bass"|"lead"|"bands">, aligned to phrases.
 function chooseLeaders(phrases) {
   const leaders = [];
+  const vocal = isVocalSong(phrases);
   for (let i = 0; i < phrases.length; i++) {
     const p = phrases[i];
     const score = {};
@@ -234,7 +250,7 @@ function chooseLeaders(phrases) {
     if (present.length > 0) {
       let best = present[0];
       for (const layer of present) if (score[layer] > score[best]) best = layer;
-      if (present.includes("lead") && score.lead >= LEAD_PREFERRED_SCORE) best = "lead";
+      if (vocal && present.includes("lead") && score.lead >= LEAD_PREFERRED_SCORE) best = "lead";
 
       leader = best;
       const previous = leaders[i - 1];

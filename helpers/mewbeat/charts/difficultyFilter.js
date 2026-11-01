@@ -10,6 +10,8 @@ const { lowerBound } = require("./util");
 const LANES = 4;
 const EPS = 1e-9;
 const SEAM_LOOKBACK_MS = DENSITY_WINDOW_MS; // how much of the previous phrase's tail matters
+const FINE_LEVEL = 2; // events at this level sit on the 1/8 grid; below it a difficulty plays the 1/4 grid at most
+const TONAL_SOURCES = new Set(["bass", "lead"]);
 
 const asLookup = (energyAt) => (typeof energyAt === "function" ? { hopMs: 500, at: energyAt } : energyAt);
 
@@ -202,10 +204,16 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   const lastKept = sorted.length > 0 ? sorted[0].t - SEAM_LOOKBACK_MS : 0;
   const prev = tail.filter((n) => n.t >= lastKept || n.t + (n.len > 0 ? n.len : 0) >= lastKept);
 
+  // A tonal note on the 1/8 grid is level 1 so Normal keeps the syncopation; there it plays on the 1/4 grid.
+  const onGrid = (e) => (diff.maxLevel < FINE_LEVEL && Number.isFinite(e.coarseT) ? { ...e, t: e.coarseT } : e);
+
   let items = sorted
+    .map(onGrid)
+    .sort(byTime)
     .filter((e) => e.level <= diff.maxLevel)
     .filter((e) => {
-      if (!(diff.quarterMinEnergy > 0) || e.level !== 1) return true;
+      // A sung or bass line is not "quiet phrase filler": its off-beat notes are the tune.
+      if (!(diff.quarterMinEnergy > 0) || e.level !== 1 || TONAL_SOURCES.has(e.source)) return true;
       const slot = gridSlot(timing, e.t);
       const offHalf = slot !== null && !slot.beat && !slot.half;
       return !(offHalf && (phraseEnergy ?? energy.at(e.t)) < diff.quarterMinEnergy);

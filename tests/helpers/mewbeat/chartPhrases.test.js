@@ -136,7 +136,7 @@ describe("buildPhrases", () => {
         assert.ok(p.activity[layer] > 0 && p.activity[layer] <= 1, `${layer} activity ${p.activity[layer]}`);
         assert.ok(p.confidence[layer] > 0 && p.confidence[layer] <= 1, `${layer} confidence ${p.confidence[layer]}`);
       }
-      assert.ok(Math.abs(p.confidence.lead - 0.7) < 1e-9);
+      assert.ok(Math.abs(p.confidence.lead - 0.9) < 1e-9);
       assert.ok(Math.abs(p.confidence.bass - 0.7) < 1e-9);
     }
     const only = makeLayeredFeatures({ bpm: 120, durationMs: 32000, structure: "A", bass: false, lead: false });
@@ -156,7 +156,7 @@ describe("buildPhrases", () => {
 
 describe("chooseLeaders", () => {
   it("leaderFollowsVocalsAndDrums", () => {
-    const loud = phrasesOf(makeLayeredFeatures({ bpm: 120, durationMs: 32000, leadConfidence: 0.7 }));
+    const loud = phrasesOf(makeLayeredFeatures({ bpm: 120, durationMs: 32000, leadConfidence: 0.9 }));
     assert.deepEqual(chooseLeaders(loud), ["lead", "lead", "lead", "lead"]);
     const weak = phrasesOf(makeLayeredFeatures({ bpm: 120, durationMs: 32000, leadConfidence: 0.2 }));
     assert.deepEqual(chooseLeaders(weak), ["drums", "drums", "drums", "drums"]);
@@ -181,23 +181,50 @@ describe("chooseLeaders", () => {
     assert.deepEqual(chooseLeaders([stub([1, 0.44], [0.5, 0.6], null)]), ["bass"]);
   });
 
-  it("lead wins from a score of 0.35, otherwise the best score does", () => {
-    assert.deepEqual(chooseLeaders([stub([0.5, 0.7], [0.9, 0.9], [0.9, 0.9])]), ["lead"]); // 0.35 exactly
-    assert.deepEqual(chooseLeaders([stub([0.49, 0.7], [1, 0.95], [0.9, 0.9])]), ["bass"]);
-    assert.deepEqual(chooseLeaders([stub([0.49, 0.7], [0.5, 0.9], [0.9, 0.9])]), ["drums"]);
+  // A song whose phrases carry a clearly sung line: confident and at least one onset per second.
+  const sung = (extra = {}) => stub([0.1, 0.9], null, null, { rate: { drums: 0, bass: 0, lead: 2 }, ...extra });
+  const VOCAL = [sung(), sung(), sung()];
+
+  it("in a vocal song lead wins from a score of 0.5, otherwise the best score does", () => {
+    const at = (conf, bass, drums) => chooseLeaders([stub([0.1, conf], bass, drums), ...VOCAL])[0];
+    assert.equal(at(0.5, [0.9, 0.9], [0.9, 0.9]), "lead"); // 0.5 exactly
+    assert.equal(at(0.49, [1, 0.95], [0.9, 0.9]), "bass");
+    assert.equal(at(0.49, [0.5, 0.9], [0.9, 0.9]), "drums");
+  });
+
+  it("a sung line wins with little coverage: its score is confidence, not coverage x confidence", () => {
+    const phrases = [stub([0.08, 0.9], [0.9, 0.9], [0.9, 0.9]), ...VOCAL];
+    assert.equal(chooseLeaders(phrases)[0], "lead");
+  });
+
+  it("an instrumental song (no confident, busy lead) keeps its drum and bass leaders", () => {
+    const quiet = (extra) => stub([0.1, 0.7], [0.6, 0.9], [0.9, 0.9], { rate: { drums: 4, bass: 1, lead: 2 }, ...extra });
+    // lead confidence 0.7 is below the vocal bar, so lead is not preferred even with a score over 0.5
+    assert.deepEqual(chooseLeaders([quiet(), quiet(), quiet()]), ["drums", "drums", "drums"]);
+    // a confident lead that is too sparse (< 1 note/s) is not a vocal either
+    const sparse = () => stub([0.1, 0.9], [0.6, 0.9], [0.9, 0.9], { rate: { drums: 4, bass: 1, lead: 0.5 } });
+    assert.deepEqual(chooseLeaders([sparse(), sparse(), sparse()]), ["drums", "drums", "drums"]);
+  });
+
+  it("a song turns vocal at 30 % of its phrases", () => {
+    const other = () => stub([0.1, 0.9], [0.6, 0.9], [0.9, 0.9], { rate: { drums: 4, bass: 1, lead: 0.5 }, sectionStart: true });
+    const mix = (n) => [...Array.from({ length: n }, () => sung()), ...Array.from({ length: 10 - n }, other)];
+    assert.equal(chooseLeaders(mix(3))[0], "lead"); // sung phrases still need a score >= 0.5: 0.9 here
+    assert.equal(chooseLeaders(mix(3))[9], "lead");
+    assert.equal(chooseLeaders(mix(2))[9], "drums");
   });
 
   it("hysteresisAvoidsFlicker", () => {
     const phrases = [0.5, 0.45, 0.5, 0.45, 0.5, 0.45].map((lead) => stub([lead, 1], [0.42, 1], null));
     assert.deepEqual(chooseLeaders(phrases), Array(6).fill("lead"));
 
-    // lead is under 0.35 (so not preferred) but within 0.8x of the best: kept, unless a section starts.
-    const kept = [stub([0.6, 1], null, null), stub([0.34, 1], [0.4, 1], null), stub([0.34, 1], [0.4, 1], null)];
+    // lead (score 0.5) is not the best but within 0.8x of it: kept, unless a section starts.
+    const kept = [stub([0.6, 1], null, null), stub([0.5, 0.5], [0.6, 1], null), stub([0.5, 0.5], [0.6, 1], null)];
     assert.deepEqual(chooseLeaders(kept), ["lead", "lead", "lead"]);
     const switched = [
       stub([0.6, 1], null, null),
-      stub([0.34, 1], [0.4, 1], null, { sectionStart: true }),
-      stub([0.34, 1], [0.4, 1], null),
+      stub([0.5, 0.5], [0.6, 1], null, { sectionStart: true }),
+      stub([0.5, 0.5], [0.6, 1], null),
     ];
     assert.deepEqual(chooseLeaders(switched), ["lead", "bass", "bass"]);
   });

@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 5;
+const GENERATOR_VERSION = 6;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 

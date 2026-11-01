@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 5", () => {
-    assert.equal(GENERATOR_VERSION, 5);
+  it("is version 6", () => {
+    assert.equal(GENERATOR_VERSION, 6);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -312,6 +312,32 @@ describe("patternEvents", () => {
       assert.deepEqual(eventsOf(line([60, 64], 500, { conf: 0.2 })), []);
     });
 
+    it("keeps a lead note on the 1/8 grid for Normal, snapped to the 1/4 grid there", () => {
+      const features = makeFeatures({ durationMs: 16000 });
+      // 2000 ms is a beat at 120 BPM; +190 ms lies between 1/4 slots (125 ms) so it goes to the 1/8 grid (187.5 ms).
+      features.lead = [2000, 2190, 2500].map((t, i) => ({ t, s: 0.8, pitch: 60 + i * 4, len: 100, conf: 0.9 }));
+      const timing = buildTiming(features, 16000);
+      const events = patternEvents(phrase, "lead", features, timing).filter((e) => e.source === "lead" && e.t > 2100 && e.t < 2400);
+      assert.equal(events.length, 1);
+      assert.equal(events[0].level, 1);
+      assert.equal(events[0].t % 125 === 0, false, "stays on the 1/8 grid for Hard");
+      const normal = applyDifficulty(events, DIFFICULTIES.normal, timing, () => 0.3, [], 0.3, phrase.endMs);
+      assert.deepEqual(normal.map((n) => n.t), [2250]);
+      const hard = applyDifficulty(events, DIFFICULTIES.hard, timing, () => 0.3, [], 0.3, phrase.endMs);
+      assert.deepEqual(hard.map((n) => n.t), [events[0].t]);
+      assert.deepEqual(applyDifficulty(events, DIFFICULTIES.easy, timing, () => 0.3, [], 0.3, phrase.endMs), []);
+    });
+
+    it("keeps bass/lead notes off the half beat in a quiet phrase on Normal, but not drums", () => {
+      const features = makeFeatures({ durationMs: 16000 });
+      const timing = buildTiming(features, 16000);
+      const note = (source) => ({ t: 2125, lane: 1, level: 1, s: 0.8, source }); // a 1/4 slot off the beat and half beat
+      const normal = (source) => applyDifficulty([note(source)], DIFFICULTIES.normal, timing, () => 0.3, [], 0.3, 8000);
+      assert.equal(normal("lead").length, 1);
+      assert.equal(normal("bass").length, 1);
+      assert.equal(normal("drums").length, 0);
+    });
+
     it("adds a mirror note on a strong bar start and drums only when the phrase is loud", () => {
       const all = makeLayeredFeatures();
       const s = setup(all);
@@ -322,10 +348,34 @@ describe("patternEvents", () => {
       assert.ok(mirrored.length > 0, "a chord on a bar start");
       assert.ok(mirrored.every((e) => e.t % 2000 === 0 || e.t === s.phrases[1].startMs));
       const secondary = loud.filter((e) => e.source === "secondary");
-      assert.ok(secondary.length > 0 && secondary.every((e) => e.level === 2));
+      // Kick/snare backbone: Normal+ (1), Easy too when on a beat (0); only a hit between 1/4 slots stays Hard-only.
+      assert.ok(secondary.length > 0 && secondary.every((e) => e.level <= 1));
+      assert.ok(secondary.some((e) => e.level === 1), "a hit off the beat is level 1");
+      // With a sparse lead the drum hits on the beats survive and are level 0 (Easy).
+      const sparse = { ...all, lead: all.lead.filter((n) => n.t < s.phrases[1].startMs + 600) };
+      const open = patternEvents({ ...s.phrases[1], energy: 0.9 }, "lead", sparse, s.timing).filter((e) => e.source === "secondary");
+      assert.ok(open.some((e) => e.level === 0), "a kick/snare on a beat is level 0");
       const leaders = loud.filter((e) => e.source !== "secondary").map((e) => e.t);
       assert.ok(secondary.every((e) => leaders.every((t) => Math.abs(t - e.t) >= 125)));
     });
+  });
+});
+
+describe("drum backbone under a lead leader", () => {
+  it("plays secondary kick/snare on Normal, and those on a beat on Easy", () => {
+    const all = makeLayeredFeatures({ energy: () => 0.9 });
+    const s = setup(all);
+    const phrase = { ...s.phrases[1], energy: 0.9 };
+    const sparse = { ...all, lead: all.lead.filter((n) => n.t < phrase.startMs + 600) };
+    const events = patternEvents(phrase, "lead", sparse, s.timing);
+    const secondary = events.filter((e) => e.source === "secondary" && e.level <= 1);
+    assert.ok(secondary.length >= 4);
+    const times = (diff) => new Set(applyDifficulty(events, DIFFICULTIES[diff], s.timing, s.energy, [], 0.9, phrase.endMs).map((n) => n.t));
+    const normal = times("normal");
+    const easy = times("easy");
+    assert.ok(secondary.filter((e) => normal.has(e.t)).length >= 4, "Normal plays the backbone");
+    assert.ok(secondary.some((e) => e.level === 0 && easy.has(e.t)), "Easy plays a kick/snare on a beat");
+    assert.ok(secondary.filter((e) => e.level === 1).every((e) => !easy.has(e.t)), "Easy leaves the rest out");
   });
 });
 

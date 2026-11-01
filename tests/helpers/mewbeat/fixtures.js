@@ -133,7 +133,7 @@ function makeLayeredFeatures({
   bpm = 120,
   durationMs = 64000,
   structure = "ABAB",
-  leadConfidence = 0.7,
+  leadConfidence = 0.9,
   drums = true,
   bass = true,
   lead = true,

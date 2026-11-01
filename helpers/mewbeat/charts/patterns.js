@@ -1,11 +1,11 @@
 // Pattern events: the notes of one phrase, taken from its leading musical layer
 // (drums / bass / lead) and placed on lanes by what they play. Difficulty is a
 // later filter (difficultyFilter.js); here every event just gets a level:
-//   0 strong (on a beat, or a main accent), 1 on the 1/2 or 1/4 grid, 2 fine (hats, 1/8).
+//   0 strong (on a beat, or a main accent), 1 on the 1/2 or 1/4 grid (tonal notes on the 1/8 grid too), 2 fine (hats, 1/8 drum hits).
 const { BEAT_TOLERANCE_MS } = require("./difficulty");
 const { TONAL_MIN_CONF } = require("./phrases");
 const { capMoments } = require("./difficultyFilter");
-const { gridSlot, snapToQuarterGrid } = require("./grid");
+const { gridSlot, nearestQuarter, snapToQuarterGrid } = require("./grid");
 const { median, nearestIndex } = require("./util");
 
 const LANES = 4;
@@ -17,6 +17,10 @@ const TRILL_MIN_GAP_MS = 250; // a repeated pitch closer than max(1/2 beat, this
 const HAT_CLEARANCE_BEATS = 1 / 8; // hats stay this far from a kick/snare
 const SECONDARY_MIN_ENERGY = 0.6; // phrases at least this loud add drums under a tonal leader
 const SECONDARY_CLEARANCE_BEATS = 1 / 4; // ...into slots this far from any leader event
+// Under a tonal leader the drums are the backbone: kick/snare are level 1 (Normal+), one on a beat level 0
+// (Easy too: a sung line alone is too thin for Easy); a hit between 1/4 slots stays Hard-only.
+const SECONDARY_BEAT_LEVEL = 0;
+const SECONDARY_HIT_LEVEL = 1;
 
 const KICK_LANES = [0, 3];
 const SNARE_LANES = [1, 2];
@@ -171,6 +175,7 @@ function tonalEvents(phrase, features, timing, layer, beatMs) {
   const notes = list(features[layer])
     .filter((n) => inPhrase(phrase, n?.t) && Number.isFinite(n.pitch) && Number(n.conf) >= TONAL_MIN_CONF)
     .map((n) => ({ ...n, ...snapToQuarterGrid(timing, n.t), t0: n.t }))
+    .map((n) => (n.eighth ? { ...n, coarseT: nearestQuarter(timing, n.t0) } : n))
     .filter((n) => inPhrase(phrase, n.t))
     .sort((a, b) => a.t - b.t || a.pitch - b.pitch);
   if (notes.length === 0) return [];
@@ -185,18 +190,28 @@ function tonalEvents(phrase, features, timing, layer, beatMs) {
   return notes.map((n, i) => {
     const slot = gridSlot(timing, n.t);
     const onBeatOrHalf = timing?.snapped ? slot !== null && (slot.beat || slot.half) : true;
-    const strong = onBeatOrHalf && (Number(n.s) || 0) >= strongFrom;
+    // A sung note on a beat is a main accent whatever its strength: Easy has little else to follow in a vocal song.
+    const strong = onBeatOrHalf && (layer === "lead" || (Number(n.s) || 0) >= strongFrom);
     // "Longest quarter" only counts notes longer than the typical one, so a line
     // of equal lengths does not promote an arbitrary quarter of itself.
     const long = lens[i] >= longestFrom && lens[i] > typicalLen;
-    const level = n.eighth ? 2 : strong || long ? 0 : 1;
+    // A sung line syncopates; a note on the 1/8 grid is still playable on Normal, but there it sits on the
+    // 1/4 grid (coarseT), which is where the difficulty filter moves it.
+    const level = n.eighth ? 1 : strong || long ? 0 : 1;
     const event = { t: n.t, lane: lanes[i], level, s: Number(n.s) || 0, source: layer };
+    if (n.eighth) event.coarseT = n.coarseT;
     if (Number.isFinite(n.len) && n.len > 0) event.sustainMs = n.len;
     return event;
   });
 }
 
 // --- assembling ---------------------------------------------------------------------
+
+function secondaryLevel(hit, timing) {
+  if (hit.eighth) return 2;
+  const onBeat = timing?.snapped ? gridSlot(timing, hit.t)?.beat === true : true;
+  return onBeat ? SECONDARY_BEAT_LEVEL : SECONDARY_HIT_LEVEL;
+}
 
 // Kick/snare under a tonal leader, only where the leader is silent.
 function secondaryEvents(phrase, features, timing, leaderEvents, beatMs) {
@@ -207,7 +222,7 @@ function secondaryEvents(phrase, features, timing, leaderEvents, beatMs) {
       const i = nearestIndex(times, h.t);
       return i < 0 || Math.abs(times[i] - h.t) >= clear;
     })
-    .map((h) => ({ t: h.t, lane: h.lane, level: 2, s: h.s, source: "secondary" }));
+    .map((h) => ({ t: h.t, lane: h.lane, level: secondaryLevel(h, timing), s: h.s, source: "secondary" }));
 }
 
 function isBarStart(timing, phrase, t) {

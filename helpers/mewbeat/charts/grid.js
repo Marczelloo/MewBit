@@ -49,4 +49,10 @@ function snapToQuarterGrid(timing, t) {
   return { t: g8[nearestIndex(g8, t)], eighth: true };
 }
 
-module.exports = { beatInBar, beatPosition, gridSlot, snapToQuarterGrid };
+// t moved to the nearest 1/4-beat grid point (raw time without a grid).
+function nearestQuarter(timing, t) {
+  const g4 = timing?.snapped ? timing.gridPoints(4) : [];
+  return g4.length === 0 ? Math.round(t) : g4[nearestIndex(g4, t)];
+}
+
+module.exports = { beatInBar, beatPosition, gridSlot, nearestQuarter, snapToQuarterGrid };
