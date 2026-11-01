@@ -138,8 +138,9 @@ function makeLayeredFeatures({
   bass = true,
   lead = true,
   holdsEveryBeats = 0,
+  energy,
 } = {}) {
-  const base = makeFeatures({ bpm, durationMs, highlightMs: Math.round(durationMs / 2) });
+  const base = makeFeatures({ bpm, durationMs, highlightMs: Math.round(durationMs / 2), ...(energy ? { energy } : {}) });
   const beatMs = 60000 / bpm;
   const phraseMs = BEATS_PER_PHRASE * beatMs;
   const count = Math.floor(durationMs / phraseMs);

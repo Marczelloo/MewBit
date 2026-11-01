@@ -1,23 +1,102 @@
-const { DIFFICULTIES, GENERATOR_VERSION, MIN_NOTES } = require("./difficulty");
+const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
+const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
+const { patternEvents } = require("./patterns");
+const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders } = require("./phrases");
+const { copyRepeat } = require("./repeats");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
+const { lowerBound } = require("./util");
+
+const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
+const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
+
+// --- shared analysis (the same for every difficulty) ---------------------------------
+
+function analyse(features) {
+  const durationMs = Math.round(features.durationMs);
+  const timing = buildTiming(features, durationMs);
+  const phrases = buildPhrases(features, timing, durationMs);
+  return {
+    features,
+    durationMs,
+    timing,
+    energy: energyLookup(features),
+    phrases,
+    leaders: chooseLeaders(phrases),
+    eventTimes: sortedEventTimes(features),
+  };
+}
+
+// Every layer event and band onset, sorted: what a copied note may sit on.
+function sortedEventTimes(features) {
+  const times = [];
+  for (const layer of ["drums", "bass", "lead"]) {
+    for (const e of Array.isArray(features[layer]) ? features[layer] : []) if (Number.isFinite(e?.t)) times.push(e.t);
+  }
+  for (const band of features.bands) {
+    for (const o of Array.isArray(band?.onsets) ? band.onsets : []) if (Number.isFinite(o?.t)) times.push(o.t);
+  }
+  return times.sort((a, b) => a - b);
+}
+
+// --- one difficulty ------------------------------------------------------------------------
+
+function isRepeat(phrase, index) {
+  return Number.isInteger(phrase.repeatOf) && phrase.repeatOf >= 0 && phrase.repeatOf < index && phrase.similarity >= REPEAT_SIMILARITY;
+}
+
+function phraseEventTimes(ctx, phrase) {
+  const { eventTimes } = ctx;
+  return eventTimes.slice(lowerBound(eventTimes, phrase.startMs), lowerBound(eventTimes, phrase.endMs));
+}
+
+function chartNotes(ctx, diff) {
+  const { features, timing, energy, phrases, leaders, durationMs } = ctx;
+  const all = []; // final notes so far, time-ordered
+
+  for (let i = 0; i < phrases.length; ) {
+    const phrase = phrases[i];
+    const tail = inWindow(all, phrase.startMs - DENSITY_WINDOW_MS, phrase.startMs);
+
+    // A repeat plays like its source.
+    if (isRepeat(phrase, i)) {
+      const source = phrases[phrase.repeatOf];
+      const sourceNotes = inWindow(all, source.startMs, source.endMs);
+      if (sourceNotes.length > 0) {
+        const copied = copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase));
+        all.push(...copied.filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY));
+        i++;
+        continue;
+      }
+    }
+
+    if (leaders[i] === "bands") {
+      // Consecutive band-path phrases are one window (the band path keeps no
+      // state across windows); a repeat ends it so the copy sees its source.
+      let last = i;
+      while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
+      const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
+      const notes = bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs });
+      all.push(...limitJacks(notes, diff, tail, { strict: false }));
+      i = last + 1;
+      continue;
+    }
+
+    const events = patternEvents(phrase, leaders[i], features, timing);
+    all.push(...applyDifficulty(events, diff, timing, energy, tail, phrase.energy));
+    i++;
+  }
+
+  return enforceFloors(all.sort(byTime), diff);
+}
 
 // --- public API --------------------------------------------------------------
 
-function generateChart(features, difficulty, audioKey) {
-  const p = DIFFICULTIES[difficulty];
-  if (!p) throw new Error(`Unknown difficulty: ${difficulty}`);
-  if (!features || !Array.isArray(features.bands) || !Number.isFinite(features.durationMs)) return null;
-
-  const durationMs = Math.round(features.durationMs);
-  const timing = buildTiming(features, durationMs);
-  const energy = energyLookup(features);
-
-  // toMs is exclusive; +1 keeps a note exactly at the end of the track.
-  const notes = bandPathNotes(features, timing, p, energy, { fromMs: 0, toMs: durationMs + 1 });
+function chartFrom(ctx, difficulty, audioKey) {
+  const notes = chartNotes(ctx, DIFFICULTIES[difficulty]);
   if (notes.length < MIN_NOTES) return null;
-
+  const { features, durationMs } = ctx;
   return {
     version: GENERATOR_VERSION,
     audioKey,
@@ -31,10 +110,22 @@ function generateChart(features, difficulty, audioKey) {
   };
 }
 
+function usable(features) {
+  return !!features && Array.isArray(features.bands) && Number.isFinite(features.durationMs);
+}
+
+function generateChart(features, difficulty, audioKey) {
+  if (!DIFFICULTIES[difficulty]) throw new Error(`Unknown difficulty: ${difficulty}`);
+  if (!usable(features)) return null;
+  return chartFrom(analyse(features), difficulty, audioKey);
+}
+
 function generateAll(features, audioKey) {
-  const easy = generateChart(features, "easy", audioKey);
-  const normal = generateChart(features, "normal", audioKey);
-  const hard = generateChart(features, "hard", audioKey);
+  if (!usable(features)) return null;
+  const ctx = analyse(features);
+  const easy = chartFrom(ctx, "easy", audioKey);
+  const normal = chartFrom(ctx, "normal", audioKey);
+  const hard = chartFrom(ctx, "hard", audioKey);
   return easy && normal && hard ? { easy, normal, hard } : null;
 }
 

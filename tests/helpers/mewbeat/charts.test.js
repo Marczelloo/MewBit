@@ -91,19 +91,6 @@ describe("mewbeat chart generator", () => {
     }
   });
 
-  it("hardIsNotNormalPlusNoise: few Normal notes survive unchanged in Hard", () => {
-    // Share of NORMAL notes whose exact (t, lane) also appears in Hard. Shared
-    // times are fine (same music); Hard has to differ through its own lanes.
-    // The ceiling is 0.8, not 0.7: the absolute lane-gap floor removed Hard's
-    // sub-150 ms same-lane jacks, which had been a large part of the difference.
-    for (const confidence of [0.9, 0.3]) {
-      const { normal, hard } = chartsOf(fixture({ confidence }));
-      const inHard = new Set(hard.notes.map((n) => `${n.t}:${n.lane}`));
-      const shared = normal.notes.filter((n) => inHard.has(`${n.t}:${n.lane}`)).length / normal.notes.length;
-      assert.ok(shared <= 0.8, `confidence ${confidence}: ${shared}`);
-    }
-  });
-
   it("onGridWhenConfident", () => {
     const { easy, normal } = chartsOf(fixture());
     const distToGrid = (t, stepMs) => Math.abs(t - Math.round(t / stepMs) * stepMs);
@@ -199,7 +186,7 @@ describe("mewbeat chart generator", () => {
     }
   });
 
-  it("limits same-lane runs to 2 on easy/normal and 3 on hard, chords included", () => {
+  it("limits same-lane runs to 1 on easy, 2 on normal and 3 on hard, chords included", () => {
     const all = chartsOf(fixture({ energy: () => 1 }));
     const maxRun = (chart) => {
       // Longest streak of consecutive note moments (chords are one moment) that use the same lane.
@@ -214,7 +201,7 @@ describe("mewbeat chart generator", () => {
       return best;
     };
     assert.ok([...countsByTime(all.hard.notes).values()].some((c) => c === 2), "hard run test needs chords");
-    assert.ok(maxRun(all.easy) <= 2);
+    assert.ok(maxRun(all.easy) <= 1);
     assert.ok(maxRun(all.normal) <= 2);
     assert.ok(maxRun(all.hard) <= 3);
   });

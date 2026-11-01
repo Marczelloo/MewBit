@@ -221,7 +221,7 @@ function assignLanes(notes, p, timing, energy) {
 
   for (const c of notes) {
     const gapMs = laneGapMs(c, p, timing);
-    const allowed = (lane) => c.t - lastUsed[lane] >= Math.max(gapMs - GAP_TOLERANCE_MS, p.minLaneGapMs) && runs[lane] < p.maxRun;
+    const allowed = (lane) => c.t - lastUsed[lane] >= Math.max(gapMs - GAP_TOLERANCE_MS, p.minLaneGapMs) && runs[lane] < p.maxJack;
 
     // Hard alternates between the two loudest bands inside a stream of close notes.
     let want = c.band;

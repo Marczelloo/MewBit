@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 3;
+const GENERATOR_VERSION = 4;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -38,7 +38,10 @@ const DIFFICULTIES = {
     minLaneGapMs: 350, // ...never below this, whatever the tempo
     minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
     minNoteGapMs: 200, // any-lane gap, never below this (Easy only)
-    maxRun: 2, // max consecutive notes in one lane
+    maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
+    maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
+    quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
+    holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
     // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
     // raw onset strength across all bands, so its note choice differs from Normal.
@@ -57,7 +60,11 @@ const DIFFICULTIES = {
     laneGapBeats: 1 / 2,
     minLaneGapMs: 200,
     minGapBeats: 1 / 4,
-    maxRun: 2,
+    minNoteGapMs: 100,
+    maxJack: 2,
+    maxLevel: 1,
+    quarterMinEnergy: 0.6,
+    holdMinBeats: 0.5,
     bandBias: [1, 1, 0.9, 0.8],
     beatBias: 0.2,
     // Second note only on a strong downbeat in a loud part.
@@ -74,7 +81,11 @@ const DIFFICULTIES = {
     laneGapBeats: 1 / 4,
     minLaneGapMs: 150,
     minGapBeats: 1 / 8,
-    maxRun: 3,
+    minNoteGapMs: 60,
+    maxJack: 3,
+    maxLevel: 2,
+    quarterMinEnergy: null,
+    holdMinBeats: 0.5,
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.95, onDownbeat: false, minEnergy: 0.5 },
