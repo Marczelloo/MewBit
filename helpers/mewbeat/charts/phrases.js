@@ -14,6 +14,9 @@ const LEAD_PREFERRED_SCORE = 0.35; // a present lead scoring at least this leads
 const HYSTERESIS = 0.8; // the previous leader stays while its score >= this share of the best
 
 const FULL_DRUM_EVENTS_PER_BEAT = 2; // drum density at which the drum layer counts as fully busy
+// A layer leading a phrase of energy E should offer about this many notes per second times E^1.5 (the shape of
+// the difficulty's density target); one with fewer has its score scaled down in proportion.
+const BUSY_NOTES_PER_SEC = 3;
 
 const LAYERS = ["drums", "bass", "lead"];
 
@@ -70,6 +73,20 @@ function layersOf(features, startMs, endMs, beatMs) {
       bass: round3(clamp01(bass.confidence)),
       lead: round3(clamp01(lead.confidence)),
     },
+  };
+}
+
+// Onsets per second in the phrase: kicks and snares for drums, trusted note starts for bass and lead.
+function ratesOf(features, startMs, endMs) {
+  const seconds = Math.max(1e-9, (endMs - startMs) / 1000);
+  const inside = (t) => t >= startMs && t < endMs;
+  const list = (x) => (Array.isArray(x) ? x : []);
+  const hits = list(features.drums).filter((d) => inside(d.t) && (d.kind === "kick" || d.kind === "snare")).length;
+  const notes = (line) => list(line).filter((n) => inside(n.t) && finite(n.conf) >= TONAL_MIN_CONF).length;
+  return {
+    drums: round3(hits / seconds),
+    bass: round3(notes(features.bass) / seconds),
+    lead: round3(notes(features.lead) / seconds),
   };
 }
 
@@ -138,7 +155,7 @@ function meanEnergy(lookup, startMs, endMs) {
 }
 
 // buildPhrases(features, timing, durationMs) -> Phrase[]
-// Phrase = { index, startMs, endMs, repeatOf, similarity, lagMs, activity, confidence, energy, sectionStart }
+// Phrase = { index, startMs, endMs, repeatOf, similarity, lagMs, activity, confidence, rate, energy, sectionStart }
 function buildPhrases(features, timing, durationMs) {
   const duration = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : finite(features.durationMs);
   if (!(duration > 0)) return [];
@@ -174,6 +191,7 @@ function buildPhrases(features, timing, durationMs) {
       lagMs: p.lagMs,
       activity: layers.activity,
       confidence: layers.confidence,
+      rate: ratesOf(features, p.startMs, p.endMs),
       energy: meanEnergy(lookup, p.startMs, p.endMs),
       sectionStart: isSectionStart(p.startMs),
     };
@@ -187,6 +205,17 @@ function isPresent(layer, activity, confidence) {
   return confidence >= TONAL_MIN_CONF;
 }
 
+// How a layer's score counts: drum activity already carries the hits' strength, so confidence only gates
+// drums; a tonal line covers the phrase (activity) and is trusted (confidence). Either way a layer with too
+// few onsets for the phrase's energy scores less: a held bass note covers a loud phrase but gives a thin chart.
+function scoreOf(p, layer, a, c) {
+  const base = layer === "drums" ? a : a * c;
+  const rate = p.rate?.[layer];
+  if (!Number.isFinite(rate)) return base;
+  const need = BUSY_NOTES_PER_SEC * Math.pow(clamp01(finite(p.energy)), 1.5);
+  return need > 0 ? base * Math.min(1, rate / need) : base;
+}
+
 // chooseLeaders(phrases) -> Array<"drums"|"bass"|"lead"|"bands">, aligned to phrases.
 function chooseLeaders(phrases) {
   const leaders = [];
@@ -197,7 +226,7 @@ function chooseLeaders(phrases) {
     for (const layer of LAYERS) {
       const a = finite(p.activity?.[layer]);
       const c = finite(p.confidence?.[layer]);
-      score[layer] = a * c;
+      score[layer] = scoreOf(p, layer, a, c);
       if (isPresent(layer, a, c)) present.push(layer);
     }
 

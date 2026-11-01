@@ -202,6 +202,33 @@ describe("chooseLeaders", () => {
     assert.deepEqual(chooseLeaders(switched), ["lead", "bass", "bass"]);
   });
 
+  it("drum strength counts once: confidence only gates the drums", () => {
+    // drums 0.5 x 0.5 used to score 0.25 and lose to bass 0.3 x 1.
+    assert.deepEqual(chooseLeaders([stub(null, [0.3, 1], [0.5, 0.5])]), ["drums"]);
+    assert.deepEqual(chooseLeaders([stub(null, [0.3, 1], [0.5, 0.29])]), ["bass"]);
+  });
+
+  it("a sparse line loses a loud phrase to busy drums", () => {
+    const loud = (rate) => stub([0.9, 0.9], [0.8, 1], [0.4, 0.5], { energy: 1, rate });
+    // bass gives 1 note/s where a full-energy phrase needs 3, so 0.8 counts as 0.27; the lead too sparse to be preferred.
+    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 1, lead: 0.5 })]), ["drums"]);
+    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 3, lead: 0.5 })]), ["bass"]);
+    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 1, lead: 2 })]), ["lead"]);
+    // A quiet phrase needs few notes, so the same sparse bass keeps its score.
+    assert.deepEqual(chooseLeaders([stub(null, [0.8, 1], [0.4, 0.5], { energy: 0.3, rate: { drums: 4, bass: 1, lead: 0 } })]), ["bass"]);
+  });
+
+  it("buildPhrases counts onsets per second for each layer", () => {
+    const features = makeLayeredFeatures({ bpm: 120, durationMs: 32000, structure: "AB" });
+    const [p] = phrasesOf(features);
+    const seconds = (p.endMs - p.startMs) / 1000;
+    const inside = (t) => t >= p.startMs && t < p.endMs;
+    const hits = features.drums.filter((d) => inside(d.t) && (d.kind === "kick" || d.kind === "snare")).length;
+    assert.ok(Math.abs(p.rate.drums - hits / seconds) < 1e-3, `drums ${p.rate.drums}`);
+    assert.ok(Math.abs(p.rate.bass - features.bass.filter((n) => inside(n.t)).length / seconds) < 1e-3);
+    assert.ok(p.rate.lead > 0);
+  });
+
   it("hysteresis lets go when the previous leader falls well behind", () => {
     const phrases = [stub(null, [0.9, 1], null), stub(null, [0.3, 1], [0.9, 1])];
     assert.deepEqual(chooseLeaders(phrases), ["bass", "drums"]);
