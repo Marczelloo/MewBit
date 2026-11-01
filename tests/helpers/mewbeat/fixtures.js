@@ -148,7 +148,7 @@ function makeLayeredFeatures({
   const bassEvents = [];
   const leadEvents = [];
   const list = [];
-  const lastOfLetter = new Map();
+  const firstOfLetter = new Map();
   for (let i = 0; i < count; i++) {
     const letter = structure[i % structure.length];
     const start = i * phraseMs;
@@ -171,8 +171,9 @@ function makeLayeredFeatures({
     place(bassPattern(letter), bassEvents, 0.7, bass);
     place(leadPattern(letter, holdsEveryBeats), leadEvents, leadConfidence, lead);
 
-    const source = lastOfLetter.get(letter);
-    lastOfLetter.set(letter, i);
+    // Like the plugin: a repeat points at the EARLIEST matching phrase.
+    const source = firstOfLetter.get(letter);
+    if (source === undefined) firstOfLetter.set(letter, i);
     list.push({
       startMs: Math.round(start),
       endMs: Math.round(start + phraseMs),
