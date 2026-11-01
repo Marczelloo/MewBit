@@ -314,7 +314,8 @@
 
 /* Mewbit */
 .mb-char { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 14%; }
-.mb-char-box { position: relative; width: min(92%, 400px); aspect-ratio: 1; }
+/* The frames leave room around Mewbit for jumps and raised arms, so the box may outgrow its column. */
+.mb-char-box { position: relative; flex: none; width: min(140%, 560px, 68vh); aspect-ratio: 1; }
 .mb-aura {
   position: absolute;
   inset: -12%;
@@ -323,14 +324,7 @@
   transform: scale(calc(1 + var(--mb-pulse) * 0.06 * var(--mb-pulse-scale)));
 }
 .mb-char .mb-mewbit { position: absolute; inset: 0; width: 100%; height: 100%; }
-.mb-char .mb-mewbit-body {
-  border-radius: 22px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(#000 70%, transparent 98%);
-  mask-image: linear-gradient(#000 70%, transparent 98%);
-}
-.mb-char .mb-mewbit-img { object-fit: cover; }
-.mb-char .mb-mewbit-bubble { right: -6%; font-size: 20px; }
+.mb-char .mb-mewbit-bubble { right: 18%; font-size: 20px; }
 
 /* highway */
 .mb-highway-slot { box-sizing: border-box; display: flex; justify-content: center; min-height: 0; padding-top: 18px; z-index: 2; }
