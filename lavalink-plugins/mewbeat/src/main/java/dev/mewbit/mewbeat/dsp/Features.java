@@ -34,4 +34,11 @@ public record Features(
 
     /** A drum hit at {@code t} ms, strength {@code s} 0..1; {@code kind} is kick, snare, hat or perc. */
     public record Drum(int t, double s, String kind) {}
+
+    /**
+     * A pitched note of the bass or lead line: starts at {@code t} ms, lasts {@code len} ms, and sits at the MIDI
+     * float {@code pitch} (69 is A4 = 440 Hz). {@code s} is its salience 0..1 relative to the line, {@code conf}
+     * the mean voicing confidence 0..1.
+     */
+    public record Note(int t, int len, double pitch, double s, double conf) {}
 }

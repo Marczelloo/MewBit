@@ -81,6 +81,48 @@ final class Synth {
         }
     }
 
+    /** Edge ramps of a pitched note, so its start and end do not click. */
+    private static final double NOTE_RAMP_SECONDS = 0.005;
+
+    private static double midiToHz(double midi) {
+        return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    /** A bass note: a sine at {@code midi} plus harmonics 2 and 3 at half and a quarter of its amplitude. */
+    static void addBassNote(float[] buffer, double atSeconds, double durationSeconds, double midi, double amplitude) {
+        double[] harmonics = {1, 0.5, 0.25};
+        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, 0);
+    }
+
+    /**
+     * A lead note: six harmonics with amplitudes 1/h and a 5.5 Hz vibrato of {@code vibratoCents} either side of
+     * {@code midi}.
+     */
+    static void addLeadNote(float[] buffer, double atSeconds, double durationSeconds, double midi, double amplitude,
+            double vibratoCents) {
+        double[] harmonics = {1, 1.0 / 2, 1.0 / 3, 1.0 / 4, 1.0 / 5, 1.0 / 6};
+        addTone(buffer, atSeconds, durationSeconds, midi, amplitude, harmonics, vibratoCents);
+    }
+
+    private static void addTone(float[] buffer, double atSeconds, double durationSeconds, double midi,
+            double amplitude, double[] harmonics, double vibratoCents) {
+        int start = (int) Math.round(atSeconds * SAMPLE_RATE);
+        int length = (int) Math.round(durationSeconds * SAMPLE_RATE);
+        double baseHz = midiToHz(midi);
+        double phase = 0;
+        for (int i = 0; i < length && start + i < buffer.length; i++) {
+            double t = (double) i / SAMPLE_RATE;
+            double hz = baseHz * Math.pow(2, vibratoCents * Math.sin(2 * Math.PI * 5.5 * t) / 1200);
+            phase += 2 * Math.PI * hz / SAMPLE_RATE;
+            double envelope = Math.min(1.0, Math.min(t, durationSeconds - t) / NOTE_RAMP_SECONDS);
+            double value = 0;
+            for (int h = 0; h < harmonics.length; h++) {
+                value += harmonics[h] * Math.sin((h + 1) * phase);
+            }
+            buffer[start + i] += (float) (amplitude * envelope * value);
+        }
+    }
+
     /**
      * Magnitude spectra the way {@link FeatureExtractor} reads them (before log compression): frame {@code i} is the
      * Hann-windowed 1024 samples ending at {@code (i + 1) * 256}, scaled so a full-scale sine reads 1.
