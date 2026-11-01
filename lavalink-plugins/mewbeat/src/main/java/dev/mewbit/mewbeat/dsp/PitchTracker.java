@@ -42,8 +42,35 @@ final class PitchTracker {
      */
     private static final double MIN_FUNDAMENTAL_SHARE = 0.25;
 
-    /** A frame is voiced from this confidence (peak salience over the spectral peaks' magnitude sum) upwards. */
-    static final double VOICED_CONFIDENCE = 0.35;
+    /**
+     * A frame's confidence is its harmonic salience over the magnitude sum of the spectral peaks in the line's own
+     * harmonic span (from just under the fundamental to just over the eighth harmonic). The whole spectrum would do
+     * for a lone instrument, but in a full mix the drums, the chords and the other line fill it, and real bass and
+     * lead lines never got near a fixed threshold.
+     */
+    private static final double SPAN_FROM_FUNDAMENTALS = 0.9;
+    private static final double SPAN_TO_FUNDAMENTALS = 8.5;
+
+    /**
+     * A frame can be voiced from this confidence upwards (measured on real mixes: half to two thirds of a busy
+     * song's bass frames clear 0.15; the lead's competition is denser, a tenth to a third of its frames clear 0.10).
+     */
+    private static final double BASS_VOICED_FLOOR = 0.15;
+    private static final double LEAD_VOICED_FLOOR = 0.10;
+    /**
+     * ... and it is voiced only inside a run of such frames whose pitch stays put for at least this long. Noise and
+     * drum hits pick a new best candidate every frame or two; a kick's short low tone lasts about 100 ms.
+     */
+    private static final int BASS_MIN_RUN_MS = 110;
+    private static final int LEAD_MIN_RUN_MS = 150;
+    /**
+     * The span ratio cannot tell a lead from what is left of the bass once its harmonics are masked (window
+     * sidelobes, a few thousandths of the frame), so a lead frame also needs this share of the whole frame's peak
+     * energy. Lead runs in real mixes measured 0.023 to 0.032 at their first percentile.
+     */
+    private static final double LEAD_MIN_FRAME_SHARE = 0.02;
+    /** A note's confidence is its mean frame confidence over twice the line's floor (the floor reads 0.5), capped at 1. */
+    private static final double CONFIDENCE_FLOOR_SHARE = 0.5;
 
     /** Spectral peaks adding up to less than this (a full-scale sine reads 1) are silence, whatever their shape. */
     private static final double MIN_FRAME_ENERGY = 0.01;
@@ -206,6 +233,8 @@ final class PitchTracker {
         }
         int[] onsets = onsetMs.clone();
         Arrays.sort(onsets);
+        bass.voice(BASS_VOICED_FLOOR, runFrames(BASS_MIN_RUN_MS));
+        lead.voice(LEAD_VOICED_FLOOR, runFrames(LEAD_MIN_RUN_MS));
         List<Features.Note> bassNotes = notes(bass, onsets);
         List<Features.Note> leadNotes = notes(lead, onsets);
         return new Lines(
@@ -235,11 +264,11 @@ final class PitchTracker {
         }
 
         int bassCandidate = search(magnitude, 0, bassCandidates, Double.NaN);
-        double bassConfidence = confidence(bassCandidate);
+        double bassConfidence = confidence(magnitude, bassCandidate);
         double bassSalience = foundSalience;
-        boolean bassVoiced = bassConfidence >= VOICED_CONFIDENCE;
-        bass.add(bassCandidate < 0 ? 0 : candidateMidi(bassCandidate), (float) bassSalience,
-                (float) (bassVoiced ? bassConfidence : 0));
+        double frameEnergy = foundEnergy;
+        boolean bassVoiced = bassConfidence >= BASS_VOICED_FLOOR;
+        bass.add(bassCandidate < 0 ? 0 : candidateMidi(bassCandidate), (float) bassSalience, (float) bassConfidence);
 
         float[] leadSpectrum = magnitude;
         double bassMidi = Double.NaN;
@@ -257,9 +286,9 @@ final class PitchTracker {
             leadSpectrum = residual;
         }
         int leadCandidate = search(leadSpectrum, leadFirstCandidate, candidates, bassMidi);
-        double leadConfidence = confidence(leadCandidate);
-        lead.add(leadCandidate < 0 ? 0 : candidateMidi(leadCandidate), (float) foundSalience,
-                (float) (leadConfidence >= VOICED_CONFIDENCE ? leadConfidence : 0));
+        double leadConfidence = foundSalience >= LEAD_MIN_FRAME_SHARE * frameEnergy
+                ? confidence(leadSpectrum, leadCandidate) : 0;
+        lead.add(leadCandidate < 0 ? 0 : candidateMidi(leadCandidate), (float) foundSalience, (float) leadConfidence);
 
         addChroma((int) Math.round(centre * 1000.0 / sampleRate));
     }
@@ -335,11 +364,21 @@ final class PitchTracker {
         return false;
     }
 
-    private double confidence(int candidate) {
+    /** The last search's salience over the peak sum of {@code spectrum} in the candidate's harmonic span. */
+    private double confidence(float[] spectrum, int candidate) {
         if (candidate < 0 || foundEnergy <= 0) {
             return 0;
         }
-        return Math.min(1.0, foundSalience / foundEnergy);
+        double hz = midiToHz(candidateMidi(candidate));
+        int from = Math.max(1, (int) Math.floor(hz * SPAN_FROM_FUNDAMENTALS * FFT_SIZE / sampleRate));
+        int to = Math.min(BINS - 2, (int) Math.ceil(hz * SPAN_TO_FUNDAMENTALS * FFT_SIZE / sampleRate));
+        double span = 0;
+        for (int bin = from; bin <= to; bin++) {
+            if (spectrum[bin] > spectrum[bin - 1] && spectrum[bin] >= spectrum[bin + 1]) {
+                span += spectrum[bin];
+            }
+        }
+        return span <= 0 ? 0 : Math.min(1.0, foundSalience / span);
     }
 
     private void addChroma(int ms) {
@@ -370,14 +409,21 @@ final class PitchTracker {
 
     // ---- Notes ---------------------------------------------------------------------------------------------
 
+    /** Frames in {@code ms}, at least two. */
+    private int runFrames(int ms) {
+        return Math.max(2, (int) Math.ceil(ms / hopMs));
+    }
+
     /** The per-frame results of one line. */
     private static final class Track {
         double[] pitch = new double[1024];
         float[] salience = new float[1024];
         float[] confidence = new float[1024];
+        boolean[] voiced = new boolean[0];
+        double floor;
         int count;
 
-        void add(double midi, float level, float voiced) {
+        void add(double midi, float level, float frameConfidence) {
             if (count == pitch.length) {
                 pitch = Arrays.copyOf(pitch, count * 2);
                 salience = Arrays.copyOf(salience, count * 2);
@@ -385,12 +431,39 @@ final class PitchTracker {
             }
             pitch[count] = midi;
             salience[count] = level;
-            confidence[count] = voiced;
+            confidence[count] = frameConfidence;
             count++;
         }
 
+        /**
+         * Marks as voiced the frames of every run of at least {@code minRun} frames that clear {@code floor} and whose
+         * pitch stays within {@link #PITCH_CHANGE_SEMITONES} of the run's mean (the rule notes are cut by later).
+         */
+        void voice(double floor, int minRun) {
+            this.floor = floor;
+            voiced = new boolean[count];
+            int i = 0;
+            while (i < count) {
+                if (!(confidence[i] >= floor && pitch[i] > 0)) {
+                    i++;
+                    continue;
+                }
+                double sum = 0;
+                int j = i;
+                while (j < count && confidence[j] >= floor && pitch[j] > 0
+                        && (j == i || Math.abs(pitch[j] - sum / (j - i)) <= PITCH_CHANGE_SEMITONES)) {
+                    sum += pitch[j];
+                    j++;
+                }
+                if (j - i >= minRun) {
+                    Arrays.fill(voiced, i, j, true);
+                }
+                i = j;
+            }
+        }
+
         boolean voiced(int i) {
-            return confidence[i] > 0;
+            return voiced[i];
         }
     }
 
@@ -464,7 +537,7 @@ final class PitchTracker {
                     (int) Math.round(draft.endMs - draft.startMs),
                     Highlight.round3(pitch),
                     Highlight.round3(s),
-                    Highlight.round3(confidence / voiced)));
+                    Highlight.round3(Math.min(1.0, CONFIDENCE_FLOOR_SHARE * confidence / voiced / track.floor))));
         }
         return notes;
     }
