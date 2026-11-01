@@ -1,6 +1,7 @@
 package dev.mewbit.mewbeat.dsp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,7 +18,11 @@ class FeatureExtractorTest {
     private static final int TOLERANCE_MS = 15;
 
     private static Features extract(float[] signal, int chunk) {
-        FeatureExtractor extractor = new FeatureExtractor(SR);
+        return extract(signal, chunk, AnalysisTier.FULL);
+    }
+
+    private static Features extract(float[] signal, int chunk, AnalysisTier tier) {
+        FeatureExtractor extractor = new FeatureExtractor(SR, tier);
         float[] buffer = new float[chunk];
         for (int offset = 0; offset < signal.length; offset += chunk) {
             int length = Math.min(chunk, signal.length - offset);
@@ -155,16 +160,18 @@ class FeatureExtractorTest {
 
         assertEquals(oneShot, streamed);
         assertTrue(oneShot.tempo().beats().size() > 50, "analysis found nothing to compare");
+        assertFalse(oneShot.drums().isEmpty(), "no drums to compare");
     }
 
     @Test
-    void serialisesToFeaturesJsonV1() throws Exception {
+    void serialisesToFeaturesJsonV2() throws Exception {
         float[] signal = Synth.silence(20);
         Synth.addThumps(signal, 0.25, 0.5, 19.5, 0.8);
 
         JsonNode json = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(extract(signal)));
 
-        assertEquals(1, json.get("featuresVersion").asInt());
+        assertEquals(2, json.get("featuresVersion").asInt());
+        assertEquals("full", json.get("analysisTier").asText());
         assertEquals(20_000, json.get("durationMs").asInt());
         assertEquals(10.667, json.get("hopMs").asDouble(), 1e-9);
         assertEquals("low", json.get("bands").get(0).get("name").asText());
@@ -174,5 +181,22 @@ class FeatureExtractorTest {
         assertEquals(500, json.get("energy").get("hopMs").asInt());
         assertTrue(json.get("sections").isArray());
         assertTrue(json.has("highlightMs") && json.get("highlightMs").isNull());
+        assertTrue(json.get("drums").isArray() && json.get("drums").size() > 0);
+        assertTrue(json.get("drums").get(0).has("t") && json.get("drums").get(0).has("kind"));
+        assertTrue(json.get("bass").isArray());
+        assertTrue(json.get("lead").isArray());
+        assertEquals(16, json.get("phrases").get("beatsPerPhrase").asInt());
+        assertTrue(json.get("phrases").get("list").isArray());
+    }
+
+    @Test
+    void lightTierIsLabelled() {
+        float[] signal = Synth.silence(20);
+        Synth.addThumps(signal, 0.25, 0.5, 19.5, 0.8);
+
+        Features features = extract(signal, signal.length, AnalysisTier.LIGHT);
+
+        assertEquals("light", features.analysisTier());
+        assertFalse(features.drums().isEmpty());
     }
 }

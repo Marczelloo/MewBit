@@ -6,12 +6,14 @@ import java.util.List;
 
 /**
  * Streaming feature extraction for the mewbeat rhythm game: per-band onsets,
- * tempo and beats, loudness, sections and a highlight moment.
+ * tempo and beats, loudness, sections and a highlight moment, plus drum hits
+ * (HPSS), bass and lead notes (pitch tracking) and a map of repeating phrases.
  *
  * <p>Feed mono PCM (-1..1) through {@link #accept(float[], int)} in chunks of
  * any size, then call {@link #finish()}. The audio itself is never retained:
- * only the per-hop band flux (4 floats per 10.7 ms) and the 500 ms energy
- * accumulators are kept, so memory is a few hundred KB for a long track.
+ * only the per-hop band flux (4 floats per 10.7 ms), the drum flux, the pitch
+ * tracks and the 500 ms energy accumulators are kept, so memory stays a few MB
+ * for a long track.
  */
 public final class FeatureExtractor {
 
@@ -64,11 +66,31 @@ public final class FeatureExtractor {
     private double[] energyRms = new double[128];
     private int energyBuckets;
 
+    private final AnalysisTier tier;
+    private final float[] magnitude = new float[FFT_SIZE / 2 + 1];
+    private final Hpss hpss;
+    private final DrumDetector drumDetector;
+    private final PitchTracker pitchTracker;
+    /** Index of the next frame the HPSS hands over (it lags the newest frame by half its kernel). */
+    private int drumFrame;
+
+    private long hpssNanos;
+    private long pitchNanos;
+    private long repetitionNanos;
+
     public FeatureExtractor(int sampleRate) {
+        this(sampleRate, AnalysisTier.FULL);
+    }
+
+    public FeatureExtractor(int sampleRate, AnalysisTier tier) {
         if (sampleRate < 8000) {
             throw new IllegalArgumentException("sample rate too low: " + sampleRate);
         }
         this.sampleRate = sampleRate;
+        this.tier = tier;
+        this.hpss = new Hpss(FFT_SIZE / 2 + 1, tier.hpssKernel());
+        this.drumDetector = new DrumDetector(sampleRate, FFT_SIZE, HOP * 1000.0 / sampleRate);
+        this.pitchTracker = new PitchTracker(sampleRate, tier);
         double windowSum = 0;
         for (int k = 0; k < FFT_SIZE; k++) {
             window[k] = (float) (0.5 - 0.5 * Math.cos(2 * Math.PI * k / FFT_SIZE));
@@ -91,6 +113,9 @@ public final class FeatureExtractor {
 
     /** Consumes the first {@code length} samples of {@code mono}; may be called any number of times. */
     public void accept(float[] mono, int length) {
+        long pitchStart = System.nanoTime();
+        pitchTracker.accept(mono, length);
+        pitchNanos += System.nanoTime() - pitchStart;
         for (int i = 0; i < length; i++) {
             float x = mono[i];
             ring[ringPosition] = x;
@@ -130,11 +155,13 @@ public final class FeatureExtractor {
                 flux[b] = Arrays.copyOf(flux[b], hops * 2);
             }
         }
+        for (int bin = 0; bin < magnitude.length; bin++) {
+            magnitude[bin] = (float) Math.sqrt(re[bin] * re[bin] + im[bin] * im[bin]) * magnitudeScale;
+        }
         for (int b = 0; b < BAND_NAMES.length; b++) {
             float rise = 0;
             for (int bin = bandStart[b]; bin <= bandEnd[b]; bin++) {
-                float magnitude = (float) Math.sqrt(re[bin] * re[bin] + im[bin] * im[bin]) * magnitudeScale;
-                float compressed = (float) Math.log1p(LOG_GAIN * magnitude);
+                float compressed = (float) Math.log1p(LOG_GAIN * magnitude[bin]);
                 float delta = compressed - previousLog[bin];
                 if (delta > 0) {
                     rise += delta;
@@ -144,6 +171,13 @@ public final class FeatureExtractor {
             flux[b][hops] = rise / (bandEnd[b] - bandStart[b] + 1);
         }
         hops++;
+
+        long hpssStart = System.nanoTime();
+        float[][] separated = hpss.push(magnitude);
+        if (separated != null) {
+            drumDetector.accept(separated[0], drumFrame++);
+        }
+        hpssNanos += System.nanoTime() - hpssStart;
     }
 
     /** Completes the analysis. Call once, after the last {@link #accept}. */
@@ -184,6 +218,21 @@ public final class FeatureExtractor {
                 energy, durationMs, downbeats, tempo.confidence() >= SNAP_TO_DOWNBEAT_CONFIDENCE);
         Integer highlight = Highlight.find(energy, durationMs, sections);
 
+        long hpssStart = System.nanoTime();
+        for (float[][] pair : hpss.flush()) {
+            drumDetector.accept(pair[0], drumFrame++);
+        }
+        List<Features.Drum> drums = drumDetector.finish();
+        hpssNanos += System.nanoTime() - hpssStart;
+
+        long pitchStart = System.nanoTime();
+        PitchTracker.Lines lines = pitchTracker.finish(onsetTimes(bands));
+        pitchNanos += System.nanoTime() - pitchStart;
+
+        long repetitionStart = System.nanoTime();
+        List<Features.Phrase> phrases = phrases(beats, downbeats, tempo.confidence(), lines, durationMs, drums);
+        repetitionNanos += System.nanoTime() - repetitionStart;
+
         return new Features(
                 Features.VERSION,
                 durationMs,
@@ -193,7 +242,104 @@ public final class FeatureExtractor {
                         Math.round(tempo.bpm() * 100) / 100.0, Highlight.round3(tempo.confidence()), beats, downbeats),
                 new Features.Energy(Highlight.ENERGY_HOP_MS, energyValues),
                 sections,
-                highlight);
+                highlight,
+                tier.wireName(),
+                drums,
+                lines.bass(),
+                lines.lead(),
+                new Features.Phrases(Repetition.BEATS_PER_PHRASE, phrases));
+    }
+
+    /** Milliseconds spent in {@code {HPSS and drums, pitch tracking, repetition and layer activity}} so far. */
+    long[] stageMillis() {
+        return new long[] {hpssNanos / 1_000_000, pitchNanos / 1_000_000, repetitionNanos / 1_000_000};
+    }
+
+    /** Every band's onset times, ascending and without repeats. */
+    private static int[] onsetTimes(List<Features.Band> bands) {
+        return bands.stream()
+                .flatMap(band -> band.onsets().stream())
+                .mapToInt(Features.Onset::t)
+                .distinct()
+                .sorted()
+                .toArray();
+    }
+
+    private List<Features.Phrase> phrases(
+            List<Integer> beats,
+            List<Integer> downbeats,
+            double tempoConfidence,
+            PitchTracker.Lines lines,
+            int durationMs,
+            List<Features.Drum> drums) {
+        int n = beats.size();
+        if (n < 2) {
+            return List.of();
+        }
+        int[] beatMs = beats.stream().mapToInt(Integer::intValue).toArray();
+        float[][] beatChroma = new float[n][];
+        float[][] beatRhythm = new float[n][];
+        float[] combined = combinedFlux();
+        int chromaFrame = 0;
+        int fluxHop = 0;
+        int[] intervals = new int[n - 1];
+        for (int i = 0; i < n - 1; i++) {
+            intervals[i] = beatMs[i + 1] - beatMs[i];
+        }
+        int[] sortedIntervals = intervals.clone();
+        Arrays.sort(sortedIntervals);
+        int beatLength = sortedIntervals[sortedIntervals.length / 2];
+        for (int i = 0; i < n; i++) {
+            int from = beatMs[i];
+            int to = i + 1 < n ? beatMs[i + 1] : Math.min(durationMs, from + beatLength);
+            float[] chroma = new float[12];
+            int frames = 0;
+            while (chromaFrame < lines.chromaMs().length && lines.chromaMs()[chromaFrame] < to) {
+                if (lines.chromaMs()[chromaFrame] >= from) {
+                    for (int pc = 0; pc < 12; pc++) {
+                        chroma[pc] += lines.chroma()[chromaFrame][pc];
+                    }
+                    frames++;
+                }
+                chromaFrame++;
+            }
+            beatChroma[i] = frames == 0 ? chroma : l2Normalised(chroma);
+
+            float[] rhythm = new float[4];
+            while (fluxHop < hops && hopTimeMs(fluxHop) < to) {
+                int t = hopTimeMs(fluxHop);
+                if (t >= from) {
+                    int slot = Math.min(3, (int) ((long) (t - from) * 4 / Math.max(1, to - from)));
+                    rhythm[slot] += combined[fluxHop];
+                }
+                fluxHop++;
+            }
+            beatRhythm[i] = rhythm;
+        }
+
+        List<Features.Phrase> phrases = Repetition.phrases(
+                beatMs,
+                downbeats.stream().mapToInt(Integer::intValue).toArray(),
+                tempoConfidence,
+                beatChroma,
+                beatRhythm,
+                durationMs);
+        return LayerActivity.fill(phrases, drums, lines.bass(), lines.lead(), beatLength);
+    }
+
+    private static float[] l2Normalised(float[] v) {
+        double sum = 0;
+        for (float x : v) {
+            sum += (double) x * x;
+        }
+        if (sum == 0) {
+            return v;
+        }
+        float scale = (float) (1 / Math.sqrt(sum));
+        for (int i = 0; i < v.length; i++) {
+            v[i] *= scale;
+        }
+        return v;
     }
 
     private int hopTimeMs(int hop) {

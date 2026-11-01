@@ -133,6 +133,54 @@ final class Synth {
         }
     }
 
+    private static final int[] A_ROOTS = {36, 41, 43, 45};
+    private static final int[] B_ROOTS = {38, 46, 39, 42};
+    private static final int[] A_LEAD = {76, 79, 72, 79, 77, 81, 77, 72, 79, 83, 74, 83, 81, 76, 81, 69};
+    private static final int[] B_LEAD = {74, 78, 81, 78, 70, 74, 77, 74, 75, 79, 82, 79, 78, 73, 78, 70};
+    private static final int[] ARPEGGIO = {0, 4, 7, 4};
+
+    /**
+     * A synthetic song in 4/4. {@code layout} is a string of sections played in order: {@code A} and {@code B} are 16
+     * beats each, {@code _} is one bar of drums alone. Every bar opens with a louder kick, so the downbeat can be
+     * found; A and B have other bass arpeggios and leads, and B alone has off-beat hats and an extra kick.
+     */
+    static float[] song(double bpm, String layout) {
+        double beat = 60.0 / bpm;
+        int beats = 0;
+        for (char c : layout.toCharArray()) {
+            beats += c == '_' ? 4 : 16;
+        }
+        float[] buffer = silence(beats * beat);
+        Random random = new Random(7);
+        int at = 0;
+        for (char c : layout.toCharArray()) {
+            int length = c == '_' ? 4 : 16;
+            for (int b = 0; b < length; b++) {
+                double t = (at + b) * beat;
+                int inBar = b % 4;
+                if (inBar == 0 || inBar == 2) {
+                    addThump(buffer, t, inBar == 0 ? 0.9 : 0.55);
+                } else {
+                    addSnare(buffer, t, 0.5, random);
+                }
+                if (c == 'B') {
+                    addHat(buffer, t + beat / 2, 0.5, random);
+                    if (inBar == 2) {
+                        addThump(buffer, t + beat / 2, 0.4);
+                    }
+                }
+                if (c != '_') {
+                    int[] roots = c == 'A' ? A_ROOTS : B_ROOTS;
+                    int[] lead = c == 'A' ? A_LEAD : B_LEAD;
+                    addBassNote(buffer, t, beat * 0.8, roots[b / 4] + ARPEGGIO[inBar], 0.35);
+                    addLeadNote(buffer, t, beat * 0.8, lead[b], 0.2, 0);
+                }
+            }
+            at += length;
+        }
+        return buffer;
+    }
+
     /**
      * Magnitude spectra the way {@link FeatureExtractor} reads them (before log compression): frame {@code i} is the
      * Hann-windowed 1024 samples ending at {@code (i + 1) * 256}, scaled so a full-scale sine reads 1.

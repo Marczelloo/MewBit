@@ -223,3 +223,38 @@ Normal with extra notes.
 - Quiet passages give long empty stretches on Easy (Queen 8.9 s, Adele 6.7 s).
   This follows the music, but it may feel empty.
 - Low-confidence tracks get no chords at all.
+
+## Analysis tier
+
+`plugins.mewbeat.analysisTier` (`full` by default, or `light`; case-insensitive,
+an unknown value means `full`) sets how much DSP work one analysis may spend. The
+choice is echoed in the features JSON as `analysisTier`. Features JSON is now
+version 2: every v1 field is unchanged, and `analysisTier`, `drums`, `bass`,
+`lead` and `phrases` come after them.
+
+| | `full` (a PC) | `light` (a Raspberry Pi) |
+|---|---|---|
+| HPSS median kernel (drum separation) | 17 | 9 |
+| Pitch-tracker hop | 512 samples (21 ms) | 1024 samples (43 ms) |
+
+Both tiers run the same stages (v1 onsets and tempo, HPSS + drums, bass/lead
+pitch lines, phrases and repetition); the light tier just uses cheaper kernels
+and half as many pitch frames.
+
+Time budget on the full tier: a 180 s synthetic song must finish within 9000 ms
+of wall time on a PC. The test is opt-in, as it is slow:
+`node scripts/build-mewbeat-plugin.mjs --test --bench`, or
+`./gradlew test -Dmewbeat.bench=true`. Measured in the Docker gradle image
+(`gradle:8.10-jdk21`, 512 MB test heap), 180 s of audio:
+
+| Stage | ms |
+|---|---|
+| v1 path and the rest | 583 |
+| HPSS + drums | 2699 |
+| Pitch tracking | 1064 |
+| Repetition + layer activity | 8 |
+| **Total** | **4354** (a second run: 4753) |
+
+The light tier is not timed here; its HPSS kernel is about half as wide and its
+pitch hop twice as long, so it should cost well under the full tier. Time it on
+the Pi before relying on it.

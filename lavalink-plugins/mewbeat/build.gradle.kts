@@ -23,6 +23,9 @@ java {
 tasks {
     test {
         useJUnitPlatform()
+        // Opt-in time-budget test: ./gradlew test -Dmewbeat.bench=true
+        systemProperty("mewbeat.bench", System.getProperty("mewbeat.bench", "false"))
+        testLogging { showStandardStreams = System.getProperty("mewbeat.bench") == "true" }
     }
     compileJava {
         options.encoding = "UTF-8"

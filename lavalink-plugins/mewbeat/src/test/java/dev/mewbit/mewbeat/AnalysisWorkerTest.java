@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.mewbit.mewbeat.TrackDecoder.DecodeException;
 import dev.mewbit.mewbeat.TrackDecoder.PcmSink;
 import dev.mewbit.mewbeat.TrackDecoder.TrackMeta;
+import dev.mewbit.mewbeat.dsp.Features;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -192,7 +193,7 @@ class AnalysisWorkerTest {
         assertEquals(200, outcome.status());
         assertEquals("application/json", outcome.contentType());
         JsonNode body = json(outcome);
-        assertEquals(1, body.get("featuresVersion").asInt());
+        assertEquals(Features.VERSION, body.get("featuresVersion").asInt());
         assertEquals(10_000, body.get("durationMs").asInt());
         assertTrue(body.has("highlightMs") && body.get("highlightMs").isNull(), "highlightMs must be an explicit null");
         assertEquals("youtube", body.get("audio").get("sourceName").asText());

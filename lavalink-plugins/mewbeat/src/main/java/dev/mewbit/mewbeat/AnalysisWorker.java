@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.mewbit.mewbeat.TrackDecoder.BadTrackException;
 import dev.mewbit.mewbeat.TrackDecoder.DecodeException;
 import dev.mewbit.mewbeat.TrackDecoder.TrackMeta;
+import dev.mewbit.mewbeat.dsp.AnalysisTier;
 import dev.mewbit.mewbeat.dsp.Downsampler;
 import dev.mewbit.mewbeat.dsp.FeatureExtractor;
 import dev.mewbit.mewbeat.dsp.Features;
@@ -53,6 +54,7 @@ public final class AnalysisWorker implements AutoCloseable {
     private record JobResult(Outcome outcome, long audioMs) {}
 
     private final TrackDecoder decoder;
+    private final AnalysisTier tier;
     private final MetricsLog metrics;
     private final int maxQueue;
     private final long maxTrackMs;
@@ -64,11 +66,23 @@ public final class AnalysisWorker implements AutoCloseable {
     public AnalysisWorker(
             TrackDecoder decoder,
             @Value("${plugins.mewbeat.maxQueue:4}") int maxQueue,
-            @Value("${plugins.mewbeat.maxTrackMs:1200000}") long maxTrackMs) {
-        this(decoder, MetricsLog.toLavalinkLog(), maxQueue, maxTrackMs, DEFAULT_TIMEOUT_MS);
+            @Value("${plugins.mewbeat.maxTrackMs:1200000}") long maxTrackMs,
+            @Value("${plugins.mewbeat.analysisTier:full}") String analysisTier) {
+        this(decoder, MetricsLog.toLavalinkLog(), maxQueue, maxTrackMs, DEFAULT_TIMEOUT_MS, AnalysisTier.parse(analysisTier));
     }
 
     AnalysisWorker(TrackDecoder decoder, MetricsLog metrics, int maxQueue, long maxTrackMs, long timeoutMs) {
+        this(decoder, metrics, maxQueue, maxTrackMs, timeoutMs, AnalysisTier.FULL);
+    }
+
+    AnalysisWorker(
+            TrackDecoder decoder,
+            MetricsLog metrics,
+            int maxQueue,
+            long maxTrackMs,
+            long timeoutMs,
+            AnalysisTier tier) {
+        this.tier = tier;
         this.decoder = decoder;
         this.metrics = metrics;
         this.maxQueue = maxQueue;
@@ -105,7 +119,7 @@ public final class AnalysisWorker implements AutoCloseable {
             return refused;
         }
         return submit(meta, () -> {
-            FeatureExtractor extractor = new FeatureExtractor(WAV_SAMPLE_RATE);
+            FeatureExtractor extractor = new FeatureExtractor(WAV_SAMPLE_RATE, tier);
             MonoStream mono = new MonoStream();
             decoder.decode(encodedTrack, (pcm, frames) -> extractor.accept(mono.convert(pcm, frames), mono.length));
             Features features = extractor.finish();
