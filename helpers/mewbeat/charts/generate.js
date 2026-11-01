@@ -9,6 +9,7 @@ const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
+const { bridgeSeam, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { lowerBound } = require("./util");
@@ -96,6 +97,16 @@ function chartNotes(ctx, diff) {
   // A bar that plays like one just before it takes that bar's lanes, so a groove keeps its pattern.
   const grooved = (notes, fromMs, toMs, fixed) => repeatBarLanes(notes, timing, { fromMs, toMs, fixed });
 
+  // Where the leading layer changes (a sung line handing over to an instrument), the drums carry the beat through a
+  // silence at the seam, and a drum pattern starts on the side the hands are on.
+  const changes = (i) => i > 0 && leaders[i] !== leaders[i - 1];
+  const bridged = (notes, i) => {
+    if (!changes(i)) return notes;
+    const bridge = bridgeSeam(all, notes, phrases[i].startMs, features, timing, energy);
+    for (const n of bridge) ctx.drumTimes.add(n.t);
+    return [...bridge, ...notes];
+  };
+
   for (let i = 0; i < phrases.length; ) {
     const phrase = phrases[i];
     // The previous notes that still matter here: the last 2 s, and any hold still running.
@@ -116,7 +127,7 @@ function chartNotes(ctx, diff) {
       while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
       const notes = grooved(bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs }), phrase.startMs, toMs);
-      all.push(...withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs));
+      all.push(...bridged(withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs), i));
       i = last + 1;
       continue;
     }
@@ -125,8 +136,10 @@ function chartNotes(ctx, diff) {
     const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steadyDrums(ctx, i));
     // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
     for (const e of events) if (e.source === "drums") ctx.drumTimes.add(e.t);
-    const repeated = limitJacks(grooved(charted, phrase.startMs, phrase.endMs, (n) => ctx.drumTimes.has(n.t)), diff, tail, { strict: true, timing });
-    all.push(...withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
+    let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => ctx.drumTimes.has(n.t));
+    if (changes(i) && leaders[i] === "drums" && supports[i].length === 0) patterned = orientDrums(patterned, tail);
+    const repeated = limitJacks(patterned, diff, tail, { strict: true, timing });
+    all.push(...bridged(withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i));
     i++;
   }
   // Long bass/lead notes become holds wherever they were charted, drum-led phrases included. Those holds (and the

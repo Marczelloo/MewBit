@@ -16,6 +16,13 @@ const NARROW_RANGE_SEMITONES = 3; // a narrower pitch range maps by contour inst
 const CONTOUR_START_LANE = 1;
 const STAIR_MIN_STEPS = 3; // a monotonic run of this many steps climbs one lane per step
 const TRILL_MIN_GAP_MS = 250; // a repeated pitch closer than max(1/2 beat, this) trills
+// A line that rests at least REGISTER_REST_BEATS and comes back at least REGISTER_JUMP_SEMITONES away (a sung line
+// handing over to an instrument's melody, or a verse an octave up) starts a new part; each part spreads its own pitch
+// range over the lanes, so neither is squeezed onto one hand by the other's register. A part of fewer than
+// REGISTER_MIN_NOTES notes stays with the one before it.
+const REGISTER_REST_BEATS = 1;
+const REGISTER_JUMP_SEMITONES = 7;
+const REGISTER_MIN_NOTES = 4;
 const HAT_CLEARANCE_BEATS = 1 / 8; // hats stay this far from a kick/snare
 const SECONDARY_MIN_ENERGY = 0.6; // phrases at least this loud add drums under a tonal leader
 const SECONDARY_CLEARANCE_BEATS = 1 / 4; // ...into slots this far from any leader event
@@ -205,8 +212,32 @@ function tonalLine(phrase, features, timing, layer, beatMs, laneCount = LANES) {
     .map((n) => (n.eighth ? { ...n, coarseT: nearestQuarter(timing, n.t0) } : n))
     .filter((n) => inPhrase(phrase, n.t))
     .sort((a, b) => a.t - b.t || a.pitch - b.pitch);
-  const lanes = notes.length > 0 ? tonalLanes(notes, Math.max(beatMs / 2, TRILL_MIN_GAP_MS), laneCount) : [];
+  const minRepeatGapMs = Math.max(beatMs / 2, TRILL_MIN_GAP_MS);
+  const lanes = registerParts(notes, beatMs).flatMap((part) => tonalLanes(part, minRepeatGapMs, laneCount));
   return { notes, lanes };
+}
+
+// A (time-sorted) line cut into its parts by register (see REGISTER_REST_BEATS).
+function registerParts(notes, beatMs) {
+  const parts = [];
+  let part = [];
+  notes.forEach((n, i) => {
+    const prev = notes[i - 1];
+    const rest = prev ? n.t0 - (prev.t0 + (Number(prev.len) || 0)) : 0;
+    if (prev && rest >= REGISTER_REST_BEATS * beatMs && Math.abs(n.pitch - prev.pitch) >= REGISTER_JUMP_SEMITONES) {
+      parts.push(part);
+      part = [];
+    }
+    part.push(n);
+  });
+  if (part.length > 0) parts.push(part);
+  // Short parts join the part before (the first one the part after).
+  const merged = [];
+  for (const p of parts) {
+    if (merged.length > 0 && (p.length < REGISTER_MIN_NOTES || merged[merged.length - 1].length < REGISTER_MIN_NOTES)) merged[merged.length - 1].push(...p);
+    else merged.push(p);
+  }
+  return merged;
 }
 
 // `laneCount` 2 places the line inside one hand (lanes 0-1 here, the caller moves them); `sustainedOnly` gives only
