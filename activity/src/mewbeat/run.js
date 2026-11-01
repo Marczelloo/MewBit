@@ -62,7 +62,10 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     if (ended) return null;
     const heardMs = heard(songMs);
     const result = judge.press(lane, heardMs);
-    return result ? applyOutcome(result, heardMs) : null;
+    if (!result) return null;
+    // An early miss on a hold settles its tail too, which counts as a second miss.
+    if (result.tailMissed) score = applyJudgement(score, "miss", heardMs);
+    return applyOutcome(result, heardMs);
   }
 
   function release(lane, songMs) {

@@ -194,20 +194,71 @@
 @keyframes mb-pulse-a { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 @keyframes mb-pulse-b { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 
-/* scenery */
+/* scenery: an inked manga night to match Mewbit's art: violet ink, halftone dots, hatching, magenta and cyan neon */
 .mb-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .mb-sky {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 70% at 50% 110%, rgb(255 110 199 / calc(0.18 + var(--mb-vibe) * 0.12 + var(--mb-pulse) * 0.1)), transparent 60%),
-    radial-gradient(80% 60% at 15% 0%, rgb(103 227 244 / calc(0.1 + var(--mb-vibe) * 0.06)), transparent 60%),
-    radial-gradient(70% 50% at 90% 10%, rgb(167 139 250 / calc(0.12 + var(--mb-vibe) * 0.06)), transparent 60%),
-    linear-gradient(#07080c, #0b0a14 55%, #120a1a);
+    radial-gradient(120% 70% at 50% 110%, rgb(255 110 199 / calc(0.2 + var(--mb-vibe) * 0.12 + var(--mb-pulse) * 0.1)), transparent 60%),
+    radial-gradient(70% 55% at 85% 0%, rgb(103 227 244 / calc(0.08 + var(--mb-vibe) * 0.06)), transparent 60%),
+    radial-gradient(60% 50% at 18% 20%, rgb(167 139 250 / calc(0.16 + var(--mb-vibe) * 0.06)), transparent 65%),
+    linear-gradient(#08050f, #120a22 55%, #1d0c2a);
+}
+/* Halftone dots that thicken towards the horizon, like screentone on a manga panel. */
+.mb-sky::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgb(255 110 199 / 0.3) 1.1px, transparent 1.7px);
+  background-size: 7px 7px;
+  mask-image: linear-gradient(transparent 25%, rgb(0 0 0 / 0.6) 62%, transparent 72%);
+  opacity: calc(0.55 + var(--mb-pulse) * 0.45);
+}
+/* Ink hatching in the top corners frames the panel. */
+.mb-sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(125deg, rgb(0 0 0 / 0.45) 0 1px, transparent 1px 5px);
+  mask-image: radial-gradient(90% 70% at 50% 35%, transparent 55%, #000 100%);
 }
 .mb-fever .mb-sky { filter: hue-rotate(calc(var(--mb-pulse) * 40deg)) saturate(1.5); }
-.mb-skyline { position: absolute; right: -2%; bottom: 30%; left: -2%; height: 34%; opacity: 0.9; }
-.mb-building { position: absolute; bottom: 0; background: #0a0b11; outline: 1px solid rgb(167 139 250 / 0.1); }
+/* A pale inked moon behind Mewbit, centred on the left column (the highway is at most 400px wide). */
+.mb-moon {
+  position: absolute;
+  top: 7%;
+  left: calc((100% - 400px) / 4);
+  width: min(24vw, 42vh);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 34%, #fbf6ff, #e4d6f2 52%, #b9a2d6 100%);
+  box-shadow:
+    inset 0 0 0 2px rgb(8 5 15 / 0.55),
+    0 0 calc(40px + var(--mb-pulse) * 30px) rgb(255 110 199 / calc(0.3 + var(--mb-vibe) * 0.15)),
+    0 0 120px rgb(167 139 250 / 0.25);
+  transform: translateX(-50%);
+  opacity: 0.88;
+}
+/* Cross-hatched shading on the moon's lower right. */
+.mb-moon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-linear-gradient(135deg, rgb(40 18 64 / 0.55) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(45deg, rgb(40 18 64 / 0.35) 0 1px, transparent 1px 7px);
+  mask-image: radial-gradient(circle at 78% 80%, #000 18%, transparent 62%);
+}
+.mb-skyline { position: absolute; right: -2%; bottom: 30%; left: -2%; height: 34%; opacity: 0.95; }
+.mb-building {
+  position: absolute;
+  bottom: 0;
+  background: repeating-linear-gradient(118deg, rgb(167 139 250 / 0.09) 0 1px, transparent 1px 6px), #0d0818;
+  box-shadow: inset 0 2px 0 rgb(255 110 199 / calc(0.25 + var(--mb-pulse) * 0.35));
+  outline: 1px solid rgb(0 0 0 / 0.6);
+}
 .mb-building::after {
   content: "";
   position: absolute;
@@ -240,10 +291,10 @@
   left: 0;
   height: 32%;
   background:
-    linear-gradient(rgb(5 6 8 / 0), rgb(5 6 8 / 0.9)),
-    repeating-linear-gradient(90deg, rgb(103 227 244 / calc(0.1 + var(--mb-pulse) * 0.18)) 0 1px, transparent 1px 80px),
-    repeating-linear-gradient(0deg, rgb(167 139 250 / calc(0.08 + var(--mb-pulse) * 0.12)) 0 1px, transparent 1px 40px),
-    #0a0910;
+    linear-gradient(rgb(8 5 15 / 0), rgb(8 5 15 / 0.92)),
+    repeating-linear-gradient(90deg, rgb(255 110 199 / calc(0.1 + var(--mb-pulse) * 0.18)) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(0deg, rgb(167 139 250 / calc(0.1 + var(--mb-pulse) * 0.12)) 0 1px, transparent 1px 40px),
+    #0d0717;
   transform: perspective(500px) rotateX(55deg);
   transform-origin: top center;
 }
@@ -269,20 +320,20 @@
   aspect-ratio: 0.62;
   padding: 8px;
   border-radius: 12px;
-  background: linear-gradient(#15161d, #0b0c11);
-  outline: 1px solid rgb(255 255 255 / 0.07);
+  background: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.03) 0 1px, transparent 1px 5px), linear-gradient(#150d22, #09060f);
+  outline: 2px solid rgb(0 0 0 / 0.7);
+  box-shadow: 0 0 0 1px rgb(255 110 199 / 0.22);
 }
 .mb-speaker i {
   display: block;
   width: 62%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle, #050608 18%, #1d1f29 20%, #0d0e14 60%);
+  background: radial-gradient(circle, #050308 18%, #241a33 20%, #0e0a16 60%);
   outline: 2px solid rgb(103 227 244 / calc(0.15 + var(--mb-pulse) * 0.6));
   transform: scale(calc(1 + var(--mb-pulse) * 0.09 * var(--mb-pulse-scale)));
 }
 .mb-speaker i + i { width: 40%; }
-.mb-speaker-l { left: 3%; }
 .mb-speaker-r { right: 3%; }
 
 .mb-feverbanner {
@@ -493,7 +544,7 @@
      The highway never gets less than 260px; on a short viewport the stage scrolls instead of squeezing it. */
   .mb-stage { overflow-y: auto; background: #0b0a14; }
   .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) auto; gap: 12px; height: auto; min-height: 100%; padding: 12px 16px 16px; }
-  .mb-char, .mb-speaker, .mb-spot, .mb-skyline { display: none; }
+  .mb-char, .mb-speaker, .mb-spot, .mb-skyline, .mb-moon { display: none; }
   .mb-highway-slot { justify-self: center; width: min(100%, 460px); min-height: 260px; padding-top: 0; }
   .mb-highway { border-radius: 18px; }
   .mb-side { align-self: start; justify-self: center; width: min(100%, 460px); padding: 0; }

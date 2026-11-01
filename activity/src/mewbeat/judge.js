@@ -1,4 +1,4 @@
-import { HOLD_WINDOW_SCALE, WINDOWS, judgementFor } from "./scoring.js";
+import { EARLY_MISS_MS, HOLD_WINDOW_SCALE, WINDOWS, judgementFor } from "./scoring.js";
 
 const LANES = 4;
 const TAIL_GOOD_MS = WINDOWS.good * HOLD_WINDOW_SCALE;
@@ -31,13 +31,19 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
       const index = indexes[i];
       if (outcome[index] !== undefined) continue;
       const errorMs = songMs - notes[index].t;
-      if (errorMs < -WINDOWS.good) return null;
+      if (errorMs < -EARLY_MISS_MS) return null;
       if (errorMs > WINDOWS.good) continue;
-      const judgement = judgementFor(Math.abs(errorMs));
+      // Inside the early miss band the note is taken as a miss; a hold loses its tail with it.
+      const judgement = judgementFor(Math.abs(errorMs)) ?? "miss";
       outcome[index] = judgement;
       pending -= 1;
-      if (isHold[index]) active[lane].push(index);
-      return { index, judgement, errorMs, part: "head" };
+      if (!isHold[index]) return { index, judgement, errorMs, part: "head" };
+      if (judgement !== "miss") {
+        active[lane].push(index);
+        return { index, judgement, errorMs, part: "head" };
+      }
+      settleTail(index, "miss");
+      return { index, judgement, errorMs, part: "head", tailMissed: true };
     }
     return null;
   }

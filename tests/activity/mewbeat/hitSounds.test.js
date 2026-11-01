@@ -4,9 +4,11 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
 let createHitSounds;
+let renderHit;
+let HIT_S;
 
 test.before(async () => {
-  ({ createHitSounds } = await import(
+  ({ createHitSounds, renderHit, HIT_S } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/hitSounds.js")).href
   ));
 });
@@ -17,26 +19,31 @@ function fakeAudio() {
   class FakeContext {
     constructor() {
       this.currentTime = 1;
+      this.sampleRate = 48_000;
       this.state = "suspended";
       this.destination = {};
-      this.oscillators = [];
-      this.peaks = [];
-      this.stops = [];
+      this.buffers = [];
+      this.sources = [];
+      this.gains = [];
       this.resumed = 0;
       this.closed = false;
       made.push(this);
     }
-    createOscillator() {
-      const osc = { type: "", frequency: { value: 0 }, connect() {}, start() {}, stop: (at) => this.stops.push(at) };
-      this.oscillators.push(osc);
-      return osc;
+    createBuffer(channels, length, sampleRate) {
+      const data = new Float32Array(length);
+      const buffer = { channels, length, sampleRate, getChannelData: () => data };
+      this.buffers.push(buffer);
+      return buffer;
+    }
+    createBufferSource() {
+      const source = { buffer: null, started: 0, connect() {}, start() { source.started += 1; } };
+      this.sources.push(source);
+      return source;
     }
     createGain() {
-      const peaks = this.peaks;
-      return {
-        gain: { setValueAtTime() {}, linearRampToValueAtTime: (value) => peaks.push(value), exponentialRampToValueAtTime() {} },
-        connect() {},
-      };
+      const gain = { gain: { value: 1 }, connect() {} };
+      this.gains.push(gain);
+      return gain;
     }
     resume() {
       this.resumed += 1;
@@ -66,22 +73,37 @@ test("unlock creates the context once and resumes it", () => {
   assert.equal(made[0].resumed >= 1, true);
 });
 
-test("PERFECT is pitched higher than GOOD and the click stays short and quiet", () => {
+test("the hit is short, starts at once and never clips", () => {
+  const samples = renderHit(48_000);
+  assert.equal(samples.length, Math.round(HIT_S * 48_000));
+  const peak = Math.max(...samples.map(Math.abs));
+  assert.ok(peak <= 0.9 + 1e-6);
+  assert.ok(Math.max(...samples.slice(0, 480).map(Math.abs)) > 0.5, "loud within the first 10 ms");
+  assert.ok(Math.max(...samples.slice(-480).map(Math.abs)) < 0.05, "faded out by the end");
+  assert.deepEqual(renderHit(48_000), samples, "deterministic");
+});
+
+test("every play replays one rendered buffer quietly", () => {
   const { FakeContext, made } = fakeAudio();
   const sounds = createHitSounds({ AudioContextClass: FakeContext });
-  sounds.play("perfect");
-  sounds.play("good");
-  const [perfect, good] = made[0].oscillators;
-  assert.ok(perfect.frequency.value > good.frequency.value);
-  assert.ok(Math.max(...made[0].peaks) <= 0.15);
-  for (const stop of made[0].stops) assert.ok(stop - 1 <= 0.04 + 1e-9);
+  sounds.unlock();
+  sounds.play();
+  sounds.play();
+  const audio = made[0];
+  assert.equal(audio.buffers.length, 1, "rendered once, at unlock");
+  assert.equal(audio.sources.length, 2);
+  for (const source of audio.sources) {
+    assert.equal(source.buffer, audio.buffers[0]);
+    assert.equal(source.started, 1);
+  }
+  for (const gain of audio.gains) assert.ok(gain.gain.value <= 0.5);
 });
 
 test("a missing AudioContext makes everything a no-op", () => {
   const sounds = createHitSounds({ AudioContextClass: null });
   assert.doesNotThrow(() => {
     sounds.unlock();
-    sounds.play("perfect");
+    sounds.play();
     sounds.close();
   });
 });
@@ -89,11 +111,11 @@ test("a missing AudioContext makes everything a no-op", () => {
 test("close shuts the context and later plays do nothing", () => {
   const { FakeContext, made } = fakeAudio();
   const sounds = createHitSounds({ AudioContextClass: FakeContext });
-  sounds.play("great");
+  sounds.play();
   sounds.close();
   assert.equal(made[0].closed, true);
-  sounds.play("great");
+  sounds.play();
   sounds.unlock();
   assert.equal(made.length, 1);
-  assert.equal(made[0].oscillators.length, 1);
+  assert.equal(made[0].sources.length, 1);
 });

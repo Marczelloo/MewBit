@@ -1,4 +1,5 @@
-// Stage scenery behind the game: sky, spotlights, skyline, floor and speakers. Pure decoration, so
+// Stage scenery behind the game: an inked night sky with a moon behind Mewbit, spotlights, skyline,
+// floor and a speaker on the cards' side (Mewbit stands where the other one was). Pure decoration, so
 // everything is aria-hidden and ignores the pointer. The look is driven by CSS variables set on
 // .mb-stage (--mb-vibe, --mb-pulse), see mewbeat.css.
 
@@ -27,6 +28,7 @@ export default function Stage() {
   return (
     <div className="mb-backdrop" aria-hidden="true">
       <div className="mb-sky" />
+      <div className="mb-moon" />
       <div className="mb-spot mb-spot-l" />
       <div className="mb-spot mb-spot-r" />
       <div className="mb-skyline">
@@ -36,7 +38,6 @@ export default function Stage() {
       </div>
       <div className="mb-floor-edge" />
       <div className="mb-floor" />
-      <div className="mb-speaker mb-speaker-l"><i /><i /></div>
       <div className="mb-speaker mb-speaker-r"><i /><i /></div>
     </div>
   );

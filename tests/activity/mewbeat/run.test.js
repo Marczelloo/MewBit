@@ -448,3 +448,20 @@ test("hold: a hit head with a tail skipped by jump reads as done, not as a fresh
   const whole = createRun({ chart: holdChart(), startSongMs: 1200 });
   assert.equal(whole.visibleNotes(2000, 2000)[0].hold, "pending");
 });
+
+test("mashing every lane non-stop misses most notes instead of clearing the chart", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  for (let ms = 0; ms <= 12_000; ms += 30) {
+    for (let lane = 0; lane < 4; lane += 1) run.press(lane, ms);
+    run.tick(ms);
+  }
+  tickAll(run, 12_000, 12_500);
+  const { counts } = run.snapshot(12_500);
+  assert.ok(counts.miss > 30, `misses ${counts.miss}`);
+});
+
+test("an early miss on a hold counts its tail as a miss too", () => {
+  const run = createRun({ chart: { notes: [{ t: 2000, lane: 0, len: 800 }] }, startSongMs: 0 });
+  assert.deepEqual(run.press(0, 1870), { kind: "miss", lane: 0, index: 0, part: "head" });
+  assert.equal(run.snapshot(1870).counts.miss, 2);
+});

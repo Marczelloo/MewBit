@@ -16,12 +16,12 @@ function hits(state, judgement, count, songMs = 0) {
 
 test("judgement windows are inclusive at their upper bound", () => {
   assert.equal(s.judgementFor(0), "perfect");
-  assert.equal(s.judgementFor(45), "perfect");
-  assert.equal(s.judgementFor(45.01), "great");
-  assert.equal(s.judgementFor(46), "great");
-  assert.equal(s.judgementFor(90), "great");
-  assert.equal(s.judgementFor(135), "good");
-  assert.equal(s.judgementFor(136), null);
+  assert.equal(s.judgementFor(40), "perfect");
+  assert.equal(s.judgementFor(40.01), "great");
+  assert.equal(s.judgementFor(41), "great");
+  assert.equal(s.judgementFor(75), "great");
+  assert.equal(s.judgementFor(110), "good");
+  assert.equal(s.judgementFor(111), null);
 });
 
 test("multiplier steps up every ten combo and caps at 4", () => {

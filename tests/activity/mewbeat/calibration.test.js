@@ -66,6 +66,14 @@ test("stray presses far from any note are ignored and outliers barely move the m
   assert.equal(timing.estimate().offsetMs, 50);
 });
 
+test("a null lane takes the nearest note of any lane, for taps aimed by ear", () => {
+  const { nearestNote } = calibration;
+  const any = [{ t: 1000, lane: 1 }, { t: 1500, lane: 2 }];
+  assert.equal(nearestNote(any, null, 1440).t, 1500);
+  assert.equal(nearestNote(any, null, 1100).t, 1000);
+  assert.equal(nearestNote(any, 0, 1100), null);
+});
+
 test("reset forgets the taps", () => {
   const timing = calibration.createTapTiming();
   tapAll(timing, { lateMs: 50 });

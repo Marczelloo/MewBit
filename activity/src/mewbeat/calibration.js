@@ -17,7 +17,8 @@ function median(sorted) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-// The note of `lane` nearest to heardMs within CAPTURE_MS, or null. notes are sorted by t.
+// The note of `lane` (any lane when null) nearest to heardMs within CAPTURE_MS, or null. notes are
+// sorted by t.
 export function nearestNote(notes, lane, heardMs) {
   let lo = 0;
   let hi = notes.length;
@@ -28,7 +29,7 @@ export function nearestNote(notes, lane, heardMs) {
   }
   let best = null;
   for (let i = lo; i < notes.length && notes[i].t <= heardMs + CAPTURE_MS; i += 1) {
-    if (notes[i].lane !== lane) continue;
+    if (lane !== null && notes[i].lane !== lane) continue;
     if (!best || Math.abs(heardMs - notes[i].t) < Math.abs(heardMs - best.t)) best = notes[i];
   }
   return best;

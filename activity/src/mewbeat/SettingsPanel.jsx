@@ -263,7 +263,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
               ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
               : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
           </p>
-          <p className="mb-field-help">Calibration clicks: the bot plays a metronome in voice and charts one note per click. Close settings and tap each click as you hear it.</p>
+          <p className="mb-field-help">Calibration clicks: the bot plays a metronome in voice. Close settings and press any lane key on each click as you hear it. The notes stay hidden, so only your ears count.</p>
           <div className="mb-calib-row">
             <button
               type="button"

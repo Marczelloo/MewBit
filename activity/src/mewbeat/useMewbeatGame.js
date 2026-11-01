@@ -4,7 +4,7 @@ import { approachMsFor, createHighwayRenderer } from "./highway.js";
 import { createHitSounds } from "./hitSounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
-import { createTapTiming, runTimingOf } from "./calibration.js";
+import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
@@ -233,8 +233,9 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       for (const event of events) {
         if (event.kind === "hit") {
           comboRef.current += 1;
-          // A tail counts for combo and the popup, but it has no sound of its own.
-          if (cfgRef.current.hitSounds && event.part !== "tail") soundsRef.current?.play(event.judgement);
+          // The player's presses sound on the key (see onLane); autoplay has no keys, so its heads
+          // sound here. A tail counts for combo and the popup, but it has no sound of its own.
+          if (cfgRef.current.hitSounds && runAutoplayRef.current && event.part !== "tail") soundsRef.current?.play();
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -374,14 +375,20 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         lanesDownRef.current[lane] = true;
         const run = runRef.current;
         if (!run || phaseRef.current !== "playing") return;
+        // Every press sounds, hit or not, as in osu!mania: the sound answers the key.
+        if (cfgRef.current.hitSounds && !runAutoplayRef.current) soundsRef.current?.play();
         const songMs = songClock.songTimeAt(timeStamp);
         if (songMs === null) return;
+        // Calibration hides the notes, so a tap is aimed by ear alone (a player watching the notes
+        // reacts a little late and would talk the offset up): any key counts for the nearest click.
+        const calibrating = runCalibrationRef.current;
         // Autoplay judges its own notes; only the player's presses say where they hear the beat.
-        if (!runAutoplayRef.current && chartRef.current && tapTiming.add(chartRef.current.notes, lane, songMs, cfgRef.current.offsetMs) !== null) {
+        if (!runAutoplayRef.current && chartRef.current && tapTiming.add(chartRef.current.notes, calibrating ? null : lane, songMs, cfgRef.current.offsetMs) !== null) {
           timingDirtyRef.current = true;
           dirtyRef.current = true;
         }
-        const hit = run.press(lane, songMs);
+        const click = calibrating && chartRef.current ? nearestNote(chartRef.current.notes, null, run.heardTime(songMs)) : null;
+        const hit = run.press(click ? click.lane : lane, songMs);
         if (hit) handleEvents([hit], run.heardTime(songMs));
       },
       onFever: () => {
@@ -458,7 +465,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         renderer?.render({
           heardMs,
           approachMs,
-          notes: run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs),
+          notes: runCalibrationRef.current ? [] : run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs),
           lanesDown: lanesDownRef.current,
           flashes,
           feverActive: feverActiveRef.current,

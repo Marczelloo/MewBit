@@ -161,7 +161,7 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
         <div className="mb-header-brand">
           <span className="mb-wordmark">mewbeat</span>
           {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
-          {calibrating && running ? <span className="mb-chip">calibration · {timing.taps}/{MIN_TAPS} taps</span> : null}
+          {calibrating && running ? <span className="mb-chip">calibration · tap any key on each click · {timing.taps}/{MIN_TAPS}</span> : null}
         </div>
         <div className="mb-header-actions">
           <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>

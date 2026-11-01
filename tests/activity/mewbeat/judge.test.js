@@ -34,14 +34,23 @@ test("a press with no note in reach is a ghost tap", () => {
   assert.equal(judge.remaining(), 3);
 });
 
+test("a press in the early miss band takes the note as a miss", () => {
+  const judge = createJudge(sample());
+  assert.deepEqual(judge.press(1, 1000 - 111), { index: 2, judgement: "miss", errorMs: -111, part: "head" });
+  assert.equal(judge.outcomeOf(2), "miss");
+  assert.deepEqual(judge.press(0, 1000 - 150), { index: 0, judgement: "miss", errorMs: -150, part: "head" });
+  assert.equal(judge.press(0, 1100 - 151), null); // index 1 is out of reach again
+  assert.equal(judge.remaining(), 1);
+});
+
 test("sweep misses notes only once past the GOOD window, in index order", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.sweep(1135), []);
-  assert.deepEqual(judge.sweep(1136), [
+  assert.deepEqual(judge.sweep(1110), []);
+  assert.deepEqual(judge.sweep(1111), [
     { index: 0, judgement: "miss", errorMs: null, part: "head" },
     { index: 2, judgement: "miss", errorMs: null, part: "head" },
   ]);
-  assert.deepEqual(judge.sweep(1236), [{ index: 1, judgement: "miss", errorMs: null, part: "head" }]);
+  assert.deepEqual(judge.sweep(1211), [{ index: 1, judgement: "miss", errorMs: null, part: "head" }]);
   assert.equal(judge.remaining(), 0);
   assert.deepEqual(judge.sweep(5000), []);
 });
@@ -55,8 +64,8 @@ test("sweep does not re-miss a note that press already judged ahead of it", () =
 
 test("a late press can hit a note that has not been swept yet", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.press(1, 1135), { index: 2, judgement: "good", errorMs: 135, part: "head" });
-  assert.equal(judge.press(1, 1136), null);
+  assert.deepEqual(judge.press(1, 1110), { index: 2, judgement: "good", errorMs: 110, part: "head" });
+  assert.equal(judge.press(1, 1111), null);
 });
 
 test("starting from fromMs skips earlier notes", () => {
@@ -132,15 +141,23 @@ test("tail windows are the tap windows times 1.5", () => {
     judge.press(0, 1000);
     return judge.release(0, songMs)[0].judgement;
   };
-  assert.equal(at(2000 - 67.5), "perfect");
-  assert.equal(at(2000 - 68), "great");
-  assert.equal(at(2000 - 135), "great");
-  assert.equal(at(2000 - 136), "good");
+  assert.equal(at(2000 - 60), "perfect");
+  assert.equal(at(2000 - 61), "great");
+  assert.equal(at(2000 - 112.5), "great");
+  assert.equal(at(2000 - 113), "good");
   assert.equal(at(2000 - 150), "good");
-  assert.equal(at(2000 - 202.5), "good");
-  assert.equal(at(2000 - 203), "miss");
+  assert.equal(at(2000 - 165), "good");
+  assert.equal(at(2000 - 166), "miss");
   assert.equal(at(2000 + 100), "great");
   assert.equal(at(2000 + 500), "good"); // late beyond the window still counts
+});
+
+test("an early miss on a hold settles its tail as a miss too", () => {
+  const judge = createJudge(withHold());
+  assert.deepEqual(judge.press(0, 1000 - 130), { index: 0, judgement: "miss", errorMs: -130, part: "head", tailMissed: true });
+  assert.equal(judge.tailOutcomeOf(0), "miss");
+  assert.deepEqual(judge.release(0, 2000), []);
+  assert.deepEqual(judge.sweep(2500), []);
 });
 
 test("an early release is a drop: tail MISS and the hold is dead", () => {

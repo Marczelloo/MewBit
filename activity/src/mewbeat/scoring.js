@@ -1,4 +1,7 @@
-export const WINDOWS = { perfect: 45, great: 90, good: 135 };
+export const WINDOWS = { perfect: 40, great: 75, good: 110 };
+// A press this early, but past the good window, still takes the note, as a miss (osu!mania's early
+// miss band): mashing ahead of the notes breaks combo instead of waiting for them to arrive.
+export const EARLY_MISS_MS = 150;
 // Hold tails are judged against the tap windows scaled by this factor.
 export const HOLD_WINDOW_SCALE = 1.5;
 export const BASE_POINTS = { perfect: 300, great: 200, good: 100, miss: 0 };
