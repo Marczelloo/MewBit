@@ -2,6 +2,7 @@
 const { DENSITY_WINDOW_MS } = require("./difficulty");
 const { REPEAT_SIMILARITY, buildPhrases } = require("./phrases");
 const { buildTiming } = require("./timing");
+const { sourceWindow } = require("./repeats");
 const { lowerBound, nearestIndex } = require("./util");
 
 const ON_LAYER_MS = 20; // a note this close to a layer event "sits on" it
@@ -46,7 +47,8 @@ function chartMetrics(chart, features) {
   for (const p of phrases) {
     const source = phrases[p.repeatOf];
     if (p.repeatOf === null || !source || p.repeatOf >= p.index || !(p.similarity >= REPEAT_SIMILARITY)) continue;
-    const sourceNotes = within(source);
+    const { from, to } = sourceWindow(p, source);
+    const sourceNotes = notes.slice(lowerBound(times0, from), lowerBound(times0, to));
     if (sourceNotes.length === 0) continue;
     const mine = within(p);
     const same = sourceNotes.filter((s) =>

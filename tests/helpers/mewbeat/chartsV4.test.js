@@ -8,7 +8,7 @@ const { holdSafe } = require("../../../helpers/mewbeat/charts/holds");
 const { chartMetrics } = require("../../../helpers/mewbeat/charts/metrics");
 const { patternEvents } = require("../../../helpers/mewbeat/charts/patterns");
 const { buildPhrases, chooseLeaders } = require("../../../helpers/mewbeat/charts/phrases");
-const { copyRepeat } = require("../../../helpers/mewbeat/charts/repeats");
+const { copyRepeat, sourceWindow } = require("../../../helpers/mewbeat/charts/repeats");
 const { starsOf } = require("../../../helpers/mewbeat/charts/stars");
 const { buildTiming, energyLookup } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 4", () => {
-    assert.equal(GENERATOR_VERSION, 4);
+  it("is version 5", () => {
+    assert.equal(GENERATOR_VERSION, 5);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -48,6 +48,25 @@ describe("generator v4", () => {
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].maxLevel), [0, 1, 2]);
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].maxJack), [1, 2, 3]);
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].holdMinBeats), [1, 0.5, 0.5]);
+  });
+
+  it("sourceWindow: the repeat copies its own window moved back by the lag", () => {
+    const source = { startMs: 1000, endMs: 9000 };
+    assert.deepEqual(sourceWindow({ startMs: 20000, endMs: 28000, lagMs: 21000 }, source), { from: -1000, to: 7000 });
+    assert.deepEqual(sourceWindow({ startMs: 20000, endMs: 28000, lagMs: null }, source), { from: 1000, to: 9000 });
+  });
+
+  it("shiftedRepeatKeepsItsLastBar: a lag carrying a -4-beat shift copies the span it names, not the source phrase", () => {
+    // One repeating phrase, so any span of it is the same music.
+    const features = makeLayeredFeatures({ structure: "AAAA" });
+    const beatMs = 60000 / features.tempo.bpm;
+    const phrase = features.phrases.list[3]; // repeats phrase 0
+    phrase.lagMs -= Math.round(4 * beatMs);
+    const charts = chartsOf(features);
+    for (const d of DIFFS) {
+      const lastBar = notesIn(charts[d].notes, phrase.endMs - 4 * beatMs, phrase.endMs);
+      assert.ok(lastBar.length > 0, d);
+    }
   });
 
   it("deterministic: two runs are deep-equal", () => {

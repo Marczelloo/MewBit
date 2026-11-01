@@ -4,13 +4,14 @@ const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilt
 const { clipHolds } = require("./holds");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders } = require("./phrases");
-const { copyRepeat } = require("./repeats");
+const { copyRepeat, sourceWindow } = require("./repeats");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { lowerBound } = require("./util");
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
+const MIN_COPY_SHARE = 0.5; // a repeat keeping less of its source than this is charted fresh
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
@@ -64,11 +65,17 @@ function chartNotes(ctx, diff) {
     // A repeat plays like its source.
     if (isRepeat(phrase, i)) {
       const source = phrases[phrase.repeatOf];
-      const sourceNotes = inWindow(all, source.startMs, source.endMs);
-      if (sourceNotes.length > 0) {
-        // A copy may end sooner than its source (or the song): its holds are clipped to fit.
-        const copied = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase)), Math.min(phrase.endMs, durationMs), diff, timing);
-        all.push(...copied.filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY));
+      const { from, to } = sourceWindow(phrase, source);
+      const sourceNotes = inWindow(all, from, to);
+      // A copy may end sooner than its source (or the song): its holds are clipped to fit.
+      const copied = sourceNotes.length > 0
+        ? clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase)), Math.min(phrase.endMs, durationMs), diff, timing)
+          .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY)
+        : [];
+      // A copy that lost most of its source (the music differs, or the source
+      // overlaps this phrase) is generated fresh instead.
+      if (copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE) {
+        all.push(...copied);
         i++;
         continue;
       }
