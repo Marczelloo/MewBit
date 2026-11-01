@@ -77,6 +77,29 @@ class FeatureExtractorTest {
     }
 
     @Test
+    void threeThreeTwoAccentsDoNotMakeTwoThirdsTempo() {
+        // 126 BPM: quiet kicks and hats on straight eighths, loud stabs on beats 0, 1.5 and 3 of every bar. The
+        // 1.5-beat lag then correlates as well as the beat, and 84 BPM used to win.
+        double beat = 60 / 126.0;
+        float[] signal = Synth.silence(60);
+        Random random = new Random(7);
+        for (double t = 0.25; t < 59.5; t += beat) {
+            Synth.addThump(signal, t, 0.2);
+            Synth.addHat(signal, t, 0.2, random);
+            Synth.addHat(signal, t + beat / 2, 0.2, random);
+        }
+        for (double bar = 0.25; bar < 59.5; bar += 4 * beat) {
+            for (double offset : new double[] {0, 1.5, 3}) {
+                Synth.addNoise(signal, bar + offset * beat, bar + offset * beat + 0.06, 0.8, random);
+            }
+        }
+
+        Features features = extract(signal);
+
+        assertEquals(126.0, features.tempo().bpm(), 1.0);
+    }
+
+    @Test
     void onsetsLandOnClicks() {
         float[] signal = Synth.silence(30);
         Random random = new Random(42);

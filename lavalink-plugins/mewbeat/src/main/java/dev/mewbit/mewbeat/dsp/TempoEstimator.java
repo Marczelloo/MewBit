@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 /**
  * Tempo from the autocorrelation of the onset envelope (with a log-Gaussian
- * prior around 120 BPM), then dynamic-programming beat tracking (Ellis 2007).
+ * prior around 120 BPM) with a check against picking 1.5 beats, then dynamic-programming beat tracking (Ellis 2007).
  */
 final class TempoEstimator {
 
@@ -15,6 +15,8 @@ final class TempoEstimator {
     private static final double TIGHTNESS = 100;
     private static final int MEAN_HALF_WINDOW_HOPS = 94; // ~1 s each side
     private static final int SNAP_HOPS = 2;
+    /** How many multiples of a lag the 3:2 check compares. */
+    private static final int COMB_MULTIPLES = 4;
 
     /** {@code beatHops} are hop indices; {@code downbeatPhase} is 0..3, the beat index mod 4 that starts a bar. */
     record Result(double bpm, double confidence, int[] beatHops, int downbeatPhase) {}
@@ -40,7 +42,7 @@ final class TempoEstimator {
             return NONE;
         }
 
-        double[] acf = new double[lagHi + SNAP_HOPS + 1];
+        double[] acf = new double[COMB_MULTIPLES * (lagHi + SNAP_HOPS + 1)];
         for (int lag = Math.max(1, lagLo - SNAP_HOPS); lag < acf.length; lag++) {
             double sum = 0;
             for (int t = 0; t + lag < count; t++) {
@@ -66,6 +68,7 @@ final class TempoEstimator {
         if (best < 0 || meanAcf <= 0) {
             return NONE;
         }
+        best = correctThreeTwo(acf, best, lagLo);
 
         // Peaks are about one hop wide, so the integer lag is too coarse for a
         // 1 BPM answer; the centroid of the lobe recovers the fractional lag.
@@ -89,6 +92,38 @@ final class TempoEstimator {
             return new Result(bpm, confidence, beats, 0);
         }
         return new Result(bpm, confidence, beats, downbeatPhase(beats, lowFlux, count));
+    }
+
+    /**
+     * Straight eighths correlate at every half beat, so a lag of 1.5 beats can edge out the beat itself (a 126 BPM
+     * track read as 84). The beat's own multiples all land on beats, while those of 1.5 beats land on half beats every
+     * other time, so when the lag at 2/3 has the stronger comb of multiples it is the beat.
+     */
+    private static int correctThreeTwo(double[] acf, int best, int lagLo) {
+        int guess = (int) Math.round(best * 2.0 / 3);
+        int alternative = -1;
+        for (int lag = Math.max(lagLo, guess - SNAP_HOPS); lag <= guess + SNAP_HOPS; lag++) {
+            if (alternative < 0 || acf[lag] > acf[alternative]) {
+                alternative = lag;
+            }
+        }
+        return alternative >= 0 && comb(acf, alternative) > comb(acf, best) ? alternative : best;
+    }
+
+    /** Mean ACF over the first multiples of {@code lag}, each the best within m - 1 hops of m * lag. */
+    private static double comb(double[] acf, int lag) {
+        double sum = 0;
+        for (int m = 1; m <= COMB_MULTIPLES; m++) {
+            double peak = 0;
+            for (int d = -(m - 1); d <= m - 1; d++) {
+                int j = m * lag + d;
+                if (j > 0 && j < acf.length) {
+                    peak = Math.max(peak, acf[j]);
+                }
+            }
+            sum += peak;
+        }
+        return sum / COMB_MULTIPLES;
     }
 
     /** Onset flux with its local mean removed, half-wave rectified, scaled to unit standard deviation; null if flat. */
