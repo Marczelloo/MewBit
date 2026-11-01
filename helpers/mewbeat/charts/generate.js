@@ -1,5 +1,6 @@
 const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
+const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
 const { clipHolds } = require("./holds");
 const { patternEvents } = require("./patterns");
@@ -24,6 +25,7 @@ function analyse(features) {
     durationMs,
     timing,
     energy: energyLookup(features),
+    busy: busyFactor(features),
     phrases,
     leaders: chooseLeaders(phrases),
     eventTimes: sortedEventTimes(features),
@@ -105,7 +107,7 @@ function chartNotes(ctx, diff) {
 // --- public API --------------------------------------------------------------
 
 function chartFrom(ctx, difficulty, audioKey) {
-  const notes = chartNotes(ctx, DIFFICULTIES[difficulty]);
+  const notes = chartNotes(ctx, effectiveDifficulty(DIFFICULTIES[difficulty], ctx.busy));
   if (notes.length < MIN_NOTES) return null;
   const { features, durationMs } = ctx;
   return {

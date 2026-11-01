@@ -29,6 +29,34 @@ describe("foldTempo", () => {
   });
 });
 
+describe("half-time tempos", () => {
+  it("foldTempo doubles a slow tempo only when the onsets per beat say the grid is half-time", () => {
+    assert.deepStrictEqual(foldTempo(87, 10), { bpm: 174, factor: 2 });
+    assert.deepStrictEqual(foldTempo(71, 10), { bpm: 142, factor: 2 });
+    assert.deepStrictEqual(foldTempo(87, 5), { bpm: 87, factor: 1 });
+    assert.deepStrictEqual(foldTempo(87), { bpm: 87, factor: 1 });
+    // At or above ~95 BPM a dense song is left alone, and a folded tempo is not doubled twice.
+    assert.strictEqual(foldTempo(100, 30).factor, 1);
+    assert.strictEqual(foldTempo(60, 30).factor, 2);
+  });
+
+  // Strong onsets only, so the song's busyness comes from how many onsets it has.
+  const strongSong = (onsetEveryBeats) => {
+    const features = makeFeatures({ bpm: 87, durationMs: 60000, onsetEveryBeats });
+    return { ...features, bands: features.bands.map((b) => ({ ...b, onsets: b.onsets.map((o) => ({ ...o, s: 1 })) })) };
+  };
+
+  it("a busy 87 BPM song folds to 174 while a sparse one stays at 87", () => {
+    const busy = buildTiming(strongSong(0.25), 60000);
+    assert.strictEqual(busy.foldFactor, 2);
+    assert.ok(Math.abs(60000 / busy.medianMs - 174) <= 1, String(60000 / busy.medianMs));
+
+    const sparse = buildTiming(strongSong(2), 60000);
+    assert.strictEqual(sparse.foldFactor, 1);
+    assert.ok(Math.abs(60000 / sparse.medianMs - 87) <= 1);
+  });
+});
+
 describe("buildTiming folding", () => {
   it("folds a 230 BPM grid to half the tempo", () => {
     const timing = buildTiming(makeFeatures({ bpm: 230, durationMs: 60000 }), 60000);

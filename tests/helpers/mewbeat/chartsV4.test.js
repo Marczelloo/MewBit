@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 6", () => {
-    assert.equal(GENERATOR_VERSION, 6);
+  it("is version 7", () => {
+    assert.equal(GENERATOR_VERSION, 7);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -150,7 +150,8 @@ describe("generator v4", () => {
     const { normal } = chartsOf(features);
     const counts = [0, 0, 0, 0];
     for (const n of normal.notes) counts[n.lane]++;
-    counts.forEach((c, lane) => assert.ok(c / normal.notes.length >= 0.15, `lane ${lane}: ${counts}`));
+    // This synthetic song is calmer than a typical one (busy factor 0.75), so Normal's cap is lower and few notes split unevenly.
+    counts.forEach((c, lane) => assert.ok(c / normal.notes.length >= 0.12, `lane ${lane}: ${counts}`));
   });
 
   it("copySeam: a copy after a different phrase is identical and breaks no floor", () => {

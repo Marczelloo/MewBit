@@ -1,6 +1,6 @@
 // Star rating tuning (Task 9 may adjust; any change bumps GENERATOR_VERSION).
 const BASE_STARS = 0.5;
-const STARS_PER_NPS = 0.55;
+const STARS_PER_NPS = 0.48;
 const STARS_PER_CHORD_RATIO = 2;
 const STARS_PER_HOLD_RATIO = 0.3; // times the share of notes that are holds
 const PEAK_WINDOW_MS = 8000;

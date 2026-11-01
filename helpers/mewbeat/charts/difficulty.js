@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 6;
+const GENERATOR_VERSION = 7;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -12,7 +12,15 @@ const SILENCE_ENERGY = 0.08; // no notes where the energy curve is below this
 const MIN_NOTES = 20; // fewer notes than this means "not chartable"
 
 const DENSITY_WINDOW_MS = 2000; // candidates are thinned per window of this size
-const ENERGY_EXPONENT = 1.5; // target notes/s = maxNps * energy^ENERGY_EXPONENT
+const ENERGY_EXPONENT = 1.5; // target notes/s = maxNps * busy * energy^ENERGY_EXPONENT
+
+// Busyness: the energy curve is normalised per song, so without this every
+// song's loud parts get the same density. A song's strong-onset rate scales the
+// density cap instead (see busyness.js), within an absolute per-difficulty ceiling.
+const BUSY_ONSET_STRENGTH = 0.5; // an onset at/above this strength counts towards busyness
+const BUSY_MEDIAN_RATE = 14; // strong onsets per second of non-silent audio of a typical song (busy factor 1)
+const BUSY_MIN_FACTOR = 0.8; // the calmest song gets 80 % of the difficulty's maxNps
+const BUSY_MAX_FACTOR = 1.6; // the busiest gets 160 % (until the difficulty's ceiling)
 
 const CONFIDENT_TEMPO = 0.5; // snap to the beat grid at/above this confidence
 const FALLBACK_BEAT_MS = 500; // 120 BPM, used for gaps when tempo is not trusted
@@ -26,7 +34,8 @@ const SNAPPED_FLOOR_SLACK = 0.98; // snapped notes may sit this much under the t
 
 const DIFFICULTIES = {
   easy: {
-    maxNps: 2.5,
+    maxNps: 3.0, // was 2.5; the busy factor now spreads it 2.4-3.5
+    maxNpsCeiling: 3.5, // the busy factor never lifts the density cap above this
     // Grid divisions per beat: baseDiv normally, energyDiv at energy >= highEnergyFrom,
     // fineDiv for onsets with strength >= fineMinStrength (null = never).
     baseDiv: 2,
@@ -53,6 +62,7 @@ const DIFFICULTIES = {
   },
   normal: {
     maxNps: 4.5,
+    maxNpsCeiling: 6.5,
     baseDiv: 2,
     energyDiv: 4,
     highEnergyFrom: 0.6,
@@ -74,7 +84,8 @@ const DIFFICULTIES = {
     alternation: null,
   },
   hard: {
-    maxNps: 7.0,
+    maxNps: 9.0,
+    maxNpsCeiling: 10,
     baseDiv: 4,
     energyDiv: 4,
     highEnergyFrom: 0.6,
@@ -103,6 +114,10 @@ module.exports = {
   BANDS,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
+  BUSY_MAX_FACTOR,
+  BUSY_MEDIAN_RATE,
+  BUSY_MIN_FACTOR,
+  BUSY_ONSET_STRENGTH,
   CONFIDENT_TEMPO,
   DENSITY_WINDOW_MS,
   DIFFICULTIES,

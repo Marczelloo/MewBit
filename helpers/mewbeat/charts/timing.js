@@ -5,11 +5,18 @@ const {
   FALLBACK_BEAT_MS,
   GAP_TOLERANCE_MS,
 } = require("./difficulty");
+const { strongOnsetRate } = require("./busyness");
 const { cleanTimes, lowerBound, median, nearestIndex } = require("./util");
 
 const MIN_USABLE_BEAT_MS = 100; // a median beat length below this means garbage beats
 const FOLD_MIN_BPM = 70; // the beat grid is folded into this range
 const FOLD_MAX_BPM = 200;
+// A tracker that lands on half the real tempo (drum & bass at 87 instead of 174) puts
+// a slow beat under a dense onset stream. Below HALF_TIME_BELOW_BPM, a song with at
+// least this many strong onsets per detected beat is doubled back: its grid was the
+// half-time one. (Fixtures: the half-time songs sit at 9.6-10.4, a sparse ballad ~5.)
+const HALF_TIME_BELOW_BPM = 95; // doubled this stays under FOLD_MAX_BPM
+const HALF_TIME_ONSETS_PER_BEAT = 8;
 const MAX_DOUBLING = 8; // a tempo needing more than 8x doubling is not a tempo at all
 
 // --- timing: beat grid, or none when the tempo is not trustworthy -----------
@@ -17,11 +24,14 @@ const MAX_DOUBLING = 8; // a tempo needing more than 8x doubling is not a tempo 
 // Halves/doubles a tempo until it lies in 70-200 BPM. `factor` is the power of
 // two the tempo was multiplied by (0.5 = every second beat is used). Anything
 // that is not a positive finite tempo is returned untouched.
-function foldTempo(bpm) {
+// `onsetsPerBeat` (strong onsets per detected beat, optional) lets a busy slow
+// tempo be doubled once more, see HALF_TIME_ONSETS_PER_BEAT.
+function foldTempo(bpm, onsetsPerBeat = 0) {
   if (!Number.isFinite(bpm) || !(bpm > 0)) return { bpm, factor: 1 };
   let factor = 1;
   while (bpm * factor > FOLD_MAX_BPM) factor /= 2;
   while (bpm * factor < FOLD_MIN_BPM) factor *= 2;
+  if (bpm * factor < HALF_TIME_BELOW_BPM && onsetsPerBeat >= HALF_TIME_ONSETS_PER_BEAT) factor *= 2;
   return { bpm: bpm * factor, factor };
 }
 
@@ -94,7 +104,8 @@ function buildTiming(features, durationMs) {
   if (!(rawMedianMs >= MIN_USABLE_BEAT_MS)) return NO_TIMING;
 
   // Tempo folding: the grid is built at 70-200 BPM whatever the tracker reported.
-  const { factor } = foldTempo(60000 / rawMedianMs);
+  const onsetsPerBeat = (strongOnsetRate(features) * rawMedianMs) / 1000;
+  const { factor } = foldTempo(60000 / rawMedianMs, onsetsPerBeat);
   if (factor > MAX_DOUBLING) return NO_TIMING;
   let beats = rawBeats;
   let downbeats = cleanTimes(tempo.downbeats);
