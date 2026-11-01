@@ -21,6 +21,11 @@ const SECONDARY_CLEARANCE_BEATS = 1 / 4; // ...into slots this far from any lead
 // (Easy too: a sung line alone is too thin for Easy); a hit between 1/4 slots stays Hard-only.
 const SECONDARY_BEAT_LEVEL = 0;
 const SECONDARY_HIT_LEVEL = 1;
+// A long, confident bass/lead note under another leader is charted as a hold of its own, unless a leader event
+// already sits on its start.
+const SUSTAIN_MIN_BEATS = 1.5;
+const SUSTAIN_MIN_CONF = 0.8;
+const SUSTAIN_CLEARANCE_BEATS = 1 / 4;
 
 const KICK_LANES = [0, 3];
 const SNARE_LANES = [1, 2];
@@ -171,16 +176,22 @@ function tonalLanes(notes, minRepeatGapMs) {
   return lanes;
 }
 
-function tonalEvents(phrase, features, timing, layer, beatMs) {
+// The phrase's line of one tonal layer: grid-snapped notes with the lane the tonal patterns give each.
+function tonalLine(phrase, features, timing, layer, beatMs) {
   const notes = list(features[layer])
     .filter((n) => inPhrase(phrase, n?.t) && Number.isFinite(n.pitch) && Number(n.conf) >= TONAL_MIN_CONF)
     .map((n) => ({ ...n, ...snapToQuarterGrid(timing, n.t), t0: n.t }))
     .map((n) => (n.eighth ? { ...n, coarseT: nearestQuarter(timing, n.t0) } : n))
     .filter((n) => inPhrase(phrase, n.t))
     .sort((a, b) => a.t - b.t || a.pitch - b.pitch);
+  const lanes = notes.length > 0 ? tonalLanes(notes, Math.max(beatMs / 2, TRILL_MIN_GAP_MS)) : [];
+  return { notes, lanes };
+}
+
+function tonalEvents(phrase, features, timing, layer, beatMs) {
+  const { notes, lanes } = tonalLine(phrase, features, timing, layer, beatMs);
   if (notes.length === 0) return [];
 
-  const lanes = tonalLanes(notes, Math.max(beatMs / 2, TRILL_MIN_GAP_MS));
   const strongFrom = median(notes.map((n) => Number(n.s) || 0));
   const lens = notes.map((n) => Number(n.len) || 0);
   const typicalLen = median(lens);
@@ -203,6 +214,27 @@ function tonalEvents(phrase, features, timing, layer, beatMs) {
     if (Number.isFinite(n.len) && n.len > 0) event.sustainMs = n.len;
     return event;
   });
+}
+
+// Long confident notes of the tonal layers that do not lead the phrase: the leader never charts them, but a held
+// bass or organ note under the pattern is what a hold is for. Level 0, so every difficulty may take it.
+function sustainEvents(phrase, leader, features, timing, leaderEvents, beatMs) {
+  const clear = SUSTAIN_CLEARANCE_BEATS * beatMs;
+  const times = leaderEvents.map((e) => e.t).sort((a, b) => a - b);
+  const events = [];
+  for (const layer of ["bass", "lead"]) {
+    if (layer === leader) continue;
+    const { notes, lanes } = tonalLine(phrase, features, timing, layer, beatMs);
+    notes.forEach((n, i) => {
+      if (!(Number(n.len) >= SUSTAIN_MIN_BEATS * beatMs) || !(Number(n.conf) >= SUSTAIN_MIN_CONF)) return;
+      const near = nearestIndex(times, n.t);
+      if (near >= 0 && Math.abs(times[near] - n.t) < clear) return;
+      const event = { t: n.t, lane: lanes[i], level: 0, s: Number(n.s) || 0, source: layer, sustainMs: n.len };
+      if (n.eighth) event.coarseT = n.coarseT;
+      events.push(event);
+    });
+  }
+  return events;
 }
 
 // --- assembling ---------------------------------------------------------------------
@@ -256,11 +288,14 @@ function patternEvents(phrase, leader, features, timing) {
   let events;
   if (leader === "drums") {
     events = drumEvents(phrase, features, timing, beatMs);
+    events.push(...sustainEvents(phrase, leader, features, timing, events, beatMs));
   } else if (leader === "bass" || leader === "lead") {
     events = tonalEvents(phrase, features, timing, leader, beatMs);
+    const held = sustainEvents(phrase, leader, features, timing, events, beatMs);
     if (events.length > 0 && Number(phrase.energy) >= SECONDARY_MIN_ENERGY) {
       events.push(...secondaryEvents(phrase, features, timing, events, beatMs));
     }
+    events.push(...held);
   } else {
     return [];
   }

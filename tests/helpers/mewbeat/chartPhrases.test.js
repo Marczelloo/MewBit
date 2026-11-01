@@ -237,12 +237,12 @@ describe("chooseLeaders", () => {
 
   it("a sparse line loses a loud phrase to busy drums", () => {
     const loud = (rate) => stub([0.9, 0.9], [0.8, 1], [0.4, 0.5], { energy: 1, rate });
-    // bass gives 1 note/s where a full-energy phrase needs 3, so 0.8 counts as 0.27; the lead too sparse to be preferred.
-    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 1, lead: 0.5 })]), ["drums"]);
-    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 3, lead: 0.5 })]), ["bass"]);
-    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 1, lead: 2 })]), ["lead"]);
+    // bass gives 0.5 notes/s where a full-energy phrase needs 1.8, so 0.8 counts as 0.22; the lead too sparse to be preferred.
+    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 0.5, lead: 0.3 })]), ["drums"]);
+    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 2, lead: 0.3 })]), ["bass"]);
+    assert.deepEqual(chooseLeaders([loud({ drums: 4, bass: 0.5, lead: 1.5 })]), ["lead"]);
     // A quiet phrase needs few notes, so the same sparse bass keeps its score.
-    assert.deepEqual(chooseLeaders([stub(null, [0.8, 1], [0.4, 0.5], { energy: 0.3, rate: { drums: 4, bass: 1, lead: 0 } })]), ["bass"]);
+    assert.deepEqual(chooseLeaders([stub(null, [0.8, 1], [0.4, 0.5], { energy: 0.3, rate: { drums: 4, bass: 0.5, lead: 0 } })]), ["bass"]);
   });
 
   it("buildPhrases counts onsets per second for each layer", () => {

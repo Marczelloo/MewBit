@@ -5,7 +5,11 @@
 const { FALLBACK_BEAT_MS } = require("./difficulty");
 
 const MAX_HOLD_BEATS = 4;
+const MAX_HOLD_SHARE = 0.08; // holds are at most this share of a chart's notes: more reads as a held-note chart
 const HOLD_SOURCES = new Set(["bass", "lead"]); // drum events never become holds
+
+// Does note `o` give way to hold candidate `c`: a backbone drum hit, or a less important note of another layer?
+const yields = (o, c) => o.source === "secondary" || (o.source !== c.source && o.level > c.level);
 
 const hand = (lane) => lane >> 1;
 const beatMsOf = (timing, t) => (typeof timing?.beatMsAt === "function" ? timing.beatMsAt(t) : FALLBACK_BEAT_MS);
@@ -74,16 +78,34 @@ function clipHolds(notes, limitMs, diff, timing) {
   });
 }
 
+// limitHoldShare(notes) -> notes: the shortest holds become taps until holds are at most MAX_HOLD_SHARE of the notes.
+// A tap is always legal where its hold was (it only frees the time the hold occupied).
+function limitHoldShare(notes) {
+  const allowed = Math.floor(MAX_HOLD_SHARE * notes.length);
+  const holds = notes.filter((n) => n.len > 0);
+  if (holds.length <= allowed) return notes;
+  const demote = new Set([...holds].sort((a, b) => a.len - b.len || b.t - a.t).slice(0, holds.length - allowed));
+  return notes.map((n) => {
+    if (!demote.has(n)) return n;
+    const tap = { ...n };
+    delete tap.len;
+    return tap;
+  });
+}
+
 // planHolds(items, diff, timing, prev, phraseEndMs) -> items still standing.
 // `items` are the phrase's kept notes ({t, lane, level, source, sustainMs?}, time-sorted); an
 // eligible one gets `len`. `prev` is the previous phrase's tail (its holds may still run).
 //
 // How a hold is placed (events are visited in time order):
-//   len = min(sustainMs, 4 beats, next note of the same lane - minLaneGapMs - t, phrase end - minLaneGapMs - t),
+//   len = min(sustainMs, 4 beats, next note of the same lane - minLaneGapMs - t, phrase end - minLaneGapMs - t)
+//   (a backbone drum hit, or a less important note of another layer, does not count as that next note: it yields
+//   to the hold, see 2.),
 //   rounded; below holdMinBeats * the local beat the event stays a tap.
 //   Notes the hold forbids ("blockers") are handled in this order:
 //   1. the hold is clipped to end before the first gap-type blocker, if it stays long enough;
-//   2. otherwise, if every blocker has a higher level number than the hold (less important), the blockers are dropped;
+//   2. otherwise, if every blocker has a higher level number than the hold (less important), or is a backbone drum
+//      hit under a tonal leader ("secondary"), the blockers are dropped;
 //   3. otherwise the hold is demoted to a tap.
 function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
   const dropped = new Set();
@@ -110,7 +132,7 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
 
     const later = items.filter((o, j) => j !== i && !dropped.has(o) && o.t >= c.t);
     let len = Math.min(c.sustainMs, MAX_HOLD_BEATS * beat, phraseEndMs - laneGap - c.t);
-    const sameLane = later.find((o) => o.lane === c.lane && o.t > c.t);
+    const sameLane = later.find((o) => o.lane === c.lane && o.t > c.t && !yields(o, c));
     if (sameLane) len = Math.min(len, sameLane.t - laneGap - c.t);
     len = Math.round(len);
     if (!(len > 0 && len >= minLen)) continue;
@@ -133,7 +155,7 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
       }
     }
     if (all.length > 0) {
-      if (all.every((o) => o.level > c.level)) {
+      if (all.every((o) => o.level > c.level || yields(o, c))) {
         for (const o of all) dropped.add(o);
       } else {
         continue; // demoted: stays a tap
@@ -144,4 +166,4 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
   return items.filter((n) => !dropped.has(n));
 }
 
-module.exports = { beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, planHolds, spacedBlocked };
+module.exports = { beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, limitHoldShare, planHolds, spacedBlocked };

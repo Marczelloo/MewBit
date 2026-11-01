@@ -2,9 +2,10 @@ const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTE
 const { bandPathNotes } = require("./bandPath");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
-const { clipHolds } = require("./holds");
+const { clipHolds, limitHoldShare } = require("./holds");
+const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
-const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders } = require("./phrases");
+const { REPEAT_SIMILARITY, buildPhrases, chooseLeaders, hasSteadyPulse } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -16,7 +17,8 @@ const MIN_COPY_SHARE = 0.5; // a repeat keeping less of its source than this is 
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
-function analyse(features) {
+function analyse(raw) {
+  const features = withMergedLead(raw);
   const durationMs = Math.round(features.durationMs);
   const timing = buildTiming(features, durationMs);
   const phrases = buildPhrases(features, timing, durationMs);
@@ -96,12 +98,12 @@ function chartNotes(ctx, diff) {
     }
 
     const events = patternEvents(phrase, leaders[i], features, timing);
-    all.push(...applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs));
+    all.push(...applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, leaders[i] === "drums" && hasSteadyPulse(phrase)));
     i++;
   }
 
   // No hold runs past the end of the song, whatever produced it.
-  return enforceFloors(clipHolds(all.sort(byTime), durationMs, diff, timing), diff, timing);
+  return limitHoldShare(enforceFloors(clipHolds(all.sort(byTime), durationMs, diff, timing), diff, timing));
 }
 
 // --- public API --------------------------------------------------------------

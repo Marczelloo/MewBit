@@ -133,7 +133,7 @@ function limitJacks(notes, diff, prevNotes, { strict, timing = null }) {
 
 // Does adding `candidate` keep every gap and the sliding density cap?
 // `accepted` is time-sorted.
-function fits(candidate, accepted, diff, energy) {
+function fits(candidate, accepted, diff, energy, powerFloor = 0) {
   const noteGap = diff.minNoteGapMs ?? 0;
   const laneGap = diff.minLaneGapMs ?? 0;
   const reach = Math.max(noteGap, laneGap);
@@ -145,10 +145,10 @@ function fits(candidate, accepted, diff, energy) {
     if (n.lane === candidate.lane && dt < laneGap) return false;
     if (n.lane === candidate.lane && n.t === candidate.t) return false;
   }
-  return densityHolds(candidate, accepted, diff, energy);
+  return densityHolds(candidate, accepted, diff, energy, powerFloor);
 }
 
-// Mean of energy^1.5 over a window; silent hops count as 0.
+// Mean of energy^ENERGY_EXPONENT over a window; silent hops count as 0.
 function windowPower(fromMs, energy) {
   let sum = 0;
   let n = 0;
@@ -161,8 +161,9 @@ function windowPower(fromMs, energy) {
 }
 
 // Any DENSITY_WINDOW_MS window holds at most maxNps * 2 s notes, scaled down by
-// the window's energy^1.5 (plus one note of slack, like the v3 carry).
-function densityHolds(candidate, accepted, diff, energy) {
+// the window's energy^ENERGY_EXPONENT (plus one note of slack, like the v3 carry). `powerFloor` is the
+// least power a window gets: a phrase with a steady pulse is never thinner than that, however quiet.
+function densityHolds(candidate, accepted, diff, energy, powerFloor = 0) {
   const seconds = DENSITY_WINDOW_MS / 1000;
   const hardCap = Math.floor(diff.maxNps * seconds + EPS);
   const starts = new Set([candidate.t]);
@@ -170,7 +171,7 @@ function densityHolds(candidate, accepted, diff, energy) {
   for (const from of starts) {
     let count = 1;
     for (const n of accepted) if (n.t >= from && n.t < from + DENSITY_WINDOW_MS) count++;
-    const cap = Math.min(hardCap, Math.floor(diff.maxNps * seconds * windowPower(from, energy) + 1 + EPS));
+    const cap = Math.min(hardCap, Math.floor(diff.maxNps * seconds * Math.max(powerFloor, windowPower(from, energy)) + 1 + EPS));
     if (count > cap) return false;
   }
   return true;
@@ -179,25 +180,33 @@ function densityHolds(candidate, accepted, diff, energy) {
 // Picks events in priority order (lowest level first, then strongest), skipping
 // any that would break a floor or the density cap; so the highest level and the
 // weakest events are what gets dropped.
-function selectByFloors(items, diff, energy, prevNotes) {
+function selectByFloors(items, diff, energy, prevNotes, powerFloor = 0) {
   const accepted = prevNotes.map((n) => ({ t: n.t, lane: n.lane })).sort(byTime);
   const kept = [];
   for (const item of [...items].sort(byPriority)) {
-    if (!fits(item, accepted, diff, energy)) continue;
+    if (!fits(item, accepted, diff, energy, powerFloor)) continue;
     accepted.splice(lowerBound(accepted.map((n) => n.t), item.t), 0, { t: item.t, lane: item.lane });
     kept.push(item);
   }
   return kept.sort(byTime);
 }
 
+// The density power a phrase with a steady pulse never drops below: the difficulty's pulseNotesPerBeat at the
+// song's tempo, as a share of maxNps (so the usual cap formula yields it). 0 without a pulse or a beat grid.
+function pulsePowerFloor(diff, timing) {
+  if (!(diff.pulseNotesPerBeat > 0) || !(diff.maxNps > 0) || !timing?.snapped) return 0;
+  return Math.min(1, (diff.pulseNotesPerBeat * 1000) / (timing.medianMs * diff.maxNps));
+}
+
 // --- public API ----------------------------------------------------------------------------
 
-// applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy, phraseEndMs) -> [{ t, lane, len? }]
+// applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy, phraseEndMs, steadyPulse) -> [{ t, lane, len? }]
 // `prevNotes` is the previous phrase's tail (gaps, jacks and holds carry across the seam).
 // `phraseEnergy` (optional) is the phrase's mean energy for Normal's quarter-grid rule;
 // without it the energy at the event's time is used. `phraseEndMs` (optional) keeps holds
-// inside their phrase. A sustained bass/lead event becomes a hold (see holds.js).
-function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity) {
+// inside their phrase. A sustained bass/lead event becomes a hold (see holds.js). `steadyPulse` (optional)
+// marks a phrase whose beats carry drum or bass onsets: it gets a density floor (pulsePowerFloor).
+function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity, steadyPulse = false) {
   const energy = asLookup(energyAt);
   const tail = (Array.isArray(prevNotes) ? prevNotes : []).filter((n) => Number.isFinite(n?.t) && Number.isInteger(n?.lane));
   const sorted = [...events].sort(byTime);
@@ -223,7 +232,7 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
 
   items = capMoments(items, diff.chord ? 2 : 1);
   items = limitJacks(items, diff, prev, { strict: false, timing });
-  items = selectByFloors(items, diff, energy, prev);
+  items = selectByFloors(items, diff, energy, prev, steadyPulse ? pulsePowerFloor(diff, timing) : 0);
   items = planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs);
   items = limitJacks(items, diff, prev, { strict: true, timing });
   return items.sort(byTime).map((n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane }));

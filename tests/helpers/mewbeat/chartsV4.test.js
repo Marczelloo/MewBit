@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 7", () => {
-    assert.equal(GENERATOR_VERSION, 7);
+  it("is version 8", () => {
+    assert.equal(GENERATOR_VERSION, 8);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -47,7 +47,7 @@ describe("generator v4", () => {
     }
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].maxLevel), [0, 1, 2]);
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].maxJack), [1, 2, 3]);
-    assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].holdMinBeats), [1, 0.5, 0.5]);
+    assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].holdMinBeats), [1, 1, 1]);
   });
 
   it("sourceWindow: the repeat copies its own window moved back by the lag", () => {
@@ -80,7 +80,8 @@ describe("generator v4", () => {
     }
   });
 
-  for (const [label, energy] of [["flat energy", undefined], ["loud", () => 0.85]]) {
+  // 0.75, not higher: at 0.85 Normal already takes every event this small fixture has, as many as Hard.
+  for (const [label, energy] of [["flat energy", undefined], ["loud", () => 0.75]]) {
     describe(label, () => {
       const features = makeLayeredFeatures({ energy });
 
@@ -466,24 +467,24 @@ describe("chartMetrics", () => {
 });
 
 describe("holds", () => {
-  const features = makeLayeredFeatures({ holdsEveryBeats: 2 });
+  // One 2-beat sustain per phrase among beat taps: holds stay under the 8 % share cap, as in a real chart. No drums, so the lead leads.
+  const features = makeLayeredFeatures({ sustainAtBeats: [6], drums: false, durationMs: 192000 });
   const { timing, phrases, leaders } = setup(features);
   const beatMs = 500;
   const holdsOf = (notes) => notes.filter((n) => n.len !== undefined);
 
   it("holdsFollowSustainedNotes: Normal turns kept sustained lead notes into holds", () => {
     const { normal } = chartsOf(features);
-    assert.ok(holdsOf(normal.notes).length >= 20, `${holdsOf(normal.notes).length} holds`);
-    const leadTimes = new Set(features.lead.filter((n) => n.len >= beatMs / 2).map((n) => n.t));
+    assert.ok(holdsOf(normal.notes).length >= phrases.length - 2, `${holdsOf(normal.notes).length} holds`);
+    const sustainTimes = new Set(features.lead.filter((n) => n.len >= beatMs).map((n) => n.t));
     phrases.forEach((p, i) => {
       assert.equal(leaders[i], "lead");
-      const onLead = notesIn(normal.notes, p.startMs, p.endMs).filter((n) => leadTimes.has(n.t));
-      const taps = onLead.filter((n) => n.len === undefined);
-      assert.ok(taps.length <= 1, `phrase ${i}: ${taps.length} lead notes stayed taps`);
-      assert.ok(onLead.length - taps.length >= 3, `phrase ${i}: holds ${onLead.length - taps.length}`);
+      const onSustain = notesIn(normal.notes, p.startMs, p.endMs).filter((n) => sustainTimes.has(n.t));
+      assert.equal(onSustain.length, 1, `phrase ${i}`);
+      assert.ok(onSustain[0].len >= beatMs, `phrase ${i}: the sustained note stayed a tap`);
     });
     for (const n of holdsOf(normal.notes)) {
-      assert.ok(Number.isInteger(n.len) && n.len >= beatMs / 2 && n.len <= 4 * beatMs, `len ${n.len} at ${n.t}`);
+      assert.ok(Number.isInteger(n.len) && n.len >= beatMs && n.len <= 4 * beatMs, `len ${n.len} at ${n.t}`);
     }
   });
 
@@ -540,20 +541,24 @@ describe("holds", () => {
     const { list } = features.phrases;
     for (const d of DIFFS) {
       const { notes } = charts[d];
+      let withHolds = 0;
       list.forEach((p, i) => {
         if (p.repeatOf === null) return;
         const source = list[p.repeatOf];
         const expected = notesIn(notes, source.startMs, source.endMs).map((n) => ({ ...n, t: n.t + p.lagMs }));
-        assert.ok(expected.some((n) => n.len !== undefined), `${d}: source ${p.repeatOf} has holds`);
+        if (expected.some((n) => n.len !== undefined)) withHolds++;
         assert.deepEqual(notesIn(notes, p.startMs, p.endMs), expected, `${d}: phrase ${i} vs ${p.repeatOf}`);
       });
+      assert.ok(withHolds > 0, `${d}: some repeat source has holds`);
     }
   });
 
   it("starsCountHolds: the same notes with holds get more stars", () => {
     const { normal } = chartsOf(features);
     const flat = { notes: normal.notes.map((n) => ({ t: n.t, lane: n.lane })) };
-    assert.ok(starsOf(normal) > starsOf(flat), `${starsOf(normal)} vs ${starsOf(flat)}`);
+    // A chart this hold-light gains under a rounding step, so hold every third note of the same chart.
+    const some = { notes: flat.notes.map((n, i) => (i % 3 === 0 ? { ...n, len: 400 } : n)) };
+    assert.ok(starsOf(some) > starsOf(flat), `${starsOf(some)} vs ${starsOf(flat)}`);
     const all = { notes: flat.notes.map((n) => ({ ...n, len: 400 })) };
     assert.ok(starsOf(all) - starsOf(flat) <= 0.41);
     const dense = { notes: Array.from({ length: 400 }, (_, i) => ({ t: i * 100, lane: i % 4, len: 50 })) };
@@ -578,7 +583,8 @@ describe("holds", () => {
     it("a truncated final repeat phrase leaves no hold past durationMs", () => {
       assert.equal(last.repeatOf, 1);
       assert.ok(crossing, "a long hold in the last (copied) phrase");
-      const cut = crossing.t + Math.round(crossing.len / 2);
+      // Cut a fifth short: still room for a hold of a beat after the lane gap.
+      const cut = crossing.t + Math.round(crossing.len * 0.8);
       const truncated = { ...features, durationMs: cut, phrases: { ...features.phrases, list: [...list.slice(0, -1), { ...last, endMs: cut }] } };
       const charts = chartsOf(truncated);
       for (const d of DIFFS) assert.deepEqual(noHoldPast(charts[d], cut), [], d);
@@ -587,7 +593,7 @@ describe("holds", () => {
     });
 
     it("a copy shorter than its source clips its holds to its own end", () => {
-      const endMs = crossing.t + Math.round(crossing.len / 2);
+      const endMs = crossing.t + Math.round(crossing.len * 0.8);
       const shorter = { ...features, phrases: { ...features.phrases, list: [...list.slice(0, -1), { ...last, endMs }] } };
       const charts = chartsOf(shorter);
       for (const d of DIFFS) assert.deepEqual(noHoldPast(charts[d], endMs, last.startMs), [], d);

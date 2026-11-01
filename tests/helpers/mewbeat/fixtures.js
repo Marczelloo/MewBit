@@ -82,6 +82,7 @@ function threeSectionEnergy(ms) {
 // --- features v2 (drums / bass / lead / phrases) --------------------------------
 
 const BEATS_PER_PHRASE = 16;
+const SUSTAIN_FIXTURE_BEATS = 2;
 
 // Per-letter event patterns, in beats from the phrase start. Repeated letters
 // give identical patterns, which is what makes a phrase a "repeat".
@@ -112,10 +113,19 @@ function bassPattern(letter) {
 
 // Without holds a lead note per beat; with holds every holdsEveryBeats-th beat
 // starts a note that is holdsEveryBeats beats long (the beats it covers are empty).
-function leadPattern(letter, holdsEveryBeats) {
+//
+// sustainAtBeats instead: a half-beat tap on every beat, except that each listed beat starts a sustained note of
+// SUSTAIN_FIXTURE_BEATS beats (the beats it covers are empty). A few holds among many taps, like a real chart.
+function leadPattern(letter, holdsEveryBeats, sustainAtBeats) {
   const scale = letter === "A" ? [60, 62, 64, 67, 65, 64, 62, 60] : [67, 65, 64, 62, 64, 65, 67, 72];
   const events = [];
-  if (holdsEveryBeats > 0) {
+  if (sustainAtBeats.length > 0) {
+    for (let b = 0, k = 0; b < BEATS_PER_PHRASE; k++) {
+      const long = sustainAtBeats.includes(b);
+      events.push({ beat: b, lenBeats: long ? SUSTAIN_FIXTURE_BEATS : 0.5, pitch: scale[k % scale.length] });
+      b += long ? SUSTAIN_FIXTURE_BEATS : 1;
+    }
+  } else if (holdsEveryBeats > 0) {
     for (let b = 0, k = 0; b < BEATS_PER_PHRASE; b += holdsEveryBeats, k++) {
       events.push({ beat: b, lenBeats: Math.min(holdsEveryBeats, BEATS_PER_PHRASE - b), pitch: scale[k % scale.length] });
     }
@@ -138,6 +148,7 @@ function makeLayeredFeatures({
   bass = true,
   lead = true,
   holdsEveryBeats = 0,
+  sustainAtBeats = [],
   energy,
 } = {}) {
   const base = makeFeatures({ bpm, durationMs, highlightMs: Math.round(durationMs / 2), ...(energy ? { energy } : {}) });
@@ -170,7 +181,7 @@ function makeLayeredFeatures({
     };
     place(drumPattern(letter), drumEvents, null, drums);
     place(bassPattern(letter), bassEvents, 0.7, bass);
-    place(leadPattern(letter, holdsEveryBeats), leadEvents, leadConfidence, lead);
+    place(leadPattern(letter, holdsEveryBeats, sustainAtBeats), leadEvents, leadConfidence, lead);
 
     // Like the plugin: a repeat points at the EARLIEST matching phrase.
     const source = firstOfLetter.get(letter);

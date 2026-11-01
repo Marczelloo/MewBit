@@ -1,5 +1,5 @@
-const { FALLBACK_BEAT_MS } = require("./difficulty");
-const { clamp01, lowerBound } = require("./util");
+const { ENERGY_EXPONENT, FALLBACK_BEAT_MS, SILENCE_ENERGY } = require("./difficulty");
+const { clamp01, lowerBound, nearestIndex } = require("./util");
 const { energyLookup } = require("./timing");
 
 const BEATS_PER_PHRASE = 16;
@@ -19,9 +19,18 @@ const VOCAL_MIN_RATE = 1; // lead onsets per second
 const HYSTERESIS = 0.8; // the previous leader stays while its score >= this share of the best
 
 const FULL_DRUM_EVENTS_PER_BEAT = 2; // drum density at which the drum layer counts as fully busy
-// A layer leading a phrase of energy E should offer about this many notes per second times E^1.5 (the shape of
-// the difficulty's density target); one with fewer has its score scaled down in proportion.
-const BUSY_NOTES_PER_SEC = 3;
+// A layer leading a phrase of energy E should offer about this many notes per second times E^ENERGY_EXPONENT (the
+// shape of the difficulty's density target); one with fewer has its score scaled down in proportion.
+const BUSY_NOTES_PER_SEC = 1.8;
+
+// Steady pulse: most of the audible beats carry a drum or low-band onset. Such a phrase is charted at least at the
+// difficulty's pulseNotesPerBeat however quiet it is, and its drums are judged against the phrase's own loudness
+// (soft kicks under a quiet intro are all the rhythm there is) instead of the song's peak.
+const PULSE_TOLERANCE_BEATS = 0.2; // an onset this close to a beat (in beats) carries it
+const PULSE_MIN_SHARE = 0.7; // share of the audible beats that must carry one
+const PULSE_MIN_BEATS = 4; // fewer audible beats than this say nothing about a pulse
+const SOFT_DRUMS_MIN_ENERGY = 0.1; // drum strength is read relative to max(phrase energy, this)
+const SOFT_DRUMS_MAX_LIFT = 3; // ...and lifted by at most this factor
 
 const LAYERS = ["drums", "bass", "lead"];
 
@@ -95,6 +104,32 @@ function ratesOf(features, startMs, endMs) {
   };
 }
 
+// Sorted times of every drum event and low-band onset: what can carry a beat.
+function pulseTimesOf(features) {
+  const times = [];
+  for (const d of Array.isArray(features.drums) ? features.drums : []) if (Number.isFinite(d?.t)) times.push(d.t);
+  for (const o of Array.isArray(features.bands?.[0]?.onsets) ? features.bands[0].onsets : []) if (Number.isFinite(o?.t)) times.push(o.t);
+  return times.sort((a, b) => a - b);
+}
+
+// Share of the phrase's audible beats that carry one of `times`; 0 without a beat grid.
+function pulseOf(times, timing, lookup, startMs, endMs) {
+  if (!timing?.snapped) return 0;
+  const tolerance = PULSE_TOLERANCE_BEATS * timing.medianMs;
+  let audible = 0;
+  let carried = 0;
+  for (let i = lowerBound(timing.beats, startMs); i < timing.beats.length && timing.beats[i] < endMs; i++) {
+    const beat = timing.beats[i];
+    if (lookup.at(beat) < SILENCE_ENERGY) continue;
+    audible++;
+    const j = nearestIndex(times, beat);
+    if (j >= 0 && Math.abs(times[j] - beat) <= tolerance) carried++;
+  }
+  return audible < PULSE_MIN_BEATS ? 0 : carried / audible;
+}
+
+const hasSteadyPulse = (phrase) => finite(phrase?.pulse) >= PULSE_MIN_SHARE;
+
 function layerValues(source) {
   return { drums: clamp01(finite(source?.drums)), bass: clamp01(finite(source?.bass)), lead: clamp01(finite(source?.lead)) };
 }
@@ -160,12 +195,13 @@ function meanEnergy(lookup, startMs, endMs) {
 }
 
 // buildPhrases(features, timing, durationMs) -> Phrase[]
-// Phrase = { index, startMs, endMs, repeatOf, similarity, lagMs, activity, confidence, rate, energy, sectionStart }
+// Phrase = { index, startMs, endMs, repeatOf, similarity, lagMs, activity, confidence, rate, energy, pulse, sectionStart }
 function buildPhrases(features, timing, durationMs) {
   const duration = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : finite(features.durationMs);
   if (!(duration > 0)) return [];
   const beatMs = timing?.medianMs > 0 ? timing.medianMs : FALLBACK_BEAT_MS;
   const lookup = energyLookup(features);
+  const pulseTimes = pulseTimesOf(features);
   const cuts = sectionStartsOf(features, duration);
   const isSectionStart = (startMs) => cuts.some((c) => Math.abs(c - startMs) <= beatMs);
 
@@ -198,6 +234,7 @@ function buildPhrases(features, timing, durationMs) {
       confidence: layers.confidence,
       rate: ratesOf(features, p.startMs, p.endMs),
       energy: meanEnergy(lookup, p.startMs, p.endMs),
+      pulse: pulseOf(pulseTimes, timing, lookup, p.startMs, p.endMs),
       sectionStart: isSectionStart(p.startMs),
     };
   });
@@ -218,7 +255,7 @@ function scoreOf(p, layer, a, c) {
   const base = layer === "drums" ? a : layer === "lead" ? c : a * c;
   const rate = p.rate?.[layer];
   if (!Number.isFinite(rate)) return base;
-  const need = BUSY_NOTES_PER_SEC * Math.pow(clamp01(finite(p.energy)), 1.5);
+  const need = BUSY_NOTES_PER_SEC * Math.pow(clamp01(finite(p.energy)), ENERGY_EXPONENT);
   return need > 0 ? base * Math.min(1, rate / need) : base;
 }
 
@@ -231,6 +268,13 @@ function isVocalSong(phrases) {
   return sung / phrases.length >= VOCAL_PHRASE_SHARE;
 }
 
+// Soft drums in a phrase with a steady pulse (instrumental songs only; a sung line keeps its lead): their strength is read against the phrase's own loudness, so a
+// quiet intro whose only rhythm is faint kicks is not out-scored by a held note just because the kicks are soft.
+function softDrumsLift(p) {
+  if (!hasSteadyPulse(p)) return 1;
+  return Math.min(SOFT_DRUMS_MAX_LIFT, 1 / Math.max(clamp01(finite(p.energy)), SOFT_DRUMS_MIN_ENERGY));
+}
+
 // chooseLeaders(phrases) -> Array<"drums"|"bass"|"lead"|"bands">, aligned to phrases.
 function chooseLeaders(phrases) {
   const leaders = [];
@@ -240,8 +284,9 @@ function chooseLeaders(phrases) {
     const score = {};
     const present = [];
     for (const layer of LAYERS) {
-      const a = finite(p.activity?.[layer]);
-      const c = finite(p.confidence?.[layer]);
+      const lift = layer === "drums" && !vocal ? softDrumsLift(p) : 1;
+      const a = clamp01(finite(p.activity?.[layer]) * lift);
+      const c = clamp01(finite(p.confidence?.[layer]) * lift);
       score[layer] = scoreOf(p, layer, a, c);
       if (isPresent(layer, a, c)) present.push(layer);
     }
@@ -268,4 +313,4 @@ function chooseLeaders(phrases) {
   return leaders;
 }
 
-module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders };
+module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse };

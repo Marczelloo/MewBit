@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 7;
+const GENERATOR_VERSION = 8;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -12,7 +12,9 @@ const SILENCE_ENERGY = 0.08; // no notes where the energy curve is below this
 const MIN_NOTES = 20; // fewer notes than this means "not chartable"
 
 const DENSITY_WINDOW_MS = 2000; // candidates are thinned per window of this size
-const ENERGY_EXPONENT = 1.5; // target notes/s = maxNps * busy * energy^ENERGY_EXPONENT
+// Target notes/s = maxNps * busy * energy^ENERGY_EXPONENT. Below 1.5 so a mid-energy passage (a drum section
+// at half the song's peak) is not charted as if it were nearly silent. phrases.js scores layers by it too.
+const ENERGY_EXPONENT = 1.0;
 
 // Busyness: the energy curve is normalised per song, so without this every
 // song's loud parts get the same density. A song's strong-onset rate scales the
@@ -51,6 +53,7 @@ const DIFFICULTIES = {
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
+    pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
     holdOtherHand: "blocked", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
     // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
     // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
@@ -75,7 +78,8 @@ const DIFFICULTIES = {
     maxJack: 2,
     maxLevel: 1,
     quarterMinEnergy: 0.6,
-    holdMinBeats: 0.5,
+    holdMinBeats: 1, // a half-beat hold reads as noise
+    pulseNotesPerBeat: 1,
     holdOtherHand: "spaced",
     bandBias: [1, 1, 0.9, 0.8],
     beatBias: 0.2,
@@ -98,7 +102,8 @@ const DIFFICULTIES = {
     maxJack: 3,
     maxLevel: 2,
     quarterMinEnergy: null,
-    holdMinBeats: 0.5,
+    holdMinBeats: 1,
+    pulseNotesPerBeat: 2,
     holdOtherHand: "free",
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
