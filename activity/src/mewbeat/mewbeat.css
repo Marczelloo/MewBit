@@ -818,6 +818,7 @@
 
 .mb-ss-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.9); }
 .mb-ss-error { margin: 0; color: var(--mb-danger); font-size: 12.5px; font-weight: 700; }
+.mb-ss-added { margin: 0; color: var(--mb-cyan); font-size: 12.5px; font-weight: 700; }
 .mb-ss-play, .mb-ss-add { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; border-radius: 12px; font-size: 14px; font-weight: 800; }
 .mb-ss-play { border-color: var(--mb-text); background: var(--mb-text); color: var(--mb-bg); }
 .mb-ss-play:hover:not(:disabled) { border-color: #fff; background: #fff; }
@@ -994,4 +995,186 @@
   .mb-res-body { grid-template-columns: minmax(0, 1fr); }
   .mb-res-stage { display: none; }
   .mb-res-side { border-top: 1px solid var(--mb-line); border-left: 0; overflow: visible; }
+}
+
+/* ---------- room lobby (docs/superpowers/specs/mewbeat-mockups/lobby-v3.html) ---------- */
+/* Fills the game's second grid row like song select and results; the header stays usable above it. */
+.mb-lobby {
+  grid-area: 2 / 1;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(300px, 380px);
+  min-height: 0;
+  background:
+    radial-gradient(90% 60% at 100% 0%, rgb(167 139 250 / 0.1), transparent 60%),
+    radial-gradient(70% 60% at 0% 100%, rgb(255 110 199 / 0.08), transparent 60%),
+    var(--mb-bg);
+  animation: mb-fade-in 240ms ease-out both;
+}
+.mb-lobby-lbl { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
+.mb-lobby-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 18px 22px; overflow-y: auto; }
+.mb-lobby-top { display: flex; align-items: center; gap: 10px; }
+.mb-lobby-top .mb-btn { min-height: 34px; padding: 0 14px; font-size: 13px; }
+.mb-lobby-crumb { color: var(--mb-faint); font-size: 13px; }
+.mb-lobby-badge { margin-left: auto; padding: 4px 10px; border: 1px solid rgb(255 110 199 / 0.5); border-radius: 999px; color: var(--mb-pink); font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.mb-lobby-hero { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 16px; align-items: end; }
+.mb-lobby-cover { width: 112px; aspect-ratio: 1; border-radius: 18px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
+.mb-lobby-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
+.mb-lobby-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mb-lobby-hero h2 { margin: 6px 0 2px; font-size: clamp(22px, 2.6vw, 30px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; overflow-wrap: anywhere; }
+.mb-lobby-artist { color: var(--mb-muted); font-size: 14px; overflow-wrap: anywhere; }
+.mb-lobby-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mb-lobby-chip { padding: 5px 8px; border-radius: 8px; outline: 1px solid var(--mb-line); background: var(--mb-raised); color: var(--mb-muted); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+
+/* the clock (or the live board for someone watching) beside Mewbit on the stage */
+.mb-lobby-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(190px, 38%, 300px);
+  column-gap: 18px;
+  align-items: end;
+  padding: 6px 0 14px;
+  border-top: 1px solid var(--mb-line);
+  border-bottom: 1px solid var(--mb-line);
+}
+.mb-lobby-clock, .mb-lobby-watch { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; align-self: center; min-width: 0; }
+.mb-lobby-count { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+.mb-lobby-time { font: 700 clamp(56px, 8vw, 96px) "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.06em; line-height: 0.9; font-variant-numeric: tabular-nums; }
+.mb-lobby-count-text { margin: 0; max-width: 280px; color: var(--mb-muted); font-size: 14px; line-height: 1.45; }
+.mb-lobby-count-text strong { color: var(--mb-text); }
+.mb-lobby-start { min-width: 150px; }
+.mb-lobby-watch { align-items: stretch; width: 100%; }
+
+.mb-lobby-mew { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 8px; }
+.mb-lobby-mew::before { content: ""; position: absolute; left: 6%; right: 6%; bottom: 4px; height: 24px; border-radius: 50%; background: radial-gradient(closest-side, rgb(255 110 199 / 0.28), transparent); }
+.mb-lobby-spot { position: absolute; top: 0; left: 50%; width: 120%; height: 100%; transform: translateX(-50%); pointer-events: none; background: linear-gradient(180deg, rgb(167 139 250 / 0.14), transparent 75%); clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%); }
+.mb-lobby-mewbox { position: relative; width: 100%; max-width: 260px; }
+.mb-lobby-bubble {
+  position: absolute;
+  top: 2%;
+  right: -2%;
+  z-index: 2;
+  max-width: 150px;
+  padding: 7px 10px;
+  border-radius: 12px 12px 12px 3px;
+  background: var(--mb-text);
+  color: var(--mb-bg);
+  font-weight: 800;
+  font-size: 12.5px;
+  line-height: 1.25;
+  animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.mb-lobby-mew-small .mb-lobby-mewbox { max-width: 220px; }
+
+/* queue timeline: one segment per song, wider for longer songs */
+.mb-lobby-queue { display: flex; flex-direction: column; gap: 10px; }
+.mb-lobby-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mb-lobby-add { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; font-size: 12.5px; }
+.mb-lobby-note { margin: 0; color: var(--mb-faint); font-size: 12.5px; }
+.mb-tl { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
+.mb-tl-seg { position: relative; display: flex; flex-direction: column; gap: 9px; flex-basis: 0; min-width: 124px; padding-bottom: 4px; }
+.mb-tl-bar { position: relative; height: 10px; border-radius: 5px; overflow: hidden; background: var(--mb-high-bg, #161920); }
+.mb-tl-bar i { position: absolute; inset: 0; transform-origin: left; background: var(--mb-cyan); transition: transform 300ms linear; }
+.mb-tl-mine .mb-tl-bar { background: var(--mb-pink); }
+.mb-tl-done { opacity: 0.55; }
+.mb-tl-txt { min-width: 0; padding-right: 22px; }
+.mb-tl-txt b { display: block; overflow: hidden; font-size: 13px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.mb-tl-txt small { display: block; margin-top: 2px; overflow: hidden; color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; white-space: nowrap; text-overflow: ellipsis; }
+.mb-tl-now .mb-tl-txt small { color: var(--mb-cyan); }
+.mb-tl-mine .mb-tl-txt b { color: var(--mb-pink); }
+.mb-tl-x { position: absolute; right: 0; bottom: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--mb-faint); cursor: pointer; }
+.mb-tl-x:hover { background: var(--mb-raised); color: var(--mb-danger); }
+.mb-tl-x:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
+.mb-tl-x:disabled { opacity: 0.4; cursor: default; }
+
+/* my difficulty and the informational ready toggle */
+.mb-lobby-mine { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.mb-lobby-diffs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.mb-lobby-diff { padding: 11px 12px; border: 0; border-radius: 12px; outline: 1px solid var(--mb-line); background: var(--mb-surface); color: var(--mb-text); font: 800 14px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; text-align: left; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
+.mb-lobby-diff:hover:not(:disabled) { background: var(--mb-raised); }
+.mb-lobby-diff:active:not(:disabled) { transform: scale(0.97); }
+.mb-lobby-diff:disabled { opacity: 0.55; cursor: default; }
+.mb-lobby-diff:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+.mb-lobby-diff-cyan { --c: var(--mb-cyan); }
+.mb-lobby-diff-violet { --c: var(--mb-violet); }
+.mb-lobby-diff-pink { --c: var(--mb-pink); }
+.mb-lobby-diff-on { outline: 2px solid var(--c); background: var(--mb-raised); }
+.mb-lobby-ready { min-width: 150px; padding: 15px 22px; border: 0; border-radius: 14px; background: var(--mb-text); color: var(--mb-bg); font: 900 15px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
+.mb-lobby-ready:active:not(:disabled) { transform: scale(0.97); }
+.mb-lobby-ready:disabled { opacity: 0.55; cursor: default; }
+.mb-lobby-ready:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+.mb-lobby-ready-on { background: var(--mb-cyan); }
+
+/* players, invite, keys */
+.mb-lobby-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 18px; overflow-y: auto; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
+.mb-lobby-side h3 { display: flex; align-items: baseline; justify-content: space-between; margin: 0; font-size: 15px; font-weight: 900; }
+.mb-lobby-side h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-lobby-players { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.mb-lobby-pl { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
+.mb-lobby-pl-me { border-color: rgb(103 227 244 / 0.55); background: linear-gradient(90deg, rgb(103 227 244 / 0.12), rgb(103 227 244 / 0.03) 60%), var(--mb-raised); }
+.mb-lobby-av { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.mb-lobby-av-text { background: var(--mb-violet); color: var(--mb-bg); font-size: 12px; font-weight: 900; }
+.mb-lobby-who { min-width: 0; }
+.mb-lobby-who b { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 800; overflow-wrap: anywhere; }
+.mb-lobby-who small { display: block; margin-top: 3px; color: var(--mb-faint); font-size: 12px; }
+.mb-lobby-you { padding: 2px 5px; border-radius: 5px; background: var(--mb-cyan); color: var(--mb-bg); font: 700 9.5px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
+.mb-lobby-state { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+.mb-lobby-pill { padding: 4px 8px; border-radius: 7px; background: var(--mb-high-bg, #161920); font: 700 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-lobby-pill-cyan { color: var(--mb-cyan); }
+.mb-lobby-pill-violet { color: var(--mb-violet); }
+.mb-lobby-pill-pink { color: var(--mb-pink); }
+.mb-lobby-st { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.mb-lobby-st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.mb-lobby-st-ok { color: var(--mb-cyan); }
+.mb-lobby-st-wait { color: var(--mb-faint); }
+
+.mb-lobby-invite { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding: 16px; border: 1px solid var(--mb-line); border-radius: 16px; background: var(--mb-surface); }
+.mb-lobby-invite p { margin: 0; color: var(--mb-muted); font-size: 12.5px; line-height: 1.45; }
+.mb-lobby-invite .mb-btn { min-height: 38px; }
+.mb-lobby-invite p.mb-lobby-invite-ok { color: var(--mb-cyan); font-weight: 700; }
+.mb-lobby-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--mb-faint); font-size: 12px; }
+.mb-lobby-link { margin-left: auto; padding: 4px 2px; border: 0; background: none; color: var(--mb-muted); font: inherit; text-decoration: underline; cursor: pointer; }
+.mb-lobby-link:hover { color: var(--mb-text); }
+.mb-lobby-link:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+
+.mb-lobby-toast { position: absolute; left: 50%; bottom: 20px; z-index: 3; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid var(--mb-line); border-radius: 12px; background: var(--mb-raised); color: var(--mb-text); font-size: 13px; font-weight: 700; transform: translateX(-50%); animation: mb-fade-in 160ms ease-out both; }
+.mb-lobby-toast-error { border-color: rgb(255 128 152 / 0.5); color: var(--mb-danger); }
+.mb-lobby-confirm-text { margin: 0; color: var(--mb-muted); font-size: 13px; line-height: 1.45; text-align: center; }
+.mb-lobby-join { grid-area: 2 / 1; position: relative; z-index: 1; display: grid; place-items: center; align-content: center; gap: 12px; background: var(--mb-bg); text-align: center; }
+.mb-lobby-join b { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
+.mb-lobby-join span { color: var(--mb-muted); font-size: 14px; }
+.mb-lobby-join .mb-btn { margin-top: 4px; }
+
+/* the full-screen 5-4-3-2-1-GO */
+.mb-countdown { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: rgb(5 6 8 / 0.86); pointer-events: none; }
+.mb-countdown-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.mb-countdown-label { min-height: 16px; color: var(--mb-muted); font: 500 12px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
+.mb-countdown-label b { color: var(--mb-text); }
+.mb-countdown-num { font: 900 clamp(96px, 24vh, 160px) "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: -0.06em; line-height: 1; animation: mb-countdown-tick 900ms ease-out both; }
+.mb-countdown-go { color: var(--mb-cyan); animation-name: mb-countdown-go; }
+@keyframes mb-countdown-tick {
+  0% { transform: scale(1.5); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.25; }
+}
+@keyframes mb-countdown-go {
+  0% { transform: scale(0.8); opacity: 0; }
+  30% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-lobby, .mb-lobby-toast, .mb-lobby-bubble, .mb-countdown-num { animation: none; }
+  .mb-tl-bar i, .mb-lobby-diff, .mb-lobby-ready { transition: none; }
+}
+@media (max-width: 760px) {
+  .mb-lobby { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .mb-lobby-main { overflow: visible; padding: 14px 16px; }
+  .mb-lobby-hero { grid-template-columns: 84px minmax(0, 1fr); }
+  .mb-lobby-cover { width: 84px; }
+  .mb-lobby-stage { grid-template-columns: minmax(0, 1fr); }
+  .mb-lobby-mewbox { max-width: 180px; }
+  .mb-lobby-mine { grid-template-columns: minmax(0, 1fr); }
+  .mb-lobby-side { overflow: visible; border-top: 1px solid var(--mb-line); border-left: 0; }
 }

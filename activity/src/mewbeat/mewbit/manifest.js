@@ -31,7 +31,8 @@ export const MEWBIT_POSES = {
   fever: pose("fever", "game", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 11, 12, 13, 14, 15], TWOS, { bubble: "FEVER!!! ✦" }),
   charting: pose("charting", "game", run(13, 2), TWOS, { bubble: "charting…" }),
   reveal: pose("reveal", "unlock", run(13), TWOS, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
-  // Lobby and results poses from the design spec: no screen renders <Mewbit> with them yet.
+  // Lobby poses from the design spec: the room lobby shows stretch/adjust while idle, peek before a round,
+  // hype on the countdown digits and go on GO.
   stretch: pose("stretch", "lobby", [1, 2, 3, 2, 4], 2.5),
   adjust: pose("adjust", "lobby", [1, 2, 3], 3),
   peek: pose("peek", "lobby", [1, 2, 3, 2], 3),

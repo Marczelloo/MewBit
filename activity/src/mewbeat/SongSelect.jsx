@@ -128,6 +128,8 @@ function MiniDifficulties({ row }) {
 // The song-select screen: what the server has played (this server or anywhere) or a search over every source,
 // then a song's difficulties and Play. onPlay(row, difficulty) returns a promise that rejects with the reason
 // the song can't be played; onAddToRoom(row, difficulty), when given, adds an "Add to room queue" button.
+// Without onPlay (picking songs for a room) adding is the main action: Enter and a double click add, the
+// picker stays open for more, and a rejection's message is shown.
 export default function SongSelect({ context, request, defaultDifficulty = "normal", onPlay, onAddToRoom, onClose }) {
   const [scope, setScope] = useState("server");
   const [query, setQuery] = useState("");
@@ -138,6 +140,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   const [difficulty, setDifficulty] = useState(DIFFICULTIES.some((d) => d.id === defaultDifficulty) ? defaultDifficulty : "normal");
   const [preparing, setPreparing] = useState(null); // the row key being prepared
   const [playError, setPlayError] = useState(null);
+  const [addedNote, setAddedNote] = useState(null); // confirmation after a song went into the room queue
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const mountedRef = useRef(true);
@@ -202,6 +205,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   const select = useCallback((row) => {
     setSelectedKey(row.key);
     setPlayError(null);
+    setAddedNote(null);
   }, []);
 
   const move = (step) => {
@@ -223,6 +227,22 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     }
   }, [selected, preparing, onPlay, difficulty]);
 
+  const addToRoom = useCallback(async () => {
+    if (!selected || preparing || !onAddToRoom) return;
+    setPreparing(selected.key);
+    setPlayError(null);
+    setAddedNote(null);
+    try {
+      await onAddToRoom(selected, difficulty);
+      if (mountedRef.current) setAddedNote(`Added "${selected.title}" to the room queue.`);
+    } catch (error) {
+      if (mountedRef.current) setPlayError(describePrepareError(error));
+    } finally {
+      if (mountedRef.current) setPreparing(null);
+    }
+  }, [selected, preparing, onAddToRoom, difficulty]);
+  const primary = onPlay ? play : addToRoom;
+
   // The game's keys are paused while this screen is up, so typing reaches the search box.
   const onKeyDown = (event) => {
     if (event.key === "Escape") {
@@ -234,7 +254,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
       move(event.key === "ArrowDown" ? 1 : -1);
     } else if (event.key === "Enter" && !(event.target instanceof HTMLElement && event.target.tagName === "BUTTON")) {
       event.preventDefault();
-      play();
+      primary();
     }
   };
 
@@ -350,7 +370,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
               aria-selected={row.key === selected?.key}
               className={`mb-ss-row${row.key === selected?.key ? " mb-ss-row-on" : ""}`}
               onClick={() => select(row)}
-              onDoubleClick={() => { select(row); play(); }}
+              onDoubleClick={() => { select(row); primary(); }}
             >
               <Cover row={row} className="mb-ss-art" />
               <span className="mb-ss-info">
@@ -369,14 +389,17 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
 
         <div className="mb-ss-actions">
           {playError ? <p className="mb-ss-error" role="alert">{playError}</p> : null}
-          <button type="button" className="mb-btn mb-btn-primary mb-ss-play" disabled={!selected || busy} onClick={play}>
-            <Play size={16} weight="fill" aria-hidden="true" />
-            {busy ? "Preparing…" : <>Play{selected ? <small>{DIFFICULTIES.find((d) => d.id === difficulty)?.label}</small> : null}</>}
-          </button>
+          {addedNote ? <p className="mb-ss-added" role="status">{addedNote}</p> : null}
+          {onPlay ? (
+            <button type="button" className="mb-btn mb-btn-primary mb-ss-play" disabled={!selected || busy} onClick={play}>
+              <Play size={16} weight="fill" aria-hidden="true" />
+              {busy ? "Preparing…" : <>Play{selected ? <small>{DIFFICULTIES.find((d) => d.id === difficulty)?.label}</small> : null}</>}
+            </button>
+          ) : null}
           {onAddToRoom ? (
-            <button type="button" className="mb-btn mb-ss-add" disabled={!selected || busy} onClick={() => selected && onAddToRoom(selected, difficulty)}>
+            <button type="button" className={`mb-btn mb-ss-add${onPlay ? "" : " mb-btn-primary"}`} disabled={!selected || busy} onClick={addToRoom}>
               <Plus size={16} weight="bold" aria-hidden="true" />
-              Add to room queue
+              {busy && !onPlay ? "Adding…" : "Add to room queue"}
             </button>
           ) : null}
         </div>
