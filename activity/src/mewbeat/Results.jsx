@@ -327,11 +327,6 @@ export default function Results({
         if (target && ["BUTTON", "INPUT", "SELECT", "TEXTAREA", "A"].includes(target.tagName)) return;
         event.preventDefault();
         runPrimary();
-      } else if (onRestart && (event.key === "r" || event.key === "R")) {
-        // Buttons don't use R, so only typing blocks it.
-        if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable)) return;
-        event.preventDefault();
-        onRestart();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -433,7 +428,7 @@ export default function Results({
           <div className="mb-res-actions">
             {onRestart ? (
               <button type="button" className="mb-btn" onClick={onRestart}>
-                <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" />Restart <kbd className="mb-kbd">R</kbd>
+                <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" />Restart <kbd className="mb-kbd">Hold R</kbd>
               </button>
             ) : null}
             {mode === "solo" ? null : (

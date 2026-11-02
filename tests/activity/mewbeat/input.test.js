@@ -3,13 +3,14 @@ const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
+let createKeyHold;
 let createKeyRouter;
 let keyLabel;
 let keysProblem;
 let KEYS_MESSAGE;
 
 test.before(async () => {
-  ({ createKeyRouter, keyLabel, keysProblem, KEYS_MESSAGE } = await import(
+  ({ createKeyHold, createKeyRouter, keyLabel, keysProblem, KEYS_MESSAGE } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/input.js")).href
   ));
 });
@@ -31,27 +32,6 @@ test("a bound key calls onLane with the lane and the event timestamp", () => {
   const { calls, route } = setup();
   assert.equal(route({ code: "KeyF", timeStamp: 1234.5 }), true);
   assert.deepEqual(calls.lane, [[1, 1234.5]]);
-});
-
-test("R restarts when there is something to restart, and is left alone otherwise", () => {
-  let restarts = 0;
-  const handled = (answer) => createKeyRouter({ keys: KEYS, onLane() {}, onFever() {}, onExit() {}, onRestart: () => { restarts += 1; return answer; } });
-  assert.equal(handled(true)({ code: "KeyR" }), true);
-  assert.equal(handled(false)({ code: "KeyR" }), false);
-  assert.equal(restarts, 2);
-  assert.equal(handled(true)({ code: "KeyR", repeat: true }), false);
-  assert.equal(handled(true)({ code: "KeyR", ctrlKey: true }), false);
-  assert.equal(restarts, 2);
-  assert.equal(setup().route({ code: "KeyR" }), false);
-});
-
-test("a lane bound to R keeps it", () => {
-  let restarts = 0;
-  const lanes = [];
-  const route = createKeyRouter({ keys: ["KeyR", "KeyF", "KeyJ", "KeyK"], onLane: (lane) => lanes.push(lane), onFever() {}, onExit() {}, onRestart: () => { restarts += 1; return true; } });
-  assert.equal(route({ code: "KeyR", timeStamp: 1 }), true);
-  assert.deepEqual(lanes, [0]);
-  assert.equal(restarts, 0);
 });
 
 test("a repeated key is ignored", () => {
@@ -87,6 +67,74 @@ test("a held Space or Escape does not repeat", () => {
   assert.equal(route({ code: "Space", repeat: true, timeStamp: 1 }), false);
   assert.equal(route({ code: "Escape", repeat: true, timeStamp: 1 }), false);
   assert.equal(calls.fever + calls.exit, 0);
+});
+
+function holdSetup(t, canStart = () => true) {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls = { done: 0, changes: [] };
+  const hold = createKeyHold({ code: "KeyR", ms: 600, canStart, onChange: (held) => calls.changes.push(held), onDone: () => { calls.done += 1; } });
+  return { calls, hold, tick: (ms) => t.mock.timers.tick(ms) };
+}
+
+test("a key held long enough fires once", (t) => {
+  const { calls, hold, tick } = holdSetup(t);
+  assert.equal(hold.keydown({ code: "KeyR" }), true);
+  tick(599);
+  assert.equal(calls.done, 0);
+  assert.deepEqual(calls.changes, [true]);
+  tick(1);
+  assert.equal(calls.done, 1);
+  assert.deepEqual(calls.changes, [true, false]);
+  assert.equal(hold.keydown({ code: "KeyR", repeat: true }), false);
+  tick(1000);
+  assert.equal(calls.done, 1);
+});
+
+test("letting go or losing focus before the end does nothing", (t) => {
+  const { calls, hold, tick } = holdSetup(t);
+  hold.keydown({ code: "KeyR" });
+  tick(300);
+  hold.keyup({ code: "KeyF" });
+  tick(100);
+  hold.keyup({ code: "KeyR" });
+  tick(1000);
+  hold.keydown({ code: "KeyR" });
+  hold.cancel();
+  tick(1000);
+  assert.equal(calls.done, 0);
+  assert.deepEqual(calls.changes, [true, false, true, false]);
+});
+
+test("a hold counts from its own press", (t) => {
+  const { calls, hold, tick } = holdSetup(t);
+  hold.keydown({ code: "KeyR" });
+  tick(400);
+  hold.keyup({ code: "KeyR" });
+  hold.keydown({ code: "KeyR" });
+  tick(400);
+  assert.equal(calls.done, 0);
+  tick(200);
+  assert.equal(calls.done, 1);
+});
+
+test("a hold's auto-repeat is its own, and other keys and modifiers are left alone", (t) => {
+  const { calls, hold, tick } = holdSetup(t);
+  assert.equal(hold.keydown({ code: "KeyR", repeat: true }), false);
+  assert.equal(hold.keydown({ code: "KeyF" }), false);
+  assert.equal(hold.keydown({ code: "KeyR", ctrlKey: true }), false);
+  assert.deepEqual(calls.changes, []);
+  hold.keydown({ code: "KeyR" });
+  assert.equal(hold.keydown({ code: "KeyR", repeat: true }), true);
+  tick(600);
+  assert.equal(calls.done, 1);
+});
+
+test("a hold doesn't start when the key means nothing right now", (t) => {
+  const { calls, hold, tick } = holdSetup(t, () => false);
+  assert.equal(hold.keydown({ code: "KeyR" }), false);
+  tick(1000);
+  assert.equal(calls.done, 0);
+  assert.deepEqual(calls.changes, []);
 });
 
 test("keyLabel shows readable labels", () => {

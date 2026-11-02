@@ -895,6 +895,36 @@
   border-radius: 16px;
   background: var(--mb-surface);
 }
+/* Holding R: the bar fills for as long as the key has to stay down. */
+.mb-restart-hold {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  padding: 10px 16px;
+  border: 1px solid var(--mb-line);
+  border-radius: 12px;
+  background: var(--mb-raised);
+  color: var(--mb-text);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.mb-restart-hold i {
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--mb-pink);
+  transform-origin: left;
+  animation: mb-restart-fill var(--mb-hold-ms) linear both;
+}
+@keyframes mb-restart-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .mb-pause-title { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; text-align: center; }
 .mb-pause-actions { display: flex; flex-direction: column; gap: 8px; }
 .mb-pause-actions .mb-btn, .mb-pause-exit { display: inline-flex; align-items: center; justify-content: flex-start; gap: 10px; }

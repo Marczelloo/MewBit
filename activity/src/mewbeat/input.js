@@ -1,7 +1,7 @@
 // Routes a keydown to the game. Returns true when the event was the game's, so the caller
 // can preventDefault/stopPropagation it. Modified keys and auto-repeat never count: a held
 // key must not hit a second note and Ctrl+D style shortcuts stay with the browser.
-export function createKeyRouter({ keys, onLane, onFever, onExit, onRestart }) {
+export function createKeyRouter({ keys, onLane, onFever, onExit }) {
   return (event) => {
     if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return false;
     if (event.code === "Space") {
@@ -13,10 +13,41 @@ export function createKeyRouter({ keys, onLane, onFever, onExit, onRestart }) {
       return true;
     }
     const lane = keys.indexOf(event.code);
-    // R restarts unless a lane is bound to it; onRestart says whether there was anything to restart.
-    if (lane < 0) return event.code === "KeyR" && onRestart?.() === true;
+    if (lane < 0) return false;
     onLane(lane, event.timeStamp);
     return true;
+  };
+}
+
+// A key that has to be held for `ms` before onDone runs, so that a stray press does nothing. canStart says whether
+// the key means anything right now, onChange tells when a hold starts and ends. keydown returns true when the
+// event was the hold's, for the caller to preventDefault/stopPropagation it.
+export function createKeyHold({ code, ms, canStart, onChange, onDone }) {
+  let timer = null;
+  const cancel = () => {
+    if (timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+    onChange(false);
+  };
+  return {
+    keydown(event) {
+      if (event.code !== code || event.metaKey || event.ctrlKey || event.altKey) return false;
+      if (event.repeat) return timer !== null;
+      if (!canStart(event)) return false;
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        onChange(false);
+        onDone();
+      }, ms);
+      onChange(true);
+      return true;
+    },
+    keyup(event) {
+      if (event.code === code) cancel();
+    },
+    cancel,
   };
 }
 

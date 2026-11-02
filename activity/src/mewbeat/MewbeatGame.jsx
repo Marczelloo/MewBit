@@ -6,7 +6,7 @@ import SettingsPanel from "./SettingsPanel.jsx";
 import Stage from "./Stage.jsx";
 import { MIN_TAPS } from "./calibration.js";
 import { createServerClock, createSongClock } from "./clock.js";
-import { keyLabel } from "./input.js";
+import { createKeyHold, keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
 import { createLiveBoardStore } from "./liveBoard.js";
 import { createMockLink } from "./mockLink.js";
@@ -48,6 +48,7 @@ const MODES = [
 
 const RESULTS_HOLD_MS = 5000;
 const PRESENCE_MS = 5000;
+const RESTART_HOLD_MS = 600;
 
 const PHASE_COPY = {
   connecting: { title: "Connecting…" },
@@ -150,7 +151,7 @@ function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPi
           </button>
           {onRestart ? (
             <button type="button" className="mb-btn" onClick={onRestart}>
-              <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" /> Restart <kbd className="mb-kbd">R</kbd>
+              <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" /> Restart <kbd className="mb-kbd">Hold R</kbd>
             </button>
           ) : null}
           {onPick ? (
@@ -321,7 +322,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // Esc, routed per mode: Live exits. Solo pauses a run and otherwise steps back (song pick, then exit).
   // Assigned below, once the game's phase is known.
   const exitRef = useRef(() => {});
-  const restartRef = useRef(() => false);
   // Live runs report to the channel's board; solo reports nothing. A room passes () => "room" (spectators null).
   const liveSessionOf = mode === "live" ? liveSessionForLive : roomMode ? liveSessionForRoom : null;
   // The game ignores its keys while an overlay owns the keyboard: settings (capture buttons), the pause
@@ -337,7 +337,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     liveSession: liveSessionOf,
     submitExtra,
     onExit: () => exitRef.current(),
-    onRestart: () => restartRef.current(),
   });
   const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating } = game;
   // The player being watched has their own difficulty: while the run is on another one, swap its chart.
@@ -429,19 +428,15 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const resumeRef = useRef(resumeFromMenu);
   resumeRef.current = resumeFromMenu;
   const restartFromMenu = pauseOpen ? () => { link.restart(); closeMenu(); backToGame(); } : null;
-  const menuRestartRef = useRef(restartFromMenu);
-  menuRestartRef.current = restartFromMenu;
   // Esc closes the menu (and resumes a paused run) wherever the focus is (a click on the scrim's blank part
-  // leaves it outside the menu), and R restarts a paused run. The settings panel, when open, takes Esc first.
+  // leaves it outside the menu). The settings panel, when open, takes Esc first.
   useEffect(() => {
     if (!menuShown) return undefined;
     const onKeyDown = (event) => {
-      const restart = event.code === "KeyR" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey ? menuRestartRef.current : null;
-      if (event.key !== "Escape" && !restart) return;
+      if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
-      if (restart) restart();
-      else resumeRef.current();
+      resumeRef.current();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -580,13 +575,39 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [heldSummaryId]);
   const endBanner = holdingCard ? (endSummary.counts?.miss === 0 && !endSummary.autoplay ? "FULL COMBO!" : "SONG COMPLETE") : null;
   const showCard = Boolean(endSummary) && !holdingCard && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
-  // R restarts a solo song from the game itself. Under the results they take it themselves, so that typing in
-  // a field there doesn't restart anything.
-  restartRef.current = () => {
-    if (!solo || showCard || !["playing", "countin", "ended"].includes(soloStage)) return false;
-    link.restart();
-    return true;
-  };
+  // Holding R restarts a solo song: during a run, on its pause menu and under its results. A lane bound to R keeps
+  // the key while there are notes to hit.
+  const restartAction = useRef(null);
+  if (!solo || settingsOpen || leaveConfirm || addOpen) restartAction.current = null;
+  else if (pauseOpen) restartAction.current = restartFromMenu;
+  else if (menuShown) restartAction.current = null;
+  else if (showCard) restartAction.current = () => link.restart();
+  else restartAction.current = !keys.includes("KeyR") && ["playing", "countin", "ended"].includes(soloStage) ? () => link.restart() : null;
+  const [restartHeld, setRestartHeld] = useState(false);
+  useEffect(() => {
+    const hold = createKeyHold({
+      code: "KeyR",
+      ms: RESTART_HOLD_MS,
+      // Only typing blocks it: buttons don't use R.
+      canStart: ({ target }) => Boolean(restartAction.current) && !(target instanceof HTMLElement && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable)),
+      onChange: setRestartHeld,
+      onDone: () => restartAction.current?.(),
+    });
+    const onKeyDown = (event) => {
+      if (!hold.keydown(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", hold.keyup, true);
+    window.addEventListener("blur", hold.cancel);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", hold.keyup, true);
+      window.removeEventListener("blur", hold.cancel);
+      hold.cancel();
+    };
+  }, []);
   // What Discord shows for the player, sent every few seconds at most: it allows about 5 updates in 20 s.
   const presenceRef = useRef(null);
   presenceRef.current = presenceOf({
@@ -901,6 +922,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               onClose={() => { setAddOpen(false); backToGame(); }}
             />
           </div>
+        </div>
+      ) : null}
+
+      {restartHeld ? (
+        <div className="mb-restart-hold" role="status" style={{ "--mb-hold-ms": `${RESTART_HOLD_MS}ms` }}>
+          <ArrowCounterClockwise size={14} weight="bold" aria-hidden="true" /> Hold to restart
+          <i aria-hidden="true" />
         </div>
       ) : null}
 
