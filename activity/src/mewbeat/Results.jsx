@@ -39,8 +39,8 @@ const OFFSET_MAX = 700;
 const OFFSET_STEP = 5;
 // A run needs this many hits before its average says anything (as runTimingOf in calibration.js).
 const MIN_HITS = 8;
-// The histogram spans the widest hit window (good, 110 ms) in 10 ms bins, so the middle bin is "on time".
-const HIST_BINS = 23;
+// The histogram spans the widest hit window (good, 125 ms) in 10 ms bins, so the middle bin is "on time".
+const HIST_BINS = 25;
 const HIST_BIN_MS = 10;
 const HIST_HALF_MS = (HIST_BINS * HIST_BIN_MS) / 2;
 

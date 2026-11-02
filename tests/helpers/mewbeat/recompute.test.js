@@ -54,9 +54,9 @@ async function playScripted(chart) {
   };
   chart.notes.forEach((note, index) => {
     // The first 40 notes are clean enough to fill the vibe meter; the rest has misses, goods and greats.
-    const pressOffset = index === 48 ? -120
+    const pressOffset = index === 48 ? -130
       : index === 50 ? null
-        : index < 40 ? (index % 5 === 4 ? 50 : 0)
+        : index < 40 ? (index % 5 === 4 ? 60 : 0)
           : index % 7 === 3 ? null : index % 5 === 0 ? 100 : index % 3 === 0 ? -30 : 0;
     if (pressOffset === null) return;
     at(note.t + pressOffset, () => record(run.press(note.lane, note.t + pressOffset), note.t + pressOffset, true));
@@ -191,7 +191,7 @@ describe("recomputeRun", () => {
     const result = await recomputeRun({ chart, events: [{ n: 0, part: "head", j: "great", t: 1000 }], loadScoring });
     assert.strictEqual(loads, 1);
     assert.strictEqual(result.score, 200);
-    assert.strictEqual(result.accuracy, 66.7);
-    assert.strictEqual(result.grade, "D");
+    assert.strictEqual(result.accuracy, 80);
+    assert.strictEqual(result.grade, "B");
   });
 });

@@ -49,7 +49,7 @@ import {
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
-import { openExternalLink, setMewbitPresence, setupDiscord } from "./discord.js";
+import { openExternalLink, setMewbeatPresence, setMewbitPresence, setupDiscord } from "./discord.js";
 import { connectActivitySocket, fetchActivityState, findActivityTrackSources, searchActivity, searchActivityLibrary, searchActivitySimilar, sendActivityAction } from "./api.js";
 import { parseMusicLink } from "./musicLink.js";
 import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
@@ -2566,6 +2566,7 @@ function App() {
   const localUndoSnapshots = useRef(new Map());
   const stateRef = useRef(state);
   const [mewbeatOpen, setMewbeatOpen] = useState(false);
+  const [gamePresence, setGamePresence] = useState(null);
   const [mewbeatRevealOpen, setMewbeatRevealOpen] = useState(false);
   // The glitch into the game; dimFrom is how dark the screen already is when it starts.
   const [mewbeatCut, setMewbeatCut] = useState(null);
@@ -2700,7 +2701,8 @@ function App() {
   // event-driven so the 4 Hz player clock does not spam Discord RPC.
   useEffect(() => {
     if (context.mode !== "discord" || !context.sdk) return undefined;
-    setMewbitPresence(context.sdk, state.player).catch(() => {
+    const update = gamePresence ? setMewbeatPresence(context.sdk, gamePresence) : setMewbitPresence(context.sdk, state.player);
+    update.catch(() => {
       // Presence is an enhancement; a denied scope or an older Discord client
       // must not make the shared player appear broken.
     });
@@ -2708,6 +2710,7 @@ function App() {
   }, [
     context.mode,
     context.sdk,
+    gamePresence,
     state.player.currentTrack?.id,
     state.player.currentTrack?.title,
     state.player.currentTrack?.author,
@@ -3408,7 +3411,7 @@ function App() {
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
       {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
       {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}
-      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={() => setMewbeatOpen(false)} /></Suspense> : null}
+      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={() => setMewbeatOpen(false)} onPresence={setGamePresence} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>
   );

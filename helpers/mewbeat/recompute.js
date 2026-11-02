@@ -4,10 +4,10 @@ const { pathToFileURL } = require("node:url");
 const JUDGEMENTS = new Set(["perfect", "great", "good", "miss"]);
 const MAX_ABS_TIME_MS = 1e9;
 // How far from its note a judgement can honestly land: the early-miss window before the note
-// (scoring.js EARLY_MISS_MS 150), the hold tail's good window after its end (110 * 1.5), plus a
+// (scoring.js EARLY_MISS_MS 150), the hold tail's good window after its end (125 * 1.5), plus a
 // frame or two of tick lag and a mid-run offset change.
 const EARLY_SLACK_MS = 150 + 250;
-const LATE_SLACK_MS = 165 + 250;
+const LATE_SLACK_MS = 188 + 250;
 
 let scoringModule = null;
 

@@ -115,6 +115,26 @@ function cleanPresenceText(value, fallback, limit = 128) {
 }
 
 /**
+ * Reflect a mewbeat run in the Discord user's Rich Presence, in place of the
+ * shared player while the game is open.
+ */
+export async function setMewbeatPresence(sdk, { details, state, artworkUrl }) {
+  if (!sdk?.commands?.setActivity) return;
+
+  await sdk.commands.setActivity({
+    activity: {
+      type: 0,
+      instance: true,
+      details: cleanPresenceText(details, "Playing mewbeat"),
+      state: state ? cleanPresenceText(state, "") : undefined,
+      assets: artworkUrl && /^https?:\/\//i.test(artworkUrl)
+        ? { large_image: artworkUrl }
+        : undefined,
+    },
+  });
+}
+
+/**
  * Reflect the shared MewBit player in the Discord user's Rich Presence.
  * Discord automatically removes this when the Activity closes.
  */

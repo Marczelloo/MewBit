@@ -16,12 +16,12 @@ function hits(state, judgement, count, songMs = 0) {
 
 test("judgement windows are inclusive at their upper bound", () => {
   assert.equal(s.judgementFor(0), "perfect");
-  assert.equal(s.judgementFor(40), "perfect");
-  assert.equal(s.judgementFor(40.01), "great");
-  assert.equal(s.judgementFor(41), "great");
-  assert.equal(s.judgementFor(75), "great");
-  assert.equal(s.judgementFor(110), "good");
-  assert.equal(s.judgementFor(111), null);
+  assert.equal(s.judgementFor(50), "perfect");
+  assert.equal(s.judgementFor(50.01), "great");
+  assert.equal(s.judgementFor(51), "great");
+  assert.equal(s.judgementFor(90), "great");
+  assert.equal(s.judgementFor(125), "good");
+  assert.equal(s.judgementFor(126), null);
 });
 
 test("multiplier steps up every ten combo and caps at 4", () => {
@@ -114,9 +114,9 @@ test("startFever refuses unless vibe is full", () => {
 });
 
 test("accuracyOf is the weighted mean, or null with nothing judged", () => {
-  assert.equal(s.accuracyOf({ perfect: 1, great: 1, good: 1, miss: 1 }), 50);
+  assert.equal(s.accuracyOf({ perfect: 1, great: 1, good: 1, miss: 1 }), 57.5);
   assert.equal(s.accuracyOf({ perfect: 3, great: 0, good: 0, miss: 0 }), 100);
-  assert.equal(s.accuracyOf({ perfect: 0, great: 1, good: 0, miss: 2 }), 22.23);
+  assert.equal(s.accuracyOf({ perfect: 0, great: 1, good: 0, miss: 2 }), 26.67);
   assert.equal(s.accuracyOf({ perfect: 0, great: 0, good: 0, miss: 0 }), null);
 });
 

@@ -17,7 +17,7 @@ const sample = () => [
 
 test("press takes the earliest note in the lane and reports a signed error", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.press(0, 1050), { index: 0, judgement: "great", errorMs: 50, part: "head" });
+  assert.deepEqual(judge.press(0, 1060), { index: 0, judgement: "great", errorMs: 60, part: "head" });
   assert.equal(judge.outcomeOf(0), "great");
   assert.equal(judge.outcomeOf(1), "pending");
 });
@@ -36,7 +36,7 @@ test("a press with no note in reach is a ghost tap", () => {
 
 test("a press in the early miss band takes the note as a miss", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.press(1, 1000 - 111), { index: 2, judgement: "miss", errorMs: -111, part: "head" });
+  assert.deepEqual(judge.press(1, 1000 - 126), { index: 2, judgement: "miss", errorMs: -126, part: "head" });
   assert.equal(judge.outcomeOf(2), "miss");
   assert.deepEqual(judge.press(0, 1000 - 150), { index: 0, judgement: "miss", errorMs: -150, part: "head" });
   assert.equal(judge.press(0, 1100 - 151), null); // index 1 is out of reach again
@@ -45,12 +45,12 @@ test("a press in the early miss band takes the note as a miss", () => {
 
 test("sweep misses notes only once past the GOOD window, in index order", () => {
   const judge = createJudge(sample());
-  assert.deepEqual(judge.sweep(1110), []);
-  assert.deepEqual(judge.sweep(1111), [
+  assert.deepEqual(judge.sweep(1125), []);
+  assert.deepEqual(judge.sweep(1126), [
     { index: 0, judgement: "miss", errorMs: null, part: "head" },
     { index: 2, judgement: "miss", errorMs: null, part: "head" },
   ]);
-  assert.deepEqual(judge.sweep(1211), [{ index: 1, judgement: "miss", errorMs: null, part: "head" }]);
+  assert.deepEqual(judge.sweep(1226), [{ index: 1, judgement: "miss", errorMs: null, part: "head" }]);
   assert.equal(judge.remaining(), 0);
   assert.deepEqual(judge.sweep(5000), []);
 });
@@ -141,13 +141,13 @@ test("tail windows are the tap windows times 1.5", () => {
     judge.press(0, 1000);
     return judge.release(0, songMs)[0].judgement;
   };
-  assert.equal(at(2000 - 60), "perfect");
-  assert.equal(at(2000 - 61), "great");
-  assert.equal(at(2000 - 112.5), "great");
-  assert.equal(at(2000 - 113), "good");
+  assert.equal(at(2000 - 75), "perfect");
+  assert.equal(at(2000 - 76), "great");
+  assert.equal(at(2000 - 135), "great");
+  assert.equal(at(2000 - 136), "good");
   assert.equal(at(2000 - 150), "good");
-  assert.equal(at(2000 - 165), "good");
-  assert.equal(at(2000 - 166), "miss");
+  assert.equal(at(2000 - 187.5), "good");
+  assert.equal(at(2000 - 188), "miss");
   assert.equal(at(2000 + 100), "great");
   assert.equal(at(2000 + 500), "good"); // late beyond the window still counts
 });

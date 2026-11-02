@@ -81,7 +81,7 @@ export function poseFor({ phase, feverActive, now, missUntil, crushed, milestone
 // waiting for events it may have missed.
 // liveSession(audioKey) names the live leaderboard session a run reports to ("live:<audioKey>" in Live, "room"
 // in a room); null, or a function answering null, means the run reports nothing (solo, room spectators).
-export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, liveSession = null, submitExtra = null, onExit }) {
+export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, liveSession = null, submitExtra = null, onExit, onRestart }) {
   const cfg = settingsOf(settings);
   const prefersReduced = usePrefersReducedMotion();
   const effectsLevel = effectiveEffects(effects, prefersReduced);
@@ -153,6 +153,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   trackRef.current = trackInfo;
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const onRestartRef = useRef(onRestart);
+  onRestartRef.current = onRestart;
   // While the settings panel is open the game ignores keys so its capture buttons receive them.
   const inputPausedRef = useRef(inputPaused);
   inputPausedRef.current = inputPaused;
@@ -624,6 +626,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         if (fever) handleEvents([fever], run.heardTime(songMs));
       },
       onExit: () => onExitRef.current?.(),
+      onRestart: () => onRestartRef.current?.(),
     });
     let routedKeys = cfgRef.current.keys;
     let route = buildRouter(routedKeys);

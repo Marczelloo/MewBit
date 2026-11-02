@@ -33,6 +33,27 @@ test("a bound key calls onLane with the lane and the event timestamp", () => {
   assert.deepEqual(calls.lane, [[1, 1234.5]]);
 });
 
+test("R restarts when there is something to restart, and is left alone otherwise", () => {
+  let restarts = 0;
+  const handled = (answer) => createKeyRouter({ keys: KEYS, onLane() {}, onFever() {}, onExit() {}, onRestart: () => { restarts += 1; return answer; } });
+  assert.equal(handled(true)({ code: "KeyR" }), true);
+  assert.equal(handled(false)({ code: "KeyR" }), false);
+  assert.equal(restarts, 2);
+  assert.equal(handled(true)({ code: "KeyR", repeat: true }), false);
+  assert.equal(handled(true)({ code: "KeyR", ctrlKey: true }), false);
+  assert.equal(restarts, 2);
+  assert.equal(setup().route({ code: "KeyR" }), false);
+});
+
+test("a lane bound to R keeps it", () => {
+  let restarts = 0;
+  const lanes = [];
+  const route = createKeyRouter({ keys: ["KeyR", "KeyF", "KeyJ", "KeyK"], onLane: (lane) => lanes.push(lane), onFever() {}, onExit() {}, onRestart: () => { restarts += 1; return true; } });
+  assert.equal(route({ code: "KeyR", timeStamp: 1 }), true);
+  assert.deepEqual(lanes, [0]);
+  assert.equal(restarts, 0);
+});
+
 test("a repeated key is ignored", () => {
   const { calls, route } = setup();
   assert.equal(route({ code: "KeyF", repeat: true, timeStamp: 1 }), false);

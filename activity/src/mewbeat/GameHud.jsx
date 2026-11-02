@@ -162,7 +162,8 @@ export default function GameHud({ hud }) {
         <div className="mb-hud-stats">
           <div>
             Accuracy
-            <b>{formatAccuracy(hud.accuracy)}</b>
+            {/* Nothing judged yet means nothing lost yet: a run starts at 100% and settles from there. */}
+            <b>{formatAccuracy(hud.accuracy ?? 100)}</b>
           </div>
           <div>
             Max combo

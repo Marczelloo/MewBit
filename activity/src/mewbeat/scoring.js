@@ -1,4 +1,4 @@
-export const WINDOWS = { perfect: 40, great: 75, good: 110 };
+export const WINDOWS = { perfect: 50, great: 90, good: 125 };
 // A press this early, but past the good window, still takes the note, as a miss (osu!mania's early
 // miss band): mashing ahead of the notes breaks combo instead of waiting for them to arrive.
 export const EARLY_MISS_MS = 150;
@@ -6,7 +6,7 @@ export const EARLY_MISS_MS = 150;
 export const HOLD_WINDOW_SCALE = 1.5;
 export const BASE_POINTS = { perfect: 300, great: 200, good: 100, miss: 0 };
 export const VIBE_DELTA = { perfect: 0.03, great: 0.02, good: 0.01, miss: -0.06 };
-export const ACCURACY_WEIGHT = { perfect: 100, great: 66.7, good: 33.3, miss: 0 };
+export const ACCURACY_WEIGHT = { perfect: 100, great: 80, good: 50, miss: 0 };
 export const FEVER_MS = 8000;
 
 export function judgementFor(absErrorMs, scale = 1) {

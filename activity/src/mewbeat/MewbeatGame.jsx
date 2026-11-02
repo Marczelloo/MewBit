@@ -15,6 +15,7 @@ import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
 import { createSoloAudio, musicGain } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
+import { presenceOf } from "./presence.js";
 import Lobby, { LeaveConfirm } from "./Lobby.jsx";
 import LiveBoard from "./LiveBoard.jsx";
 import Results from "./Results.jsx";
@@ -46,6 +47,7 @@ const MODES = [
 ];
 
 const RESULTS_HOLD_MS = 5000;
+const PRESENCE_MS = 5000;
 
 const PHASE_COPY = {
   connecting: { title: "Connecting…" },
@@ -148,7 +150,7 @@ function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPi
           </button>
           {onRestart ? (
             <button type="button" className="mb-btn" onClick={onRestart}>
-              <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" /> Restart
+              <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" /> Restart <kbd className="mb-kbd">R</kbd>
             </button>
           ) : null}
           {onPick ? (
@@ -161,7 +163,7 @@ function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPi
           </button>
         </div>
         <button type="button" className="mb-btn mb-pause-exit" onClick={onExit}>
-          <SignOut size={16} weight="bold" aria-hidden="true" /> Exit
+          <SignOut size={16} weight="bold" aria-hidden="true" /> Quit mewbeat
         </button>
       </div>
     </div>
@@ -200,7 +202,7 @@ export default function MewbeatGame(props) {
 const PREVIEW_PREPARE_TIMEOUT_MS = 30_000;
 const HIGHLIGHT_WAIT_MS = 250;
 
-function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
+function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose, onPresence }) {
   const solo = mode === "solo";
   const roomMode = mode === "room" && !MOCK_PREVIEW;
   const userId = context?.user?.id ?? null;
@@ -319,6 +321,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // Esc, routed per mode: Live exits. Solo pauses a run and otherwise steps back (song pick, then exit).
   // Assigned below, once the game's phase is known.
   const exitRef = useRef(() => {});
+  const restartRef = useRef(() => false);
   // Live runs report to the channel's board; solo reports nothing. A room passes () => "room" (spectators null).
   const liveSessionOf = mode === "live" ? liveSessionForLive : roomMode ? liveSessionForRoom : null;
   // The game ignores its keys while an overlay owns the keyboard: settings (capture buttons), the pause
@@ -334,6 +337,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     liveSession: liveSessionOf,
     submitExtra,
     onExit: () => exitRef.current(),
+    onRestart: () => restartRef.current(),
   });
   const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating } = game;
   // The player being watched has their own difficulty: while the run is on another one, swap its chart.
@@ -424,15 +428,20 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   };
   const resumeRef = useRef(resumeFromMenu);
   resumeRef.current = resumeFromMenu;
+  const restartFromMenu = pauseOpen ? () => { link.restart(); closeMenu(); backToGame(); } : null;
+  const menuRestartRef = useRef(restartFromMenu);
+  menuRestartRef.current = restartFromMenu;
   // Esc closes the menu (and resumes a paused run) wherever the focus is (a click on the scrim's blank part
-  // leaves it outside the menu). The settings panel, when open, takes Esc first.
+  // leaves it outside the menu), and R restarts a paused run. The settings panel, when open, takes Esc first.
   useEffect(() => {
     if (!menuShown) return undefined;
     const onKeyDown = (event) => {
-      if (event.key !== "Escape") return;
+      const restart = event.code === "KeyR" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey ? menuRestartRef.current : null;
+      if (event.key !== "Escape" && !restart) return;
       event.preventDefault();
       event.stopPropagation();
-      resumeRef.current();
+      if (restart) restart();
+      else resumeRef.current();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -571,8 +580,44 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [heldSummaryId]);
   const endBanner = holdingCard ? (endSummary.counts?.miss === 0 && !endSummary.autoplay ? "FULL COMBO!" : "SONG COMPLETE") : null;
   const showCard = Boolean(endSummary) && !holdingCard && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  // R restarts a solo song from the game itself. Under the results they take it themselves, so that typing in
+  // a field there doesn't restart anything.
+  restartRef.current = () => {
+    if (!solo || showCard || !["playing", "countin", "ended"].includes(soloStage)) return false;
+    link.restart();
+    return true;
+  };
+  // What Discord shows for the player, sent every few seconds at most: it allows about 5 updates in 20 s.
+  const presenceRef = useRef(null);
+  presenceRef.current = presenceOf({
+    track,
+    difficulty: runDifficulty,
+    hud,
+    summary: showCard ? endSummary : null,
+    playing: running,
+    paused: pauseOpen,
+    autoplay: Boolean(game.autoplay),
+    calibrating,
+    spectating,
+  });
   useEffect(() => {
-    if (endBanner) playSfx(endBanner === "FULL COMBO!" ? "full-combo" : "complete");
+    if (!onPresence) return undefined;
+    let sent = "";
+    const send = () => {
+      const next = JSON.stringify(presenceRef.current);
+      if (next === sent) return;
+      sent = next;
+      onPresence(presenceRef.current);
+    };
+    send();
+    const id = window.setInterval(send, PRESENCE_MS);
+    return () => {
+      window.clearInterval(id);
+      onPresence(null);
+    };
+  }, [onPresence]);
+  useEffect(() => {
+    if (endBanner === "FULL COMBO!") playSfx("full-combo");
   }, [endBanner, playSfx]);
   // The room's countdown to its next round, and Solo's count-in: each digit ticks, and the opening one ends on GO.
   const roomStartPerf = view === "lobby" && room?.nextAt != null
@@ -870,7 +915,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           error={pauseOpen ? soloState.error : null}
           focusSettings={settingsFromMenu}
           onResume={resumeFromMenu}
-          onRestart={pauseOpen ? () => { link.restart(); closeMenu(); backToGame(); } : undefined}
+          onRestart={restartFromMenu ?? undefined}
           onPick={solo && !pickerOpen ? () => { link.leave(); closeMenu(); backToGame(); } : undefined}
           onSettings={() => { setSettingsFromMenu(true); setSettingsOpen(true); }}
           onExit={() => {
