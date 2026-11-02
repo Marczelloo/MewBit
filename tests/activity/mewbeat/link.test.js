@@ -219,6 +219,39 @@ test("a pending retry after a track change is dropped and frees the key", () => 
   assert.equal(link.requestChart("k", "normal"), true);
 });
 
+test("a chart reply that never comes is requested again every 3000 ms, then ends as failed", () => {
+  const { link, scheduler, sent } = setup();
+  const heard = [];
+  link.onChart((r) => heard.push(r));
+  link.start();
+  link.requestChart("k", "normal");
+  scheduler.advance(14_999);
+  assert.deepEqual(charts(sent).map((m) => m.at), [0, 3000, 6000, 9000, 12000]);
+  assert.deepEqual(heard, []);
+  scheduler.advance(1);
+  assert.equal(charts(sent).length, 5);
+  assert.deepEqual(heard, [{ audioKey: "k", difficulty: "normal", status: "failed", reason: "no_reply", chart: undefined }]);
+  scheduler.advance(30_000);
+  assert.equal(charts(sent).length, 5);
+  // The key is free again: a new request goes out.
+  assert.equal(link.requestChart("k", "normal"), true);
+  assert.equal(charts(sent).length, 6);
+});
+
+test("a pending reply restarts the no-reply count", () => {
+  const { link, scheduler, sent } = setup();
+  const heard = [];
+  link.onChart((r) => heard.push(r.status));
+  link.start();
+  link.requestChart("k", "normal");
+  scheduler.advance(9000);
+  assert.equal(charts(sent).length, 4);
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "pending" });
+  scheduler.advance(30_000);
+  assert.equal(charts(sent).length, 4 + 4); // the pending reply counts as the first send of the new round
+  assert.deepEqual(heard, ["pending", "failed"]);
+});
+
 test("requestChart before start sends nothing", () => {
   const { link, sent } = setup();
   assert.equal(link.requestChart("k", "normal"), false);

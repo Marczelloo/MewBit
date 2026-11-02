@@ -57,6 +57,7 @@ export function createSoloLink({
   let state = IDLE_STATE;
   let token = 0; // bumps whenever the current song is abandoned, so late async results are dropped
   let countTimer = null;
+  let countSeq = 0; // bumps whenever a count-in is cancelled, so its pending audio start can tell it was
 
   function setState(patch) {
     state = { ...state, ...patch };
@@ -70,6 +71,7 @@ export function createSoloLink({
   function cancelCountIn() {
     clearTimer(countTimer);
     countTimer = null;
+    countSeq += 1;
   }
 
   function trackInfoOf(track) {
@@ -156,22 +158,22 @@ export function createSoloLink({
     emitAnchor(first ? "init" : "keyChange");
   }
 
-  // The game requests the chart on the anchor; when it is ready the count-in starts. Registered first, so it
-  // runs before the game's own handler (which builds the run, still on the paused clock).
-  inner.onChart((event) => {
-    if (state.stage !== "ready" || event.audioKey !== soloClock.audioKey() || event.status !== "ready") return;
-    countIn(0);
-  });
+  // The game calls this once it accepted the chart and built its run (on the paused clock): only then does
+  // the count-in start, so a chart the game ignored (another difficulty, a dropped song) never starts the audio.
+  function chartAccepted() {
+    if (state.stage === "ready") countIn(0);
+  }
 
   // ---- count-in, pause, resume ----
   function countIn(fromMs) {
     cancelCountIn();
     const mine = token;
+    const seq = countSeq;
     let count = COUNT_IN_STEPS;
     setState({ stage: "countin", count, error: null });
     const step = () => {
       countTimer = null;
-      if (mine !== token || state.stage !== "countin") return;
+      if (mine !== token || seq !== countSeq || state.stage !== "countin") return;
       count -= 1;
       if (count > 0) {
         setState({ count });
@@ -180,13 +182,13 @@ export function createSoloLink({
       }
       audio.play(fromMs).then(
         () => {
-          if (mine !== token || state.stage !== "countin") return;
+          if (mine !== token || seq !== countSeq || state.stage !== "countin") return;
           soloClock.set({ paused: false, positionMs: fromMs });
           setState({ stage: "playing", count: null });
           emitAnchor("resume");
         },
         (error) => {
-          if (mine !== token || state.stage !== "countin") return;
+          if (mine !== token || seq !== countSeq || state.stage !== "countin") return;
           // Never a silent run: stay paused and say why; Resume (a click) tries again.
           soloClock.set({ paused: true, positionMs: fromMs });
           setState({ stage: "paused", count: null, error: error?.message || "The audio couldn't start." });
@@ -198,8 +200,11 @@ export function createSoloLink({
 
   function pause() {
     if (state.stage !== "playing" && state.stage !== "countin") return;
+    const wasCountIn = state.stage === "countin";
     cancelCountIn();
-    const positionMs = state.stage === "playing" ? audio.pause() : soloClock.songTimeAt(now()) ?? 0;
+    // A pause during the count-in also drops an audio start that may still be waiting on the context.
+    if (wasCountIn) audio.stop();
+    const positionMs = wasCountIn ? soloClock.songTimeAt(now()) ?? 0 : audio.pause();
     soloClock.set({ paused: true, positionMs });
     setState({ stage: "paused", count: null, error: null });
     emitAnchor("pause");
@@ -267,6 +272,7 @@ export function createSoloLink({
     handle,
     syncNow: inner.syncNow,
     requestChart: inner.requestChart,
+    chartAccepted,
     songClock: soloClock,
     status: inner.status,
     onAnchor: (fn) => {

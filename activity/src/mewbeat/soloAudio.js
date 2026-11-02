@@ -3,6 +3,9 @@
 // touches no browser global at load time; the context is created lazily and reused across songs.
 
 const DEFAULT_VOLUME = 0.8;
+// An immediate start is scheduled this far ahead: the audio thread picks a start up at its next render quantum,
+// a few to ~20 ms after currentTime, so scheduling at currentTime would bias the clock by that unknown amount.
+export const START_LEAD_S = 0.05;
 
 export function createSoloAudio({
   fetchAudio,
@@ -17,6 +20,7 @@ export function createSoloAudio({
   let buffer = null;
   let loading = null; // { key, promise }
   let loadSeq = 0;
+  let loadAbort = null; // aborts the download of the load in flight (superseded or closed)
   // Playback state. source is non-null only while a source node is scheduled or playing.
   let source = null;
   let sourceStartCtx = 0; // context time at which the song position startOffsetMs is (or was) audible
@@ -50,11 +54,15 @@ export function createSoloAudio({
   async function load(audioKey) {
     if (buffer && loadedKey === audioKey) return { durationMs: durationMs() };
     if (loading && loading.key === audioKey) return loading.promise;
+    loadAbort?.abort();
+    const controller = new AbortController();
+    loadAbort = controller;
     const seq = ++loadSeq;
     const promise = (async () => {
-      const data = await fetchAudio(audioKey);
+      const data = await fetchAudio(audioKey, controller.signal);
+      // A newer load() or a close() came meanwhile: this result is not wanted, and must not create a context.
+      if (seq !== loadSeq) throw new Error("Song load superseded.");
       const decoded = await context().decodeAudioData(data);
-      // A newer load() for another song started meanwhile: this result is not wanted.
       if (seq !== loadSeq) throw new Error("Song load superseded.");
       stop();
       buffer = decoded;
@@ -66,6 +74,7 @@ export function createSoloAudio({
       return await promise;
     } finally {
       if (loading && loading.promise === promise) loading = null;
+      if (loadAbort === controller) loadAbort = null;
     }
   }
 
@@ -110,9 +119,9 @@ export function createSoloAudio({
     const node = c.createBufferSource();
     node.buffer = buffer;
     node.connect(gain);
-    // Scheduled starts keep their context time; an immediate start begins "now" on the context clock,
-    // which is when the first sample is rendered (audible one output latency later, as the clock models).
-    const startCtx = whenPerfMs === null ? c.currentTime : Math.max(c.currentTime, ctxTimeAt(whenPerfMs));
+    // Scheduled starts keep their context time; an immediate start gets a small lead (START_LEAD_S), so the
+    // context time the clock assumes is the one the audio thread really starts at.
+    const startCtx = whenPerfMs === null ? c.currentTime + START_LEAD_S : Math.max(c.currentTime, ctxTimeAt(whenPerfMs));
     node.onended = () => {
       if (source !== node) return;
       source = null;
@@ -168,6 +177,8 @@ export function createSoloAudio({
     buffer = null;
     loadedKey = null;
     loadSeq += 1;
+    loadAbort?.abort();
+    loadAbort = null;
     const old = ctx;
     ctx = null;
     gain = null;

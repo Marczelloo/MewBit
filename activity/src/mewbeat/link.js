@@ -3,6 +3,7 @@ const SYNC_BURST_GAP_MS = 120;
 const SYNC_INTERVAL_MS = 1000;
 const OFFLINE_AFTER_MS = 3000;
 const CHART_RETRY_MS = 3000;
+const CHART_MAX_SENDS = 5; // sends of one request that get no reply at all before the link gives up on it
 const MAX_OPEN_SYNCS = 64;
 
 // Runs the mewbeat conversation with the bot over the Activity socket: clock
@@ -22,6 +23,7 @@ export function createMewbeatLink({
   const openSyncs = new Map(); // id -> clientSentAt, insertion ordered
   const inflightCharts = new Map(); // "audioKey:difficulty" -> { audioKey, difficulty }
   const chartRetries = new Map(); // same key -> timer
+  const chartSends = new Map(); // same key -> sends since the last reply
   let syncTimer = null;
   let offlineTimer = null;
   let syncCount = 0;
@@ -89,6 +91,7 @@ export function createMewbeatLink({
     offlineTimer = null;
     for (const timer of chartRetries.values()) clearTimer(timer);
     chartRetries.clear();
+    chartSends.clear();
     inflightCharts.clear();
   }
 
@@ -100,16 +103,25 @@ export function createMewbeatLink({
     return send({ type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty }) !== false;
   }
 
-  // Resends a pending request; a refused send (socket reconnecting) just waits
-  // another round, and a track change in the meantime drops it.
+  // Resends a request nobody answered yet (a lost reply) or that the server answered "pending"; a refused
+  // send (socket reconnecting) just waits another round, and a track change in the meantime drops it.
+  // A request that gets no reply at all for CHART_MAX_SENDS sends ends as a "failed" chart event, so the
+  // game shows an error instead of charting forever. Any reply (pending included) restarts that count.
   function scheduleChartRetry(key) {
     clearTimer(chartRetries.get(key));
     chartRetries.set(key, setTimer(() => {
       chartRetries.delete(key);
       const request = inflightCharts.get(key);
       if (!request) return;
-      if (request.audioKey !== songClock.audioKey()) releaseChart(key);
-      else if (!sendChartRequest(request)) scheduleChartRetry(key);
+      if (request.audioKey !== songClock.audioKey()) {
+        releaseChart(key);
+      } else if ((chartSends.get(key) ?? 0) >= CHART_MAX_SENDS) {
+        releaseChart(key);
+        emit(chartListeners, { audioKey: request.audioKey, difficulty: request.difficulty, status: "failed", reason: "no_reply", chart: undefined });
+      } else {
+        if (sendChartRequest(request)) chartSends.set(key, (chartSends.get(key) ?? 0) + 1);
+        scheduleChartRetry(key);
+      }
     }, CHART_RETRY_MS));
   }
 
@@ -121,7 +133,11 @@ export function createMewbeatLink({
     if (!running || inflightCharts.has(key)) return false;
     const request = { audioKey, difficulty };
     inflightCharts.set(key, request);
-    if (sendChartRequest(request)) return true;
+    if (sendChartRequest(request)) {
+      chartSends.set(key, 1);
+      scheduleChartRetry(key);
+      return true;
+    }
     releaseChart(key);
     return false;
   }
@@ -130,6 +146,7 @@ export function createMewbeatLink({
     inflightCharts.delete(key);
     clearTimer(chartRetries.get(key));
     chartRetries.delete(key);
+    chartSends.delete(key);
   }
 
   function handleSync(payload) {
@@ -152,6 +169,7 @@ export function createMewbeatLink({
       return;
     }
     if (chartStatus === "pending") {
+      chartSends.set(key, 1);
       scheduleChartRetry(key);
     } else {
       releaseChart(key);
