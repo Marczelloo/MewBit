@@ -2,6 +2,7 @@ const Log = require("../logs/log");
 const { audioKeyOf } = require("./audioKey");
 const { starsOf } = require("./charts/stars");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
+const { DIFFICULTIES: ROOM_DIFFICULTIES, createRooms } = require("./rooms");
 const { createSoloTracks } = require("./soloTracks");
 
 const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
@@ -32,9 +33,9 @@ function errorReply(message) {
 // search result into an encoded track; soloTracks remembers it by audioKey so
 // charts and audio can be served for songs the bot is not playing.
 // scoreStore and historyStore keep boards and play history; loadScoring
-// replaces the import of the client's scoring module in tests. The broadcast
-// dependencies belong to later features and are accepted here so the server
-// wires them in one place.
+// replaces the import of the client's scoring module in tests. The rooms push
+// their state with broadcast(guildId, userIds, payload) and run their phases
+// on setTimer/clearTimer, so tests can drive them with a fake clock.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
@@ -45,7 +46,8 @@ function createMewbeatChannel({
   soloTracks = createSoloTracks(),
   scoreStore, historyStore, loadScoring,
   // eslint-disable-next-line no-unused-vars
-  broadcast, sendToUser,
+  broadcast = () => {}, sendToUser,
+  setTimer = setTimeout, clearTimer = clearTimeout,
   log = Log,
 }) {
   function sync(guildId, message) {
@@ -102,32 +104,87 @@ function createMewbeatChannel({
     };
   }
 
-  async function soloPrepare(guildId, userId, message) {
-    const { id, uri, source } = message;
-    const fail = (reason) => ({ type: "mewbeat_solo_prepare", id, status: "error", reason });
-    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat prepare.");
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
-    if (typeof uri !== "string" || !uri.trim() || uri.length > MAX_URI_LENGTH) return fail("bad_uri");
-    if (source != null && (typeof source !== "string" || source.length > MAX_SOURCE_LENGTH)) return fail("bad_source");
+  // Resolves a song, registers it by audioKey and starts its charts. Throws an
+  // error with `reason` when the song can't be used.
+  async function prepareSong(guildId, { uri, source }) {
+    const refuse = (reason) => Object.assign(new Error(reason), { reason });
+    if (typeof uri !== "string" || !uri.trim() || uri.length > MAX_URI_LENGTH) throw refuse("bad_uri");
+    if (source != null && (typeof source !== "string" || source.length > MAX_SOURCE_LENGTH)) throw refuse("bad_source");
 
     let resolved;
     try {
       resolved = await resolveTrack(guildId, { uri: uri.trim(), source: source || "" });
     } catch (error) {
       log.warning("mewbeat solo resolve failed", error?.message);
-      return fail("resolve_failed");
+      throw refuse("resolve_failed");
     }
-    if (!resolved?.track) return fail("not_found");
+    if (!resolved?.track) throw refuse("not_found");
 
     const audioKey = audioKeyOf(resolved.track);
-    if (!audioKey) return fail("unsupported");
+    if (!audioKey) throw refuse("unsupported");
 
     const info = resolved.info ?? trackInfoOf(resolved.track);
     soloTracks.put(audioKey, { track: resolved.track, node: resolved.node, info });
     // Charting starts now so it is usually done by the time Play is pressed.
     Promise.resolve(chartStore.getCharts(resolved.track, resolved.node))
       .catch((error) => log.warning("mewbeat solo chart failed", error?.message));
-    return { type: "mewbeat_solo_prepare", id, status: "ok", audioKey, track: info };
+    return { audioKey, track: info };
+  }
+
+  async function soloPrepare(guildId, userId, message) {
+    const { id, uri, source } = message;
+    const fail = (reason) => ({ type: "mewbeat_solo_prepare", id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat prepare.");
+    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+
+    try {
+      const { audioKey, track } = await prepareSong(guildId, { uri, source });
+      return { type: "mewbeat_solo_prepare", id, status: "ok", audioKey, track };
+    } catch (error) {
+      if (!error.reason) throw error;
+      return fail(error.reason);
+    }
+  }
+
+  const rooms = createRooms({
+    now,
+    setTimer,
+    clearTimer,
+    prepareTrack: ({ guildId, uri, source }) => prepareSong(guildId, { uri, source }),
+    broadcast,
+    log,
+  });
+
+  // Room requests answer the sender with { type, id, status, reason }; the
+  // room itself reaches every member as a mewbeat_room push.
+  async function roomRequest(guildId, userId, message, profile) {
+    const { type, id } = message;
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat room request.");
+    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+    const reply = (result) => (result.ok
+      ? { type, id, status: "ok" }
+      : { type, id, status: "error", reason: result.reason });
+
+    switch (type) {
+      case "mewbeat_room_join":
+        return reply(rooms.join(guildId, { id: userId, username: profile?.username, avatarUrl: profile?.avatarUrl }));
+      case "mewbeat_room_leave": return reply(rooms.leave(guildId, userId));
+      case "mewbeat_room_queue_add":
+        return reply(await rooms.queueAdd(guildId, userId, { uri: message.uri, source: message.source }));
+      case "mewbeat_room_queue_remove": return reply(rooms.queueRemove(guildId, userId, message.index));
+      case "mewbeat_room_ready": {
+        const { ready, difficulty } = message;
+        if (typeof ready !== "boolean") return reply({ ok: false, reason: "bad_request" });
+        if (difficulty !== undefined && !ROOM_DIFFICULTIES.includes(difficulty)) return reply({ ok: false, reason: "bad_difficulty" });
+        return reply(rooms.ready(guildId, userId, { ready, difficulty }));
+      }
+      case "mewbeat_room_start": return reply(rooms.start(guildId, userId));
+      case "mewbeat_room_loaded":
+        if (typeof message.audioKey !== "string") return reply({ ok: false, reason: "bad_request" });
+        return reply(rooms.loaded(guildId, userId, message.audioKey));
+      case "mewbeat_room_invite": return reply({ ok: false, reason: "not_implemented" });
+      default: return errorReply("Unknown mewbeat message.");
+    }
   }
 
   // The track a submit is about: a prepared solo song, or what the bot plays now.
@@ -223,6 +280,10 @@ function createMewbeatChannel({
         maxCombo: run.maxCombo,
         difficulty,
       }).newBest;
+    }
+    // A room round counts for the room only when it is the song being played.
+    if (mode === "room" && rooms.snapshot(guildId)?.current?.audioKey === audioKey) {
+      rooms.submitted(guildId, userId, { score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty });
     }
     if (!calibration) {
       historyStore.add(userId, {
@@ -323,11 +384,15 @@ function createMewbeatChannel({
         case "mewbeat_submit": return submit(guildId, userId, message, profile);
         case "mewbeat_board": return board(guildId, userId, message);
         case "mewbeat_played": return played(guildId, userId, message);
-        default: return errorReply("Unknown mewbeat message.");
+        default:
+          if (message?.type?.startsWith("mewbeat_room_")) return roomRequest(guildId, userId, message, profile);
+          return errorReply("Unknown mewbeat message.");
       }
     },
     // Called once the user's last socket in the guild is gone.
-    disconnect(guildId, userId) {}, // eslint-disable-line no-unused-vars
+    disconnect(guildId, userId) {
+      rooms.leave(guildId, userId);
+    },
   };
 }
 

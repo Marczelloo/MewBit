@@ -753,6 +753,9 @@ const mewbeatChannel = createMewbeatChannel({
   historyStore: mewbeatHistoryStore,
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
+  // A pending room phase must not keep the process alive.
+  setTimer: (run, ms) => setTimeout(run, ms).unref(),
+  clearTimer: clearTimeout,
 });
 
 function mewbeatProfileOf(identity) {
