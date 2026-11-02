@@ -1,5 +1,6 @@
 import { GearSix } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchMewbeatAudio } from "../api.js";
 import EndCard from "./EndCard.jsx";
 import GameHud, { HighwayReadout, TrackCard } from "./GameHud.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
@@ -9,6 +10,9 @@ import { createServerClock, createSongClock } from "./clock.js";
 import { keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
 import { createMockLink } from "./mockLink.js";
+import { createSoloAudio } from "./soloAudio.js";
+import { createSoloLink } from "./soloLink.js";
+import SoloPicker from "./SoloPicker.jsx";
 import Mewbit from "./mewbit/Mewbit.jsx";
 import { useMewbeatGame } from "./useMewbeatGame.js";
 import "./mewbeat.css";
@@ -20,6 +24,12 @@ const POSITION_JUMP_MS = 1500;
 const AUTO_OFFSET_EVERY = 16; // new taps between auto offset updates
 const AUTO_OFFSET_MIN_CHANGE_MS = 10; // smaller drifts are tap noise, not a wrong offset
 const DEFAULT_KEYS = ["KeyD", "KeyF", "KeyJ", "KeyK"];
+const DEFAULT_MUSIC_VOLUME = 80; // same default as musicVolume in helpers/mewbeat/userSettings.js
+const MODES = [
+  { id: "live", label: "Live" },
+  { id: "solo", label: "Solo" },
+  { id: "room", label: "Room" },
+];
 
 const PHASE_COPY = {
   connecting: { title: "Connecting…" },
@@ -31,23 +41,105 @@ const PHASE_COPY = {
   paused: { title: "Paused" },
 };
 
-function createLink(mewbeatSocketRef) {
+// Solo has no "next track" to wait for, and charting a fresh song can take a while.
+const SOLO_PHASE_COPY = {
+  charting: { title: "Charting this song…", detail: "The first time can take a little while." },
+  uncharted: { title: "This song can't be charted.", detail: "Press Esc to pick another one." },
+  failed: { title: "Charting failed.", detail: "Press Esc to pick another song." },
+  ended: { title: "Song finished" },
+};
+const SOLO_STAGE_COPY = {
+  preparing: { title: "Finding the song…" },
+  loading: { title: "Loading the song…", detail: "Downloading and decoding the audio." },
+};
+
+function createLink(mode, mewbeatSocketRef, audio) {
   if (MOCK_PREVIEW) return createMockLink();
+  const send = (payload) => mewbeatSocketRef.current?.send?.(payload) ?? false;
+  if (mode === "solo") return createSoloLink({ send, audio });
   const serverClock = createServerClock();
   return createMewbeatLink({
-    send: (payload) => mewbeatSocketRef.current?.send?.(payload) ?? false,
+    send,
     serverClock,
     songClock: createSongClock(serverClock),
   });
 }
 
-export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
+// The solo link's stage and countdown as React state (null for the other links).
+function useSoloState(link) {
+  const [soloState, setSoloState] = useState(() => link.state?.() ?? null);
+  useEffect(() => {
+    if (!link.onState) return undefined;
+    setSoloState(link.state());
+    return link.onState(setSoloState);
+  }, [link]);
+  return soloState;
+}
+
+// Resume / Restart / Pick another song / Exit over a paused solo run. Esc resumes, as does Enter anywhere
+// but on another button.
+function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
+  const resumeRef = useRef(null);
+  useEffect(() => {
+    resumeRef.current?.focus();
+  }, []);
+  const onKeyDown = (event) => {
+    const onButton = event.target instanceof HTMLElement && event.target.tagName === "BUTTON";
+    if (event.key === "Escape" || (event.key === "Enter" && !onButton)) {
+      event.preventDefault();
+      event.stopPropagation();
+      onResume();
+    }
+  };
+  return (
+    <div className="mb-pause-scrim" onKeyDown={onKeyDown}>
+      <div className="mb-pause" role="dialog" aria-modal="true" aria-label="Paused">
+        <b className="mb-pause-title">Paused</b>
+        {error ? <p className="mb-field-error" role="alert">{error}</p> : null}
+        <div className="mb-pause-actions">
+          <button type="button" className="mb-btn mb-btn-primary" ref={resumeRef} onClick={onResume}>
+            Resume <kbd className="mb-kbd">Esc</kbd>
+          </button>
+          <button type="button" className="mb-btn" onClick={onRestart}>Restart</button>
+          <button type="button" className="mb-btn" onClick={onPick}>Pick another song</button>
+          <button type="button" className="mb-btn" onClick={onExit}>Exit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mode, audio engine and music volume live here; the session below is keyed by mode, so switching tears the
+// whole run and link down and builds the other one.
+export default function MewbeatGame(props) {
+  const { context, state, settings } = props;
+  const botPlaying = Boolean(state?.player?.currentTrack);
+  const liveAvailable = MOCK_PREVIEW || botPlaying;
+  const [mode, setMode] = useState(() => (liveAvailable ? "live" : "solo"));
+  const contextRef = useRef(context);
+  contextRef.current = context;
+  // One audio engine (and AudioContext) for the screen's life, shared by every solo link.
+  const [audio] = useState(() => createSoloAudio({
+    fetchAudio: (audioKey) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey }),
+  }));
+  const musicVolume = Number.isFinite(settings?.musicVolume) ? settings.musicVolume : DEFAULT_MUSIC_VOLUME;
+  useEffect(() => {
+    audio.setVolume(musicVolume / 100);
+  }, [audio, musicVolume]);
+  useEffect(() => () => audio.close(), [audio]);
+  return <MewbeatSession key={mode} {...props} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} />;
+}
+
+function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
+  const solo = mode === "solo";
   const dialogRef = useRef(null);
   const gearRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsOpenRef = useRef(false);
-  settingsOpenRef.current = settingsOpen;
-  const [link] = useState(() => createLink(mewbeatSocketRef));
+  const [link] = useState(() => createLink(mode, mewbeatSocketRef, audio));
+  const soloState = useSoloState(link);
+  const soloStage = soloState?.stage ?? null;
+  const pauseOpen = solo && soloStage === "paused";
+  const pickerOpen = solo && soloStage === "idle";
 
   // The link has to be live before useMewbeatGame mounts its effects, so this effect stays above the hook.
   useEffect(() => {
@@ -66,13 +158,39 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
   const artist = current?.author ?? null;
   const durationMs = current?.durationMs ?? 0;
   const queued = (player?.queue?.length ?? 0) > 0;
-  const trackInfo = useMemo(
+  const liveTrackInfo = useMemo(
     () => (trackId === null ? null : { title, artist, durationMs, queued }),
     [trackId, title, artist, durationMs, queued]
   );
+  const trackInfo = solo ? soloState?.track ?? null : liveTrackInfo;
 
-  const game = useMewbeatGame({ link, settings, effects: settings?.effects, trackInfo, inputPaused: settingsOpen, onExit: onClose });
+  // Esc, routed per mode: Live exits. Solo pauses a run and otherwise steps back (song pick, then exit).
+  // Assigned below, once the game's phase is known.
+  const exitRef = useRef(() => {});
+  // The game ignores its keys while an overlay owns the keyboard: settings (capture buttons), the pause
+  // overlay, and the song picker (its search input needs the letter keys).
+  const game = useMewbeatGame({
+    link,
+    settings,
+    effects: settings?.effects,
+    trackInfo,
+    inputPaused: settingsOpen || pauseOpen || pickerOpen,
+    onExit: () => exitRef.current(),
+  });
   const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
+  exitRef.current = () => {
+    if (!solo || soloStage === "idle") onClose();
+    else if ((soloStage === "playing" || soloStage === "countin") && phase !== "ended") link.pause();
+    else link.leave();
+  };
+
+  const pickSong = useCallback((picked) => {
+    // prepare() reports its own failure through the link's error stage.
+    link.prepare({ uri: picked.uri, source: picked.source })
+      .then(({ audioKey, track: prepared }) => link.begin(audioKey, prepared))
+      .catch(() => {});
+  }, [link]);
+  const backToGame = () => window.requestAnimationFrame(() => dialogRef.current?.focus());
 
   // Auto offset (this session only): every AUTO_OFFSET_EVERY new taps, a suggestion that differs
   // enough from the saved offset is saved as the offset.
@@ -110,8 +228,8 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
     dialogRef.current?.focus();
     const onKeyDown = (event) => {
       if (event.key !== "Tab") return;
-      // With the settings panel open, Tab stays inside the panel.
-      const root = settingsOpenRef.current ? dialogRef.current?.querySelector(".mb-settings") : dialogRef.current;
+      // With the settings panel or the pause overlay open, Tab stays inside it.
+      const root = dialogRef.current?.querySelector(".mb-settings, .mb-pause") ?? dialogRef.current;
       const buttons = [...(root?.querySelectorAll("button:not(:disabled), input, select") || [])];
       if (!buttons.length) { event.preventDefault(); return; }
       const first = buttons[0];
@@ -140,11 +258,19 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
   const difficulty = settings?.liveDifficulty ?? "normal";
-  const copy = PHASE_COPY[phase];
   const running = phase === "playing" || phase === "paused";
   const showCard = Boolean(endSummary);
-  // A run that ended with no card (joined in its last second) just waits.
-  const stateCopy = showCard ? null : phase === "ended" ? { title: "Waiting for the next track…" } : copy;
+  let stateCopy;
+  if (solo) {
+    if (pickerOpen || showCard) stateCopy = null;
+    else if (soloStage === "preparing" || soloStage === "loading") stateCopy = SOLO_STAGE_COPY[soloStage];
+    else if (soloStage === "error") stateCopy = { title: soloState.error, detail: "Press Esc to pick another song." };
+    // "paused" is the pause overlay or the count-in, which have their own copy.
+    else stateCopy = phase === "paused" ? null : SOLO_PHASE_COPY[phase] ?? PHASE_COPY[phase];
+  } else {
+    // A run that ended with no card (joined in its last second) just waits.
+    stateCopy = showCard ? null : phase === "ended" ? { title: "Waiting for the next track…" } : PHASE_COPY[phase];
+  }
 
   return (
     <div
@@ -155,7 +281,10 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
       aria-label="mewbeat"
       tabIndex={-1}
       data-phase={phase}
-      onPointerDown={unlockAudio}
+      onPointerDown={() => {
+        unlockAudio();
+        if (solo) audio.unlock();
+      }}
     >
       <header className="mb-header">
         <div className="mb-header-brand">
@@ -163,7 +292,29 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
           {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
           {calibrating && running ? <span className="mb-chip">calibration · tap any key on each click · {timing.taps}/{MIN_TAPS}</span> : null}
         </div>
+        <div className="mb-modes" role="group" aria-label="Mode">
+          {MODES.map(({ id, label }) => {
+            const active = id === mode;
+            const disabled = !active && (id === "room" || (id === "live" && !liveAvailable) || (id === "solo" && MOCK_PREVIEW));
+            const hint = id === "room" ? "Coming soon" : id === "live" ? "The bot isn't playing anything" : "Not available in the mock preview";
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`mb-mode${active ? " mb-mode-on" : ""}`}
+                aria-pressed={active}
+                disabled={disabled}
+                title={disabled ? hint : undefined}
+                onClick={() => { if (!active) onModeChange(id); }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
         <div className="mb-header-actions">
+          {solo && botPlaying ? <span className="mb-hint">Lower MewBit in Discord to hear the song</span> : null}
+          {solo && !pickerOpen ? <button type="button" className="mb-btn" onClick={() => link.leave()}>Pick song</button> : null}
           <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>
             Autoplay
           </button>
@@ -202,6 +353,12 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
               </div>
               <div className="mb-fevertime" style={feverTimeStyle} aria-hidden="true" />
               {running ? <HighwayReadout hud={hud} /> : null}
+              {pickerOpen ? <SoloPicker context={context} onPick={pickSong} onCancel={onClose} /> : null}
+              {soloStage === "countin" ? (
+                <div className="mb-countin" role="status" aria-live="assertive">
+                  <b key={soloState.count}>{soloState.count}</b>
+                </div>
+              ) : null}
               {stateCopy ? (
                 <div className="mb-state" role="status">
                   <b>{stateCopy.title}</b>
@@ -222,12 +379,21 @@ export default function MewbeatGame({ state, settings, mewbeatHandlerRef, mewbea
           </div>
 
           <aside className="mb-side">
-            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} />
+            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} mode={mode} />
             <GameHud hud={hud} />
           </aside>
         </div>
       </div>
 
+      {pauseOpen ? (
+        <PauseOverlay
+          error={soloState.error}
+          onResume={() => { link.resume(); backToGame(); }}
+          onRestart={() => { link.restart(); backToGame(); }}
+          onPick={() => { link.leave(); backToGame(); }}
+          onExit={onClose}
+        />
+      ) : null}
       {settingsOpen ? <SettingsPanel
           settings={settings}
           onAction={onAction}

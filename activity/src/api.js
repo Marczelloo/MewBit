@@ -90,6 +90,29 @@ export function sendActivityAction({ guildId, accessToken, action, payload }) {
   );
 }
 
+// The song for mewbeat solo play (Ogg Opus), as bytes for decodeAudioData. Goes through the same gateway base
+// (and so the Discord proxy path) as the JSON requests; the response is not JSON, so it skips request().
+export async function fetchMewbeatAudio({ guildId, accessToken, audioKey, signal, timeoutMs = 90_000 }) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(new Error("The song took too long to download.")), timeoutMs);
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    const response = await fetch(
+      apiUrl(`/api/activity/mewbeat/audio?guildId=${encodeURIComponent(guildId)}&audioKey=${encodeURIComponent(audioKey)}`),
+      { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, signal: controller.signal }
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Song download failed (${response.status}).`);
+    }
+    return await response.arrayBuffer();
+  } finally {
+    window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
 export function connectActivitySocket({ guildId, accessToken, onState, onReady, onHeartbeat, onConnection, onError, onMewbeat }) {
   let socket = null;
   // The server rejects mewbeat_ messages until it has answered auth with ready.

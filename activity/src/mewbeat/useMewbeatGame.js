@@ -237,7 +237,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
           comboRef.current += 1;
           // The player's presses sound on the key (see onLane); autoplay has no keys, so its heads
           // sound here. A tail counts for combo and the popup, but it has no sound of its own.
-          if (cfgRef.current.hitSounds && runAutoplayRef.current && event.part !== "tail") soundsRef.current?.play(cfgRef.current.hitVolume);
+          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runCalibrationRef.current && event.part !== "tail") soundsRef.current?.play(cfgRef.current.hitVolume);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -377,8 +377,9 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         lanesDownRef.current[lane] = true;
         const run = runRef.current;
         if (!run || phaseRef.current !== "playing") return;
-        // Every press sounds, hit or not, as in osu!mania: the sound answers the key.
-        if (cfgRef.current.hitSounds && !runAutoplayRef.current) soundsRef.current?.play(cfgRef.current.hitVolume);
+        // Every press sounds, hit or not, as in osu!mania: the sound answers the key. Calibration runs stay
+        // silent: players line the hit sound up instead of the beat, which skews the measured offset.
+        if (cfgRef.current.hitSounds && !runAutoplayRef.current && !runCalibrationRef.current) soundsRef.current?.play(cfgRef.current.hitVolume);
         const songMs = songClock.songTimeAt(timeStamp);
         if (songMs === null) return;
         // Calibration hides the notes, so a tap is aimed by ear alone (a player watching the notes

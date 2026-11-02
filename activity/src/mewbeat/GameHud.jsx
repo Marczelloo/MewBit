@@ -56,10 +56,10 @@ export function HighwayReadout({ hud }) {
 }
 
 // Track card in the right column. The progress bar lives here: the game hook writes into the <i> through progressRef.
-export function TrackCard({ track, difficulty, progressRef }) {
+export function TrackCard({ track, difficulty, progressRef, mode = "live" }) {
   return (
     <section className="mb-card mb-track" aria-label="Track">
-      <span className="mb-label mb-live">{`live · ${difficulty}`}</span>
+      <span className="mb-label mb-live">{`${mode} · ${difficulty}`}</span>
       <b className="mb-track-title">{track?.title ?? "No track"}</b>
       {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
       <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
