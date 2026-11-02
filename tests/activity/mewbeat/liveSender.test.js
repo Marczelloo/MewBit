@@ -163,3 +163,16 @@ test("a room session is passed through", () => {
   sender.update(sample(5, 1, 100));
   assert.equal(sent[0].session, "room");
 });
+
+test("setDifficulty changes the difficulty on every later message", () => {
+  const { sender, scheduler, sent } = setup();
+  sender.update(sample(10, 1, 100));
+  sender.setDifficulty("hard");
+  scheduler.advance(300);
+  sender.update(sample(20, 2, 100));
+  assert.equal(sent[0].difficulty, "normal");
+  assert.equal(sent.at(-1).difficulty, "hard");
+  sender.end(sample(30, 3, 100));
+  assert.equal(sent.at(-1).difficulty, "hard");
+  assert.equal(sent.at(-1).ended, true);
+});

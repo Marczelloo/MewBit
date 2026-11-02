@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DIFFICULTIES } from "./SongSelect.jsx";
 
 const RING_LENGTH = 145; // circumference of the r=23 ring
 const JUDGEMENT_CLASS = { perfect: "mb-j-perfect", great: "mb-j-great", good: "mb-j-good", miss: "mb-j-miss" };
@@ -55,13 +56,46 @@ export function HighwayReadout({ hud }) {
   );
 }
 
+// Compact difficulty picker of the track card. Choosing one asks for that chart while the song plays; `swap`
+// ({ difficulty, status }) shows a change in flight, `disabled` greys it out (rooms, calibration, no run yet).
+function DifficultyControl({ difficulty, disabled, swap, onChange }) {
+  const loading = swap?.status === "loading";
+  const failed = swap?.status === "failed";
+  // The pill follows the request while it loads, so a click answers at once; the old chart keeps playing.
+  const shown = loading ? swap.difficulty : difficulty;
+  return (
+    <div className="mb-diff">
+      <div className="mb-diff-seg" role="group" aria-label="Difficulty">
+        {DIFFICULTIES.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            className={`mb-diff-btn${id === shown ? " mb-diff-on" : ""}`}
+            aria-pressed={id === shown}
+            disabled={disabled}
+            title={disabled ? "Difficulty can't change here" : undefined}
+            onClick={() => onChange?.(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <small className={`mb-diff-note${loading ? " mb-diff-loading" : ""}${failed ? " mb-diff-failed" : ""}`} role="status">
+        {loading ? "Loading chart…" : failed ? `Couldn't load ${swap.difficulty}. Keeping ${difficulty}.` : ""}
+      </small>
+    </div>
+  );
+}
+
 // Track card in the right column. The progress bar lives here: the game hook writes into the <i> through progressRef.
-export function TrackCard({ track, difficulty, progressRef, mode = "live" }) {
+// The difficulty control shows in Live and Solo; a room (mode "room") or `disabled` turns it off.
+export function TrackCard({ track, difficulty, progressRef, mode = "live", disabled = false, swap = null, onDifficulty }) {
   return (
     <section className="mb-card mb-track" aria-label="Track">
       <span className="mb-label mb-live">{`${mode} · ${difficulty}`}</span>
       <b className="mb-track-title">{track?.title ?? "No track"}</b>
       {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
+      {onDifficulty ? <DifficultyControl difficulty={difficulty} disabled={disabled || mode === "room"} swap={swap} onChange={onDifficulty} /> : null}
       <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
         <i ref={progressRef} />
       </div>

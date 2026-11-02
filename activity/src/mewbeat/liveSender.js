@@ -12,13 +12,14 @@ export function createLiveSender({
   send,
   session,
   audioKey,
-  difficulty,
+  difficulty: initialDifficulty,
   minIntervalMs = MIN_INTERVAL_MS,
   keepAliveMs = KEEP_ALIVE_MS,
   now = () => performance.now(),
   setTimer = setTimeout,
   clearTimer = clearTimeout,
 }) {
+  let difficulty = initialDifficulty; // follows a mid-run difficulty change
   let latest = null; // { score, combo, accuracy } of the last update()
   let lastSent = null;
   let lastAt = null;
@@ -83,5 +84,5 @@ export function createLiveSender({
     if (final) transmit(final, true);
   }
 
-  return { update, end, ended: () => ended };
+  return { update, end, ended: () => ended, setDifficulty: (next) => { difficulty = next; } };
 }

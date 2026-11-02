@@ -9,14 +9,17 @@ import { createRun } from "./run.js";
 import { createLiveSender } from "./liveSender.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, showMewbit: true, tempoScroll: true };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, musicVolume: 80, showMewbit: true, tempoScroll: true };
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
 const CRUSH_COMBO = 25;
 const MILESTONE_POSE_MS = 900;
+const DIFFICULTY_IDS = ["easy", "normal", "hard", "hell"]; // same list as DIFFICULTIES in SongSelect.jsx
 const MISS_LOOKBACK_MS = 500; // misses keep falling past the line this long before the renderer drops them
 const FLASH_KEEP_MS = 400;
+const SWAP_TIMEOUT_MS = 20000; // a difficulty change whose chart never arrives gives up and keeps the old chart
+const SWAP_FAILED_SHOW_MS = 3500;
 
 const EMPTY_COUNTS = { perfect: 0, great: 0, good: 0, miss: 0 };
 export const EMPTY_HUD = {
@@ -71,6 +74,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const [phase, setPhaseState] = useState("connecting");
   const [hud, setHud] = useState(EMPTY_HUD);
   const [endSummary, setEndSummary] = useState(null);
+  const [runDifficulty, setRunDifficulty] = useState(null); // the difficulty of the chart the run on stage is on
+  const [swap, setSwap] = useState(null); // a difficulty change in progress: { difficulty, status: "loading" | "failed" }
   const [mewbitPose, setMewbitPose] = useState("neutral");
   const [autoplay, setAutoplayState] = useState(false);
   // Tap timing outlives runs: calibration gathers over every song played this session.
@@ -105,6 +110,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const runTrackRef = useRef(null);
   const runMetaRef = useRef(null); // what the server needs to know about the chart the run is on
   const summaryIdRef = useRef(0);
+  const swapRef = useRef(null); // { audioKey, difficulty } the run is waiting a chart for
+  const requestSwapRef = useRef(() => false); // set by the link effect: asks for another difficulty's chart
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const requestsRef = useRef(requests);
@@ -194,7 +201,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
     function toHud(snap) {
       const { hits, ranked, skipped, ...rest } = snap;
-      return { ...rest, unranked: runAutoplayRef.current || skipped > 0, judgement: judgementRef.current };
+      return { ...rest, unranked: runAutoplayRef.current || skipped > 0 || snap.difficultyChanged, judgement: judgementRef.current };
     }
 
     const liveSample = (snap) => ({ score: Math.round(snap.score), combo: snap.combo, accuracy: snap.accuracy ?? null });
@@ -232,6 +239,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       runTrackRef.current = trackRef.current;
       runCalibrationRef.current = Boolean(chartRef.current?.calibration);
       runMetaRef.current = { audioKey: songClock.audioKey(), difficulty: cfgRef.current.liveDifficulty, chartVersion: chart.version ?? null };
+      clearSwap();
+      setRunDifficulty(cfgRef.current.liveDifficulty);
       setCalibrating(runCalibrationRef.current);
       lastSongMsRef.current = songMs;
       resetRunState();
@@ -249,7 +258,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     // has nothing to rank, so it is not sent. Local numbers show at once; the reply only adds to them.
     function submitRun(id, body) {
       const send = requestsRef.current?.request;
-      if (body.flags.calibration || !send || !body.audioKey) return "skipped";
+      // A run that changed difficulty mid-way mixes two charts: its note indexes mean nothing against either
+      // chart on the server, so it is never sent (Results says why).
+      if (body.flags.calibration || body.flags.difficultyChanged || !send || !body.audioKey) return "skipped";
       const settle = (submit) => setEndSummary((current) => (current && current.id === id ? { ...current, submit } : current));
       send("mewbeat_submit", body).then(
         (reply) => settle(reply?.status === "ok" && reply.result ? { status: "ok", result: reply.result } : { status: "error", reason: reply?.reason ?? null }),
@@ -267,12 +278,14 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       const snap = run.snapshot(lastSongMsRef.current);
       feverActiveRef.current = false;
       endLive(snap);
+      clearSwap();
+      setRunDifficulty(null);
       if (snap.judged >= 1) {
         const { hits, ranked, skipped, ...rest } = snap;
         const meta = runMetaRef.current ?? {};
         const { events, fevers } = run.log();
         const id = ++summaryIdRef.current;
-        const flags = { autoplay: runAutoplayRef.current, calibration: runCalibrationRef.current, difficultyChanged: false };
+        const flags = { autoplay: runAutoplayRef.current, calibration: runCalibrationRef.current, difficultyChanged: run.flags.difficultyChanged };
         const status = submitRun(id, { mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, flags });
         setEndSummary({
           ...rest,
@@ -280,6 +293,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           skipped,
           calibration: flags.calibration,
           autoplay: flags.autoplay,
+          difficultyChanged: flags.difficultyChanged,
           audioKey: meta.audioKey ?? null,
           difficulty: meta.difficulty ?? null,
           // Head-hit errors in heard time (positive: late) against the offset the run ended on.
@@ -311,6 +325,74 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       link.requestChart(key, cfgRef.current.liveDifficulty);
     }
     beginChartingRef.current = beginCharting;
+
+    // ---- live difficulty change ----
+    let swapTimer = 0;
+    let swapFailedTimer = 0;
+    function clearSwap() {
+      window.clearTimeout(swapTimer);
+      window.clearTimeout(swapFailedTimer);
+      swapRef.current = null;
+      setSwap(null);
+    }
+
+    // The old chart keeps playing; the card says the change did not go through for a moment.
+    function failSwap() {
+      const wanted = swapRef.current;
+      window.clearTimeout(swapTimer);
+      swapRef.current = null;
+      if (!wanted) return;
+      setSwap({ difficulty: wanted.difficulty, status: "failed" });
+      window.clearTimeout(swapFailedTimer);
+      swapFailedTimer = window.setTimeout(() => setSwap(null), SWAP_FAILED_SHOW_MS);
+    }
+
+    // Asks for another difficulty's chart for the run on stage; the chart event does the swap (see offChart).
+    // Calibration runs have one fixed chart. Returns false when there is nothing to change.
+    function requestSwap(next) {
+      const run = runRef.current;
+      const audioKey = songClock.audioKey();
+      if (!run || !audioKey || runCalibrationRef.current || !DIFFICULTY_IDS.includes(next)) return false;
+      window.clearTimeout(swapTimer);
+      window.clearTimeout(swapFailedTimer);
+      if (next === runMetaRef.current?.difficulty) {
+        // Back to the chart already playing: drop the pending change.
+        swapRef.current = null;
+        setSwap(null);
+        return true;
+      }
+      swapRef.current = { audioKey, difficulty: next };
+      setSwap({ difficulty: next, status: "loading" });
+      swapTimer = window.setTimeout(failSwap, SWAP_TIMEOUT_MS);
+      link.requestChart(audioKey, next);
+      return true;
+    }
+    requestSwapRef.current = requestSwap;
+
+    function applySwap(chart) {
+      const wanted = swapRef.current;
+      const run = runRef.current;
+      const songMs = songClock.songTimeAt(performance.now());
+      if (!wanted || !run || songMs === null) {
+        failSwap();
+        return;
+      }
+      const tempo = cfgRef.current.tempoScroll === false ? 1 : tempoScrollFactor(chartRef.current?.bpm);
+      const approachMs = Math.floor(approachMsFor(cfgRef.current.scrollSpeed) / tempo);
+      if (!run.swapChart(chart, songMs, approachMs)) {
+        failSwap();
+        return;
+      }
+      window.clearTimeout(swapTimer);
+      swapRef.current = null;
+      setSwap(null);
+      // Later code reads the chart as it plays now: old notes up to the cut, the new chart's after it.
+      chartRef.current = { ...chart, notes: run.noteList() };
+      runMetaRef.current = { ...runMetaRef.current, difficulty: wanted.difficulty };
+      liveRef.current?.setDifficulty(wanted.difficulty);
+      setRunDifficulty(wanted.difficulty);
+      dirtyRef.current = true;
+    }
 
     // Applies run events: counters for the pose and flashes, and marks the HUD stale.
     // Returns true when the run ended.
@@ -398,6 +480,12 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     });
 
     const offChart = link.onChart((event) => {
+      const wanted = swapRef.current;
+      if (wanted && event.audioKey === wanted.audioKey && event.difficulty === wanted.difficulty) {
+        if (event.status === "ready" && event.chart?.notes) applySwap(event.chart);
+        else if (event.status !== "pending") failSwap(); // "pending" keeps waiting
+        return;
+      }
       if (phaseRef.current !== "charting") return;
       if (event.audioKey !== songClock.audioKey() || event.difficulty !== cfgRef.current.liveDifficulty) return;
       if (event.status === "ready" && event.chart?.notes) {
@@ -607,6 +695,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       window.removeEventListener("blur", onBlur);
       releaseHeldRef.current = () => {};
       beginChartingRef.current = () => {};
+      requestSwapRef.current = () => false;
+      window.clearTimeout(swapTimer);
+      window.clearTimeout(swapFailedTimer);
       endLive(runRef.current ? runRef.current.snapshot(lastSongMsRef.current) : undefined);
       offAnchor();
       offChart();
@@ -641,7 +732,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     setAutoplayState(value);
     const run = runRef.current;
     const songMs = link.songClock.songTimeAt(performance.now());
-    if (run && songMs !== null && run.snapshot(songMs).judged === 0 && chartRef.current) {
+    if (run && songMs !== null && run.snapshot(songMs).judged === 0 && !run.flags.difficultyChanged && chartRef.current) {
       const chart = chartRef.current;
       const restarted = createRun({ chart, startSongMs: songMs, offsetMs: cfgRef.current.offsetMs, autoplay: value });
       runRef.current = restarted;
@@ -665,5 +756,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     setTiming(tapTiming.estimate());
   }, [tapTiming]);
 
-  return { phase, hud, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
+  const changeDifficulty = useCallback((next) => requestSwapRef.current(next), []);
+
+  return { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
 }

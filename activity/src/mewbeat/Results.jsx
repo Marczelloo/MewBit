@@ -108,6 +108,7 @@ function timingTip(mean) {
 // Why a score was not ranked. The reply only says that it was not; autoplay and skipped parts are known here.
 function unrankedReason(summary) {
   if (summary.autoplay) return "Autoplay runs aren't ranked.";
+  if (summary.difficultyChanged) return "The difficulty changed during the run.";
   if (summary.skipped > 0) return "Part of the song was skipped.";
   return "Too little of the song was played to rank.";
 }
@@ -135,6 +136,15 @@ function CalibrationResult({ timing, savedOffset, onApplyOffset }) {
 }
 
 function RankLine({ submit, summary }) {
+  // Never sent: the run mixes two charts, which the server cannot score.
+  if (summary.difficultyChanged) {
+    return (
+      <span className="mb-res-unranked" role="status">
+        <b>Unranked · difficulty changed</b>
+        <small>Changing difficulty mid-song keeps your score here, but it isn't saved.</small>
+      </span>
+    );
+  }
   if (submit.status === "submitting") return <span className="mb-res-quiet" role="status">Saving score…</span>;
   if (submit.status === "error") return <span className="mb-res-quiet" role="status">Score not saved</span>;
   if (submit.status !== "ok") return summary.calibration ? <span className="mb-res-quiet">Calibration run</span> : null;
