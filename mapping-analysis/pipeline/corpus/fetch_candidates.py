@@ -43,8 +43,8 @@ def owners_of(b: dict) -> list[int]:
 
 def record(detail: dict) -> dict:
     mean, votes = ratings_of(detail)
-    genre = detail.get("genre") or {}
-    language = detail.get("language") or {}
+    genre = detail.get("genre") or {"id": detail.get("genre_id")}
+    language = detail.get("language") or {"id": detail.get("language_id")}
     diffs = []
     for b in detail.get("beatmaps") or []:
         if not is_4k(b) or b.get("status") not in ("ranked", None):
@@ -75,6 +75,7 @@ def main(argv=None) -> int:
     started = dt.datetime.now(dt.timezone.utc).isoformat()
 
     ids: list[int] = []
+    listing: list[dict] = []
     cursor = None
     for page in range(args.max_pages):
         params = dict(SEARCH)
@@ -84,11 +85,16 @@ def main(argv=None) -> int:
         for s in data.get("beatmapsets") or []:
             if s.get("status") == "ranked" and any(is_4k(b) and b.get("status", "ranked") == "ranked" for b in s.get("beatmaps") or []):
                 ids.append(int(s["id"]))
+                listing.append(record(s))
         cursor = data.get("cursor_string")
         print(f"search page {page + 1}: {len(ids)} sets so far", flush=True)
         if not cursor:
             break
     ids = sorted(set(ids))
+    # The search listing alone (no vote counts, no per-difficulty owners) is enough for derive_levels.py.
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / "listing.json").write_text(json.dumps(listing))
+    print(f"listing: {len(listing)} sets -> {args.out / 'listing.json'}", flush=True)
 
     records = []
     for i, sid in enumerate(ids):
