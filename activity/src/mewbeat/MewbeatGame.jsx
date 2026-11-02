@@ -8,10 +8,12 @@ import { MIN_TAPS } from "./calibration.js";
 import { createServerClock, createSongClock } from "./clock.js";
 import { keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
+import { createLiveBoardStore } from "./liveBoard.js";
 import { createMockLink } from "./mockLink.js";
 import { createMewbeatRequests } from "./requests.js";
 import { createSoloAudio } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
+import LiveBoard from "./LiveBoard.jsx";
 import Results from "./Results.jsx";
 import SongSelect from "./SongSelect.jsx";
 import Mewbit from "./mewbit/Mewbit.jsx";
@@ -54,6 +56,8 @@ const SOLO_STAGE_COPY = {
   loading: { title: "Loading the song…", detail: "Downloading and decoding the audio." },
 };
 
+const liveSessionForLive = (audioKey) => `live:${audioKey}`;
+
 function createLink(mode, mewbeatSocketRef, audio) {
   if (MOCK_PREVIEW) return createMockLink();
   const send = (payload) => mewbeatSocketRef.current?.send?.(payload) ?? false;
@@ -77,8 +81,8 @@ function useSoloState(link) {
   return soloState;
 }
 
-// Resume / Restart / Song select / Exit over a paused solo run. Esc resumes, as does Enter anywhere
-// but on another button.
+// Resume / Restart / Song select / Exit over a paused solo run. Esc resumes from anywhere (MewbeatSession
+// captures it, so it works whatever has focus); Enter does too, unless it is on another button.
 function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
   const resumeRef = useRef(null);
   useEffect(() => {
@@ -86,7 +90,7 @@ function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
   }, []);
   const onKeyDown = (event) => {
     const onButton = event.target instanceof HTMLElement && event.target.tagName === "BUTTON";
-    if (event.key === "Escape" || (event.key === "Enter" && !onButton)) {
+    if (event.key === "Enter" && !onButton) {
       event.preventDefault();
       event.stopPropagation();
       onResume();
@@ -121,7 +125,7 @@ export default function MewbeatGame(props) {
   contextRef.current = context;
   // One audio engine (and AudioContext) for the screen's life, shared by every solo link.
   const [audio] = useState(() => createSoloAudio({
-    fetchAudio: (audioKey) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey }),
+    fetchAudio: (audioKey, signal) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey, signal }),
   }));
   const musicVolume = Number.isFinite(settings?.musicVolume) ? settings.musicVolume : DEFAULT_MUSIC_VOLUME;
   useEffect(() => {
@@ -141,6 +145,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const gearRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [link] = useState(() => createLink(mode, mewbeatSocketRef, audio));
+  const [liveBoard] = useState(createLiveBoardStore);
   const soloState = useSoloState(link);
   const soloStage = soloState?.stage ?? null;
   const pauseOpen = solo && soloStage === "paused";
@@ -151,14 +156,14 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // The link has to be live before useMewbeatGame mounts its effects, so this effect stays above the hook.
   useEffect(() => {
     // Replies to request() are consumed first; everything else is the link's.
-    const handler = (message) => requests.handle(message) || link.handle(message);
+    const handler = (message) => requests.handle(message) || liveBoard.handle(message) || link.handle(message);
     if (mewbeatHandlerRef) mewbeatHandlerRef.current = handler;
     link.start();
     return () => {
       link.stop();
       if (mewbeatHandlerRef && mewbeatHandlerRef.current === handler) mewbeatHandlerRef.current = null;
     };
-  }, [link, requests, mewbeatHandlerRef]);
+  }, [link, requests, liveBoard, mewbeatHandlerRef]);
 
   const player = state?.player;
   const current = player?.currentTrack ?? null;
@@ -176,6 +181,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // Esc, routed per mode: Live exits. Solo pauses a run and otherwise steps back (song pick, then exit).
   // Assigned below, once the game's phase is known.
   const exitRef = useRef(() => {});
+  // Live runs report to the channel's board; solo reports nothing. A room passes () => "room" (spectators null).
+  const liveSessionOf = mode === "live" ? liveSessionForLive : null;
   // The game ignores its keys while an overlay owns the keyboard: settings (capture buttons), the pause
   // overlay, and the song picker (its search input needs the letter keys).
   const game = useMewbeatGame({
@@ -186,9 +193,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     effects: settings?.effects,
     trackInfo,
     inputPaused: settingsOpen || pauseOpen || pickerOpen,
+    liveSession: liveSessionOf,
     onExit: () => exitRef.current(),
   });
-  const { phase, hud, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
+  const { phase, hud, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
   exitRef.current = () => {
     if (!solo || soloStage === "idle") onClose();
     else if ((soloStage === "playing" || soloStage === "countin") && phase !== "ended") link.pause();
@@ -206,6 +214,21 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     link.begin(audioKey, prepared);
   }, [link, onAction, savedDifficulty]);
   const backToGame = () => window.requestAnimationFrame(() => dialogRef.current?.focus());
+
+  // Esc resumes a paused run wherever the focus is (a click on the scrim's blank part leaves it outside the
+  // overlay). The settings panel, when open over the pause, takes Esc first.
+  useEffect(() => {
+    if (!pauseOpen || settingsOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      link.resume();
+      backToGame();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [pauseOpen, settingsOpen, link]);
 
   // Auto offset (this session only): every AUTO_OFFSET_EVERY new taps, a suggestion that differs
   // enough from the saved offset is saved as the offset.
@@ -388,6 +411,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           <aside className="mb-side">
             <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} mode={mode} />
             <GameHud hud={hud} />
+            {mode === "live" && running ? <LiveBoard store={liveBoard} session={runSession} meId={context?.user?.id ?? null} /> : null}
           </aside>
         </div>
       </div>

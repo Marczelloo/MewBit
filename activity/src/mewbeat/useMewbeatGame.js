@@ -6,6 +6,7 @@ import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
+import { createLiveSender } from "./liveSender.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
 export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, showMewbit: true, tempoScroll: true };
@@ -60,7 +61,9 @@ export function poseFor({ phase, feverActive, now, missUntil, crushed, milestone
 // song clock and renders it. The link must already be started when this mounts its effects (the
 // mock link emits its first anchor from start()); it reads the current state on mount instead of
 // waiting for events it may have missed.
-export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, onExit }) {
+// liveSession(audioKey) names the live leaderboard session a run reports to ("live:<audioKey>" in Live, "room"
+// in a room); null, or a function answering null, means the run reports nothing (solo, room spectators).
+export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, liveSession = null, onExit }) {
   const cfg = settingsOf(settings);
   const prefersReduced = usePrefersReducedMotion();
   const effectsLevel = effectiveEffects(effects, prefersReduced);
@@ -106,6 +109,10 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   modeRef.current = mode;
   const requestsRef = useRef(requests);
   requestsRef.current = requests;
+  const liveSessionFnRef = useRef(liveSession);
+  liveSessionFnRef.current = liveSession;
+  const liveRef = useRef(null); // the live leaderboard sender of the run in progress
+  const [runSession, setRunSession] = useState(null); // its session, while the run is on stage
   const redrawRef = useRef(false); // a resize wipes the canvas, which a paused game must repaint once
 
   // Latest props for the long-lived callbacks below.
@@ -120,6 +127,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   inputPausedRef.current = inputPaused;
   const soundsRef = useRef(null);
   const releaseHeldRef = useRef(() => {}); // set by the link effect: releases every held lane into the run
+  const beginChartingRef = useRef(() => {}); // set by the link effect: (re)requests the chart for the current song
 
   const setPhase = useCallback((next) => {
     phaseRef.current = next;
@@ -148,6 +156,14 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   useEffect(() => {
     if (inputPaused) releaseHeldRef.current();
   }, [inputPaused]);
+
+  // A changed difficulty asks for that difficulty's chart now, whatever the link's anchors do (solo has none
+  // to piggyback on). A running game keeps its run; a game waiting for a chart, or stuck without one, retries.
+  const liveDifficulty = cfg.liveDifficulty;
+  useEffect(() => {
+    const current = phaseRef.current;
+    if (!runRef.current && (current === "charting" || current === "uncharted" || current === "failed")) beginChartingRef.current();
+  }, [liveDifficulty]);
 
   // A new audio offset applies to the run in progress: score stays, heard time moves.
   const offsetMs = cfg.offsetMs;
@@ -181,6 +197,26 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       return { ...rest, unranked: runAutoplayRef.current || skipped > 0, judgement: judgementRef.current };
     }
 
+    const liveSample = (snap) => ({ score: Math.round(snap.score), combo: snap.combo, accuracy: snap.accuracy ?? null });
+
+    function endLive(snap) {
+      liveRef.current?.end(snap ? liveSample(snap) : undefined);
+      liveRef.current = null;
+      setRunSession(null);
+    }
+
+    // Autoplay and calibration runs report nothing: they are not a score to compare.
+    function startLive(snap) {
+      endLive();
+      const audioKey = songClock.audioKey();
+      const send = requestsRef.current?.send;
+      const session = audioKey && send && !runAutoplayRef.current && !runCalibrationRef.current ? liveSessionFnRef.current?.(audioKey) ?? null : null;
+      if (!session) return;
+      liveRef.current = createLiveSender({ send, session, audioKey, difficulty: cfgRef.current.liveDifficulty });
+      liveRef.current.update(liveSample(snap));
+      setRunSession(session);
+    }
+
     function startRun() {
       const chart = chartRef.current;
       const songMs = songClock.songTimeAt(performance.now());
@@ -203,7 +239,10 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       const snap = run.snapshot(songMs);
       multiplierRef.current = snap.multiplier;
       setHud(toHud(snap));
+      startLive(snap);
       setPhase(songClock.paused() ? "paused" : "playing");
+      // A solo link starts its count-in only now that the game took the chart (the live link has no such hook).
+      link.chartAccepted?.();
     }
 
     // Sends the finished run for scoring and keeps the reply on the summary it belongs to. A calibration run
@@ -227,6 +266,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       setCalibrating(false);
       const snap = run.snapshot(lastSongMsRef.current);
       feverActiveRef.current = false;
+      endLive(snap);
       if (snap.judged >= 1) {
         const { hits, ranked, skipped, ...rest } = snap;
         const meta = runMetaRef.current ?? {};
@@ -270,6 +310,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       setPhase("charting");
       link.requestChart(key, cfgRef.current.liveDifficulty);
     }
+    beginChartingRef.current = beginCharting;
 
     // Applies run events: counters for the pose and flashes, and marks the HUD stale.
     // Returns true when the run ended.
@@ -307,6 +348,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       multiplierRef.current = snap.multiplier;
       feverActiveRef.current = snap.feverActive;
       setHud(toHud(snap));
+      liveRef.current?.update(liveSample(snap));
       // Autoplay plays the whole game, FEVER included.
       if (runAutoplayRef.current && snap.vibe >= 1 && !snap.feverActive) {
         const fever = run.fever(songMs);
@@ -379,6 +421,10 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         if (runRef.current || phaseRef.current === "offline") return;
         resumePhaseRef.current = phaseRef.current;
         setPhase("offline");
+      } else if (status === "live" && phaseRef.current === "charting" && !runRef.current) {
+        // Back online while charting: a request refused or lost meanwhile goes out again (in-flight ones dedupe).
+        const key = songClock.audioKey();
+        if (key) link.requestChart(key, cfgRef.current.liveDifficulty);
       } else if (status === "live" && (phaseRef.current === "offline" || phaseRef.current === "connecting")) {
         if (!songClock.audioKey()) {
           setPhase(phaseRef.current === "offline" ? "idle" : "connecting");
@@ -560,6 +606,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       window.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("blur", onBlur);
       releaseHeldRef.current = () => {};
+      beginChartingRef.current = () => {};
+      endLive(runRef.current ? runRef.current.snapshot(lastSongMsRef.current) : undefined);
       offAnchor();
       offChart();
       offStatus();
@@ -598,6 +646,12 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       const restarted = createRun({ chart, startSongMs: songMs, offsetMs: cfgRef.current.offsetMs, autoplay: value });
       runRef.current = restarted;
       runAutoplayRef.current = value;
+      if (value && liveRef.current) {
+        // An autoplayed run is not a score to put on the board.
+        liveRef.current.end();
+        liveRef.current = null;
+        setRunSession(null);
+      }
       const snap = restarted.snapshot(songMs);
       const { hits, ranked, skipped, ...rest } = snap;
       setHud({ ...rest, unranked: value || skipped > 0, judgement: null });
@@ -611,5 +665,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     setTiming(tapTiming.estimate());
   }, [tapTiming]);
 
-  return { phase, hud, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
+  return { phase, hud, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
 }

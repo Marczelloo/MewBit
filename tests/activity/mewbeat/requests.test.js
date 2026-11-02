@@ -86,3 +86,18 @@ test("a send that reports failure rejects at once", async () => {
   await assert.rejects(requests.request("mewbeat_played", {}), /Not connected/);
   assert.equal(timers.size, 0);
 });
+
+test("send() fires a message without a reply and says whether it went out", () => {
+  const ok = harness(true);
+  assert.equal(ok.requests.send({ type: "mewbeat_live", score: 1 }), true);
+  assert.deepEqual(ok.sent, [{ type: "mewbeat_live", score: 1 }]);
+  const refused = harness(false);
+  assert.equal(refused.requests.send({ type: "mewbeat_live", score: 2 }), false);
+});
+
+test("send() swallows a throwing socket", () => {
+  const requests = createMewbeatRequests(() => {
+    throw new Error("closed");
+  });
+  assert.equal(requests.send({ type: "mewbeat_live" }), false);
+});

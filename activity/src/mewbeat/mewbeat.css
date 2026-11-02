@@ -419,6 +419,20 @@
 .mb-vibe-hint-ready { color: var(--mb-gold); font-weight: 700; animation: mb-blink 800ms steps(1) infinite; }
 @keyframes mb-blink { 50% { opacity: 0.45; } }
 
+/* live leaderboard: top 5 of the session plus the player's own row */
+.mb-lb-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.mb-lb-row { display: grid; grid-template-columns: 16px 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--mb-high); font-size: 13px; }
+.mb-lb-gap { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--mb-line); }
+.mb-lb-rank { color: var(--mb-faint); font: 700 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+.mb-lb-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; outline: 1px solid var(--mb-line); }
+.mb-lb-av-text { background: var(--mb-high-bg, #161920); color: var(--mb-high); font-size: 10px; font-weight: 800; }
+.mb-lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-lb-score { font: 700 12px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-lb-me { color: var(--mb-cyan); }
+.mb-lb-me .mb-lb-av { outline-color: var(--mb-cyan); }
+.mb-lb-me .mb-lb-rank { color: var(--mb-cyan); }
+.mb-lb-done { opacity: 0.6; }
+
 /* narrow widths: Mewbit and the spotlights go; the highway comes first, the cards below it */
 @media (max-width: 900px) {
   /* Two rows remain: the highway takes the space left, the cards their own height.
@@ -447,6 +461,7 @@
   .mb-hud-score { margin-top: 0; font-size: 22px; }
   .mb-vibe { flex: 1 1 80px; margin-top: 0; }
   .mb-vibe-hint { flex: 1 0 100%; margin-top: 0; font-size: 11px; }
+  .mb-lb { display: none; }
 }
 @media (max-width: 560px) {
   .mb-header-actions .mb-kbd { display: none; }
