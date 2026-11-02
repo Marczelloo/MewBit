@@ -139,5 +139,5 @@ The Activity gateway runs in the bot process and is responsible for authorizing 
 | `ACTIVITY_ALLOWED_ORIGINS` | `*` | Comma-separated allowed browser origins. Restrict this in production. |
 | `ACTIVITY_ARTWORK_HOSTS` | empty | Optional comma-separated allowlist for external artwork URLs. |
 | `ACTIVITY_ALLOW_DEV` | `false` | Enables local development identity. Never enable on public production. |
-| `ACTIVITY_DEV_GUILD_ID` / `ACTIVITY_DEV_USER_ID` | demo values | Local preview identity. |
+| `ACTIVITY_DEV_GUILD_ID` / `ACTIVITY_DEV_USER_ID` | demo values | Local preview identity. Applies only to requests without a Discord token, so people opening the Activity in Discord on that server keep their own accounts. |
 | `ACTIVITY_DEV_TOKEN` | empty | Optional token protecting local gateway preview. |

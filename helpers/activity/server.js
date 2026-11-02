@@ -296,7 +296,9 @@ function getBearerToken(request) {
 function getIdentityFromDev(config, guildId, token) {
   if (!config.allowDev) return null;
   if (guildId !== config.devGuildId) return null;
-  if (process.env.ACTIVITY_DEV_TOKEN && token !== process.env.ACTIVITY_DEV_TOKEN) return null;
+  // A Discord token is a real person, even on the dev server: only the local preview, which has
+  // none, is the shared dev identity. Otherwise everyone opening the Activity there is one player.
+  if (process.env.ACTIVITY_DEV_TOKEN ? token !== process.env.ACTIVITY_DEV_TOKEN : token) return null;
 
   return {
     id: config.devUserId,

@@ -410,3 +410,72 @@ test("Activity routes mewbeat_ messages to the mewbeat channel", async (t) => {
   assert.equal(big.id, "big-run");
   assert.equal(big.reason, "locked");
 });
+
+test("Activity dev identity is only for the local preview: a Discord token on the dev server stays that person", async (t) => {
+  const previous = {
+    ACTIVITY_ENABLED: process.env.ACTIVITY_ENABLED,
+    ACTIVITY_ALLOW_DEV: process.env.ACTIVITY_ALLOW_DEV,
+    ACTIVITY_PORT: process.env.ACTIVITY_PORT,
+    ACTIVITY_DEV_GUILD_ID: process.env.ACTIVITY_DEV_GUILD_ID,
+    ACTIVITY_DEV_TOKEN: process.env.ACTIVITY_DEV_TOKEN,
+    NODE_ENV: process.env.NODE_ENV,
+  };
+  const guildId = "activity-dev-identity-guild";
+  Object.assign(process.env, {
+    ACTIVITY_ENABLED: "true",
+    ACTIVITY_ALLOW_DEV: "true",
+    ACTIVITY_PORT: "0",
+    ACTIVITY_DEV_GUILD_ID: guildId,
+    NODE_ENV: "test",
+  });
+  delete process.env.ACTIVITY_DEV_TOKEN;
+
+  const people = {
+    "dev-identity-token-ada": { id: "ada-id", username: "ada", global_name: "Ada", discriminator: "0" },
+    "dev-identity-token-bo": { id: "bo-id", username: "bo", global_name: "Bo", discriminator: "0" },
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== "https://discord.com/api/v10/users/@me") return realFetch(url, options);
+    const person = people[String(options.headers.Authorization).slice("Bearer ".length)];
+    return { ok: Boolean(person), json: async () => person };
+  };
+
+  const guild = { id: guildId, name: "Dev", members: { fetch: async (id) => ({ id }) } };
+  const gateway = createActivityServer({ guilds: { cache: new Map([[guildId, guild]]) } });
+  const server = gateway.start();
+  t.after(() => {
+    gateway.stop();
+    resetActivitySessions();
+    resetActivityStateRevision(guildId);
+    globalThis.fetch = realFetch;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  await waitForListening(server);
+  const signIn = (token) => new Promise((resolve, reject) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${server.address().port}/api/activity/ws`);
+    t.after(() => socket.close());
+    socket.on("open", () => socket.send(JSON.stringify({ type: "auth", guildId, token })));
+    socket.on("error", reject);
+    socket.on("message", (raw) => {
+      const message = JSON.parse(raw.toString());
+      if (message.type === "ready") resolve(message.identity);
+      if (message.type === "error") reject(new Error(message.error));
+    });
+  });
+
+  assert.deepEqual(await signIn("dev-identity-token-ada"), { id: "ada-id", username: "Ada" });
+  assert.deepEqual(await signIn("dev-identity-token-bo"), { id: "bo-id", username: "Bo" });
+  assert.deepEqual(await signIn(null), { id: "local-user", username: "Local Listener" });
+  await assert.rejects(signIn("dev-identity-token-stranger"), /authentication expired/);
+
+  // With a dev token set, that token is the preview; a Discord token is still its owner.
+  process.env.ACTIVITY_DEV_TOKEN = "dev-identity-preview";
+  assert.deepEqual(await signIn("dev-identity-preview"), { id: "local-user", username: "Local Listener" });
+  assert.deepEqual(await signIn("dev-identity-token-ada"), { id: "ada-id", username: "Ada" });
+  await assert.rejects(signIn(null), /authentication is required/);
+});
