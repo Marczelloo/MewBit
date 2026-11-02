@@ -3,10 +3,10 @@ const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
-let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator;
+let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSound, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator;
 
 test.before(async () => {
-  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator } = await import(
+  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSound, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/room.js")).href
   ));
 });
@@ -177,6 +177,28 @@ test("songProgress: nothing before the song, a fraction while playing, full once
   assert.equal(songProgress(playing, mapping, 999_000), 1);
   assert.equal(songProgress({ ...playing, phase: "intermission", endedAt: 1 }, mapping, 0), 1);
   assert.equal(songProgress(playing, {}, 0), 0);
+});
+
+test("nextCountdownSecond lands on the moment the digit changes, down to GO and no further", () => {
+  assert.deepEqual(nextCountdownSecond(3500), { second: 3, inMs: 500 });
+  assert.deepEqual(nextCountdownSecond(3000), { second: 2, inMs: 1000 });
+  assert.deepEqual(nextCountdownSecond(0.5), { second: 0, inMs: 0.5 });
+  assert.equal(nextCountdownSecond(0), null);
+  assert.equal(nextCountdownSecond(-20), null);
+  assert.equal(nextCountdownSecond(Number.NaN), null);
+  for (const left of [3500, 1200, 400]) {
+    const { second, inMs } = nextCountdownSecond(left);
+    assert.equal(countdownDigit(left, inMs + 0.01), second || 0, "the screen shows the same second just after");
+  }
+});
+
+test("countdownSound: GO at zero, full ticks for the last five seconds, quiet ones before", () => {
+  assert.deepEqual(countdownSound(0), { name: "go", level: 1 });
+  assert.deepEqual(countdownSound(1), { name: "tick", level: 1 });
+  assert.deepEqual(countdownSound(5), { name: "tick", level: 1 });
+  const quiet = countdownSound(6);
+  assert.equal(quiet.name, "tick");
+  assert.ok(quiet.level > 0 && quiet.level < 1);
 });
 
 test("memberStatus follows the phase", () => {

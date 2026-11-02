@@ -77,7 +77,7 @@ function Segmented({ label, options, value, onChange }) {
 
 // The settings window. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs" }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs" }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -245,6 +245,8 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   const scrollSpeed = valueOf("scrollSpeed");
   const hitSounds = Boolean(valueOf("hitSounds"));
   const hitVolume = valueOf("hitVolume");
+  const sfx = Boolean(valueOf("sfx"));
+  const sfxVolume = valueOf("sfxVolume");
   const musicVolume = valueOf("musicVolume");
 
   return (
@@ -426,6 +428,35 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                     const value = Number(event.target.value);
                     changeDebounced("hitVolume", value, { immediate: false });
                     onPreviewHit?.(value);
+                  }}
+                />
+              </section>
+              <section className="mb-row">
+                <div className="mb-row-text">
+                  <span className="mb-row-label">Sound effects</span>
+                </div>
+                <Segmented label="Sound effects" options={HIT_SOUNDS} value={sfx} onChange={(value) => send({ sfx: value })} />
+              </section>
+              <section className="mb-row mb-row-stack">
+                <div className="mb-row-head">
+                  <label className="mb-row-label" htmlFor="mb-sfx-volume">Sound effects volume</label>
+                  <output className="mb-value" htmlFor="mb-sfx-volume">{sfxVolume}%</output>
+                </div>
+                <input
+                  id="mb-sfx-volume"
+                  className="mb-range"
+                  style={{ "--fill": fillOf(sfxVolume, VOLUME_MIN, VOLUME_MAX) }}
+                  type="range"
+                  min={VOLUME_MIN}
+                  max={VOLUME_MAX}
+                  step={VOLUME_STEP}
+                  value={sfxVolume}
+                  disabled={!sfx}
+                  aria-valuetext={`${sfxVolume}%`}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    changeDebounced("sfxVolume", value, { immediate: false });
+                    onPreviewSfx?.(value);
                   }}
                 />
               </section>

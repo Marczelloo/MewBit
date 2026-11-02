@@ -22,7 +22,8 @@ import SongSelect from "./SongSelect.jsx";
 import SpectateCard from "./SpectateCard.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { multiplierFor } from "./scoring.js";
-import { loadedCount, memberOf, roomErrorText, roomView, standingsOf, upNextOf } from "./room.js";
+import { loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf } from "./room.js";
+import { useCountdownSounds } from "./useCountdownSounds.js";
 import { useMewbeatGame } from "./useMewbeatGame.js";
 import { useScreenExit } from "./useScreenExit.js";
 import "./mewbeat.css";
@@ -333,7 +334,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
+  const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating } = game;
   // The player being watched has their own difficulty: while the run is on another one, swap its chart.
   useEffect(() => {
     if (!watchingLive || phase !== "playing" || !targetDifficulty || !runDifficulty || runDifficulty === targetDifficulty) return;
@@ -568,6 +569,22 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [heldSummaryId]);
   const endBanner = holdingCard ? (endSummary.counts?.miss === 0 && !endSummary.autoplay ? "FULL COMBO!" : "SONG COMPLETE") : null;
   const showCard = Boolean(endSummary) && !holdingCard && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  useEffect(() => {
+    if (endBanner) playSfx(endBanner === "FULL COMBO!" ? "full-combo" : "complete");
+  }, [endBanner, playSfx]);
+  // The room's countdown to its next round, and Solo's count-in: each digit ticks, and the opening one ends on GO.
+  const roomStartPerf = view === "lobby" && room?.nextAt != null
+    ? serverToPerf(room.nextAt, { offsetMs: link.serverClock?.offsetMs?.() ?? null, serverNow: room.serverNow, receivedAtMs: roomStoreView.receivedAt })
+    : null;
+  useCountdownSounds({ startPerf: roomStartPerf, started: inRound, calm: showCard || holdingCard, play: playSfx });
+  const soloCount = soloStage === "countin" ? soloState.count : null;
+  const lastSoloCount = useRef(null);
+  useEffect(() => {
+    const counting = lastSoloCount.current != null;
+    lastSoloCount.current = soloCount;
+    if (soloCount != null) playSfx("tick");
+    else if (counting && soloStage === "playing" && soloState?.opening) playSfx("go");
+  }, [soloCount, soloStage, soloState?.opening, playSfx]);
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
   useEffect(() => {
@@ -649,6 +666,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       mode={mode}
       phase={phase}
       effects={effectsLevel}
+      onSound={playSfx}
       active={!settingsOpen && !menuShown && !leaveConfirm && !addOpen}
       queued={Boolean(track?.queued)}
       upNext={roomMode ? upNextOf(room) : !solo && player?.queue?.[0]?.title ? { title: player.queue[0].title, ready: false } : null}
@@ -704,6 +722,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         if (solo || roomMode) audio.unlock();
       }}
       onKeyDown={() => {
+        unlockAudio();
         if (roomMode) audio.unlock();
       }}
     >
@@ -859,6 +878,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           onAutoOffset={setAutoOffset}
           onResetTiming={resetTiming}
           onPreviewHit={previewHit}
+          onPreviewSfx={previewSfx}
           onPreviewMusic={previewMusic}
           liveCalibration={mode === "live"}
           offsetField={offsetField}

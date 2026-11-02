@@ -31,6 +31,14 @@ describe("mewbeat settings validation", () => {
     assert.deepStrictEqual(DEFAULT_SETTINGS.keys, ["KeyD", "KeyF", "KeyJ", "KeyK"]);
   });
 
+  it("has sound effects on by default, and accepts them changed", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.sfx, true);
+    assert.strictEqual(DEFAULT_SETTINGS.sfxVolume, 60);
+    const merged = validateSettingsPatch({ sfx: false, sfxVolume: 0 }, DEFAULT_SETTINGS);
+    assert.strictEqual(merged.sfx, false);
+    assert.strictEqual(merged.sfxVolume, 0);
+  });
+
   it("defaults to quiet hit sounds and a visible Mewbit, and accepts both changed", () => {
     assert.strictEqual(DEFAULT_SETTINGS.hitVolume, 40);
     assert.strictEqual(DEFAULT_SETTINGS.showMewbit, true);
@@ -87,6 +95,9 @@ describe("mewbeat settings validation", () => {
     "hit volume above 100": { hitVolume: 101 },
     "a negative hit volume": { hitVolume: -5 },
     "a fractional hit volume": { hitVolume: 12.5 },
+    "non-boolean sound effects": { sfx: "yes" },
+    "sound effects volume above 100": { sfxVolume: 101 },
+    "a fractional sound effects volume": { sfxVolume: 12.5 },
     "music volume above 100": { musicVolume: 101 },
     "a negative music volume": { musicVolume: -1 },
     "a fractional music volume": { musicVolume: 50.5 },

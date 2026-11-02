@@ -1,5 +1,5 @@
 import { ArrowCounterClockwise, ArrowLeft, ArrowRight, MusicNotesSimple } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
@@ -61,6 +61,11 @@ function gradeKey(grade) {
 
 // The screen fills in one thing at a time and ends on the grade; ms after it opens.
 const REVEAL = { score: 300, accuracy: 1700, combo: 2300, fevers: 2900, offset: 3300, judges: 3700, timing: 4700, side: 5000, grade: 5400, verdict: 5900 };
+// The steps that pluck as they appear, climbing a major scale (semitones up from the first), and the grade's own sound.
+const TALLY_STEPS = ["score", "accuracy", "combo", "fevers", "offset", "judges", "timing"];
+const TALLY_SEMITONES = [0, 2, 4, 5, 7, 9, 12];
+const TALLY_LEVEL = 0.7;
+const GRADE_SOUNDS = { S: "grade-high", A: "grade-high", B: "grade-mid", C: "grade-mid", D: "grade-low" };
 const STAT_COUNT_MS = 650;
 const JUDGE_COUNT_MS = 420;
 const JUDGE_STEP_MS = 180;
@@ -287,6 +292,7 @@ export default function Results({
   onNext = null,
   nextLabel = "Next round",
   nextCount = null,
+  onSound = null,
 }) {
   const prefersReduced = usePrefersReducedMotion();
   const submit = summary.submit ?? { status: "skipped" };
@@ -307,6 +313,22 @@ export default function Results({
   const boardEmpty = topList.length === 0 && Boolean(result) && !standings?.length && !summary.calibration;
   const showSide = Boolean(standings?.length) || topList.length > 0 || boardEmpty;
   const grade = gradeKey(summary.grade);
+  // A skip, or motion turned off, goes straight to the grade.
+  const tallied = useRef(0);
+  const graded = useRef(false);
+  useEffect(() => {
+    if (!onSound || summary.calibration || graded.current) return;
+    if (reached >= REVEAL.grade) {
+      graded.current = true;
+      onSound(GRADE_SOUNDS[grade]);
+      return;
+    }
+    const step = tallied.current;
+    if (step < TALLY_STEPS.length && reached >= REVEAL[TALLY_STEPS[step]]) {
+      tallied.current = step + 1;
+      onSound("tally", { level: TALLY_LEVEL, rate: 2 ** (TALLY_SEMITONES[step] / 12) });
+    }
+  }, [reached, grade, onSound, summary.calibration]);
   // Only Live follows what the bot plays; Solo and rooms move on by themselves.
   const note = mode === "live" ? PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null) : null;
   const cover = resolveArtworkUrl(summary.artworkUrl);

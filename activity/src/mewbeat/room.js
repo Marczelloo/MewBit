@@ -3,6 +3,7 @@
 
 export const PEEK_WINDOW_MS = 15_000; // Mewbit peeks in the last 15 s before a round
 export const GO_WINDOW_MS = 800; // how long "GO!" stays on screen after the start
+const QUIET_TICK_LEVEL = 0.35; // a tick more than five seconds before the start
 
 export function memberOf(room, userId) {
   return room?.members?.find((m) => m.userId === userId) ?? null;
@@ -67,6 +68,20 @@ export function countdownDigit(startPerf, nowPerf) {
   if (left > 5500) return null;
   if (left > 0) return Math.min(5, Math.ceil(left / 1000));
   return left > -GO_WINDOW_MS ? 0 : null;
+}
+
+// The whole second a countdown reaches next and how far off it is, for timers that sound on the second.
+// Null once the start has passed.
+export function nextCountdownSecond(leftMs) {
+  if (!Number.isFinite(leftMs) || leftMs <= 0) return null;
+  const second = Math.ceil(leftMs / 1000) - 1;
+  return { second, inMs: leftMs - second * 1000 };
+}
+
+// A countdown reaching a second: 0 is "GO!", the final seconds tick in full and the long wait before them quietly.
+export function countdownSound(second) {
+  if (second === 0) return { name: "go", level: 1 };
+  return { name: "tick", level: second > 5 ? QUIET_TICK_LEVEL : 1 };
 }
 
 // "m:ss" for a remaining time; never negative.

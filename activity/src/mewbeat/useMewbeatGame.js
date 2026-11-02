@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { effectiveEffects } from "./effects.js";
 import { approachMsFor, createHighwayRenderer, tempoScrollFactor } from "./highway.js";
-import { createHitSounds } from "./hitSounds.js";
+import { SOUND_URLS } from "./sfx/index.js";
+import { createSounds } from "./sounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
@@ -9,7 +10,9 @@ import { createRun } from "./run.js";
 import { createLiveSender } from "./liveSender.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, musicVolume: 80, showMewbit: true, tempoScroll: true };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
+const MISS_SOUND_GAP_MS = 150; // a chord of misses is one sound, not a pile of them
+const MISS_SOUND_LEVEL = 0.8;
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -146,6 +149,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const inputPausedRef = useRef(inputPaused);
   inputPausedRef.current = inputPaused;
   const soundsRef = useRef(null);
+  const lastMissSoundRef = useRef(-Infinity);
   const releaseHeldRef = useRef(() => {}); // set by the link effect: releases every held lane into the run
   const beginChartingRef = useRef(() => {}); // set by the link effect: (re)requests the chart for the current song
 
@@ -160,7 +164,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
   // Hit sounds: the AudioContext only comes into being on the first gesture (see unlockAudio).
   useEffect(() => {
-    const sounds = createHitSounds();
+    const sounds = createSounds({ urls: SOUND_URLS });
     soundsRef.current = sounds;
     return () => {
       sounds.close();
@@ -169,7 +173,12 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   }, []);
   const unlockAudio = useCallback(() => soundsRef.current?.unlock(), []);
   // One hit at the given volume, so the settings slider can be heard while it moves.
-  const previewHit = useCallback((volume) => soundsRef.current?.play(volume), []);
+  const previewHit = useCallback((volume) => soundsRef.current?.play("hit", volume), []);
+  const previewSfx = useCallback((volume) => soundsRef.current?.play("tick", volume), []);
+  // Everything but the hit sound: countdowns, the end of a song, the results.
+  const playSfx = useCallback((name, options) => {
+    if (cfgRef.current.sfx !== false) soundsRef.current?.play(name, cfgRef.current.sfxVolume, options);
+  }, []);
 
   // A key held when the panel opens never sends its keyup to the game: release it ourselves,
   // so a hold being played is judged now instead of staying held forever.
@@ -424,13 +433,17 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           comboRef.current += 1;
           // The player's presses sound on the key (see onLane); autoplay has no keys, so its heads
           // sound here. A tail counts for combo and the popup, but it has no sound of its own.
-          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && event.part !== "tail") soundsRef.current?.play(cfgRef.current.hitVolume);
+          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && event.part !== "tail") soundsRef.current?.play("hit", cfgRef.current.hitVolume);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
           crushedRef.current = comboRef.current >= CRUSH_COMBO;
           missUntilRef.current = performance.now() + (crushedRef.current ? CRUSHED_POSE_MS : MISS_POSE_MS);
           comboRef.current = 0;
+          if (cfgRef.current.sfx !== false && !runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && performance.now() - lastMissSoundRef.current >= MISS_SOUND_GAP_MS) {
+            lastMissSoundRef.current = performance.now();
+            soundsRef.current?.play("miss", cfgRef.current.sfxVolume, { level: MISS_SOUND_LEVEL });
+          }
           flashesRef.current.push({ lane: event.lane, judgement: "miss", at: heardMs });
           judgementRef.current = { text: "MISS", kind: "miss", id: ++judgementIdRef.current };
         } else if (event.kind === "end") {
@@ -579,7 +592,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         if (!run || phaseRef.current !== "playing") return;
         // Every press sounds, hit or not, as in osu!mania: the sound answers the key. Calibration runs stay
         // silent: players line the hit sound up instead of the beat, which skews the measured offset.
-        if (cfgRef.current.hitSounds && !runAutoplayRef.current && !runCalibrationRef.current) soundsRef.current?.play(cfgRef.current.hitVolume);
+        if (cfgRef.current.hitSounds && !runAutoplayRef.current && !runCalibrationRef.current) soundsRef.current?.play("hit", cfgRef.current.hitVolume);
         const songMs = songClock.songTimeAt(timeStamp);
         if (songMs === null) return;
         // Calibration hides the notes, so a tap is aimed by ear alone (a player watching the notes
@@ -803,5 +816,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
   const changeDifficulty = useCallback((next) => requestSwapRef.current(next), []);
 
-  return { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
+  return { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating };
 }
