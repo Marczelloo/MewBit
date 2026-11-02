@@ -755,6 +755,7 @@ const mewbeatChannel = createMewbeatChannel({
   scoreStore: mewbeatScoreStore,
   historyStore: mewbeatHistoryStore,
   postInvite: createInvitePoster({ getClient }),
+  warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
   // A pending room phase must not keep the process alive.
@@ -1705,7 +1706,9 @@ function createActivityServer(client) {
           return sendSocket(socket, { type: "heartbeat", time: Date.now() });
         }
         if (typeof message.type === "string" && message.type.startsWith("mewbeat_")) {
-          const mewbeatLimit = consumeRateLimit(`ws-mewbeat:${socket.identity.id}`, { limit: 600, windowMs: 60_000 });
+          // One window in a dense chart sends about 300 a minute (sync plus live updates); this
+          // covers a few windows at once, so a submit or room_loaded is not throttled away.
+          const mewbeatLimit = consumeRateLimit(`ws-mewbeat:${socket.identity.id}`, { limit: 1500, windowMs: 60_000 });
           if (!mewbeatLimit.allowed) throw Object.assign(new Error("Too many mewbeat messages. Try again shortly."), { statusCode: 429 });
           const reply = await mewbeatChannel.handle(socket.guildId, socket.identity.id, message, mewbeatProfileOf(socket.identity));
           if (reply) sendSocket(socket, reply);

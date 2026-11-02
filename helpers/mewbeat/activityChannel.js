@@ -41,6 +41,8 @@ function errorReply(message) {
 // board pushes and expires its entries the same way. postInvite({ guildId,
 // userId, username }) -> { ok } | { ok: false, reason } posts the lobby invite
 // in the inviter's voice channel chat; the channel only rate-limits it.
+// warmAudio(audioKey, track, node) starts rendering a room song's audio when it
+// is queued, so the round's loading window doesn't pay for a cold render.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
@@ -51,6 +53,7 @@ function createMewbeatChannel({
   soloTracks = createSoloTracks(),
   scoreStore, historyStore, loadScoring,
   postInvite,
+  warmAudio = () => {},
   // eslint-disable-next-line no-unused-vars
   broadcast = () => {}, sendToUser,
   setTimer = setTimeout, clearTimer = clearTimeout,
@@ -156,7 +159,16 @@ function createMewbeatChannel({
     now,
     setTimer,
     clearTimer,
-    prepareTrack: ({ guildId, uri, source }) => prepareSong(guildId, { uri, source }),
+    prepareTrack: async ({ guildId, uri, source }) => {
+      const prepared = await prepareSong(guildId, { uri, source });
+      const entry = soloTracks.get(prepared.audioKey);
+      if (entry) {
+        Promise.resolve()
+          .then(() => warmAudio(prepared.audioKey, entry.track, entry.node))
+          .catch((error) => log.warning("mewbeat room audio warm-up failed", error?.message));
+      }
+      return prepared;
+    },
     broadcast,
     log,
   });

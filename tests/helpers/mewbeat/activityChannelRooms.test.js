@@ -49,7 +49,7 @@ describe("mewbeat channel rooms", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ unlocked = true, postInvite } = {}) {
+  function setup({ unlocked = true, postInvite, warmAudio } = {}) {
     let time = 1_000_000;
     let nextTimer = 1;
     const timers = new Map();
@@ -67,6 +67,7 @@ describe("mewbeat channel rooms", () => {
       scoreStore: createScoreStore({ file: path.join(dir, "scores.json"), now: () => time }),
       historyStore: createHistoryStore({ file: path.join(dir, "history.json"), now: () => time }),
       postInvite,
+      warmAudio,
       broadcast: (guildId, userIds, payload) => pushes.push({ guildId, userIds, payload }),
       setTimer: (run, ms) => { const id = nextTimer++; timers.set(id, { at: time + ms, run }); return id; },
       clearTimer: (id) => timers.delete(id),
@@ -125,6 +126,21 @@ describe("mewbeat channel rooms", () => {
       await send(ANN, { type: "mewbeat_room_queue_remove", id: "5", index: 0 }),
       { type: "mewbeat_room_queue_remove", id: "5", status: "ok" },
     );
+  });
+
+  it("starts rendering a queued song's audio and survives a failed render", async () => {
+    const warmed = [];
+    const { send } = setup({
+      warmAudio: async (audioKey, track, node) => {
+        warmed.push([audioKey, track.info.identifier, node]);
+        throw new Error("render failed");
+      },
+    });
+    await send(ANN, { type: "mewbeat_room_join", id: "1" });
+    const reply = await send(ANN, { type: "mewbeat_room_queue_add", id: "2", uri: "abc", source: "youtube" });
+    assert.strictEqual(reply.status, "ok");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(warmed, [[KEY, "abc", "n"]]);
   });
 
   it("validates ready and answers errors with a reason", async () => {
