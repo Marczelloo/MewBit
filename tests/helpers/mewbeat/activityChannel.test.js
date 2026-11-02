@@ -204,7 +204,7 @@ describe("mewbeat activity channel", () => {
     it("refuses a locked account without resolving", async () => {
       const { channel, resolveCalls } = soloSetup({ unlocked: false });
       const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "x", source: "" });
-      assert.deepStrictEqual(reply, { type: "error", error: "Unlock mewbeat first." });
+      assert.deepStrictEqual(reply, { type: "mewbeat_solo_prepare", id: "p1", status: "error", reason: "locked" });
       assert.strictEqual(resolveCalls.length, 0);
     });
 

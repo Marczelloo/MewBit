@@ -1,6 +1,7 @@
 const Log = require("../logs/log");
 const { audioKeyOf } = require("./audioKey");
 const { starsOf } = require("./charts/stars");
+const { createLiveBoard } = require("./liveBoard");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
 const { DIFFICULTIES: ROOM_DIFFICULTIES, createRooms } = require("./rooms");
 const { createSoloTracks } = require("./soloTracks");
@@ -35,7 +36,8 @@ function errorReply(message) {
 // scoreStore and historyStore keep boards and play history; loadScoring
 // replaces the import of the client's scoring module in tests. The rooms push
 // their state with broadcast(guildId, userIds, payload) and run their phases
-// on setTimer/clearTimer, so tests can drive them with a fake clock.
+// on setTimer/clearTimer, so tests can drive them with a fake clock; the live
+// board pushes and expires its entries the same way.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
@@ -135,7 +137,7 @@ function createMewbeatChannel({
     const { id, uri, source } = message;
     const fail = (reason) => ({ type: "mewbeat_solo_prepare", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat prepare.");
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+    if (!isUnlocked(userId)) return fail("locked");
 
     try {
       const { audioKey, track } = await prepareSong(guildId, { uri, source });
@@ -155,20 +157,44 @@ function createMewbeatChannel({
     log,
   });
 
+  // Live standings are pushed to the session's players; the room's members
+  // (spectators included) come from the room itself.
+  const liveBoard = createLiveBoard({
+    now,
+    setTimer,
+    clearTimer,
+    broadcast,
+    membersOf: (guildId) => rooms.snapshot(guildId)?.members ?? [],
+    log,
+  });
+
+  // A progress update from a running game; nothing is sent back, the board
+  // reaches everyone as a mewbeat_live_board push.
+  function live(guildId, userId, message, profile) {
+    if (!isUnlocked(userId)) return null;
+    liveBoard.update(guildId, userId, profile, message);
+    return null;
+  }
+
   // Room requests answer the sender with { type, id, status, reason }; the
   // room itself reaches every member as a mewbeat_room push.
   async function roomRequest(guildId, userId, message, profile) {
     const { type, id } = message;
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat room request.");
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
     const reply = (result) => (result.ok
       ? { type, id, status: "ok" }
       : { type, id, status: "error", reason: result.reason });
+    if (!isUnlocked(userId)) return reply({ ok: false, reason: "locked" });
 
     switch (type) {
       case "mewbeat_room_join":
         return reply(rooms.join(guildId, { id: userId, username: profile?.username, avatarUrl: profile?.avatarUrl }));
-      case "mewbeat_room_leave": return reply(rooms.leave(guildId, userId));
+      case "mewbeat_room_leave": {
+        // The room first: its board goes to whoever is still a member.
+        const result = rooms.leave(guildId, userId);
+        liveBoard.remove(guildId, userId, "room");
+        return reply(result);
+      }
       case "mewbeat_room_queue_add":
         return reply(await rooms.queueAdd(guildId, userId, { uri: message.uri, source: message.source }));
       case "mewbeat_room_queue_remove": return reply(rooms.queueRemove(guildId, userId, message.index));
@@ -238,7 +264,7 @@ function createMewbeatChannel({
     const { id, mode, audioKey, difficulty, chartVersion, events, fevers, flags } = message;
     const fail = (reason) => ({ type: "mewbeat_submit", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat submit.");
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore || !historyStore) return fail("unavailable");
     if (!DIFFICULTIES.includes(difficulty)) return fail("bad_difficulty");
     if (!Array.isArray(events) || events.length === 0) return fail("no_events");
@@ -330,7 +356,7 @@ function createMewbeatChannel({
     const { id, audioKey, difficulty, scope } = message;
     const fail = (reason) => ({ type: "mewbeat_board", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat board.");
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore) return fail("unavailable");
     if (!DIFFICULTIES.includes(difficulty) || typeof audioKey !== "string") return fail("bad_request");
     if (scope !== "server" && scope !== "global") return fail("bad_scope");
@@ -350,7 +376,7 @@ function createMewbeatChannel({
     const { id, scope } = message;
     const fail = (reason) => ({ type: "mewbeat_played", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat played.");
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore || !historyStore) return fail("unavailable");
     if (scope !== "server" && scope !== "global") return fail("bad_scope");
 
@@ -384,6 +410,7 @@ function createMewbeatChannel({
         case "mewbeat_submit": return submit(guildId, userId, message, profile);
         case "mewbeat_board": return board(guildId, userId, message);
         case "mewbeat_played": return played(guildId, userId, message);
+        case "mewbeat_live": return live(guildId, userId, message, profile);
         default:
           if (message?.type?.startsWith("mewbeat_room_")) return roomRequest(guildId, userId, message, profile);
           return errorReply("Unknown mewbeat message.");
@@ -392,6 +419,7 @@ function createMewbeatChannel({
     // Called once the user's last socket in the guild is gone.
     disconnect(guildId, userId) {
       rooms.leave(guildId, userId);
+      liveBoard.remove(guildId, userId);
     },
   };
 }

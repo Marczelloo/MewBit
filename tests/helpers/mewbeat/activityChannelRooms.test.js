@@ -100,7 +100,10 @@ describe("mewbeat channel rooms", () => {
 
   it("needs an id and the unlock like every mewbeat message", async () => {
     const locked = setup({ unlocked: false });
-    assert.strictEqual((await locked.send(ANN, { type: "mewbeat_room_join", id: "1" })).type, "error");
+    assert.deepStrictEqual(
+      await locked.send(ANN, { type: "mewbeat_room_join", id: "1" }),
+      { type: "mewbeat_room_join", id: "1", status: "error", reason: "locked" },
+    );
     assert.strictEqual((await setup().send(ANN, { type: "mewbeat_room_join" })).type, "error");
   });
 

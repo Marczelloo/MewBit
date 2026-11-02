@@ -244,12 +244,16 @@ describe("mewbeat channel scores", () => {
 
     it("a locked account", async () => {
       const { channel } = setup({ unlocked: false });
+      // The reply carries the request id, so the client doesn't wait out its timeout.
       for (const message of [
         submitMessage(),
         { type: "mewbeat_board", id: "b", audioKey: KEY, difficulty: "hard", scope: "server" },
         { type: "mewbeat_played", id: "p", scope: "server" },
       ]) {
-        assert.deepStrictEqual(await submit(channel, message), { type: "error", error: "Unlock mewbeat first." });
+        const reply = await submit(channel, message);
+        assert.deepStrictEqual({ type: reply.type, id: reply.id, status: reply.status, reason: reply.reason }, {
+          type: message.type, id: message.id, status: "error", reason: "locked",
+        });
       }
     });
   });
