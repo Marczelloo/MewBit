@@ -110,32 +110,4 @@ function repeatBarLanes(notes, timing, { fromMs, toMs, fixed = () => false }) {
   });
 }
 
-// repeatBars(notes, guide, timing, { fromMs, toMs }) -> notes (time-ordered)
-// Easy and Normal: `notes` is the phrase's selection from Hard, `guide` Hard's notes. A repeating bar plays its source
-// bar's selection moved by the bar lag, each note onto a Hard note of its lane within 1/8 beat (and that note's
-// length). Where a copied note has no such Hard note, the bar's own notes there stand instead, and so does a hold
-// the bar selected at a moment the copy leaves free.
-function repeatBars(notes, guide, timing, { fromMs, toMs }) {
-  return eachBar(notes, guide, timing, fromMs, toMs, (own, source, lag, bar) => {
-    const hard = inBar(guide, bar);
-    const times = [...new Set(hard.map((n) => n.t))].sort((a, b) => a - b);
-    const out = [];
-    const missed = []; // where the source played but Hard has no note of its lane: the bar's own choice stands there
-    for (const n of source) {
-      const t = nearest(times, n.t + lag, bar.beat / 8);
-      const match = t === undefined ? null : hard.find((h) => h.t === t && h.lane === n.lane);
-      if (!match) {
-        missed.push(n.t + lag);
-        continue;
-      }
-      if (out.some((o) => o.t === t && o.lane === n.lane)) continue;
-      out.push(match.len > 0 ? { t, lane: n.lane, len: match.len } : { t, lane: n.lane });
-    }
-    const covered = new Set(out.map((n) => n.t));
-    const near = (n) => missed.some((t) => Math.abs(t - n.t) <= bar.beat / 8);
-    for (const n of own) if (!covered.has(n.t) && (n.len > 0 || near(n))) out.push(n);
-    return out;
-  });
-}
-
-module.exports = { BAR_SIMILARITY, repeatBarLanes, repeatBars };
+module.exports = { BAR_SIMILARITY, repeatBarLanes };

@@ -15,10 +15,38 @@ export function tempoScrollFactor(bpm) {
   return Math.min(TEMPO_FACTOR_MAX, Math.max(TEMPO_FACTOR_MIN, Math.sqrt(bpm / TEMPO_BASE_BPM)));
 }
 
+// A chart's section scroll velocity (chart.scroll, [{ t, x }]: a multiplier, linear between the points, the first
+// and last one's held outside them) as a distance track: pos(t) is how far the highway has moved by song time t, in
+// ms at speed 1, and minX the slowest multiplier (how much further ahead a note can still be on screen). Without
+// points the highway moves at one speed and pos(t) is t.
+const FLAT_TRACK = { pos: (t) => t, minX: 1 };
+export function scrollTrack(points) {
+  if (!Array.isArray(points) || points.length === 0) return FLAT_TRACK;
+  const area = [0];
+  for (let k = 1; k < points.length; k += 1) {
+    const a = points[k - 1];
+    const b = points[k];
+    area.push(area[k - 1] + ((b.t - a.t) * (a.x + b.x)) / 2);
+  }
+  const last = points.length - 1;
+  function pos(t) {
+    if (t <= points[0].t) return (t - points[0].t) * points[0].x;
+    if (t >= points[last].t) return area[last] + (t - points[last].t) * points[last].x;
+    let k = 1;
+    while (points[k].t < t) k += 1;
+    const a = points[k - 1];
+    const b = points[k];
+    const x = b.t > a.t ? a.x + ((b.x - a.x) * (t - a.t)) / (b.t - a.t) : b.x;
+    return area[k - 1] + ((t - a.t) * (a.x + x)) / 2;
+  }
+  return { pos, minX: Math.min(...points.map((p) => p.x)) };
+}
+
 // Vertical position of a note: 0 at the top when it is approachMs away, hitLineY on the line,
-// below it once it is past.
-export function noteY(t, heardMs, approachMs, hitLineY) {
-  return hitLineY * (1 - (t - heardMs) / approachMs);
+// below it once it is past. With a scroll track the distance is the highway's, so a note nears the
+// line faster through a fast section.
+export function noteY(t, heardMs, approachMs, hitLineY, track = FLAT_TRACK) {
+  return hitLineY * (1 - (track.pos(t) - track.pos(heardMs)) / approachMs);
 }
 
 const LANES = 4;
@@ -55,7 +83,7 @@ function roundedRect(ctx, x, y, w, h, r) {
 // Draws the four lanes, the receptors and the falling notes onto a canvas. All DOM and canvas
 // access lives in here, so the module's top level stays importable from Node.
 //   effects: "full" | "reduced" | "off". Reduced drops the particles, off drops the hit flashes too.
-//   render({ heardMs, approachMs, notes, lanesDown, flashes, feverActive })
+//   render({ heardMs, approachMs, track, notes, lanesDown, flashes, feverActive }); track: scrollTrack(chart.scroll), flat when left out
 //     notes: run.visibleNotes() entries ({ t, lane, outcome, len, hold }); flashes: [{ lane, judgement, at }] with `at` in heard ms.
 //     Keep a flash object stable between frames, it is how particles are spawned only once.
 export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
@@ -158,9 +186,9 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
   // One hold. pending: tail from the head up to the end, head on top. held: the tail starts at the
   // receptor and the head is gone. dropped: grey tail and head, fading once the end is past the line.
   // done: nothing (the tail was completed).
-  function drawHold(note, y, heardMs, approachMs, laneWidth, hitY) {
+  function drawHold(note, y, heardMs, approachMs, track, laneWidth, hitY) {
     if (note.hold === "done") return;
-    const endY = noteY(note.t + note.len, heardMs, approachMs, hitY);
+    const endY = noteY(note.t + note.len, heardMs, approachMs, hitY, track);
     const flat = effects === "off";
     if (note.hold === "held") {
       drawHoldTail(note.lane, endY, hitY, laneWidth, LANE_COLORS[note.lane], HOLD_ALPHA, flat);
@@ -226,16 +254,16 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     ctx.globalAlpha = 1;
   }
 
-  function render({ heardMs, approachMs, notes, lanesDown = [], flashes = [], feverActive = false }) {
+  function render({ heardMs, approachMs, track = FLAT_TRACK, notes, lanesDown = [], flashes = [], feverActive = false }) {
     if (!width) resize();
     const laneWidth = width / LANES;
     const hitY = height - HIT_LINE_FROM_BOTTOM;
     drawLanes(feverActive, lanesDown, laneWidth, hitY);
 
     for (const note of notes) {
-      const y = noteY(note.t, heardMs, approachMs, hitY);
+      const y = noteY(note.t, heardMs, approachMs, hitY, track);
       if (note.len > 0) {
-        drawHold(note, y, heardMs, approachMs, laneWidth, hitY);
+        drawHold(note, y, heardMs, approachMs, track, laneWidth, hitY);
         continue;
       }
       const outcome = note.outcome ?? "pending";

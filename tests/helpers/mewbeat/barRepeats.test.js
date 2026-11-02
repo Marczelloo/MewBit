@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { BAR_SIMILARITY, repeatBarLanes, repeatBars } = require("../../../helpers/mewbeat/charts/barRepeats");
+const { BAR_SIMILARITY, repeatBarLanes } = require("../../../helpers/mewbeat/charts/barRepeats");
 
 // 120 bpm, 4/4: a bar is 2000 ms, a beat 500 ms.
 const BEAT = 500;
@@ -49,39 +49,5 @@ describe("repeatBarLanes", () => {
     const notes = [...at(0, [0, 2], [1, 3]), { t: BAR, lane: 2, len: 600 }, { t: BAR + 2 * BEAT, lane: 0 }];
     const out = repeatBarLanes(notes, timing, all);
     assert.deepEqual(out.filter((n) => n.t >= BAR), [{ t: BAR, lane: 1, len: 600 }, { t: BAR + 2 * BEAT, lane: 3 }]);
-  });
-});
-
-describe("repeatBars", () => {
-  it("moves the source bar's selection onto Hard's moments in the repeating bar", () => {
-    const hard = [...at(0, [0, 1, 2, 3], [0, 1, 2, 3]), { t: BAR, lane: 0 }, { t: BAR, lane: 3 }, { t: BAR + BEAT + 20, lane: 1 }, { t: BAR + 2 * BEAT, lane: 2 }];
-    const picked = [...at(0, [0, 1, 2, 3], [0, 1, 2, 3]), { t: BAR, lane: 3 }, { t: BAR + 2 * BEAT, lane: 2 }];
-    const out = repeatBars(picked, hard, timing, { fromMs: 0, toMs: 2 * BAR });
-    assert.deepEqual(out.filter((n) => n.t >= BAR), [
-      { t: BAR, lane: 0 },
-      { t: BAR + BEAT + 20, lane: 1 },
-      { t: BAR + 2 * BEAT, lane: 2 },
-    ]);
-  });
-
-  it("keeps the bar's own notes where Hard has no note of the copied lane", () => {
-    const hard = [...at(0, [0, 1, 2, 3], [0, 1, 2, 3]), ...at(1, [0, 1, 2, 3], [0, 2, 2, 3])];
-    const picked = [...at(0, [0, 1, 2, 3], [0, 1, 2, 3]), ...at(1, [1, 3], [2, 3])];
-    const out = repeatBars(picked, hard, timing, { fromMs: 0, toMs: 2 * BAR });
-    assert.deepEqual(lanesOf(out, 1), ["0:0", "500:2", "1000:2", "1500:3"]);
-  });
-
-  it("copies with Hard's lengths, keeps the bar's holds the copy leaves free and notes outside the bars", () => {
-    const hard = [{ t: -300, lane: 2 }, { t: 0, lane: 1, len: 750 }, { t: 2 * BEAT, lane: 3 }, { t: BAR, lane: 1, len: 400 }, { t: BAR + 2 * BEAT, lane: 3 }, { t: BAR + 3 * BEAT, lane: 0, len: 300 }];
-    const picked = [hard[0], hard[1], hard[2], hard[3], hard[5]];
-    const out = repeatBars(picked, hard, timing, { fromMs: 0, toMs: 2 * BAR });
-    assert.deepEqual(out, [
-      { t: -300, lane: 2 },
-      { t: 0, lane: 1, len: 750 },
-      { t: 2 * BEAT, lane: 3 },
-      { t: BAR, lane: 1, len: 400 },
-      { t: BAR + 2 * BEAT, lane: 3 },
-      { t: BAR + 3 * BEAT, lane: 0, len: 300 },
-    ]);
   });
 });

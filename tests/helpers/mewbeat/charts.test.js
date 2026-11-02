@@ -296,9 +296,11 @@ describe("mewbeat chart generator", () => {
 
   it("formatShape", () => {
     const chart = generateChart(fixture(), "normal", KEY);
-    assert.deepStrictEqual(Object.keys(chart), [
+    assert.deepStrictEqual(Object.keys(chart).filter((k) => k !== "scroll"), [
       "version", "audioKey", "difficulty", "durationMs", "stars", "bpm", "highlightMs", "notes",
     ]);
+    // scroll (section scroll velocity) is optional: [{ t, x }] in time order when present.
+    if (chart.scroll) assert.ok(chart.scroll.every((p, k) => Number.isFinite(p.x) && (k === 0 || p.t >= chart.scroll[k - 1].t)));
     assert.strictEqual(chart.version, GENERATOR_VERSION);
     assert.strictEqual(chart.audioKey, KEY);
     assert.strictEqual(chart.difficulty, "normal");

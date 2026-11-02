@@ -2,13 +2,14 @@ const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTE
 const { bandPathNotes } = require("./bandPath");
 const { repeatBarLanes } = require("./barRepeats");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
-const { deriveNotes } = require("./derive");
 const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
 const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare } = require("./holds");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
+const { fillRests } = require("./rests");
+const { scrollMap } = require("./scroll");
 const { fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -81,12 +82,13 @@ function copiedRepeat(ctx, all, i, diff) {
 
 const steadyDrums = (ctx, i) => ctx.leaders[i] === "drums" && hasSteadyPulse(ctx.phrases[i]);
 
-// Hard: charted from the music, phrase by phrase.
+// One difficulty charted from the music, phrase by phrase: { notes, sustained }. Every difficulty is charted on its
+// own (its grid, gaps and density pick from the music's events), not thinned from a harder one, so an Easy pattern
+// is made for Easy. `sustained` holds the keys ("t:lane") of the real sustain holds, which the hold cap keeps longest.
 function chartNotes(ctx, diff) {
   const { features, timing, energy, phrases, leaders, supports, durationMs } = ctx;
   const all = []; // final notes so far, time-ordered
-  ctx.drumTimes = new Set(); // the moments of drum hits (Easy and Normal keep their lane roles when they move them)
-  ctx.tonalLayers = new Map(); // moment -> the tonal layer charted there ("bass" | "lead"): what a sung phrase follows
+  const drumTimes = new Set(); // the moments of drum hits (a groove repeat keeps their lane roles)
   // Where a bass or lead line plays (or the features cannot tell), a phrase's resting hands hold through the rests;
   // no such hold runs into the next phrase, so a repeat copies it.
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
@@ -102,11 +104,19 @@ function chartNotes(ctx, diff) {
   // the drums play on, the drums carry the beat through; a drum pattern starts on the side the hands are on.
   const changes = (i) => i > 0 && leaders[i] !== leaders[i - 1];
   // A copied repeat already carries its source's fills: only the rest before it, up to its start, is filled.
-  const bridged = (notes, i, copy = false) => {
-    const fill = fillGaps(all, notes, features, timing, energy, i === phrases.length - 1 && !copy ? durationMs : null)
-      .filter((n) => !copy || n.t < phrases[i].startMs);
-    for (const n of fill) ctx.drumTimes.add(n.t);
-    return [...fill, ...notes];
+  // A rest still left a hole while the music plays on (on Easy and Normal) gets a sound of the music there (rests.js).
+  // `last` is the last phrase the notes cover (a band-path window spans several).
+  const bridged = (notes, i, copy = false, last = i) => {
+    const end = last === phrases.length - 1;
+    // Hard and Hell carry the beat through with every drum hit; Easy and Normal take single sounds (fillRests) instead.
+    const fill = diff.fillRestBeats > 0
+      ? []
+      : fillGaps(all, notes, features, timing, energy, end && !copy ? durationMs : null).filter((n) => !copy || n.t < phrases[i].startMs);
+    for (const n of fill) drumTimes.add(n.t);
+    if (copy) return [...fill, ...notes];
+    const before = new Set(all);
+    const window = { fromMs: phrases[i].startMs, toMs: end ? Infinity : phrases[last].endMs, untilMs: end ? durationMs : null };
+    return fillRests([...all, ...fill, ...notes], ctx, diff, window).filter((n) => !before.has(n));
   };
 
   for (let i = 0; i < phrases.length; ) {
@@ -129,7 +139,7 @@ function chartNotes(ctx, diff) {
       while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
       const notes = grooved(bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs }), phrase.startMs, toMs);
-      all.push(...bridged(withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs), i));
+      all.push(...bridged(withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs), i, false, last));
       i = last + 1;
       continue;
     }
@@ -137,66 +147,46 @@ function chartNotes(ctx, diff) {
     const events = patternEvents(phrase, leaders[i], features, timing, supports[i]);
     const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steadyDrums(ctx, i));
     // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
-    for (const e of events) {
-      if (e.source === "drums") ctx.drumTimes.add(e.t);
-      else if ((e.source === "bass" || e.source === "lead") && !ctx.tonalLayers.has(e.t)) ctx.tonalLayers.set(e.t, e.source);
-    }
-    let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => ctx.drumTimes.has(n.t));
+    for (const e of events) if (e.source === "drums") drumTimes.add(e.t);
+    let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => drumTimes.has(n.t));
     if (changes(i) && leaders[i] === "drums" && supports[i].length === 0) patterned = orientDrums(patterned, tail);
-    const repeated = limitJacks(patterned, diff, tail, { strict: true, timing });
+    // A drum hit moved out of a jack keeps its role (limitJacks tries the role partner first for a drums source).
+    const asDrum = (n) => (drumTimes.has(n.t) ? { ...n, source: "drums" } : n);
+    const repeated = limitJacks(patterned.map(asDrum), diff, tail, { strict: true, timing }).map(({ source, ...n }) => n);
     all.push(...bridged(withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i));
     i++;
   }
   // Long bass/lead notes become holds wherever they were charted, drum-led phrases included. Those holds (and the
-  // sustains planned with the phrase) are what a hold cap keeps longest: ctx.sustained.
+  // sustains planned with the phrase) are what a hold cap keeps longest.
   const key = (n) => `${n.t}:${n.lane}`;
   const gapHeld = new Set(all.filter((n) => n.len > 0 && n.gapHold).map(key));
   const notes = addSustainHolds(all.sort(byTime), features, diff, timing, durationMs).map(({ gapHold, ...n }) => n);
-  ctx.sustained = new Set(notes.filter((n) => n.len > 0 && !gapHeld.has(key(n))).map(key));
-  return notes;
+  return { notes, sustained: new Set(notes.filter((n) => n.len > 0 && !gapHeld.has(key(n))).map(key)) };
 }
 
 // No hold runs past the end of the song, whatever produced it. The hold share is capped per phrase (a cap over the
-// whole song would demote holds unevenly and break the repeats); derived charts did that while thinning.
-const finish = (ctx, notes, diff, capHolds = true) => {
-  const floored = enforceFloors(clipHolds(notes.sort(byTime), ctx.durationMs, diff, ctx.timing), diff, ctx.timing);
-  if (!capHolds) return floored;
+// whole song would demote holds unevenly and break the repeats); real sustains are kept before gap holds.
+function finish(ctx, { notes, sustained }, diff) {
+  const floored = enforceFloors(clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing), diff, ctx.timing);
+  const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const last = ctx.phrases.length - 1;
   const inPhrase = (n, i) => (i === 0 || n.t >= ctx.phrases[i].startMs) && (i === last || n.t < ctx.phrases[i].endMs);
-  if (last < 0) return limitHoldShare(floored, Math.floor, sustainedOf(ctx));
-  return ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, sustainedOf(ctx))).sort(byTime);
-};
-
-// Is a note one of Hard's sustain holds (not a gap hold)?
-const sustainedOf = (ctx) => (n) => ctx.sustained?.has(`${n.t}:${n.lane}`) ?? false;
+  if (last < 0) return limitHoldShare(floored, Math.floor, isSustain);
+  return ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, isSustain)).sort(byTime);
+}
 
 const diffOf = (ctx, difficulty) => effectiveDifficulty(DIFFICULTIES[difficulty], ctx.busy);
 
-// Hard's notes before the final floors (Easy and Normal are derived from these).
-function hardNotes(ctx) {
-  if (!ctx.hard) ctx.hard = chartNotes(ctx, diffOf(ctx, "hard"));
-  return ctx.hard;
-}
-
-function notesFor(ctx, difficulty) {
+const notesFor = (ctx, difficulty) => {
   const diff = diffOf(ctx, difficulty);
-  if (difficulty === "hard") return finish(ctx, [...hardNotes(ctx)], diff);
-  if (difficulty === "hell") return finish(ctx, chartNotes(ctx, diff), diff);
-  const hard = finish(ctx, [...hardNotes(ctx)], diffOf(ctx, "hard"));
-  const derived = deriveNotes(ctx, hard, diff, {
-    copyRepeat: (all, i) => copiedRepeat(ctx, all, i, diff),
-    steadyPulse: (i) => steadyDrums(ctx, i),
-    sustained: sustainedOf(ctx),
-    drumHit: (n) => ctx.drumTimes?.has(n.t) ?? false,
-    layerOf: (t) => ctx.tonalLayers?.get(t) ?? null,
-  });
-  return finish(ctx, derived, diff, false);
-}
+  return finish(ctx, chartNotes(ctx, diff), diff);
+};
 
 // --- public API --------------------------------------------------------------
 
 function chartFrom(ctx, difficulty, audioKey) {
   const notes = notesFor(ctx, difficulty);
+  const scroll = scrollMap(notes, ctx, diffOf(ctx, difficulty));
   if (notes.length < MIN_NOTES) return null;
   const { features, durationMs } = ctx;
   return {
@@ -210,6 +200,7 @@ function chartFrom(ctx, difficulty, audioKey) {
       ? features.highlightMs
       : null,
     notes,
+    ...(scroll ? { scroll } : {}), // section scroll velocity, [{ t, x }] (scroll.js); absent = one speed
   };
 }
 

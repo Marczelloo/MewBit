@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 14;
+const GENERATOR_VERSION = 16;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -51,8 +51,8 @@ const DIFFICULTIES = {
     minNoteGapMs: 200, // any-lane gap between distinct times, never below this (Normal 100, Hard 60)
     maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
-    deriveMaxLevel: 1, // derived from Hard (derive.js): keeps notes up to this grid level (0 beat, 1 half, 2 quarter)
-    fillRestBeats: 4, // derive.js: a rest this long where Hard plays gets one of Hard's notes back (any grid level)
+    fillRestBeats: 3, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
+    scroll: null, // scroll-velocity bounds for the sections (scroll.js; null = one speed, as osu!mania's Easy)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
@@ -79,8 +79,8 @@ const DIFFICULTIES = {
     minNoteGapMs: 100,
     maxJack: 2,
     maxLevel: 1,
-    deriveMaxLevel: 2,
     fillRestBeats: 2.5,
+    scroll: { min: 0.9, max: 1.05 },
     quarterMinEnergy: 0.6,
     holdMinBeats: 1, // a half-beat hold reads as noise
     pulseNotesPerBeat: 1,
@@ -105,8 +105,8 @@ const DIFFICULTIES = {
     minNoteGapMs: 60,
     maxJack: 3,
     maxLevel: 2,
-    deriveMaxLevel: null, // Hard is charted from the music itself
     fillRestBeats: null, // Hard's rests are filled with the drums (seams.js fillGaps)
+    scroll: { min: 0.8, max: 1.1 },
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 2,
@@ -136,8 +136,8 @@ const DIFFICULTIES = {
     minNoteGapMs: 45,
     maxJack: 4,
     maxLevel: 2,
-    deriveMaxLevel: null,
     fillRestBeats: null,
+    scroll: { min: 0.7, max: 1.1 },
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 4,
