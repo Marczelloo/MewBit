@@ -87,6 +87,20 @@ describe("mewbeat score store", () => {
     assert.strictEqual(store.latestChartKey("s:a:1", "hell"), null);
   });
 
+  it("keeps the newest-version index across a submit of an older version and a restart", async () => {
+    const store = open();
+    store.submit(run({ chartKey: "s:a:1|hard|10" }));
+    store.submit(run({ chartKey: "s:a:1|hard|3", userId: "u2", profile: { id: "u2", username: "Bo" } }));
+    assert.strictEqual(store.latestChartKey("s:a:1", "hard"), "s:a:1|hard|10");
+    // Older versions are still on disk and still readable by their key.
+    assert.strictEqual(store.bestOf("s:a:1|hard|3", "u2").username, "Bo");
+    await store.flush();
+    const reopened = open();
+    assert.strictEqual(reopened.latestChartKey("s:a:1", "hard"), "s:a:1|hard|10");
+    reopened.submit(run({ chartKey: "s:a:1|hard|11" }));
+    assert.strictEqual(reopened.latestChartKey("s:a:1", "hard"), "s:a:1|hard|11");
+  });
+
   it("survives a restart after flush", async () => {
     const store = open();
     store.submit(run({ score: 777 }));

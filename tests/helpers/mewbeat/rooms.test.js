@@ -198,19 +198,55 @@ describe("mewbeat rooms queue", () => {
     assert.deepStrictEqual(await ctx.rooms.queueAdd(G, "ghost", { uri: "a" }), { ok: false, reason: "not_in_room" });
   });
 
+  // Five songs per member, so filling the queue takes several of them.
+  async function fillQueue(rooms, count) {
+    const users = ["ann", "bo", "cy", "dy", "ed"];
+    for (const user of users.slice(3)) rooms.join(G, profile(user));
+    for (let i = 0; i < count; i += 1) {
+      assert.deepStrictEqual(await rooms.queueAdd(G, users[Math.floor(i / 5)], { uri: `s${i}` }), { ok: true });
+    }
+  }
+
   it("caps the queue at 20", async () => {
     const { rooms } = ctx;
-    for (let i = 0; i < 20; i += 1) assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: `s${i}` }), { ok: true });
-    assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: "extra" }), { ok: false, reason: "queue_full" });
+    await fillQueue(rooms, 20);
+    rooms.join(G, profile("fy"));
+    assert.deepStrictEqual(await rooms.queueAdd(G, "fy", { uri: "extra" }), { ok: false, reason: "queue_full" });
     assert.strictEqual(rooms.snapshot(G).queue.length, 20);
   });
 
   it("caps the queue even for adds that were in flight together", async () => {
     const { rooms } = ctx;
-    for (let i = 0; i < 19; i += 1) await rooms.queueAdd(G, "ann", { uri: `s${i}` });
-    const outcomes = await Promise.all([rooms.queueAdd(G, "bo", { uri: "p" }), rooms.queueAdd(G, "cy", { uri: "q" })]);
+    await fillQueue(rooms, 19);
+    rooms.join(G, profile("fy"));
+    rooms.join(G, profile("gy"));
+    const outcomes = await Promise.all([rooms.queueAdd(G, "fy", { uri: "p" }), rooms.queueAdd(G, "gy", { uri: "q" })]);
     assert.deepStrictEqual(outcomes.map((outcome) => outcome.ok).sort(), [false, true]);
     assert.strictEqual(rooms.snapshot(G).queue.length, 20);
+  });
+
+  it("limits one member to 5 songs in the queue", async () => {
+    const { rooms } = ctx;
+    for (let i = 0; i < 5; i += 1) assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: `s${i}` }), { ok: true });
+    assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: "sixth" }), { ok: false, reason: "queue_full" });
+    assert.deepStrictEqual(await rooms.queueAdd(G, "bo", { uri: "other" }), { ok: true });
+    // Removing one frees a slot.
+    rooms.queueRemove(G, "ann", 0);
+    assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: "again" }), { ok: true });
+  });
+
+  it("counts adds in flight against the per-member limit and starts no work for a full queue", async () => {
+    let calls = 0;
+    const slow = setup({ prepare: async ({ uri }) => {
+      calls += 1;
+      await new Promise((resolve) => setImmediate(resolve));
+      return { audioKey: `youtube:${uri}:1`, track: { title: uri, uri, source: "youtube" } };
+    } });
+    slow.rooms.join(G, profile("ann"));
+    const outcomes = await Promise.all(Array.from({ length: 8 }, (_, i) => slow.rooms.queueAdd(G, "ann", { uri: `s${i}` })));
+    assert.deepStrictEqual(outcomes.map((outcome) => outcome.ok), [true, true, true, true, true, false, false, false]);
+    assert.strictEqual(calls, 5);
+    assert.strictEqual(slow.rooms.snapshot(G).queue.length, 5);
   });
 
   it("lets the host or the adder remove an entry, nobody else", async () => {
@@ -379,7 +415,7 @@ describe("mewbeat rooms rounds", () => {
     rooms.loaded(G, "bo", KEY_A);
     clock.advance(5000);
     rooms.submitted(G, "ann", result(500, 0.7));
-    clock.advance(200_000 + 4999);
+    clock.advance(200_000 + 9999);
     assert.strictEqual(phaseOf(rooms), "playing");
     clock.advance(1);
     const room = rooms.snapshot(G);
@@ -399,6 +435,8 @@ describe("mewbeat rooms rounds", () => {
 
   it("ranks by score when everyone played the same difficulty", () => {
     const { rooms, clock } = ctx;
+    rooms.ready(G, "ann", { difficulty: "hard" });
+    rooms.ready(G, "bo", { difficulty: "hard" });
     rooms.start(G, "ann");
     rooms.loaded(G, "ann", KEY_A);
     rooms.loaded(G, "bo", KEY_A);
@@ -410,6 +448,8 @@ describe("mewbeat rooms rounds", () => {
 
   it("ranks by accuracy when difficulties are mixed", () => {
     const { rooms, clock } = ctx;
+    rooms.ready(G, "ann", { difficulty: "easy" });
+    rooms.ready(G, "bo", { difficulty: "hell" });
     rooms.start(G, "ann");
     rooms.loaded(G, "ann", KEY_A);
     rooms.loaded(G, "bo", KEY_A);
@@ -517,5 +557,227 @@ describe("mewbeat rooms rounds", () => {
     clock.advance(20_000);
     assert.strictEqual(pushes.length, 1);
     assert.strictEqual(pushes[0].payload.room.phase, "countdown");
+  });
+});
+
+describe("mewbeat rooms review fixes", () => {
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const keyOf = (uri) => `youtube:${uri}:200000`;
+
+  // A prepare that can be told to fail for some songs from now on.
+  function flaky() {
+    const broken = new Set();
+    const calls = [];
+    return {
+      broken,
+      calls,
+      prepare: async ({ uri, source }) => {
+        calls.push([uri, source]);
+        if (broken.has(uri)) throw Object.assign(new Error("gone"), { reason: "not_found" });
+        return {
+          audioKey: keyOf(uri),
+          track: { title: `Song ${uri}`, artist: "Artist", durationMs: 200_000, artworkUrl: null, uri, source: "youtube" },
+        };
+      },
+    };
+  }
+
+  async function started(ctx, users = ["ann", "bo"]) {
+    for (const user of users) ctx.rooms.join(G, profile(user));
+    await ctx.rooms.queueAdd(G, "ann", { uri: "a" });
+    await ctx.rooms.queueAdd(G, "ann", { uri: "b" });
+  }
+
+  function playRound(rooms, clock, users, key) {
+    rooms.start(G, rooms.snapshot(G).hostId);
+    for (const user of users) rooms.loaded(G, user, key);
+    clock.advance(5000);
+  }
+
+  it("counts rounds and stamps the end of the last one", async () => {
+    const ctx = setup();
+    await started(ctx);
+    const { rooms, clock } = ctx;
+    let room = rooms.snapshot(G);
+    assert.strictEqual(room.round, 0);
+    assert.strictEqual(room.endedAt, null);
+
+    playRound(rooms, clock, ["ann", "bo"], keyOf("a"));
+    room = rooms.snapshot(G);
+    assert.strictEqual(room.round, 1);
+    assert.strictEqual(room.endedAt, null);
+    rooms.submitted(G, "ann", result(1, 0.5));
+    rooms.submitted(G, "bo", result(2, 0.5));
+    room = rooms.snapshot(G);
+    assert.strictEqual(room.phase, "intermission");
+    assert.strictEqual(room.endedAt, clock.now());
+
+    clock.advance(15_000);
+    room = rooms.snapshot(G);
+    assert.strictEqual(room.round, 2);
+    assert.strictEqual(room.endedAt, null);
+  });
+
+  it("clears endedAt when a round is aborted", async () => {
+    const ctx = setup();
+    await started(ctx);
+    ctx.rooms.start(G, "ann");
+    ctx.clock.advance(20_000);
+    const room = ctx.rooms.snapshot(G);
+    assert.strictEqual(room.phase, "lobby");
+    assert.strictEqual(room.endedAt, null);
+    assert.strictEqual(room.round, 1);
+  });
+
+  it("refuses the 51st member", () => {
+    const { rooms } = setup();
+    for (let i = 0; i < 50; i += 1) assert.deepStrictEqual(rooms.join(G, profile(`u${i}`)), { ok: true });
+    assert.deepStrictEqual(rooms.join(G, profile("late")), { ok: false, reason: "room_full" });
+    // Someone who is already in can still rejoin.
+    assert.deepStrictEqual(rooms.join(G, profile("u3")), { ok: true });
+    assert.strictEqual(rooms.snapshot(G).members.length, 50);
+  });
+
+  it("lets the new host start the next round after the host left mid-round", async () => {
+    const ctx = setup();
+    await started(ctx, ["ann", "bo", "cy"]);
+    const { rooms, clock } = ctx;
+    playRound(rooms, clock, ["ann", "bo", "cy"], keyOf("a"));
+    rooms.leave(G, "ann");
+    assert.strictEqual(rooms.snapshot(G).hostId, "bo");
+    rooms.submitted(G, "bo", result(10, 0.5));
+    rooms.submitted(G, "cy", result(20, 0.5));
+    assert.strictEqual(phaseOf(rooms), "intermission");
+    assert.deepStrictEqual(rooms.start(G, "ann"), { ok: false, reason: "not_in_room" });
+    assert.deepStrictEqual(rooms.start(G, "bo"), { ok: true });
+    assert.strictEqual(rooms.snapshot(G).current.audioKey, keyOf("b"));
+    assert.strictEqual(phaseOf(rooms), "loading");
+  });
+
+  it("only takes loaded during the loading phase", async () => {
+    const ctx = setup();
+    await started(ctx);
+    const { rooms, clock } = ctx;
+    assert.deepStrictEqual(rooms.loaded(G, "ann", keyOf("a")), { ok: false, reason: "wrong_phase" }); // lobby
+    rooms.start(G, "ann");
+    rooms.loaded(G, "ann", keyOf("a"));
+    rooms.loaded(G, "bo", keyOf("a"));
+    assert.deepStrictEqual(rooms.loaded(G, "ann", keyOf("a")), { ok: false, reason: "wrong_phase" }); // countdown
+    clock.advance(5000);
+    assert.deepStrictEqual(rooms.loaded(G, "ann", keyOf("a")), { ok: false, reason: "wrong_phase" }); // playing
+  });
+
+  it("keeps the queue within its cap when a round is aborted", async () => {
+    const ctx = setup();
+    const { rooms, clock } = ctx;
+    const users = ["ann", "bo", "cy", "dy", "ed"];
+    for (const user of users) rooms.join(G, profile(user));
+    for (let i = 0; i < 20; i += 1) await rooms.queueAdd(G, users[Math.floor(i / 5)], { uri: `s${i}` });
+    rooms.start(G, "ann");
+    assert.strictEqual(rooms.snapshot(G).queue.length, 19);
+    // dy already has 5 queued; ann has 4 left (s0 is playing).
+    assert.deepStrictEqual(await rooms.queueAdd(G, "dy", { uri: "late" }), { ok: false, reason: "queue_full" });
+    assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: "late" }), { ok: true });
+    assert.strictEqual(rooms.snapshot(G).queue.length, 20);
+    clock.advance(20_000); // nobody loaded
+    const room = rooms.snapshot(G);
+    assert.strictEqual(room.phase, "lobby");
+    assert.strictEqual(room.queue.length, 20);
+    assert.strictEqual(room.queue[0].audioKey, keyOf("s0"));
+    assert.strictEqual(room.queue.at(-1).audioKey, keyOf("s19")); // the tail ("late") made room
+  });
+
+  it("keeps ready when only the difficulty changes", () => {
+    const { rooms } = setup();
+    rooms.join(G, profile("ann"));
+    rooms.ready(G, "ann", { ready: true });
+    rooms.ready(G, "ann", { difficulty: "hell" });
+    assert.strictEqual(memberOf(rooms, "ann").ready, true);
+    assert.strictEqual(memberOf(rooms, "ann").difficulty, "hell");
+  });
+
+  it("scores a room result on the member's own difficulty and refuses another one", async () => {
+    const ctx = setup();
+    await started(ctx);
+    const { rooms, clock } = ctx;
+    rooms.ready(G, "ann", { difficulty: "hard" });
+    playRound(rooms, clock, ["ann", "bo"], keyOf("a"));
+    assert.deepStrictEqual(rooms.submitted(G, "ann", result(5, 0.5, "easy")), { ok: false, reason: "wrong_difficulty" });
+    assert.strictEqual(memberOf(rooms, "ann").submitted, false);
+    assert.deepStrictEqual(rooms.submitted(G, "ann", result(5, 0.5, "hard")), { ok: true });
+    // No difficulty in the submit: the member's is used.
+    rooms.submitted(G, "bo", { score: 6, accuracy: 0.5, grade: "A" });
+    const entries = rooms.snapshot(G).results;
+    assert.deepStrictEqual(entries.map((entry) => [entry.userId, entry.difficulty]).sort(), [["ann", "hard"], ["bo", "normal"]]);
+  });
+
+  describe("re-preparing the song when its round starts", () => {
+    it("prepares the entry again with its own uri and source", async () => {
+      const f = flaky();
+      const ctx = setup({ prepare: f.prepare });
+      await started(ctx);
+      f.calls.length = 0;
+      ctx.rooms.start(G, "ann");
+      await flush();
+      assert.deepStrictEqual(f.calls, [["a", "youtube"]]);
+      assert.strictEqual(phaseOf(ctx.rooms), "loading");
+      assert.strictEqual(ctx.rooms.snapshot(G).current.audioKey, keyOf("a"));
+    });
+
+    it("drops an entry that can't be prepared and goes on with the next one", async () => {
+      const f = flaky();
+      const ctx = setup({ prepare: f.prepare });
+      await started(ctx);
+      f.broken.add("a");
+      ctx.rooms.start(G, "ann");
+      await flush();
+      const room = ctx.rooms.snapshot(G);
+      assert.strictEqual(room.phase, "loading");
+      assert.strictEqual(room.current.audioKey, keyOf("b"));
+      assert.deepStrictEqual(room.queue, []);
+      assert.strictEqual(room.round, 2);
+      // Everyone is told, and only the new song's loading timer is running.
+      assert.strictEqual(ctx.pushes.at(-1).payload.room.current.audioKey, keyOf("b"));
+      assert.strictEqual(ctx.clock.pending(), 1);
+    });
+
+    it("falls back to the lobby when no queued song can be prepared", async () => {
+      const f = flaky();
+      const ctx = setup({ prepare: f.prepare });
+      await started(ctx);
+      f.broken.add("a");
+      f.broken.add("b");
+      ctx.rooms.start(G, "ann");
+      await flush();
+      const room = ctx.rooms.snapshot(G);
+      assert.strictEqual(room.phase, "lobby");
+      assert.strictEqual(room.current, null);
+      assert.deepStrictEqual(room.queue, []);
+      assert.strictEqual(ctx.clock.pending(), 0);
+    });
+
+    it("leaves a room alone that moved on while the song was being prepared", async () => {
+      let hold = null;
+      const f = flaky();
+      const ctx = setup({ prepare: async (args) => {
+        if (hold) await hold;
+        return f.prepare(args);
+      } });
+      await started(ctx);
+      f.broken.add("a");
+      let release;
+      hold = new Promise((resolve) => { release = resolve; });
+      ctx.rooms.start(G, "ann");
+      // While the song is being prepared everybody leaves and a new room opens.
+      ctx.rooms.leave(G, "ann");
+      ctx.rooms.leave(G, "bo");
+      ctx.rooms.join(G, profile("cy"));
+      release();
+      await flush();
+      const room = ctx.rooms.snapshot(G);
+      assert.deepStrictEqual(room.members.map((member) => member.userId), ["cy"]);
+      assert.strictEqual(room.phase, "lobby");
+      assert.strictEqual(room.round, 0);
+    });
   });
 });

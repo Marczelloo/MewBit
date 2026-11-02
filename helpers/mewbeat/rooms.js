@@ -4,10 +4,13 @@ const MAX_PLAYERS = 10;
 // Watching costs little, but the list is bounded so one room can't grow forever.
 const MAX_MEMBERS = 50;
 const MAX_QUEUE = 20;
+// One member can't fill the whole queue.
+const MAX_QUEUE_PER_USER = 5;
 const LOADING_MS = 20_000;
 const COUNTDOWN_MS = 5_000;
-// A round that nobody finishes ends this long after the song would have.
-const RESULTS_GRACE_MS = 5_000;
+// A round that nobody finishes ends this long after the song would have; the
+// slack also covers a slow client or a long server-side recompute.
+const RESULTS_GRACE_MS = 10_000;
 const INTERMISSION_MS = 15_000;
 // Between rounds, spectators can take free player seats.
 const IDLE_PHASES = ["lobby", "intermission"];
@@ -20,6 +23,13 @@ const fail = (reason) => ({ ok: false, reason });
 // deleted with the last member. All state is in memory; a restart just means
 // the clients join again. Time and timers are injected so the phase machine
 // can be tested with a fake clock.
+//
+// Phases: lobby, loading, countdown, playing, intermission. There is no
+// separate results phase. The snapshot carries `round` (0 before the first
+// round, +1 for every round started) and `endedAt` (server ms when the last
+// round ended, null while a round is on, after an aborted round and before
+// the first one). The client shows a round's results while `results`/`current`
+// are set and `endedAt != null`, in the lobby or the intermission phase.
 //
 // prepareTrack({ guildId, uri, source }) -> Promise<{ audioKey, track }>
 // rejects with an error carrying `reason` when the song can't be used.
@@ -53,6 +63,8 @@ function createRooms({
       })),
       queue: room.queue.map((entry) => ({ ...entry })),
       current: room.current ? { ...room.current } : null,
+      round: room.round,
+      endedAt: room.endedAt,
       startAt: room.startAt,
       nextAt: room.nextAt,
       results: room.results.map((entry) => ({ ...entry })),
@@ -130,6 +142,7 @@ function createRooms({
 
   function endRound(room) {
     room.results = sortedResults(room);
+    room.endedAt = now();
     settle(room);
   }
 
@@ -137,8 +150,11 @@ function createRooms({
   // to the front of the queue.
   function abortRound(room) {
     if (room.current) room.queue.unshift(room.current);
+    // The aborted song may not push the queue past its cap: the tail yields.
+    if (room.queue.length > MAX_QUEUE) room.queue.length = MAX_QUEUE;
     room.current = null;
     room.results = [];
+    room.endedAt = null;
     // No auto-start: that would loop straight into the same failing song.
     settle(room, { auto: false });
   }
@@ -147,9 +163,11 @@ function createRooms({
     if (!room.queue.length || !playersOf(room).length) return settle(room);
     clearTimers(room);
     room.current = room.queue.shift();
+    room.round += 1;
     room.phase = "loading";
     room.startAt = null;
     room.nextAt = null;
+    room.endedAt = null;
     room.results = [];
     room.roundResults.clear();
     for (const member of room.members) {
@@ -157,6 +175,30 @@ function createRooms({
       member.submitted = false;
     }
     after(room, "loading", LOADING_MS, ["loading"], () => beginCountdown(room));
+    reprepare(room);
+  }
+
+  // The song may have fallen out of the registry since it was queued (the
+  // registry is shared and bounded), so it is registered again as the round
+  // starts. If that fails the entry is dropped and the next one is tried.
+  async function reprepare(room) {
+    const { round } = room;
+    const entry = room.current;
+    let prepared = null;
+    try {
+      prepared = await prepareTrack({ guildId: room.guildId, uri: entry.uri, source: entry.source });
+    } catch (error) {
+      log.warning?.("mewbeat queued song can't be prepared", error?.reason || error?.message);
+    }
+    // The round may have ended or the room changed while this was running.
+    if (rooms.get(room.guildId) !== room || room.round !== round || room.phase !== "loading") return;
+    if (prepared?.audioKey && prepared.track) return;
+
+    room.current = null;
+    room.results = [];
+    if (room.queue.length && playersOf(room).length) startRound(room);
+    else settle(room, { auto: false });
+    push(room);
   }
 
   function beginCountdown(room) {
@@ -204,6 +246,9 @@ function createRooms({
         members: [],
         queue: [],
         current: null,
+        round: 0,
+        endedAt: null,
+        pending: new Map(), // userId -> queue adds in flight
         startAt: null,
         nextAt: null,
         results: [],
@@ -264,19 +309,30 @@ function createRooms({
   async function queueAdd(guildId, userId, { uri, source } = {}) {
     const room = rooms.get(guildId);
     if (!room || !findMember(room, userId)) return fail("not_in_room");
-    if (room.queue.length >= MAX_QUEUE) return fail("queue_full");
+    // Adds still being resolved count too, so a flood doesn't start work that
+    // can't fit.
+    const inFlight = [...room.pending.values()].reduce((sum, count) => sum + count, 0);
+    if (room.queue.length + inFlight >= MAX_QUEUE) return fail("queue_full");
+    const own = room.queue.filter((entry) => entry.addedBy === userId).length + (room.pending.get(userId) ?? 0);
+    if (own >= MAX_QUEUE_PER_USER) return fail("queue_full");
 
+    room.pending.set(userId, (room.pending.get(userId) ?? 0) + 1);
     let prepared;
     try {
       prepared = await prepareTrack({ guildId, uri, source });
     } catch (error) {
       return fail(error?.reason || "prepare_failed");
+    } finally {
+      const left = (room.pending.get(userId) ?? 1) - 1;
+      if (left > 0) room.pending.set(userId, left);
+      else room.pending.delete(userId);
     }
     if (!prepared?.audioKey || !prepared.track) return fail("prepare_failed");
 
     // The room may have changed while the song was being resolved.
     if (rooms.get(guildId) !== room || !findMember(room, userId)) return fail("not_in_room");
     if (room.queue.length >= MAX_QUEUE) return fail("queue_full");
+    if (room.queue.filter((entry) => entry.addedBy === userId).length >= MAX_QUEUE_PER_USER) return fail("queue_full");
     const { track } = prepared;
     room.queue.push({
       audioKey: prepared.audioKey,
@@ -353,6 +409,9 @@ function createRooms({
     if (member.spectator) return fail("spectator");
     if (member.submitted) return fail("already_submitted");
     if (!Number.isFinite(score) || !Number.isFinite(accuracy) || typeof grade !== "string") return fail("bad_result");
+    // A run on another difficulty than the one chosen in the room doesn't
+    // count: scores are only comparable on the same chart.
+    if (difficulty !== undefined && difficulty !== member.difficulty) return fail("wrong_difficulty");
 
     member.submitted = true;
     room.roundResults.set(userId, {
@@ -361,7 +420,7 @@ function createRooms({
       score,
       accuracy,
       grade,
-      difficulty: DIFFICULTIES.includes(difficulty) ? difficulty : member.difficulty,
+      difficulty: member.difficulty,
     });
     checkFinished(room);
     push(room);
@@ -376,4 +435,15 @@ function createRooms({
   return { join, leave, queueAdd, queueRemove, ready, start, loaded, submitted, snapshot };
 }
 
-module.exports = { createRooms, DIFFICULTIES, MAX_PLAYERS, MAX_QUEUE, LOADING_MS, COUNTDOWN_MS, INTERMISSION_MS };
+module.exports = {
+  createRooms,
+  DIFFICULTIES,
+  MAX_PLAYERS,
+  MAX_QUEUE,
+  MAX_QUEUE_PER_USER,
+  MAX_MEMBERS,
+  RESULTS_GRACE_MS,
+  LOADING_MS,
+  COUNTDOWN_MS,
+  INTERMISSION_MS,
+};

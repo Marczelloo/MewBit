@@ -200,7 +200,8 @@ function createMewbeatChannel({
       case "mewbeat_room_queue_remove": return reply(rooms.queueRemove(guildId, userId, message.index));
       case "mewbeat_room_ready": {
         const { ready, difficulty } = message;
-        if (typeof ready !== "boolean") return reply({ ok: false, reason: "bad_request" });
+        // No `ready` keeps the current state: a difficulty-only change.
+        if (ready !== undefined && typeof ready !== "boolean") return reply({ ok: false, reason: "bad_request" });
         if (difficulty !== undefined && !ROOM_DIFFICULTIES.includes(difficulty)) return reply({ ok: false, reason: "bad_difficulty" });
         return reply(rooms.ready(guildId, userId, { ready, difficulty }));
       }
@@ -261,7 +262,7 @@ function createMewbeatChannel({
   }
 
   async function submit(guildId, userId, message, profile) {
-    const { id, mode, audioKey, difficulty, chartVersion, events, fevers, flags } = message;
+    const { id, mode, audioKey, difficulty, chartVersion, events, fevers, flags, round } = message;
     const fail = (reason) => ({ type: "mewbeat_submit", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat submit.");
     if (!isUnlocked(userId)) return fail("locked");
@@ -271,9 +272,14 @@ function createMewbeatChannel({
     if (events.length > MAX_EVENTS) return fail("too_many_events");
     if (fevers != null && (!Array.isArray(fevers) || fevers.length > MAX_FEVERS)) return fail("bad_event");
 
+    // The song fell out of the registry (6 h, or pushed out by newer ones).
     const source = trackFor(guildId, audioKey);
-    const stored = source && peekChartsOf(source.track)?.[difficulty];
+    if (!source) return fail("stale_chart");
+    const stored = peekChartsOf(source.track)?.[difficulty];
     if (!stored) return fail("unknown_chart");
+    // The client played another version of the chart than the one on record
+    // (it was regenerated since); the events can't be judged against these notes.
+    if (chartVersion !== stored.version) return fail("stale_chart");
 
     let run;
     try {
@@ -285,11 +291,12 @@ function createMewbeatChannel({
 
     const calibration = Boolean(flags?.calibration) || stored.calibration === true;
     const firstNoteMs = stored.notes.reduce((first, note) => Math.min(first, note.t), Infinity);
+    // The earliest judged note by the chart's own time, not the client's `t`.
+    const firstJudgedMs = events.reduce((first, event) => Math.min(first, stored.notes[event.n].t), Infinity);
     const ranked = !calibration
       && !flags?.autoplay
       && !flags?.difficultyChanged
-      && chartVersion === stored.version
-      && events[0].t <= firstNoteMs + LATE_JOIN_MS
+      && firstJudgedMs <= firstNoteMs + LATE_JOIN_MS
       && run.judged >= judgeablePartsOf(stored) * MIN_JUDGED_SHARE;
 
     const chartKey = `${audioKey}|${difficulty}|${stored.version}`;
@@ -307,9 +314,14 @@ function createMewbeatChannel({
         difficulty,
       }).newBest;
     }
-    // A room round counts for the room only when it is the song being played.
-    if (mode === "room" && rooms.snapshot(guildId)?.current?.audioKey === audioKey) {
-      rooms.submitted(guildId, userId, { score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty });
+    // A room round counts for the room only when it is the round being played
+    // now, for the song in it, and the run was a real one. Anything else is
+    // scored and stored like a solo run.
+    if (mode === "room" && !flags?.autoplay) {
+      const room = rooms.snapshot(guildId);
+      if (room && room.phase === "playing" && room.current?.audioKey === audioKey && Number.isInteger(round) && round === room.round) {
+        rooms.submitted(guildId, userId, { score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty });
+      }
     }
     if (!calibration) {
       historyStore.add(userId, {

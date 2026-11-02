@@ -56,6 +56,7 @@ const { MOODS, buildIntent, fetchFreestyleSurpriseTrack, normalizeMood, selectSu
 const { hasTrackIdentity } = require("../lavalink/trackIdentity");
 const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormalization");
 const Log = require("../logs/log");
+const { markAlive, releaseSession, startHeartbeat } = require("./socketLifecycle");
 const { createMewbeatChannel } = require("../mewbeat/activityChannel");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { createAudioStore } = require("../mewbeat/audioStore");
@@ -1519,6 +1520,7 @@ function createActivityServer(client) {
   const dashboardRouter = createDashboardRouter(client);
   let server = null;
   let interval = null;
+  let heartbeat = null;
   let listeningForPlayerChanges = false;
 
   const handlePlayerStateChange = ({ guildId }) => broadcastGuildState(client, guildId);
@@ -1665,6 +1667,8 @@ function createActivityServer(client) {
   webSocketServer.on("connection", (socket) => {
     if (sockets.size >= MAX_ACTIVITY_SOCKETS) return socket.close(1013, "Activity is busy. Try again shortly.");
     socket.authorized = false;
+    markAlive(socket);
+    socket.on("pong", () => markAlive(socket));
     sockets.add(socket);
 
     socket.on("message", async (raw) => {
@@ -1673,7 +1677,15 @@ function createActivityServer(client) {
         if (message.type === "auth") {
           const fakeRequest = { headers: { authorization: message.token ? `Bearer ${message.token}` : "" } };
           const guildId = limitText(message.guildId || config.devGuildId, 80);
-          socket.identity = await authenticateRequest(client, fakeRequest, guildId, config);
+          const identity = await authenticateRequest(client, fakeRequest, guildId, config);
+          // Signing in again as someone else, or for another server, must not
+          // leave the old seat (and host role) behind in a mewbeat room.
+          if (socket.authorized && socket.identity && (socket.guildId !== guildId || socket.identity.id !== identity.id)) {
+            releaseSession({
+              sockets, socket, guildId: socket.guildId, identity: socket.identity, disconnect: mewbeatChannel.disconnect,
+            });
+          }
+          socket.identity = identity;
           if (socket.guildId) unregisterActivitySession(socket.guildId, socket);
           socket.guildId = guildId;
           socket.authorized = true;
@@ -1716,9 +1728,7 @@ function createActivityServer(client) {
       unregisterActivitySession(guildId, socket);
       sockets.delete(socket);
       if (!socket.authorized || !identity) return;
-      const otherWindow = [...sockets].some((other) =>
-        other.authorized && other.guildId === guildId && other.identity?.id === identity.id);
-      if (!otherWindow) mewbeatChannel.disconnect(guildId, identity.id);
+      releaseSession({ sockets, socket, guildId, identity, disconnect: mewbeatChannel.disconnect });
     };
     socket.on("close", release);
     socket.on("error", release);
@@ -1780,11 +1790,14 @@ function createActivityServer(client) {
         for (const guildId of guilds) broadcastGuildState(client, guildId);
       }, ACTIVITY_STATE_HEARTBEAT_MS);
       interval.unref?.();
+      heartbeat = startHeartbeat({ sockets });
       return server;
     },
     stop() {
       if (interval) clearInterval(interval);
       interval = null;
+      heartbeat?.stop();
+      heartbeat = null;
       if (listeningForPlayerChanges) {
         activityStateEvents.off("change", handlePlayerStateChange);
         listeningForPlayerChanges = false;

@@ -202,25 +202,47 @@ describe("mewbeat channel scores", () => {
       assert.strictEqual(reply.result.score, 1500);
     });
     it("a difficulty change", () => assertUnranked({ flags: { difficultyChanged: true } }));
-    it("a late join", () => assertUnranked({ events: perfectEvents(2500) }));
-    it("a chart version that is not the stored one", () => assertUnranked({ chartVersion: VERSION - 1 }));
+    it("a late join, judged by the chart's note times", async () => {
+      // Ten taps from 1000 to 5500; the run only covers the second half.
+      const notes = Array.from({ length: 10 }, (_, i) => ({ t: 1000 + i * 500, lane: i % 4 }));
+      const chart = (difficulty) => ({ version: VERSION, audioKey: KEY, difficulty, notes });
+      const charts = { easy: chart("easy"), normal: chart("normal"), hard: chart("hard"), hell: chart("hell") };
+      const { channel, scoreStore } = setup({ charts });
+      const events = notes.slice(5).map((note, i) => ({
+        n: 5 + i, part: "head", j: "perfect", t: i === 0 ? 1000 : note.t, d: 0,
+      }));
+      // The first event claims to be at 1000; the chart says it is note 5, at 3500.
+      const reply = await submit(channel, submitMessage({ events }));
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(reply.result.ranked, false);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
+    });
     it("fewer than half of the notes judged", () => assertUnranked({ events: perfectEvents().slice(0, 2) }));
     it("a calibration run, which also stays out of the history", () =>
       assertUnranked({ flags: { calibration: true } }, { history: false }));
 
     it("still ranks a run that joined within the first two seconds", async () => {
       const { channel } = setup();
-      const reply = await submit(channel, submitMessage({ events: perfectEvents(1900) }));
+      // Starting at note 2 (t 2000) is within 2000 ms of the first note (1000).
+      const reply = await submit(channel, submitMessage({ events: perfectEvents().slice(2) }));
       assert.strictEqual(reply.result.ranked, true);
     });
   });
 
   describe("rejections", () => {
-    it("an unknown or unregistered song", async () => {
+    it("a song that is not in the registry any more is a stale chart", async () => {
       const { channel, historyStore } = setup();
       const reply = await submit(channel, submitMessage({ audioKey: "youtube:zzz:1000" }));
-      assert.deepStrictEqual(reply, { type: "mewbeat_submit", id: "s1", status: "error", reason: "unknown_chart" });
+      assert.deepStrictEqual(reply, { type: "mewbeat_submit", id: "s1", status: "error", reason: "stale_chart" });
       assert.strictEqual(historyStore.recent("ann", 5).length, 0);
+    });
+
+    it("a chart version that is not the stored one is a stale chart", async () => {
+      const { channel, historyStore, scoreStore } = setup();
+      const reply = await submit(channel, submitMessage({ chartVersion: VERSION - 1 }));
+      assert.deepStrictEqual(reply, { type: "mewbeat_submit", id: "s1", status: "error", reason: "stale_chart" });
+      assert.strictEqual(historyStore.recent("ann", 5).length, 0);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
     });
 
     it("a song whose chart is not stored yet", async () => {

@@ -4,20 +4,33 @@ const { createDebouncedJson } = require("./debouncedJson");
 
 const DEFAULT_FILE = path.join(__dirname, "..", "data", "mewbeat", "scores.json");
 
-const VERSION_SUFFIX = /\|(\d+)$/;
+const VERSION_SUFFIX = /^(.*)\|(\d+)$/;
 
 // Best score per user per chart (`audioKey|difficulty|chartVersion`), with the
 // guilds the user scored it in: the server board is the users who scored the
 // chart in that guild, the global board is everyone.
 //
-// File shape: { charts: { [chartKey]: { [userId]: entry } } }.
+// File shape: { charts: { [chartKey]: { [userId]: entry } } }. Scores of
+// older chart versions stay on disk, but only the newest version of a song and
+// difficulty is looked up (through an index kept next to the map).
 function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 2000 } = {}) {
   const disk = createDebouncedJson({ file, debounceMs });
   const loaded = disk.load();
   const charts = new Map(); // chartKey -> Map(userId -> entry)
+  const latest = new Map(); // `audioKey|difficulty` -> { version, chartKey }
+
+  function indexChart(chartKey) {
+    const match = VERSION_SUFFIX.exec(chartKey);
+    if (!match) return;
+    const version = Number(match[2]);
+    const known = latest.get(match[1]);
+    if (!known || version > known.version) latest.set(match[1], { version, chartKey });
+  }
+
   for (const [chartKey, users] of Object.entries(loaded?.charts ?? {})) {
     if (!users || typeof users !== "object") continue;
     charts.set(chartKey, new Map(Object.entries(users).filter(([, entry]) => entry && Number.isFinite(entry.score))));
+    indexChart(chartKey);
   }
 
   const persist = () => disk.schedule(() => ({
@@ -42,6 +55,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     if (!users) {
       users = new Map();
       charts.set(chartKey, users);
+      indexChart(chartKey);
     }
     const previous = users.get(userId);
     const newBest = !previous || score > previous.score;
@@ -87,18 +101,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
   // The chartKey with the highest chart version anyone has scored for this
   // song and difficulty; null when there is none.
   function latestChartKey(audioKey, difficulty) {
-    const prefix = `${audioKey}|${difficulty}|`;
-    let latest = null;
-    let latestVersion = -1;
-    for (const key of charts.keys()) {
-      if (!key.startsWith(prefix)) continue;
-      const version = Number(VERSION_SUFFIX.exec(key)?.[1]);
-      if (version > latestVersion) {
-        latest = key;
-        latestVersion = version;
-      }
-    }
-    return latest;
+    return latest.get(`${audioKey}|${difficulty}`)?.chartKey ?? null;
   }
 
   return { submit, board, rankOf, bestOf, latestChartKey, flush: disk.flush };
