@@ -2,15 +2,20 @@ import { forwardRef, lazy, Suspense, useCallback, useEffect, useLayoutEffect, us
 import { createPortal } from "react-dom";
 import {
   ArrowBendUpRight,
+  ArrowSquareOut,
   ArrowsClockwise,
   Bell,
+  CaretDown,
   CaretRight,
+  CaretUp,
   Check,
   ClockCounterClockwise,
   Cloud,
   DotsSixVertical,
   CopySimple,
+  DotsThree,
   DotsThreeVertical,
+  Equalizer,
   Faders,
   GameController,
   Globe,
@@ -19,6 +24,7 @@ import {
   Keyboard,
   LinkSimple,
   MagnifyingGlass,
+  Microphone,
   MusicNotes,
   Pause,
   PencilSimple,
@@ -40,8 +46,6 @@ import {
   SpeakerSlash,
   Stop,
   Quotes,
-  Subtitles,
-  Waveform,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
@@ -86,6 +90,26 @@ function formatTime(milliseconds) {
   const seconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+// "Remix", "Edit" and "Mix" read as version markers; a bare "Artist - Title" never does.
+const TITLE_NOISE_RE = /^(?:(?:official\s+)?(?:music\s+)?(?:video|audio|lyrics?(?:\s+video)?|visuali[sz]er)|lyric\s+video|hd|4k|mv)$/i;
+const TITLE_VERSION_RE = /\b(?:remix|edit|mix|version|live|acoustic|remaster(?:ed)?|extended|radio|feat|ft|slowed|sped\s*up|vip|bootleg|cover|instrumental)\b/i;
+const TITLE_DASH_VERSION_RE = /^(.*\S)\s+[-–—]\s+([^-–—]*\b(?:remix|edit|mix|version|live|remaster(?:ed)?)\b[^-–—]*)$/i;
+
+function splitTrackTitle(title) {
+  const original = String(title || "").trim();
+  const versions = [];
+  let main = original.replace(/\s*[(\[]([^()[\]]*)[)\]]/g, (group, inner) => {
+    const text = inner.trim();
+    if (TITLE_NOISE_RE.test(text)) return "";
+    if (TITLE_VERSION_RE.test(text)) { versions.push(text); return ""; }
+    return group;
+  });
+  const dash = main.match(TITLE_DASH_VERSION_RE);
+  if (dash) { main = dash[1]; versions.push(dash[2].trim()); }
+  main = main.replace(/\s{2,}/g, " ").replace(/[\s\-–—|:]+$/, "").trim();
+  return main ? { main, version: versions.join(" · ") } : { main: original, version: "" };
 }
 
 function useBufferedSlider(externalValue, { acknowledgementTolerance = 0, optimisticLockMs = 5000 } = {}) {
@@ -538,18 +562,6 @@ function PlaylistMenu({ track, playlists, onAction, className = "" }) {
   );
 }
 
-function TrackSaveActions({ track, playlists = [], likedTrackIds = [], onAction, isActionPending = () => false, className = "" }) {
-  if (!track) return null;
-  const isLiked = likedTrackIds.includes(track.id) || likedTrackIds.includes(getTrackLikeKey(track));
-  return (
-    <div className={`track-save-actions ${className}`}>
-      <IconButton label={isLiked ? "Remove from liked songs" : "Add to liked songs"} className={`like-button ${isLiked ? "is-liked" : ""}`} loading={isActionPending(`toggle_like:${track.id}`)} onClick={() => onAction("toggle_like", { track })} aria-pressed={isLiked}>
-        <Heart size={16} weight={isLiked ? "fill" : "regular"} aria-hidden="true" />
-      </IconButton>
-      <PlaylistMenu track={track} playlists={playlists} onAction={onAction} />
-    </div>
-  );
-}
 
 
 function useSmartMenuGuards(open, rootRef, menuRef, onClose) {
@@ -1081,69 +1093,7 @@ function ActivityFeedPanel({ events = [] }) {
   );
 }
 
-function TrackFeedbackActions({ track, onAction, isActionPending = () => false, className = "" }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const triggerRef = useRef(null);
-  const firstActionRef = useRef(null);
 
-  useEffect(() => setOpen(false), [track?.id]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const closeIfOutside = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setOpen(false);
-        window.requestAnimationFrame(() => triggerRef.current?.focus());
-      }
-    };
-    document.addEventListener("pointerdown", closeIfOutside);
-    document.addEventListener("keydown", onKeyDown);
-    const focusFrame = window.requestAnimationFrame(() => firstActionRef.current?.focus());
-    return () => {
-      document.removeEventListener("pointerdown", closeIfOutside);
-      document.removeEventListener("keydown", onKeyDown);
-      window.cancelAnimationFrame(focusFrame);
-    };
-  }, [open]);
-
-  if (!track) return null;
-  const pending = isActionPending(`track_feedback:${track.id}`);
-  const submitFeedback = (sentiment) => {
-    onAction("track_feedback", { track, sentiment });
-    setOpen(false);
-  };
-
-  return (
-    <div ref={rootRef} className={`track-feedback-actions ${className}`}>
-      <IconButton
-        ref={triggerRef}
-        label="Tune autoplay recommendations"
-        className={open ? "is-active" : ""}
-        onClick={() => setOpen((current) => !current)}
-        disabled={pending}
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <Waveform size={16} weight={open ? "fill" : "regular"} aria-hidden="true" />
-      </IconButton>
-      {open ? <div className="track-feedback-menu" role="menu" aria-label="Tune autoplay recommendations">
-        <button ref={firstActionRef} type="button" role="menuitem" onClick={() => submitFeedback("more")} disabled={pending}>
-          <Sparkle size={15} weight="fill" aria-hidden="true" />
-          <span><strong>More like this</strong><small>Keep this energy in the next picks</small></span>
-        </button>
-        <button type="button" role="menuitem" onClick={() => submitFeedback("less")} disabled={pending}>
-          <WarningCircle size={15} aria-hidden="true" />
-          <span><strong>Not this direction</strong><small>Steer the next picks away from this sound</small></span>
-        </button>
-      </div> : null}
-    </div>
-  );
-}
 
 function HomePanelFallback() {
   return <section className="home-panel home-panel-loading panel-surface" aria-busy="true" aria-label="Loading Activity view"><div className="home-orbit" aria-hidden="true"><span /><span /><span /></div><div className="home-loading-copy"><span /><strong /><strong /><i /><i /><div><b /><b /></div></div><div className="home-signal" aria-hidden="true"><span /><span /><span /><span /><span /><span /><span /></div></section>;
@@ -1208,9 +1158,160 @@ function ExternalLinkConfirmDialog({ request, onCancel, onConfirm }) {
   );
 }
 
+function AutoplaySplit({ player, onAction, isActionPending = () => false, className = "", compact = false }) {
+  const track = player.currentTrack;
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const firstActionRef = useRef(null);
+
+  useEffect(() => setOpen(false), [track?.id]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeIfOutside = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+    };
+    document.addEventListener("pointerdown", closeIfOutside);
+    document.addEventListener("keydown", onKeyDown);
+    const focusFrame = window.requestAnimationFrame(() => firstActionRef.current?.focus());
+    return () => {
+      document.removeEventListener("pointerdown", closeIfOutside);
+      document.removeEventListener("keydown", onKeyDown);
+      window.cancelAnimationFrame(focusFrame);
+    };
+  }, [open]);
+
+  const autoplayPending = isActionPending("autoplay");
+  const tunePending = Boolean(track) && isActionPending(`track_feedback:${track.id}`);
+  const submitFeedback = (sentiment) => {
+    onAction("track_feedback", { track, sentiment });
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className={`autoplay-split ${player.autoplay ? "is-on" : ""} ${className}`}>
+      <button className="autoplay-split-main" type="button" onClick={() => onAction("autoplay", { enabled: !player.autoplay })} disabled={!track || autoplayPending} aria-busy={autoplayPending || undefined} aria-pressed={Boolean(player.autoplay)}>
+        {autoplayPending ? <SpinnerGap className="button-spinner" size={14} aria-hidden="true" /> : <Sparkle size={14} weight={player.autoplay ? "fill" : "regular"} aria-hidden="true" />}
+        <span>Autoplay</span>
+      </button>
+      <span className="autoplay-split-rule" aria-hidden="true" />
+      <button ref={triggerRef} className="autoplay-split-tune" type="button" aria-label="Tune autoplay recommendations" title="Tune autoplay recommendations" onClick={() => setOpen((current) => !current)} disabled={!track || tunePending} aria-expanded={open} aria-haspopup="menu">
+        {tunePending ? <SpinnerGap className="button-spinner" size={15} aria-hidden="true" /> : <Equalizer size={15} aria-hidden="true" />}
+        <CaretDown size={11} weight="bold" aria-hidden="true" />
+      </button>
+      {open ? <div className="autoplay-menu" role="menu" aria-label="Tune autoplay recommendations">
+        <button ref={firstActionRef} type="button" role="menuitem" onClick={() => submitFeedback("more")}>
+          <Sparkle size={15} weight="fill" aria-hidden="true" />
+          <span><strong>More like this</strong><small>Keep this energy in the next picks</small></span>
+        </button>
+        <button type="button" role="menuitem" onClick={() => submitFeedback("less")}>
+          <WarningCircle size={15} aria-hidden="true" />
+          <span><strong>Not this direction</strong><small>Steer the next picks away from this sound</small></span>
+        </button>
+      </div> : null}
+    </div>
+  );
+}
+
+function PlayerMoreMenu({ track, trackLinkUrl, onOpenExternalLink, onAction, isActionPending = () => false, className = "" }) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const close = useCallback((returnFocus = false) => {
+    setOpen(false);
+    setConfirming(false);
+    if (returnFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => { close(); }, [track?.id, close]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeIfOutside = (event) => {
+      if (!rootRef.current?.contains(event.target)) close();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close(true);
+      } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const items = [...(menuRef.current?.querySelectorAll('[role="menuitem"]:not(:disabled)') || [])];
+        if (!items.length) return;
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        const index = items.indexOf(document.activeElement);
+        items[index < 0 ? (step > 0 ? 0 : items.length - 1) : (index + step + items.length) % items.length].focus();
+      }
+    };
+    document.addEventListener("pointerdown", closeIfOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", closeIfOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, close]);
+
+  // Opening the menu or flipping into the confirmation puts focus on the first
+  // safe action (Open / Cancel), never on the destructive one.
+  useEffect(() => {
+    if (!open) return undefined;
+    const frame = window.requestAnimationFrame(() => menuRef.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, confirming]);
+
+  const namedSource = ["deezer", "youtube", "spotify", "soundcloud"].includes(track?.source);
+
+  return (
+    <div ref={rootRef} className={`player-more ${className}`}>
+      <IconButton ref={triggerRef} label="More player actions" className={`player-more-trigger ${open ? "is-active" : ""}`} loading={isActionPending("stop")} disabled={!track} onClick={() => { setConfirming(false); setOpen((current) => !current); }} aria-expanded={open} aria-haspopup="menu">
+        <DotsThree size={20} weight="bold" aria-hidden="true" />
+      </IconButton>
+      {open ? (
+        <div ref={menuRef} className="player-more-menu" role="menu" aria-label="More player actions">
+          {confirming ? (
+            <>
+              <p className="player-more-confirm">Stop and clear the queue?</p>
+              <div className="player-more-confirm-actions">
+                <button type="button" role="menuitem" onClick={() => setConfirming(false)}>Cancel</button>
+                <button type="button" role="menuitem" className="is-danger" onClick={() => { close(); onAction("stop"); }}>Stop</button>
+              </div>
+            </>
+          ) : (
+            <>
+              {trackLinkUrl ? (
+                <>
+                  <button type="button" role="menuitem" onClick={() => { close(); onOpenExternalLink?.(trackLinkUrl, track.title); }}>
+                    <ArrowSquareOut size={16} aria-hidden="true" />{namedSource ? `Open on ${sourceLabel(track.source)}` : "Open original page"}
+                  </button>
+                  <span className="player-more-rule" role="separator" />
+                </>
+              ) : null}
+              <button type="button" role="menuitem" className="is-danger" onClick={() => setConfirming(true)}>
+                <Stop size={16} weight="fill" aria-hidden="true" />Stop &amp; clear queue…
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PlayerControls({ player, playlists = [], likedTrackIds = [], onTab, onAction, isActionPending = () => false }) {
+  const track = player.currentTrack;
   const isPlaying = player.playing && !player.paused;
   const isMuted = Boolean(player.muted);
+  const isLiked = Boolean(track) && (likedTrackIds.includes(track.id) || likedTrackIds.includes(getTrackLikeKey(track)));
   const volume = clamp(Number(player.volume || 0), 0, 100);
   const volumeSlider = useBufferedSlider(volume);
   const [volumeOpen, setVolumeOpen] = useState(false);
@@ -1227,47 +1328,40 @@ function PlayerControls({ player, playlists = [], likedTrackIds = [], onTab, onA
   const commitVolume = (nextValue) => onAction("volume", { volume: volumeSlider.commit(nextValue) });
 
   return (
-    <div className="player-control-deck">
-      <div className="deck-side deck-left">
-        <button className={`autoplay-control ${player.autoplay ? "is-on" : ""}`} type="button" onClick={() => onAction("autoplay", { enabled: !player.autoplay })} disabled={!player.currentTrack || isActionPending("autoplay")} aria-busy={isActionPending("autoplay") || undefined} aria-pressed={player.autoplay}>
-          {isActionPending("autoplay") ? <SpinnerGap className="button-spinner" size={15} aria-hidden="true" /> : <Sparkle size={15} weight={player.autoplay ? "fill" : "regular"} aria-hidden="true" />}
-          <span>Autoplay</span>
-        </button>
-        <TrackSaveActions track={player.currentTrack} playlists={playlists} likedTrackIds={likedTrackIds} onAction={onAction} isActionPending={isActionPending} className="main-save-actions" />
-        <TrackFeedbackActions track={player.currentTrack} onAction={onAction} isActionPending={isActionPending} className="main-feedback-actions" />
-      </div>
-      <div className="transport-controls">
+    <div className="np-transport">
+      <div className="np-transport-main">
         <IconButton label={`Loop mode ${player.loop}`} className={player.loop !== "NONE" ? "is-active" : ""} loading={isActionPending("loop")} onClick={() => onAction("loop")}>
-          <Repeat size={19} weight={player.loop !== "NONE" ? "fill" : "regular"} aria-hidden="true" />
+          <Repeat size={20} weight={player.loop !== "NONE" ? "fill" : "regular"} aria-hidden="true" />
         </IconButton>
         <IconButton label="Play previous track" loading={isActionPending("previous")} onClick={() => onAction("previous")}>
-          <SkipBack size={20} weight="regular" aria-hidden="true" />
+          <SkipBack size={22} weight="regular" aria-hidden="true" />
         </IconButton>
-        <button className="play-button" type="button" aria-label={isPlaying ? "Pause track" : "Play track"} onClick={() => onAction("toggle")} disabled={isActionPending("toggle")} aria-busy={isActionPending("toggle") || undefined}>
+        <button className="np-play" type="button" aria-label={isPlaying ? "Pause track" : "Play track"} onClick={() => onAction("toggle")} disabled={isActionPending("toggle")} aria-busy={isActionPending("toggle") || undefined}>
           {isActionPending("toggle") ? <SpinnerGap className="button-spinner" size={24} aria-hidden="true" /> : isPlaying ? <Pause size={24} weight="fill" aria-hidden="true" /> : <Play size={24} weight="fill" aria-hidden="true" />}
         </button>
-        <IconButton label="Stop playback and clear queue" loading={isActionPending("stop")} onClick={() => onAction("stop")} disabled={!player.currentTrack}>
-          <Stop size={19} weight="fill" aria-hidden="true" />
-        </IconButton>
-        <IconButton label="Skip track" loading={isActionPending("skip")} onClick={() => onAction("skip", { expectedTrackId: player.currentTrack?.id })}>
-          <SkipForward size={20} weight="regular" aria-hidden="true" />
+        <IconButton label="Skip track" loading={isActionPending("skip")} onClick={() => onAction("skip", { expectedTrackId: track?.id })}>
+          <SkipForward size={22} weight="regular" aria-hidden="true" />
         </IconButton>
         <IconButton label="Shuffle queue" loading={isActionPending("shuffle")} onClick={() => onAction("shuffle")}>
-          <Shuffle size={19} weight="regular" aria-hidden="true" />
+          <Shuffle size={20} weight="regular" aria-hidden="true" />
         </IconButton>
       </div>
-      <div className="deck-side deck-right">
-        <IconButton label="Open lyrics" onClick={() => onTab("lyrics")} disabled={!player.currentTrack}><MusicNotes size={19} weight="regular" aria-hidden="true" /></IconButton>
-        <div className="deck-volume" ref={volumeWrapRef}>
+      <div className="np-transport-side">
+        <IconButton label={isLiked ? "Remove from liked songs" : "Add to liked songs"} className={`like-button ${isLiked ? "is-liked" : ""}`} loading={isActionPending(`toggle_like:${track?.id}`)} disabled={!track} onClick={() => onAction("toggle_like", { track })} aria-pressed={isLiked}>
+          <Heart size={20} weight={isLiked ? "fill" : "regular"} aria-hidden="true" />
+        </IconButton>
+        <PlaylistMenu track={track} playlists={playlists} onAction={onAction} className="np-playlist" />
+        <IconButton label="Open lyrics" onClick={() => onTab("lyrics")} disabled={!track}><Microphone size={20} weight="regular" aria-hidden="true" /></IconButton>
+        <div className="np-volume" ref={volumeWrapRef}>
           <IconButton label={isMuted ? "Unmute player" : "Mute player"} className={`volume-toggle ${isMuted ? "is-muted" : ""}`} loading={isActionPending("toggle_mute")} onClick={() => onAction("toggle_mute")} aria-pressed={isMuted}>
-            {isMuted ? <SpeakerSlash size={18} weight="fill" aria-hidden="true" /> : <SpeakerHigh size={18} weight="fill" aria-hidden="true" />}
+            {isMuted ? <SpeakerSlash size={20} weight="fill" aria-hidden="true" /> : <SpeakerHigh size={20} weight="fill" aria-hidden="true" />}
           </IconButton>
           <VolumeSlider className="volume-inline-control" slider={volumeSlider} onPreview={previewVolume} onCommit={commitVolume} />
-          <IconButton label={volumeOpen ? "Close volume controls" : "Adjust volume"} className={`volume-mobile-trigger ${volumeOpen ? "is-active" : ""}`} onClick={() => setVolumeOpen((value) => !value)} aria-expanded={volumeOpen} aria-haspopup="true"><Faders size={17} weight="regular" aria-hidden="true" /></IconButton>
+          <IconButton label={volumeOpen ? "Close volume controls" : "Adjust volume"} className={`volume-mobile-trigger ${volumeOpen ? "is-active" : ""}`} onClick={() => setVolumeOpen((value) => !value)} aria-expanded={volumeOpen} aria-haspopup="true"><Faders size={19} weight="regular" aria-hidden="true" /></IconButton>
           <div className={`volume-popover vol-pop-mobile ${volumeOpen ? "is-open" : ""}`} role="group" aria-label="Volume control">
             <VolumeSlider slider={volumeSlider} onPreview={previewVolume} onCommit={commitVolume} />
           </div>
-          </div>
+        </div>
       </div>
     </div>
   );
@@ -1335,78 +1429,92 @@ function NowPlaying({ state, onTab, onAction, onOpenExternalLink, isActionPendin
   const closeTitleMenu = () => { titleGuards.clearCloseTimer(); setTitleMenu(null); };
   const trackLinkUrl = [track?.uri, track?.playQuery].find((value) => typeof value === "string" && /^https?:\/\//i.test(value)) || null;
   const commitSeek = (nextValue) => onAction("seek", { positionMs: seekSlider.commit(nextValue) });
-  const titleLength = titleLengthClass(track?.title);
-  useFitLongestWord(titleRef, track?.title);
+  const { main: titleMain, version: titleVersion } = useMemo(() => splitTrackTitle(track?.title), [track?.title]);
+  const titleLength = titleLengthClass(titleMain);
+  useFitLongestWord(titleRef, titleMain);
+  const isPlaying = Boolean(player.playing && !player.paused);
+  const upNext = player.queue?.[0];
+  const requester = track?.requester;
 
   useEffect(() => {
     setTitleMenu(null);
   }, [track?.id]);
 
   return (
-    <section className={`now-playing panel-surface ${className}`}>
-      <div className="now-playing-main">
-        <div className={`cover-wrap ${player.playing ? "is-playing" : ""}`}>
+    <section className={`now-playing np panel-surface ${className}`}>
+      <div className="np-grid">
+        <div className="np-cover">
           <Artwork track={track} size="large" />
-          <div className="cover-signal" aria-hidden="true"><span /><span /><span /><span /></div>
         </div>
-        <div className="track-copy">
-          <div className="track-copy-grid">
-            <div className="track-text">
-              <h1 data-length={titleLength}>
-                {track ? (
-                  <button
-                    ref={titleRef}
-                    className="track-title-link"
-                    type="button"
-                    disabled={!trackLinkUrl}
-                    onClick={() => onOpenExternalLink?.(trackLinkUrl, track.title)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setTitleMenu({
-                        top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 260)),
-                        left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 246)),
-                      });
-                    }}
-                    aria-haspopup="menu"
-                    title={titleLength === "normal" ? (trackLinkUrl ? "Open the original track page" : undefined) : track.title}
-                  >{track.title}</button>
-                ) : "Nothing is playing"}
-              </h1>
-              <p className="track-author">{track?.author || "Pick a track from search to start the room"}</p>
+        <div className="np-body">
+          <div className={`np-eyebrow ${isPlaying ? "is-playing" : ""}`}>
+            <span className="np-bars" aria-hidden="true"><i /><i /><i /><i /></span>
+            <span>{isPlaying ? "NOW PLAYING" : "PAUSED"}</span>
+          </div>
+          <h1 data-length={titleLength}>
+            {track ? (
+              <button
+                ref={titleRef}
+                className="track-title-link"
+                type="button"
+                disabled={!trackLinkUrl}
+                onClick={() => onOpenExternalLink?.(trackLinkUrl, track.title)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setTitleMenu({
+                    top: Math.max(10, Math.min(event.clientY + 6, window.innerHeight - 260)),
+                    left: Math.max(10, Math.min(event.clientX - 10, window.innerWidth - 246)),
+                  });
+                }}
+                aria-haspopup="menu"
+                title={track.title}
+              >{titleMain}</button>
+            ) : "Nothing is playing"}
+          </h1>
+          {titleVersion ? <p className="np-version">{titleVersion}</p> : null}
+          <p className="np-artist">{track?.author || "Pick a track from search to start the room"}</p>
+          {track ? (
+            <div className="np-meta">
+              <SourceTag source={track.source} />
+              {requester ? (
+                <>
+                  <span className="np-meta-dot" aria-hidden="true">·</span>
+                  <span className="np-requester"><RequesterAvatar name={requester} url={track.requesterAvatarUrl} auto={Boolean(track.autoplay) || requester === "MewBit"} />added by <strong>{requester}</strong></span>
+                </>
+              ) : null}
             </div>
-            <IconButton label={state.likedTrackIds.includes(track?.id) ? "Remove from liked songs" : "Add to liked songs"} className={`like-button ${state.likedTrackIds.includes(track?.id) ? "is-liked" : ""}`} loading={isActionPending(`toggle_like:${track?.id}`)} onClick={() => onAction("toggle_like", { track })} aria-pressed={state.likedTrackIds.includes(track?.id)}>
-              <Heart size={20} aria-hidden="true" />
-            </IconButton>
+          ) : null}
+          <div className="np-progress">
+            <span className="np-time">{formatTime(seekSlider.value)}</span>
+            <input
+              className="range range-progress"
+              type="range"
+              min="0"
+              max={duration}
+              value={seekSlider.value}
+              aria-label="Seek through current track"
+              style={{ "--range-progress": `${(seekSlider.value / duration) * 100}%` }}
+              onPointerDown={seekSlider.begin}
+              onPointerCancel={(event) => commitSeek(event.currentTarget.value)}
+              onChange={(event) => seekSlider.update(event.target.value)}
+              onPointerUp={(event) => commitSeek(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") seekSlider.begin();
+              }}
+              onKeyUp={(event) => {
+                if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") commitSeek();
+              }}
+            />
+            <span className="np-time np-time-end">{formatTime(duration)}</span>
           </div>
-          <div className="track-meta">
-            <SourceTag source={track?.source} />
-            {track?.requester ? <span className="meta-requester">added by {track.requester}</span> : null}
+          <PlayerControls player={player} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} onTab={onTab} onAction={onAction} isActionPending={isActionPending} />
+          <div className="np-footer">
+            <AutoplaySplit player={player} onAction={onAction} isActionPending={isActionPending} />
+            {upNext ? <p className="np-upnext"><span className="np-upnext-label">UP NEXT</span><span className="np-upnext-track"><strong>{upNext.title}</strong>{upNext.author ? ` — ${upNext.author}` : ""}</span></p> : <span className="np-upnext-spacer" />}
+            <PlayerMoreMenu track={track} trackLinkUrl={trackLinkUrl} onOpenExternalLink={onOpenExternalLink} onAction={onAction} isActionPending={isActionPending} />
           </div>
         </div>
-      </div>
-      <PlayerControls player={player} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} onTab={onTab} onAction={onAction} isActionPending={isActionPending} />
-      <div className="progress-block">
-        <input
-          className="range range-progress"
-          type="range"
-          min="0"
-          max={duration}
-          value={seekSlider.value}
-          aria-label="Seek through current track"
-          style={{ "--range-progress": `${(seekSlider.value / duration) * 100}%` }}
-          onPointerDown={seekSlider.begin}
-          onPointerCancel={(event) => commitSeek(event.currentTarget.value)}
-          onChange={(event) => seekSlider.update(event.target.value)}
-          onPointerUp={(event) => commitSeek(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") seekSlider.begin();
-          }}
-          onKeyUp={(event) => {
-            if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") commitSeek();
-          }}
-        />
-        <div className="time-row"><span>{formatTime(seekSlider.value)}</span><span>{formatTime(duration)}</span></div>
       </div>
       <SmartMenu open={Boolean(titleMenu)} position={titleMenu || { top: 0, left: 0 }} rootRef={titleRef} menuRef={titleMenuRef} label={`Actions for ${track?.title || "track"}`}>
         {track ? <TrackMenuActions track={track} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} onAction={onAction} onClose={closeTitleMenu} /> : null}
@@ -2317,12 +2425,15 @@ function PlayerBar({ state, onAction, onView, onOpenExternalLink, isActionPendin
   const seekSlider = useBufferedSlider(progress, { acknowledgementTolerance: 1500, optimisticLockMs: 1800 });
   const volumeSlider = useBufferedSlider(volume);
   const [titleMenu, setTitleMenu] = useState(null);
+  const [seekHover, setSeekHover] = useState(null);
   const titleRef = useRef(null);
   const titleMenuRef = useRef(null);
   const titleGuards = useSmartMenuGuards(Boolean(titleMenu), titleRef, titleMenuRef, () => setTitleMenu(null));
   const closeTitleMenu = () => { titleGuards.clearCloseTimer(); setTitleMenu(null); };
   const isLiked = track ? state.likedTrackIds.includes(track.id) || state.likedTrackIds.includes(getTrackLikeKey(track)) : false;
   const trackLinkUrl = [track?.uri, track?.playQuery].find((value) => typeof value === "string" && /^https?:\/\//i.test(value)) || null;
+  const { main: titleMain, version: titleVersion } = useMemo(() => splitTrackTitle(track?.title), [track?.title]);
+  const autoplayPending = isActionPending("autoplay");
 
   const commitSeek = (nextValue) => onAction("seek", { positionMs: seekSlider.commit(nextValue) });
   const previewVolume = (nextValue) => {
@@ -2330,18 +2441,31 @@ function PlayerBar({ state, onAction, onView, onOpenExternalLink, isActionPendin
     onAction("volume-preview", { volume: nextVolume });
   };
   const commitVolume = (nextValue) => onAction("volume", { volume: volumeSlider.commit(nextValue) });
+  const trackSeekHover = (event) => {
+    if (!track) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    setSeekHover({ ratio: clamp((event.clientX - rect.left) / rect.width, 0, 1) });
+  };
 
   const openFullPlayerFromBackground = (event) => {
-    if (event.target.closest("button, a, input, .row-context-menu")) return;
-    if (event.target.closest(".player-bar-track")) return;
+    if (event.target.closest("button, a, input, .row-context-menu, .player-more-menu")) return;
+    if (event.target.closest(".pbar-track")) return;
     onView("home");
   };
 
   return (
-    <footer className="player-bar" onClick={openFullPlayerFromBackground} title="Open full player">
-      <div className="player-bar-leading">
-        <div className="player-bar-track">
-          <Artwork track={track} size="small" />
+    <footer className="pbar" onClick={openFullPlayerFromBackground} title="Open full player">
+      <div className="bar-seek" onPointerMove={trackSeekHover} onPointerLeave={() => setSeekHover(null)}>
+        <input className="range range-progress" type="range" min="0" max={duration} value={seekSlider.value} aria-label="Seek through current track" style={{ "--range-progress": `${(seekSlider.value / duration) * 100}%` }} onPointerDown={seekSlider.begin} onPointerCancel={(event) => commitSeek(event.currentTarget.value)} onChange={(event) => seekSlider.update(event.target.value)} onPointerUp={(event) => commitSeek(event.currentTarget.value)} onKeyDown={(event) => { if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") seekSlider.begin(); }} onKeyUp={(event) => { if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") commitSeek(); }} disabled={!track} />
+        {seekHover ? <span className="bar-seek-tip" style={{ "--tip-x": `${seekHover.ratio * 100}%` }} aria-hidden="true">{formatTime(seekHover.ratio * duration)}</span> : null}
+      </div>
+      <div className="pbar-leading">
+        <div className="pbar-track">
+          <button className="bar-artwork" type="button" aria-label="Open full player" title="Open full player" onClick={(event) => { event.stopPropagation(); onView("home"); }}>
+            <Artwork track={track} size="small" />
+            <span className="bar-artwork-open" aria-hidden="true"><CaretUp size={18} weight="bold" /></span>
+          </button>
           <span className="bar-track-copy">
             <strong>
               {track ? (
@@ -2360,42 +2484,36 @@ function PlayerBar({ state, onAction, onView, onOpenExternalLink, isActionPendin
                     });
                   }}
                   aria-haspopup="menu"
-                  title={trackLinkUrl ? "Open the original track page" : undefined}
-                >{track.title}</button>
+                  title={track.title}
+                >{titleMain}{titleVersion ? <span className="bar-title-version"> · {titleVersion}</span> : null}</button>
               ) : "Nothing is playing"}
             </strong>
-            <small>{track?.author || "Choose a track to start the room"}</small>
+            <small>{track?.author || "Choose a track to start the room"}{track ? <span className="bar-source">{sourceLabel(track.source)}</span> : null}</small>
           </span>
         </div>
         {track ? (
-          <IconButton label={isLiked ? "Remove from liked songs" : "Add to liked songs"} className={`like-button ${isLiked ? "is-liked" : ""}`} loading={isActionPending(`toggle_like:${track?.id}`)} onClick={() => onAction("toggle_like", { track })} aria-pressed={isLiked}>
-            <Heart size={16} weight={isLiked ? "fill" : "regular"} aria-hidden="true" />
+          <IconButton label={isLiked ? "Remove from liked songs" : "Add to liked songs"} className={`like-button bar-like ${isLiked ? "is-liked" : ""}`} loading={isActionPending(`toggle_like:${track?.id}`)} onClick={() => onAction("toggle_like", { track })} aria-pressed={isLiked}>
+            <Heart size={17} weight={isLiked ? "fill" : "regular"} aria-hidden="true" />
           </IconButton>
         ) : null}
-        <IconButton label={player.autoplay ? "Disable autoplay" : "Enable autoplay"} className={`bar-autoplay ${player.autoplay ? "is-active" : ""}`} loading={isActionPending("autoplay")} onClick={() => onAction("autoplay", { enabled: !player.autoplay })} aria-pressed={player.autoplay}>
-          <Sparkle size={16} weight={player.autoplay ? "fill" : "regular"} aria-hidden="true" />
-        </IconButton>
       </div>
-      <div className="player-bar-center">
-        <div className="bar-controls">
-          {track ? <SourceTag source={track.source} /> : null}
-          <IconButton label={`Loop mode ${player.loop}`} className={`bar-loop ${player.loop !== "NONE" ? "is-active" : ""}`} loading={isActionPending("loop")} onClick={() => onAction("loop")} disabled={!track}><Repeat size={16} weight={player.loop !== "NONE" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
-          <IconButton label="Play previous track" className="bar-previous" loading={isActionPending("previous")} onClick={() => onAction("previous")} disabled={!track}><SkipBack size={17} weight="regular" aria-hidden="true" /></IconButton>
-          <button className="bar-play" type="button" aria-label={isPlaying ? "Pause track" : "Play track"} onClick={() => onAction("toggle")} disabled={!track || isActionPending("toggle")} aria-busy={isActionPending("toggle") || undefined}>{isActionPending("toggle") ? <SpinnerGap className="button-spinner" size={18} aria-hidden="true" /> : isPlaying ? <Pause size={18} weight="fill" aria-hidden="true" /> : <Play size={18} weight="fill" aria-hidden="true" />}</button>
-          <IconButton label="Stop playback and clear queue" className="bar-stop" loading={isActionPending("stop")} onClick={() => onAction("stop")} disabled={!track}><Stop size={16} weight="fill" aria-hidden="true" /></IconButton>
-          <IconButton label="Skip track" className="bar-skip" loading={isActionPending("skip")} onClick={() => onAction("skip", { expectedTrackId: track?.id })} disabled={!track}><SkipForward size={17} weight="regular" aria-hidden="true" /></IconButton>
-          <IconButton label="Shuffle queue" className="bar-shuffle" loading={isActionPending("shuffle")} onClick={() => onAction("shuffle")} disabled={!track}><Shuffle size={16} weight="regular" aria-hidden="true" /></IconButton>
-        </div>
-        <div className="bar-progress">
-          <span>{formatTime(seekSlider.value)}</span>
-          <input className="range range-progress" type="range" min="0" max={duration} value={seekSlider.value} aria-label="Seek through current track" style={{ "--range-progress": `${(seekSlider.value / duration) * 100}%` }} onPointerDown={seekSlider.begin} onPointerCancel={(event) => commitSeek(event.currentTarget.value)} onChange={(event) => seekSlider.update(event.target.value)} onPointerUp={(event) => commitSeek(event.currentTarget.value)} onKeyDown={(event) => { if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") seekSlider.begin(); }} onKeyUp={(event) => { if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") commitSeek(); }} disabled={!track} />
-          <span>{formatTime(duration)}</span>
-        </div>
+      <div className="pbar-center">
+        <IconButton label={`Loop mode ${player.loop}`} className={`bar-loop ${player.loop !== "NONE" ? "is-active" : ""}`} loading={isActionPending("loop")} onClick={() => onAction("loop")} disabled={!track}><Repeat size={16} weight={player.loop !== "NONE" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+        <IconButton label="Play previous track" loading={isActionPending("previous")} onClick={() => onAction("previous")} disabled={!track}><SkipBack size={18} weight="regular" aria-hidden="true" /></IconButton>
+        <button className="bar-play" type="button" aria-label={isPlaying ? "Pause track" : "Play track"} onClick={() => onAction("toggle")} disabled={!track || isActionPending("toggle")} aria-busy={isActionPending("toggle") || undefined}>{isActionPending("toggle") ? <SpinnerGap className="button-spinner" size={18} aria-hidden="true" /> : isPlaying ? <Pause size={18} weight="fill" aria-hidden="true" /> : <Play size={18} weight="fill" aria-hidden="true" />}</button>
+        <IconButton label="Skip track" loading={isActionPending("skip")} onClick={() => onAction("skip", { expectedTrackId: track?.id })} disabled={!track}><SkipForward size={18} weight="regular" aria-hidden="true" /></IconButton>
+        <IconButton label="Shuffle queue" className="bar-shuffle" loading={isActionPending("shuffle")} onClick={() => onAction("shuffle")} disabled={!track}><Shuffle size={16} weight="regular" aria-hidden="true" /></IconButton>
       </div>
-      <div className="player-bar-actions">
-        <IconButton label="Open lyrics" onClick={() => onView("lyrics")} disabled={!track}><Subtitles size={17} weight="regular" aria-hidden="true" /></IconButton>
-        <IconButton label={isMuted ? "Unmute player" : "Mute player"} className={isMuted ? "is-muted" : ""} loading={isActionPending("toggle_mute")} onClick={() => onAction("toggle_mute")} aria-pressed={isMuted}>{isMuted ? <SpeakerSlash size={17} weight="fill" aria-hidden="true" /> : <SpeakerHigh size={17} weight="fill" aria-hidden="true" />}</IconButton>
+      <div className="pbar-actions">
+        <span className="bar-time">{formatTime(seekSlider.value)} / <span>{formatTime(duration)}</span></span>
+        <button className={`bar-autoplay-pill ${player.autoplay ? "is-on" : ""}`} type="button" aria-label={player.autoplay ? "Disable autoplay" : "Enable autoplay"} title={player.autoplay ? "Disable autoplay" : "Enable autoplay"} onClick={() => onAction("autoplay", { enabled: !player.autoplay })} disabled={autoplayPending} aria-busy={autoplayPending || undefined} aria-pressed={Boolean(player.autoplay)}>
+          {autoplayPending ? <SpinnerGap className="button-spinner" size={14} aria-hidden="true" /> : <Sparkle size={14} weight={player.autoplay ? "fill" : "regular"} aria-hidden="true" />}
+          <span>Autoplay</span>
+        </button>
+        <IconButton label="Open lyrics" className="bar-lyrics" onClick={() => onView("lyrics")} disabled={!track}><Microphone size={18} weight="regular" aria-hidden="true" /></IconButton>
+        <IconButton label={isMuted ? "Unmute player" : "Mute player"} className={`bar-mute ${isMuted ? "is-muted" : ""}`} loading={isActionPending("toggle_mute")} onClick={() => onAction("toggle_mute")} aria-pressed={isMuted}>{isMuted ? <SpeakerSlash size={18} weight="fill" aria-hidden="true" /> : <SpeakerHigh size={18} weight="fill" aria-hidden="true" />}</IconButton>
         <VolumeSlider className="bar-volume-control" slider={volumeSlider} onPreview={previewVolume} onCommit={commitVolume} />
+        <PlayerMoreMenu className="bar-more" track={track} trackLinkUrl={trackLinkUrl} onOpenExternalLink={onOpenExternalLink} onAction={onAction} isActionPending={isActionPending} />
       </div>
       <SmartMenu open={Boolean(titleMenu)} position={titleMenu || { top: 0, left: 0 }} rootRef={titleRef} menuRef={titleMenuRef} label={`Actions for ${track?.title || "track"}`}>
         <>
