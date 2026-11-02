@@ -60,7 +60,7 @@ export function poseFor({ phase, feverActive, now, missUntil, crushed, milestone
 // song clock and renders it. The link must already be started when this mounts its effects (the
 // mock link emits its first anchor from start()); it reads the current state on mount instead of
 // waiting for events it may have missed.
-export function useMewbeatGame({ link, settings, effects = "full", trackInfo = null, inputPaused = false, onExit }) {
+export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, onExit }) {
   const cfg = settingsOf(settings);
   const prefersReduced = usePrefersReducedMotion();
   const effectsLevel = effectiveEffects(effects, prefersReduced);
@@ -100,6 +100,12 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
   const milestoneUntilRef = useRef(0);
   const poseRef = useRef("neutral");
   const runTrackRef = useRef(null);
+  const runMetaRef = useRef(null); // what the server needs to know about the chart the run is on
+  const summaryIdRef = useRef(0);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const requestsRef = useRef(requests);
+  requestsRef.current = requests;
   const redrawRef = useRef(false); // a resize wipes the canvas, which a paused game must repaint once
 
   // Latest props for the long-lived callbacks below.
@@ -189,6 +195,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       runAutoplayRef.current = autoplayRef.current;
       runTrackRef.current = trackRef.current;
       runCalibrationRef.current = Boolean(chartRef.current?.calibration);
+      runMetaRef.current = { audioKey: songClock.audioKey(), difficulty: cfgRef.current.liveDifficulty, chartVersion: chart.version ?? null };
       setCalibrating(runCalibrationRef.current);
       lastSongMsRef.current = songMs;
       resetRunState();
@@ -199,7 +206,20 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       setPhase(songClock.paused() ? "paused" : "playing");
     }
 
-    // Drops the current run. A run that judged at least one note leaves its end card.
+    // Sends the finished run for scoring and keeps the reply on the summary it belongs to. A calibration run
+    // has nothing to rank, so it is not sent. Local numbers show at once; the reply only adds to them.
+    function submitRun(id, body) {
+      const send = requestsRef.current?.request;
+      if (body.flags.calibration || !send || !body.audioKey) return "skipped";
+      const settle = (submit) => setEndSummary((current) => (current && current.id === id ? { ...current, submit } : current));
+      send("mewbeat_submit", body).then(
+        (reply) => settle(reply?.status === "ok" && reply.result ? { status: "ok", result: reply.result } : { status: "error", reason: reply?.reason ?? null }),
+        () => settle({ status: "error", reason: null })
+      );
+      return "submitting";
+    }
+
+    // Drops the current run. A run that judged at least one note leaves its results.
     function endRun() {
       const run = runRef.current;
       if (!run) return;
@@ -209,7 +229,30 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       feverActiveRef.current = false;
       if (snap.judged >= 1) {
         const { hits, ranked, skipped, ...rest } = snap;
-        setEndSummary({ ...rest, calibration: runCalibrationRef.current, timingMs: runTimingOf(hits), title: runTrackRef.current?.title ?? null, artist: runTrackRef.current?.artist ?? null, feverActive: false, feverLeftMs: 0 });
+        const meta = runMetaRef.current ?? {};
+        const { events, fevers } = run.log();
+        const id = ++summaryIdRef.current;
+        const flags = { autoplay: runAutoplayRef.current, calibration: runCalibrationRef.current, difficultyChanged: false };
+        const status = submitRun(id, { mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, flags });
+        setEndSummary({
+          ...rest,
+          id,
+          skipped,
+          calibration: flags.calibration,
+          autoplay: flags.autoplay,
+          audioKey: meta.audioKey ?? null,
+          difficulty: meta.difficulty ?? null,
+          // Head-hit errors in heard time (positive: late) against the offset the run ended on.
+          hitErrors: hits.map((hit) => hit.errorMs),
+          offsetMs: cfgRef.current.offsetMs,
+          timingMs: runTimingOf(hits),
+          title: runTrackRef.current?.title ?? null,
+          artist: runTrackRef.current?.artist ?? null,
+          artworkUrl: runTrackRef.current?.artworkUrl ?? null,
+          submit: { status },
+          feverActive: false,
+          feverLeftMs: 0,
+        });
         setHud({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
       } else {
         setHud(EMPTY_HUD);

@@ -1,7 +1,6 @@
 import { GearSix } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchMewbeatAudio } from "../api.js";
-import EndCard from "./EndCard.jsx";
 import GameHud, { HighwayReadout, TrackCard } from "./GameHud.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
 import Stage from "./Stage.jsx";
@@ -13,6 +12,7 @@ import { createMockLink } from "./mockLink.js";
 import { createMewbeatRequests } from "./requests.js";
 import { createSoloAudio } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
+import Results from "./Results.jsx";
 import SongSelect from "./SongSelect.jsx";
 import Mewbit from "./mewbit/Mewbit.jsx";
 import { useMewbeatGame } from "./useMewbeatGame.js";
@@ -180,6 +180,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // overlay, and the song picker (its search input needs the letter keys).
   const game = useMewbeatGame({
     link,
+    mode,
+    requests,
     settings,
     effects: settings?.effects,
     trackInfo,
@@ -272,7 +274,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
   const difficulty = settings?.liveDifficulty ?? "normal";
   const running = phase === "playing" || phase === "paused";
-  const showCard = Boolean(endSummary);
+  // Back (Live) hides the results of that run; the next run's summary has a new id and shows again. Solo keeps the
+  // last summary around until the next run starts, so it only shows while the run it belongs to is on stage.
+  const [dismissedId, setDismissedId] = useState(null);
+  const showCard = Boolean(endSummary) && dismissedId !== endSummary.id && !pickerOpen && (!solo || soloStage === "playing" || soloStage === "ended");
   let stateCopy;
   if (solo) {
     if (pickerOpen || showCard) stateCopy = null;
@@ -377,16 +382,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
                   {stateCopy.detail ? <span>{stateCopy.detail}</span> : null}
                 </div>
               ) : null}
-              {showCard ? (
-                <EndCard
-                  summary={endSummary}
-                  phase={phase}
-                  queued={Boolean(track?.queued)}
-                  timing={timing}
-                  savedOffset={savedOffset}
-                  onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { offsetMs } })}
-                />
-              ) : null}
             </div>
           </div>
 
@@ -396,6 +391,24 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           </aside>
         </div>
       </div>
+
+      {showCard ? (
+        <Results
+          key={endSummary.id}
+          summary={endSummary}
+          mode={mode}
+          phase={phase}
+          effects={effectsLevel}
+          active={!settingsOpen}
+          queued={Boolean(track?.queued)}
+          upNext={!solo && player?.queue?.[0]?.title ? { title: player.queue[0].title, ready: false } : null}
+          timing={timing}
+          savedOffset={savedOffset}
+          onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { offsetMs } })}
+          onBack={() => setDismissedId(endSummary.id)}
+          onSongSelect={solo ? () => link.leave() : undefined}
+        />
+      ) : null}
 
       {pickerOpen ? (
         <SongSelect

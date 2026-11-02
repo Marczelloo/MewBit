@@ -50,7 +50,7 @@ function gradeClass(grade) {
 }
 
 // Artwork goes through the gateway's artwork proxy like the music panel's (Discord's CSP blocks other origins).
-function resolveArtworkUrl(artworkUrl) {
+export function resolveArtworkUrl(artworkUrl) {
   if (!artworkUrl) return null;
   try {
     const parsed = new URL(artworkUrl, window.location.origin);
