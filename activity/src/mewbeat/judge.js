@@ -145,7 +145,45 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
     return tail[index] ?? "pending";
   }
 
+  // Swaps every note from index `keep` on for `tailNotes` (already sorted, all later than the kept ones), keeping
+  // the outcomes, active holds and cursors of the kept notes. Edits the notes array this judge was created with.
+  function replaceFrom(keep, tailNotes) {
+    notes.length = keep;
+    outcome.length = keep;
+    tail.length = keep;
+    endOf.length = keep;
+    isHold.length = keep;
+    for (let lane = 0; lane < LANES; lane += 1) {
+      const kept = laneIndexes[lane].filter((index) => index < keep);
+      laneIndexes[lane] = kept;
+      active[lane] = active[lane].filter((index) => index < keep);
+      for (const cursors of [pressCursor, sweepCursor, skipCursor]) cursors[lane] = Math.min(cursors[lane], kept.length);
+    }
+    for (const note of tailNotes) {
+      const index = notes.length;
+      notes.push(note);
+      endOf.push(note.t + (note.len > 0 ? note.len : 0));
+      isHold.push(note.len > 0);
+      laneIndexes[note.lane]?.push(index);
+    }
+    pending = 0;
+    for (let i = 0; i < notes.length; i += 1) {
+      if (outcome[i] === undefined) pending += 1;
+      if (isHold[i] && tail[i] === undefined) pending += 1;
+    }
+  }
+
+  // How many judgements were skipped (jump, offset change, lead-in) among the current notes.
+  function skippedCount() {
+    let count = 0;
+    for (let i = 0; i < notes.length; i += 1) {
+      if (outcome[i] === "skipped") count += 1;
+      if (tail[i] === "skipped") count += 1;
+    }
+    return count;
+  }
+
   skipBefore(fromMs);
 
-  return { press, release, sweep, skipBefore, remaining: () => pending, outcomeOf, tailOutcomeOf };
+  return { press, release, sweep, skipBefore, replaceFrom, skippedCount, remaining: () => pending, outcomeOf, tailOutcomeOf };
 }

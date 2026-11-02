@@ -1,3 +1,4 @@
+import { approachMsFor } from "./highway.js";
 import { createJudge } from "./judge.js";
 import {
   WINDOWS,
@@ -13,11 +14,14 @@ import {
 
 const START_LEAD_MS = 1000;
 const JUMP_LEAD_MS = 300;
+// A swapped-in chart keeps this much of the old one ahead of the song unless the caller says what the
+// renderer's approach window is right now (the slowest scroll speed, so nothing visible is ever cut).
+const DEFAULT_SWAP_APPROACH_MS = approachMsFor(1);
 
 // One game run. Every method takes song time; the user offset is applied here,
 // so judge, sweep and fever all work in heard time (songMs - offsetMs).
 export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }) {
-  const notes = chart.notes;
+  const notes = chart.notes.slice(); // the judge edits this list when the chart is swapped
   let offset = offsetMs;
   const heard = (songMs) => songMs - offset;
 
@@ -28,17 +32,20 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   let holdCount = 0;
   let maxLen = 0;
   let endAfterMs = -Infinity;
-  for (const note of notes) {
-    const len = lenOf(note);
-    if (len > 0) holdCount += 1;
-    maxLen = Math.max(maxLen, len);
-    endAfterMs = Math.max(endAfterMs, note.t + len + WINDOWS.good);
+  function measureChart() {
+    holdCount = 0;
+    maxLen = 0;
+    endAfterMs = -Infinity;
+    for (const note of notes) {
+      const len = lenOf(note);
+      if (len > 0) holdCount += 1;
+      maxLen = Math.max(maxLen, len);
+      endAfterMs = Math.max(endAfterMs, note.t + len + WINDOWS.good);
+    }
   }
-  let skipped = 0;
-  for (let i = 0; i < notes.length; i += 1) {
-    if (judge.outcomeOf(i) === "skipped") skipped += 1;
-    if (judge.tailOutcomeOf(i) === "skipped") skipped += 1;
-  }
+  measureChart();
+  let skipped = judge.skippedCount();
+  const flags = { difficultyChanged: false };
 
   const hits = [];
   const eventLog = []; // the event log for the server: every applied judgement, in order
@@ -161,6 +168,33 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     if (delta < 0 && !ended) skipped += judge.skipBefore(heard(songMs) - WINDOWS.good);
   }
 
+  // Switches to another difficulty's chart mid-run. Notes up to approachMs ahead of the song (already on screen or
+  // on the way) and every judged or held one stay as they are; the rest of the old chart is dropped and the new
+  // chart's notes after that cut take its place, so a note never appears twice. Score, combo and FEVER carry over.
+  // The log then mixes two charts, which the server cannot replay: the run is flagged difficultyChanged (unranked).
+  function swapChart(nextChart, songMs = lastSongMs, approachMs = DEFAULT_SWAP_APPROACH_MS) {
+    if (ended || !Array.isArray(nextChart?.notes)) return false;
+    const cutMs = heard(songMs) + approachMs;
+    let keep = 0;
+    {
+      let lo = 0;
+      let hi = notes.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (notes[mid].t <= cutMs) lo = mid + 1;
+        else hi = mid;
+      }
+      keep = lo;
+    }
+    const incoming = nextChart.notes.filter((note) => note.t > cutMs);
+    judge.replaceFrom(keep, incoming);
+    autoCursor = Math.min(autoCursor, keep);
+    measureChart();
+    skipped = judge.skippedCount();
+    flags.difficultyChanged = true;
+    return true;
+  }
+
   // What the server needs to recompute this run: judgements as they were applied (jump/offset-skipped
   // parts never appear, they were never judged) and the heard times FEVER started at.
   function log() {
@@ -188,6 +222,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       total: notes.length + holdCount - skipped,
       skipped,
       ranked: false,
+      difficultyChanged: flags.difficultyChanged,
       hits: hits.slice(),
     };
   }
@@ -225,5 +260,5 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     return visible;
   }
 
-  return { press, release, tick, fever, jump, setOffset, log, snapshot, visibleNotes, heardTime: heard };
+  return { press, release, tick, fever, jump, setOffset, swapChart, log, snapshot, visibleNotes, heardTime: heard, flags, noteList: () => notes };
 }

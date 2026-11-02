@@ -562,3 +562,126 @@ test("log: FEVER starts are logged as heard times, only when they started", () =
   assert.equal(run.fever(started), null);
   assert.deepEqual(run.log().fevers, [started - 40]);
 });
+
+// ---- swapChart ----
+
+// Denser chart (125 ms apart from t:2000, lanes reversed) so a swapped-in note is told apart from an old one.
+const denseChart = () => ({
+  notes: Array.from({ length: 80 }, (_, i) => ({ t: 2000 + i * 125, lane: 3 - (i % 4) })),
+});
+
+test("swapChart keeps notes up to the cut and replaces the rest with the new chart's later notes", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  assert.equal(run.swapChart(denseChart(), 4000, 1000), true);
+  // cut = 5000: old notes at 2000..5000 (13 of them) stay, then new notes from 5125 on.
+  const all = run.visibleNotes(0, 20000);
+  assert.equal(all.length, 13 + (80 - 25));
+  assert.deepEqual(all.slice(0, 13).map((n) => n.t), Array.from({ length: 13 }, (_, i) => 2000 + i * 250));
+  assert.deepEqual(all.slice(0, 13).map((n) => n.lane), Array.from({ length: 13 }, (_, i) => i % 4));
+  assert.equal(all[13].t, 5125);
+  assert.equal(all[13].lane, 3 - (25 % 4));
+  assert.equal(all.at(-1).t, 2000 + 79 * 125);
+});
+
+test("swapChart leaves no duplicate or overlapping note at the cut", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.swapChart(denseChart(), 4000, 1000);
+  const times = run.visibleNotes(0, 20000).map((n) => n.t);
+  assert.equal(new Set(times).size, times.length);
+  assert.deepEqual(times, [...times].sort((a, b) => a - b));
+  // The old chart's note exactly on the cut stays, the new chart's note exactly on it is not added.
+  assert.equal(times.filter((t) => t === 5000).length, 1);
+  assert.equal(run.noteList().filter((n) => n.t === 5000).length, 1);
+  assert.equal(run.noteList().find((n) => n.t === 5000).lane, 12 % 4);
+});
+
+test("swapChart does not touch the caller's chart or the new chart", () => {
+  const old = chart();
+  const next = denseChart();
+  const run = createRun({ chart: old, startSongMs: 0 });
+  run.swapChart(next, 4000, 1000);
+  assert.equal(old.notes.length, 40);
+  assert.equal(next.notes.length, 80);
+});
+
+test("swapChart carries score, combo and counts over and keeps judging", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(1, 2250);
+  run.press(2, 2500);
+  const before = run.snapshot(3000);
+  run.swapChart(denseChart(), 3000, 1000);
+  const after = run.snapshot(3000);
+  assert.equal(after.score, before.score);
+  assert.equal(after.combo, 3);
+  assert.equal(after.maxCombo, 3);
+  assert.deepEqual(after.counts, before.counts);
+  assert.equal(after.judged, 3);
+  // Notes after the cut are the new chart's: new note at 4125 on lane 3 - (17 % 4) = 2.
+  const hit = run.press(2, 4125);
+  assert.equal(hit.judgement, "perfect");
+  assert.equal(hit.index, 9); // 9 old notes (2000..4000) stay, so the first new note takes index 9
+  assert.equal(run.snapshot(4125).combo, 4);
+});
+
+test("swapChart flags the run difficultyChanged and the snapshot says so", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  assert.equal(run.flags.difficultyChanged, false);
+  assert.equal(run.snapshot(0).difficultyChanged, false);
+  run.swapChart(denseChart(), 3000, 1000);
+  assert.equal(run.flags.difficultyChanged, true);
+  assert.equal(run.snapshot(3000).difficultyChanged, true);
+});
+
+test("swapChart keeps an active hold and its tail judgement", () => {
+  const holdChart = {
+    notes: [
+      { t: 3000, lane: 0, len: 2000 },
+      { t: 6000, lane: 1 },
+      { t: 6500, lane: 2 },
+    ],
+  };
+  const run = createRun({ chart: holdChart, startSongMs: 0 });
+  const head = run.press(0, 3000);
+  assert.equal(head.part, "head");
+  // Cut at 4000 + 500: the hold (head at 3000) is all that stays of the old chart; the new 4400 is inside the cut, so dropped.
+  run.swapChart({ notes: [{ t: 4400, lane: 3 }, { t: 4600, lane: 3 }, { t: 7000, lane: 3 }] }, 4000, 500);
+  const notes = run.visibleNotes(0, 10000);
+  assert.deepEqual(notes.map((n) => [n.t, n.lane]), [[3000, 0], [4600, 3], [7000, 3]]);
+  assert.equal(notes[0].hold, "held");
+  const tail = run.release(0, 5000);
+  assert.equal(tail.length, 1);
+  assert.equal(tail[0].part, "tail");
+  assert.equal(tail[0].judgement, "perfect");
+  assert.equal(tail[0].index, 0);
+});
+
+test("swapChart keeps judged and skipped counts consistent and the run ends on the new chart", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.jump(3000);
+  const skippedBefore = run.snapshot(3000).skipped;
+  assert.ok(skippedBefore > 0);
+  run.swapChart(denseChart(), 3000, 1000);
+  const snap = run.snapshot(3000);
+  assert.equal(snap.skipped, skippedBefore);
+  // total = notes in the merged list minus the skipped ones.
+  assert.equal(snap.total, run.noteList().length - skippedBefore);
+  const events = tickAll(run, 3000, 20000);
+  assert.ok(events.some((e) => e.kind === "end"));
+  const final = run.snapshot(20000);
+  assert.equal(final.judged, final.total);
+});
+
+test("swapChart after the run ended does nothing", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  tickAll(run, 0, 20000);
+  assert.equal(run.swapChart(denseChart(), 20000, 1000), false);
+  assert.equal(run.flags.difficultyChanged, false);
+});
+
+test("swapChart's default window is the slowest scroll speed's, so nothing on screen is cut", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.swapChart({ notes: [] }, 2000);
+  // 2000 + 2200 = 4200: old notes up to there stay (2000..4000 is 9).
+  assert.equal(run.noteList().length, 9);
+});
