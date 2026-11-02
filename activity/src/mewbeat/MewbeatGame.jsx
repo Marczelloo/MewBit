@@ -13,7 +13,7 @@ import { createMockLink } from "./mockLink.js";
 import { createMewbeatRequests } from "./requests.js";
 import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
-import { createSoloAudio } from "./soloAudio.js";
+import { createSoloAudio, musicGain } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
 import Lobby, { CountdownOverlay, LeaveConfirm } from "./Lobby.jsx";
 import LiveBoard from "./LiveBoard.jsx";
@@ -101,7 +101,7 @@ function useRoomStore(store) {
 // The game's one menu, opened with the header button or Esc. A solo run is paused under it; Live and rooms
 // can't stop the song, so the game only ignores its keys while it is up. Esc resumes from anywhere
 // (MewbeatSession captures it, so it works whatever has focus); Enter does too, unless it is on another button.
-function GameMenu({ title, note, error, focusSettings, modes, autoplay, onAutoplay, onResume, onRestart, onPick, onSettings, onExit }) {
+function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPick, onSettings, onExit }) {
   const resumeRef = useRef(null);
   const settingsRef = useRef(null);
   useEffect(() => {
@@ -130,29 +130,6 @@ function GameMenu({ title, note, error, focusSettings, modes, autoplay, onAutopl
           <button type="button" className="mb-btn" ref={settingsRef} onClick={onSettings}>
             <GearSix size={16} weight="bold" aria-hidden="true" /> Settings
           </button>
-          {onAutoplay ? (
-            <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => onAutoplay(!autoplay)}>
-              Autoplay
-            </button>
-          ) : null}
-        </div>
-        <div className="mb-pause-modes">
-          <span className="mb-pause-label">Mode</span>
-          <div className="mb-modes" role="group" aria-label="Mode">
-            {modes.map(({ id, label, active, disabled, hint, onSelect }) => (
-              <button
-                key={id}
-                type="button"
-                className={`mb-mode${active ? " mb-mode-on" : ""}`}
-                aria-pressed={active}
-                disabled={disabled}
-                title={disabled ? hint : undefined}
-                onClick={active ? undefined : onSelect}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
         <button type="button" className="mb-btn mb-pause-exit" onClick={onExit}>Exit</button>
       </div>
@@ -175,11 +152,11 @@ export default function MewbeatGame(props) {
   }));
   const musicVolume = Number.isFinite(settings?.musicVolume) ? settings.musicVolume : DEFAULT_MUSIC_VOLUME;
   useEffect(() => {
-    audio.setVolume(musicVolume / 100);
+    audio.setVolume(musicGain(musicVolume));
   }, [audio, musicVolume]);
   const musicVolumeRef = useRef(musicVolume);
   musicVolumeRef.current = musicVolume;
-  const previewMusic = useCallback((value) => audio.setVolume(value / 100), [audio]);
+  const previewMusic = useCallback((value) => audio.setVolume(musicGain(value)), [audio]);
   useEffect(() => () => audio.close(), [audio]);
   // Request/reply over the socket (played lists now; results and rooms later), shared by every session and
   // fed by the session's message handler.
@@ -292,7 +269,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
+  const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
   // A room round in flight (loading, counting down or playing, and my own run not over) asks before it is left.
   const fallbackMode = liveAvailable ? "live" : "solo";
   const inRound = roomMode && (view === "loading" || view === "countdown" || view === "playing") && phase !== "ended";
@@ -407,7 +384,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // focus goes to the menu button.
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
-    audio.setVolume(musicVolumeRef.current / 100); // drop any slider preview that was never saved
+    audio.setVolume(musicGain(musicVolumeRef.current)); // drop any slider preview that was never saved
     if (!settingsFromMenu) window.requestAnimationFrame(() => menuButtonRef.current?.focus());
   }, [audio, musicVolumeRef, settingsFromMenu]);
 
@@ -509,6 +486,25 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           <span className="mb-wordmark">mewbeat</span>
           {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
           {calibrating && running ? <span className="mb-chip">calibration · tap any key on each click · {timing.taps}/{MIN_TAPS}</span> : null}
+        </div>
+        <div className="mb-modes" role="group" aria-label="Mode">
+          {MODES.map(({ id, label }) => {
+            const active = id === mode;
+            const disabled = !active && ((id === "live" && !liveAvailable) || ((id === "solo" || id === "room") && MOCK_PREVIEW));
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`mb-mode${active ? " mb-mode-on" : ""}`}
+                aria-pressed={active}
+                disabled={disabled}
+                title={disabled ? (id === "live" ? "The bot isn't playing anything" : "Not available in the mock preview") : undefined}
+                onClick={active ? undefined : () => (roomMode ? requestLeave(id) : onModeChange(id))}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
         <div className="mb-header-actions">
           {solo && botPlaying ? <span className="mb-hint">Lower MewBit in Discord to hear the song</span> : null}
@@ -634,13 +630,18 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       ) : null}
 
       {roomMode && addOpen ? (
-        <SongSelect
-          context={context}
-          request={requests.request}
-          defaultDifficulty={savedDifficulty}
-          onAddToRoom={addToRoom}
-          onClose={() => { setAddOpen(false); backToGame(); }}
-        />
+        // A window over the lobby, so the room stays in view while songs are added.
+        <div className="mb-add-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) { setAddOpen(false); backToGame(); } }}>
+          <div className="mb-add-window" role="dialog" aria-modal="true" aria-label="Add songs to the room">
+            <SongSelect
+              context={context}
+              request={requests.request}
+              defaultDifficulty={savedDifficulty}
+              onAddToRoom={addToRoom}
+              onClose={() => { setAddOpen(false); backToGame(); }}
+            />
+          </div>
+        </div>
       ) : null}
 
       {leaveConfirm ? (
@@ -657,23 +658,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           note={running && !solo ? (roomMode ? "The round keeps going." : "The song keeps playing in voice.") : null}
           error={pauseOpen ? soloState.error : null}
           focusSettings={settingsFromMenu}
-          modes={MODES.map(({ id, label }) => {
-            const active = id === mode;
-            return {
-              id,
-              label,
-              active,
-              disabled: !active && ((id === "live" && !liveAvailable) || ((id === "solo" || id === "room") && MOCK_PREVIEW)),
-              hint: id === "live" ? "The bot isn't playing anything" : "Not available in the mock preview",
-              onSelect: () => {
-                closeMenu();
-                if (roomMode) requestLeave(id);
-                else onModeChange(id);
-              },
-            };
-          })}
-          autoplay={autoplay}
-          onAutoplay={roomMode ? undefined : setAutoplay}
           onResume={resumeFromMenu}
           onRestart={pauseOpen ? () => { link.restart(); closeMenu(); backToGame(); } : undefined}
           onPick={solo && !pickerOpen ? () => { link.leave(); closeMenu(); backToGame(); } : undefined}

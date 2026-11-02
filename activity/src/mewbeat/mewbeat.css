@@ -150,6 +150,7 @@
 }
 .mb-game:focus { outline: none; }
 .mb-label { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mb-muted); }
+.mb-field-error { margin: 0; color: var(--mb-danger); font-size: 12px; font-weight: 700; line-height: 1.4; }
 .mb-kbd {
   display: inline-block;
   min-width: 22px;
@@ -163,12 +164,13 @@
 }
 
 /* header */
+/* Brand left, mode tabs centred, the menu button right. */
 .mb-header {
   position: relative;
   z-index: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--mb-line);
@@ -176,7 +178,7 @@
 }
 .mb-header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mb-wordmark { font-size: 15px; font-weight: 900; letter-spacing: -0.02em; }
-.mb-header-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+.mb-header-actions { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; }
 .mb-header-actions .mb-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 12px; font-size: 13px; }
 .mb-toggle-on { border-color: var(--mb-cyan); background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
 .mb-chip {
@@ -501,55 +503,6 @@
   .mb-header-actions .mb-kbd { display: none; }
 }
 
-/* ---------- settings panel ---------- */
-.mb-settings-scrim {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  justify-content: flex-end;
-  background: rgb(5 6 8 / 0.62);
-  animation: mb-fade-in 140ms ease-out both;
-}
-.mb-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  width: min(400px, 100%);
-  height: 100%;
-  padding: 16px 20px 24px;
-  border-left: 1px solid var(--mb-line);
-  background: var(--mb-surface);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.mb-settings:focus { outline: none; }
-.mb-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.mb-settings-title { margin: 0; font-size: 18px; font-weight: 800; }
-.mb-settings-head .mb-btn { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; }
-.mb-group { display: flex; flex-direction: column; gap: 16px; padding-top: 16px; border-top: 1px solid var(--mb-line); }
-.mb-group-title { margin: 0; color: var(--mb-muted); font: 800 11px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.14em; text-transform: uppercase; }
-.mb-field { display: flex; flex-direction: column; gap: 8px; }
-.mb-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.mb-field-value { color: var(--mb-high); font: 800 13px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.mb-field-help { margin: 0; color: var(--mb-muted); font-size: 12px; line-height: 1.4; }
-.mb-field-error { margin: 0; color: var(--mb-danger); font-size: 12px; font-weight: 700; line-height: 1.4; }
-.mb-keycaps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.mb-keycap { padding: 0 6px; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.mb-calib-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.mb-offset-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
-.mb-step { min-width: 48px; padding: 0 10px; font-variant-numeric: tabular-nums; }
-.mb-step:disabled { opacity: 0.4; cursor: default; }
-.mb-segmented { display: flex; gap: 8px; }
-.mb-seg { flex: 1 1 0; padding: 0 10px; }
-.mb-range { width: 100%; height: 24px; margin: 0; accent-color: var(--mb-cyan); cursor: pointer; }
-.mb-range:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
-@media (max-height: 520px) {
-  .mb-settings { gap: 12px; padding: 12px 16px 16px; }
-  .mb-field { gap: 6px; }
-  .mb-group { gap: 12px; padding-top: 12px; }
-}
-
 /* ---------- Mewbit placeholder ---------- */
 .mb-mewbit { position: relative; width: 100%; aspect-ratio: 1; }
 .mb-mewbit-body { width: 100%; height: 100%; transform-origin: 50% 90%; will-change: transform; }
@@ -649,8 +602,7 @@
   .mb-spot,
   .mb-pulse-a,
   .mb-pulse-b,
-  .mb-vibe-hint-ready,
-  .mb-settings-scrim { animation: none; }
+  .mb-vibe-hint-ready { animation: none; }
   .mb-feverbanner, .mb-vibe-hint-ready { opacity: 1; }
   .mb-btn,
   .mb-highway,
@@ -874,8 +826,6 @@
 .mb-pause-actions { display: flex; flex-direction: column; gap: 8px; }
 .mb-pause-actions .mb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .mb-pause-note { margin: -6px 0 0; color: var(--mb-muted); font-size: 13px; text-align: center; }
-.mb-pause-modes { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; border-top: 1px solid var(--mb-line); }
-.mb-pause-label { font: 500 10px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
 .mb-pause-exit { justify-content: center; }
 @media (prefers-reduced-motion: reduce) {
   .mb-pause-scrim, .mb-countin b { animation: none; }
@@ -1192,4 +1142,34 @@
   .mb-lobby-mewbox { max-width: 180px; }
   .mb-lobby-mine { grid-template-columns: minmax(0, 1fr); }
   .mb-lobby-side { overflow: visible; border-top: 1px solid var(--mb-line); border-left: 0; }
+}
+
+/* Room "add songs": song select in a window over the lobby. */
+.mb-add-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgb(5 6 8 / 0.62);
+  backdrop-filter: blur(6px);
+  animation: mb-fade-in 140ms ease-out both;
+}
+.mb-add-window {
+  display: grid;
+  width: min(1040px, 100%);
+  height: min(640px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--mb-line);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(167 139 250 / 0.08);
+  animation: mb-add-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.mb-add-window .mb-ss { grid-area: auto; }
+@keyframes mb-add-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+.mb-fx-off .mb-add-scrim, .mb-fx-off .mb-add-window { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mb-add-scrim, .mb-add-window { animation: none; }
 }

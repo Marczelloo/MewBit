@@ -4,9 +4,11 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
 let createSoloAudio;
+let musicGain;
+let MUSIC_MAX_GAIN;
 
 test.before(async () => {
-  ({ createSoloAudio } = await import(
+  ({ createSoloAudio, musicGain, MUSIC_MAX_GAIN } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/soloAudio.js")).href
   ));
 });
@@ -219,4 +221,14 @@ test("close() and a newer load abort the download in flight", async () => {
   assert.equal(signals[1].aborted, false);
   audio.close();
   assert.equal(signals[1].aborted, true);
+});
+
+test("the music volume maps on a square curve under the ceiling", () => {
+  assert.equal(musicGain(100), MUSIC_MAX_GAIN);
+  assert.equal(musicGain(0), 0);
+  assert.ok(Math.abs(musicGain(50) - MUSIC_MAX_GAIN / 4) < 1e-9);
+  assert.ok(musicGain(5) < 0.002, "5% is close to silent");
+  assert.equal(musicGain(150), MUSIC_MAX_GAIN);
+  assert.equal(musicGain(-10), 0);
+  assert.ok(musicGain(Number.NaN) > 0 && musicGain(Number.NaN) < MUSIC_MAX_GAIN);
 });

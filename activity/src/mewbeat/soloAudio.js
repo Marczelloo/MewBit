@@ -6,6 +6,14 @@ const DEFAULT_VOLUME = 0.8;
 // An immediate start is scheduled this far ahead: the audio thread picks a start up at its next render quantum,
 // a few to ~20 ms after currentTime, so scheduling at currentTime would bias the clock by that unknown amount.
 export const START_LEAD_S = 0.05;
+// The rendered songs are mastered loud and a linear slider bunches all the audible change near 0, so the music
+// volume setting (0-100) maps on a square curve under a ceiling: 100 is about -8 dB, 50 about -20 dB, 5 near silent.
+export const MUSIC_MAX_GAIN = 0.4;
+
+export function musicGain(percent) {
+  const share = Number.isFinite(percent) ? Math.min(1, Math.max(0, percent / 100)) : 0.8;
+  return MUSIC_MAX_GAIN * share * share;
+}
 
 export function createSoloAudio({
   fetchAudio,
