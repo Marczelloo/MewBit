@@ -3,7 +3,8 @@ const userPreferences = require("../users/preferences");
 // Keys are KeyboardEvent.code values, so they hold on any keyboard layout.
 const DEFAULT_SETTINGS = Object.freeze({
   keys: Object.freeze(["KeyD", "KeyF", "KeyJ", "KeyK"]),
-  offsetMs: 0,
+  offsetMs: 0, // the bot's audio in Live, which reaches the player late through Discord
+  soloOffsetMs: 0, // solo and room audio (the Activity's own playback): a Live offset would be wrong there
   scrollSpeed: 5,
   liveDifficulty: "normal",
   effects: "full",
@@ -14,7 +15,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   tempoScroll: true, // the song's tempo nudges the fall speed (activity highway.js tempoScrollFactor)
 });
 
-const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100], musicVolume: [0, 100] });
+const LIMITS = Object.freeze({ offsetMs: [-300, 700], soloOffsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100], musicVolume: [0, 100] });
 // Space is FEVER; Escape leaves the game.
 const RESERVED_CODES = Object.freeze(["Space", "Escape"]);
 
@@ -43,6 +44,7 @@ function isIntegerIn(value, [min, max]) {
 const FIELD_CHECKS = {
   keys: (value) => (isValidKeys(value) ? null : "Pick four different keys. Space and Escape are taken."),
   offsetMs: (value) => (isIntegerIn(value, LIMITS.offsetMs) ? null : `Offset must be a whole number from ${LIMITS.offsetMs[0]} to ${LIMITS.offsetMs[1]} ms.`),
+  soloOffsetMs: (value) => (isIntegerIn(value, LIMITS.soloOffsetMs) ? null : `Offset must be a whole number from ${LIMITS.soloOffsetMs[0]} to ${LIMITS.soloOffsetMs[1]} ms.`),
   scrollSpeed: (value) => (isIntegerIn(value, LIMITS.scrollSpeed) ? null : `Scroll speed must be a whole number from ${LIMITS.scrollSpeed[0]} to ${LIMITS.scrollSpeed[1]}.`),
   liveDifficulty: (value) => (LIVE_DIFFICULTIES.includes(value) ? null : "Live difficulty must be easy, normal, hard or hell."),
   effects: (value) => (EFFECT_LEVELS.includes(value) ? null : "Effects must be full, reduced or off."),

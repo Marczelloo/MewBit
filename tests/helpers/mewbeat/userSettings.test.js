@@ -39,6 +39,14 @@ describe("mewbeat settings validation", () => {
     assert.strictEqual(merged.showMewbit, false);
   });
 
+  it("keeps a separate offset for solo and room audio, with the same range", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.soloOffsetMs, 0);
+    assert.strictEqual(validateSettingsPatch({ soloOffsetMs: -300 }, DEFAULT_SETTINGS).soloOffsetMs, -300);
+    assert.strictEqual(validateSettingsPatch({ soloOffsetMs: 700 }, DEFAULT_SETTINGS).soloOffsetMs, 700);
+    assert.strictEqual(normalizeSettings({ offsetMs: -45 }).soloOffsetMs, 0, "a Live offset is not a solo one");
+    assert.strictEqual(normalizeSettings({ soloOffsetMs: 9999 }).soloOffsetMs, 0);
+  });
+
   it("defaults the music volume to 80 and accepts 0 to 100", () => {
     assert.strictEqual(DEFAULT_SETTINGS.musicVolume, 80);
     assert.strictEqual(validateSettingsPatch({ musicVolume: 0 }, DEFAULT_SETTINGS).musicVolume, 0);
@@ -70,6 +78,8 @@ describe("mewbeat settings validation", () => {
     "offset above the range": { offsetMs: 701 },
     "offset below the range": { offsetMs: -301 },
     "a fractional offset": { offsetMs: 1.5 },
+    "a solo offset above the range": { soloOffsetMs: 701 },
+    "a fractional solo offset": { soloOffsetMs: 1.5 },
     "scroll speed 0": { scrollSpeed: 0 },
     "an unknown difficulty": { liveDifficulty: "expert" },
     "an unknown effects level": { effects: "neon" },

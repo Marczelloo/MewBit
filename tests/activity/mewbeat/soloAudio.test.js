@@ -373,3 +373,67 @@ test("the music volume maps on a square curve under the ceiling", () => {
   assert.equal(musicGain(-10), 0);
   assert.ok(musicGain(Number.NaN) > 0 && musicGain(Number.NaN) < MUSIC_MAX_GAIN);
 });
+
+// A decoded song of clicks at 1 kHz, the sounds `lag` ms from their notes.
+function alignedSong(env, ctx, lag, times) {
+  const samples = new Float32Array(40_000);
+  for (const t of times) {
+    for (let i = 0; i < 20; i += 1) samples[t + lag + i] = 0.8 * Math.exp(-i / 6);
+  }
+  ctx.decodeAudioData = async () => ({ duration: 40, sampleRate: 1000, length: 40_000, numberOfChannels: 1, getChannelData: () => samples });
+}
+
+const alignTimes = Array.from({ length: 60 }, (_, i) => 1000 + i * 500);
+const near = (value, expected, slack = 0.0035) => assert.ok(Math.abs(value - expected) <= slack, `${value} near ${expected}`);
+
+test("a song late against its chart plays from further in, on the chart's clock", async () => {
+  const { env, ctx, audio } = harness();
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  const lag = audio.align(alignTimes);
+  near(lag, 30, 3);
+  await audio.play(1000);
+  const { when, offset } = env.sources.at(-1).started;
+  assert.equal(offset, (1000 + lag) / 1000);
+  assert.ok(Math.abs(when - (ctx.currentTime + 0.05)) < 1e-6);
+  // Song time is still chart time: fromMs is what plays at the start.
+  env.perf += 50;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - 1000) < 1e-6);
+});
+
+test("a song early against its chart waits a moment at the very start", async () => {
+  const { env, ctx, audio } = harness();
+  alignedSong(env, ctx, -30, alignTimes);
+  await audio.load("k1");
+  const lag = audio.align(alignTimes);
+  near(lag, -30, 3);
+  await audio.play(0);
+  const { when, offset } = env.sources.at(-1).started;
+  assert.equal(offset, 0);
+  assert.ok(Math.abs(when - (0.05 - lag / 1000)) < 1e-6);
+  env.perf += 50;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf)) < 1e-6, "the clock does not wait with it");
+});
+
+test("the lag holds across pause and resume, and goes with the song", async () => {
+  const { env, ctx, audio } = harness();
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  const lag = audio.align(alignTimes);
+  await audio.play(0);
+  env.perf += 2050;
+  const paused = audio.pause();
+  await audio.resume();
+  assert.ok(Math.abs(env.sources.at(-1).started.offset - (paused + lag) / 1000) < 1e-6);
+  await audio.load("k1"); // the same song again keeps it
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).started.offset, lag / 1000);
+  await audio.load("k2");
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).started.offset, 0);
+});
+
+test("align with no song loaded changes nothing", async () => {
+  const { audio } = harness();
+  assert.equal(audio.align(alignTimes), 0);
+});

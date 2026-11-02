@@ -57,7 +57,7 @@ export function HighwayReadout({ hud }) {
 }
 
 // Compact difficulty picker of the track card. Choosing one asks for that chart while the song plays; `swap`
-// ({ difficulty, status }) shows a change in flight, `disabled` greys it out (rooms, calibration, no run yet).
+// ({ difficulty, status }) shows a change in flight, `disabled` greys it out (calibration, no run yet).
 function DifficultyControl({ difficulty, disabled, swap, onChange }) {
   const loading = swap?.status === "loading";
   const failed = swap?.status === "failed";
@@ -88,14 +88,14 @@ function DifficultyControl({ difficulty, disabled, swap, onChange }) {
 }
 
 // Track card in the right column. The progress bar lives here: the game hook writes into the <i> through progressRef.
-// The difficulty control shows in Live and Solo; a room (mode "room") or `disabled` turns it off.
+// The difficulty control is Live's alone, where the song plays on whatever the player does: Solo and rooms pick theirs before the song.
 export function TrackCard({ track, difficulty, progressRef, mode = "live", disabled = false, swap = null, onDifficulty }) {
   return (
     <section className="mb-card mb-track" aria-label="Track">
       <span className="mb-label mb-live">{`${mode} · ${difficulty}`}</span>
       <b className="mb-track-title">{track?.title ?? "No track"}</b>
       {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
-      {onDifficulty ? <DifficultyControl difficulty={difficulty} disabled={disabled || mode === "room"} swap={swap} onChange={onDifficulty} /> : null}
+      {onDifficulty ? <DifficultyControl difficulty={difficulty} disabled={disabled} swap={swap} onChange={onDifficulty} /> : null}
       <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
         <i ref={progressRef} />
       </div>

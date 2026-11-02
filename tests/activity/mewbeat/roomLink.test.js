@@ -61,6 +61,7 @@ function setup({ loadFails = false } = {}) {
       calls.push(`play:${fromMs}:${whenPerfMs ?? "-"}`);
       return new Promise((resolve, reject) => plays.push({ fromMs, whenPerfMs, resolve, reject }));
     },
+    align: (times) => calls.push(`align:${times.join(",")}`),
     durationMs: () => 200_000,
     songTimeAt: () => 0,
     onEnded: () => () => {},
@@ -106,6 +107,14 @@ test("a loading snapshot loads the song, anchors a paused clock and reports load
   assert.deepEqual(env.sent.filter((m) => m.type === "mewbeat_room_loaded"), [{ type: "mewbeat_room_loaded", id: "rl1", audioKey: "song" }]);
   assert.equal(env.link.state().stage, "waiting");
   assert.equal(env.link.state().prepared, true);
+});
+
+test("the accepted chart lines the audio up before the room hears it is loaded", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted({ notes: [{ t: 100 }, { t: 200 }] });
+  assert.ok(env.calls.includes("align:100,200"));
+  assert.equal(env.sent.filter((m) => m.type === "mewbeat_room_loaded").length, 1);
 });
 
 test("further loading snapshots of the same round do not reload", async () => {

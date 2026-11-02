@@ -244,9 +244,12 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   );
   const trackInfo = solo ? soloState?.track ?? null : roomMode ? roomTrackInfo : liveTrackInfo;
   // In a room the difficulty is the one picked in the lobby, and the run reports which round it belongs to.
+  // Live and the Activity's own audio have different delays, so each has its offset. The game reads the one it plays to.
+  const offsetField = mode === "live" ? "offsetMs" : "soloOffsetMs";
+  const savedOffset = settings?.[offsetField] ?? 0;
   const gameSettings = useMemo(
-    () => (roomMode && me?.difficulty ? { ...settings, liveDifficulty: me.difficulty } : settings),
-    [roomMode, settings, me?.difficulty]
+    () => ({ ...settings, offsetMs: savedOffset, ...(roomMode && me?.difficulty ? { liveDifficulty: me.difficulty } : null) }),
+    [roomMode, settings, savedOffset, me?.difficulty]
   );
   const roomRound = roomLinkState?.playedRound ?? room?.round ?? null;
   const submitExtra = useMemo(() => (roomMode ? { round: roomRound } : null), [roomMode, roomRound]);
@@ -389,13 +392,12 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // enough from the saved offset is saved as the offset.
   const [autoOffset, setAutoOffset] = useState(false);
   const appliedAtRef = useRef(0); // timing.total when auto offset last looked
-  const savedOffset = settings?.offsetMs ?? 0;
   useEffect(() => {
     if (!autoOffset || timing.offsetMs === null || timing.total - appliedAtRef.current < AUTO_OFFSET_EVERY) return;
     appliedAtRef.current = timing.total;
     if (Math.abs(timing.offsetMs - savedOffset) < AUTO_OFFSET_MIN_CHANGE_MS) return;
-    onAction?.("mewbeat_settings", { settings: { offsetMs: timing.offsetMs } });
-  }, [autoOffset, timing, savedOffset, onAction]);
+    onAction?.("mewbeat_settings", { settings: { [offsetField]: timing.offsetMs } });
+  }, [autoOffset, timing, savedOffset, offsetField, onAction]);
 
   // Closing the panel goes back to the menu it was opened from (which focuses its Settings button); otherwise
   // focus goes to the menu button.
@@ -590,7 +592,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           </div>
 
           <aside className="mb-side">
-            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} mode={mode} disabled={!running || calibrating} swap={swap} onDifficulty={roomMode ? undefined : changeDifficulty} />
+            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} mode={mode} disabled={!running || calibrating} swap={swap} onDifficulty={mode === "live" ? changeDifficulty : undefined} />
             <GameHud hud={hud} />
             {(mode === "live" || roomMode) && running ? <LiveBoard store={liveBoard} session={runSession} meId={context?.user?.id ?? null} /> : null}
           </aside>
@@ -645,7 +647,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           nextLabel="Start next round"
           timing={timing}
           savedOffset={savedOffset}
-          onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { offsetMs } })}
+          onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { [offsetField]: offsetMs } })}
           onBack={() => setDismissedId(endSummary.id)}
           onSongSelect={solo ? () => link.leave() : undefined}
         />
@@ -714,6 +716,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           onPreviewHit={previewHit}
           onPreviewMusic={previewMusic}
           liveCalibration={mode === "live"}
+          offsetField={offsetField}
         /> : null}
     </div>
   );

@@ -9,7 +9,7 @@ import { createRun } from "./run.js";
 import { createLiveSender } from "./liveSender.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, musicVolume: 80, showMewbit: true, tempoScroll: true };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, musicVolume: 80, showMewbit: true, tempoScroll: true };
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -254,7 +254,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       startLive(snap);
       setPhase(songClock.paused() ? "paused" : "playing");
       // A solo link starts its count-in only now that the game took the chart (the live link has no such hook).
-      link.chartAccepted?.();
+      link.chartAccepted?.(chart);
     }
 
     // Sends the finished run for scoring and keeps the reply on the summary it belongs to. A calibration run

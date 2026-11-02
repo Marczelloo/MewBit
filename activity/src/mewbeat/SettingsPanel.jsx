@@ -77,7 +77,7 @@ function Segmented({ label, options, value, onChange }) {
 
 // The settings window. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewMusic, liveCalibration = true }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs" }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -154,9 +154,9 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   }
 
   function nudgeOffset(delta) {
-    const base = latestRef.current.offsetMs ?? currentRef.current.offsetMs;
+    const base = latestRef.current[offsetField] ?? currentRef.current[offsetField];
     const next = Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, Math.round((base + delta) / OFFSET_STEP) * OFFSET_STEP));
-    changeDebounced("offsetMs", next, { immediate: true });
+    changeDebounced(offsetField, next, { immediate: true });
     // A button that just disabled itself at a limit would drop focus to the page; the slider keeps it.
     if (next <= OFFSET_MIN || next >= OFFSET_MAX) sliderRef.current?.focus();
   }
@@ -241,7 +241,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
     setActiveGroup(found);
   };
 
-  const offsetMs = valueOf("offsetMs");
+  const offsetMs = valueOf(offsetField);
   const scrollSpeed = valueOf("scrollSpeed");
   const hitSounds = Boolean(valueOf("hitSounds"));
   const hitVolume = valueOf("hitVolume");
@@ -323,7 +323,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
               <section className="mb-row">
                 <div className="mb-row-text">
                   <span className="mb-row-label">Default difficulty</span>
-                  <p className="mb-row-help">Used when a track starts. Change it mid-song from the track card.</p>
+                  <p className="mb-row-help">Used when a track starts. In Live you can change it mid-song from the track card.</p>
                 </div>
                 <Segmented label="Default difficulty" options={DIFFICULTIES} value={valueOf("liveDifficulty")} onChange={(value) => send({ liveDifficulty: value })} />
               </section>
@@ -349,11 +349,11 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                     step={OFFSET_STEP}
                     value={offsetMs}
                     aria-valuetext={formatOffset(offsetMs)}
-                    onChange={(event) => changeDebounced("offsetMs", Number(event.target.value), { immediate: false })}
+                    onChange={(event) => changeDebounced(offsetField, Number(event.target.value), { immediate: false })}
                   />
                   <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => nudgeOffset(OFFSET_STEP)}>+5</button>
                 </div>
-                <p className="mb-row-help">Raise it if notes reach the line before you hear the beat.</p>
+                <p className="mb-row-help">Raise it if notes reach the line before you hear the beat. {liveCalibration ? "This one is for the bot's audio in Live; Solo and rooms have their own." : "This one is for Solo and rooms; the bot's audio in Live has its own."}</p>
               </section>
               <section className="mb-row mb-row-stack mb-calib">
                 <div className="mb-row-head">
@@ -391,7 +391,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                     type="button"
                     className="mb-btn"
                     disabled={timing?.offsetMs === null || !timing || timing.offsetMs === offsetMs}
-                    onClick={() => changeDebounced("offsetMs", timing.offsetMs, { immediate: true })}
+                    onClick={() => changeDebounced(offsetField, timing.offsetMs, { immediate: true })}
                   >
                     Apply suggestion
                   </button>

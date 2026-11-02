@@ -1,6 +1,7 @@
 // Solo audio: the Activity decodes the song itself (Ogg Opus from the gateway) and plays it through an
 // AudioContext, so the song clock comes from the audio hardware instead of a server anchor. The module
 // touches no browser global at load time; the context is created lazily and reused across songs.
+import { audioLagMs, riseEnvelope } from "./audioAlign.js";
 
 const DEFAULT_VOLUME = 0.8;
 // An immediate start is scheduled this far ahead: the audio thread picks a start up at its next render quantum,
@@ -41,6 +42,8 @@ export function createSoloAudio({
   let loading = null; // { key, promise }
   let loadSeq = 0;
   let loadAbort = null; // aborts the download of the load in flight (superseded or closed)
+  let rise = null; // the loaded song's riseEnvelope, made the first time a chart asks
+  let lagMs = 0; // the loaded song's sounds come this long after its chart: song time t is buffer time t + lagMs
   // Playback state. source is non-null only while a source node is scheduled or playing.
   let source = null;
   let sourceStartCtx = 0; // context time at which the song position startOffsetMs is (or was) audible
@@ -113,6 +116,8 @@ export function createSoloAudio({
       stopClip({ fadeMs: 0 });
       buffer = decoded;
       loadedKey = audioKey;
+      rise = null;
+      lagMs = 0;
       return { durationMs: durationMs() };
     })();
     loading = { key: audioKey, promise };
@@ -148,6 +153,18 @@ export function createSoloAudio({
     try { old.disconnect(); } catch { /* already disconnected */ }
   }
 
+  // Lines the loaded song up with a chart's note times (audioAlign.js), for every play() from here on.
+  function align(noteTimesMs) {
+    if (!buffer) return 0;
+    if (!rise) {
+      const channels = [buffer.getChannelData(0)];
+      if (buffer.numberOfChannels > 1) channels.push(buffer.getChannelData(1));
+      rise = riseEnvelope(channels, buffer.sampleRate);
+    }
+    lagMs = audioLagMs(rise, noteTimesMs);
+    return lagMs;
+  }
+
   // Starts (or restarts) playback at fromMs. With whenPerfMs the song position fromMs becomes audible at
   // that perf time (rooms start together); songTimeAt is negative until then. Rejects when the context
   // cannot run, so a run is never left silent.
@@ -175,7 +192,9 @@ export function createSoloAudio({
       pausedAtMs = durationMs();
       for (const fn of [...endedListeners]) fn();
     };
-    node.start(startCtx, from / 1000);
+    // Song time stays the chart's, only the buffer moves by the lag. Sounds that come early wait a moment at the start.
+    const position = from + lagMs;
+    node.start(startCtx + Math.max(0, -position) / 1000, Math.max(0, position) / 1000);
     source = node;
     sourceStartCtx = startCtx;
     startOffsetMs = from;
@@ -355,6 +374,8 @@ export function createSoloAudio({
     bytes.clear();
     endedListeners.clear();
     buffer = null;
+    rise = null;
+    lagMs = 0;
     loadedKey = null;
     loadSeq += 1;
     loadAbort?.abort();
@@ -372,6 +393,7 @@ export function createSoloAudio({
 
   return {
     load,
+    align,
     play,
     pause,
     resume,

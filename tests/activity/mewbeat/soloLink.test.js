@@ -56,6 +56,7 @@ function setup() {
       return 4000;
     },
     load: async () => ({ durationMs: 200_000 }),
+    align: (times) => calls.push(`align:${times.join()}`),
     play: (fromMs) => {
       calls.push(`play:${fromMs}`);
       return new Promise((resolve, reject) => plays.push({ fromMs, resolve, reject }));
@@ -96,6 +97,14 @@ test("a chart reply alone does not start the count-in; chartAccepted does", asyn
   env.link.chartAccepted();
   assert.equal(env.link.state().stage, "countin");
   assert.equal(env.link.state().count, 3);
+});
+
+test("the accepted chart lines the audio up before the count-in", async () => {
+  const env = setup();
+  await ready(env);
+  env.link.chartAccepted({ notes: [{ t: 100 }, { t: 200 }] });
+  assert.ok(env.calls.includes("align:100,200"));
+  assert.equal(env.link.state().stage, "countin");
 });
 
 test("chartAccepted outside the ready stage does nothing", async () => {

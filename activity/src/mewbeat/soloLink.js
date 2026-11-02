@@ -160,8 +160,10 @@ export function createSoloLink({
 
   // The game calls this once it accepted the chart and built its run (on the paused clock): only then does
   // the count-in start, so a chart the game ignored (another difficulty, a dropped song) never starts the audio.
-  function chartAccepted() {
-    if (state.stage === "ready") countIn(0);
+  function chartAccepted(chart) {
+    if (state.stage !== "ready") return;
+    if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
+    countIn(0);
   }
 
   // ---- count-in, pause, resume ----

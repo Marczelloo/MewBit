@@ -95,8 +95,9 @@ export function createRoomLink({
 
   // The game calls this once it accepted my chart and built its run on the paused clock. Only then is this
   // client ready for the countdown, and only a round still in its loading phase can take the report.
-  function chartAccepted() {
+  function chartAccepted(chart) {
     if (state.stage !== "ready") return;
+    if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
     const phase = latest?.room?.phase;
     if (phase !== "loading" || latest.room.round !== engaged) {
       // Too late: the server already moved on without this player.
