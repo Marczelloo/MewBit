@@ -180,6 +180,7 @@
 /* stage: Mewbit left, highway centre, cards right. --mb-vibe (0..1.4) and --mb-pulse (0..1) drive the scenery. */
 .mb-stage {
   --mb-pulse-scale: 1;
+  container-type: size;
   position: relative;
   min-height: 0;
   overflow: hidden;
@@ -194,79 +195,30 @@
 @keyframes mb-pulse-a { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 @keyframes mb-pulse-b { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 
-/* scenery: an inked manga night to match Mewbit's art: violet ink, halftone dots, hatching, magenta and cyan neon */
+/* scenery: painted layers on one canvas, pinned to the bottom edge so the roof survives any crop.
+   Only opacity changes per frame; a filter here would re-rasterise a full-screen layer on every beat. */
 .mb-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.mb-sky {
+.mb-layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 100%; user-select: none; }
+.mb-layer-fever { opacity: 0; transition: opacity 400ms ease-out; }
+.mb-fever .mb-layer-fever { opacity: 1; }
+.mb-layer-lit { opacity: calc(0.1 + var(--mb-vibe) * 0.3 + var(--mb-pulse) * 0.7 * var(--mb-pulse-scale)); }
+.mb-fever .mb-layer-lit { opacity: calc(0.55 + var(--mb-pulse) * 0.45 * var(--mb-pulse-scale)); }
+.mb-layer-neon { opacity: calc(0.7 + var(--mb-vibe) * 0.15 + var(--mb-pulse) * 0.3 * var(--mb-pulse-scale)); }
+.mb-layer-glow { opacity: calc(0.15 + var(--mb-vibe) * 0.25 + var(--mb-pulse) * 0.6 * var(--mb-pulse-scale)); }
+/* FEVER tints the buildings and the roof too, the sky alone would leave most of the stage violet. */
+.mb-backdrop-wash {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(120% 70% at 50% 110%, rgb(255 110 199 / calc(0.2 + var(--mb-vibe) * 0.12 + var(--mb-pulse) * 0.1)), transparent 60%),
-    radial-gradient(70% 55% at 85% 0%, rgb(103 227 244 / calc(0.08 + var(--mb-vibe) * 0.06)), transparent 60%),
-    radial-gradient(60% 50% at 18% 20%, rgb(167 139 250 / calc(0.16 + var(--mb-vibe) * 0.06)), transparent 65%),
-    linear-gradient(#08050f, #120a22 55%, #1d0c2a);
+  background: linear-gradient(to top, rgb(255 110 199 / 0.55), rgb(255 212 121 / 0.5) 55%, transparent 85%);
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transition: opacity 400ms ease-out;
 }
-/* Halftone dots that thicken towards the horizon, like screentone on a manga panel. */
-.mb-sky::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(circle, rgb(255 110 199 / 0.3) 1.1px, transparent 1.7px);
-  background-size: 7px 7px;
-  mask-image: linear-gradient(transparent 25%, rgb(0 0 0 / 0.6) 62%, transparent 72%);
-  opacity: calc(0.55 + var(--mb-pulse) * 0.45);
-}
-/* Ink hatching in the top corners frames the panel. */
-.mb-sky::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(125deg, rgb(0 0 0 / 0.45) 0 1px, transparent 1px 5px);
-  mask-image: radial-gradient(90% 70% at 50% 35%, transparent 55%, #000 100%);
-}
-.mb-fever .mb-sky { filter: hue-rotate(calc(var(--mb-pulse) * 40deg)) saturate(1.5); }
-/* A pale inked moon behind Mewbit, centred on the left column (the highway is at most 400px wide). */
-.mb-moon {
-  position: absolute;
-  top: 7%;
-  left: calc((100% - 400px) / 4);
-  width: min(24vw, 42vh);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle at 38% 34%, #fbf6ff, #e4d6f2 52%, #b9a2d6 100%);
-  box-shadow:
-    inset 0 0 0 2px rgb(8 5 15 / 0.55),
-    0 0 calc(40px + var(--mb-pulse) * 30px) rgb(255 110 199 / calc(0.3 + var(--mb-vibe) * 0.15)),
-    0 0 120px rgb(167 139 250 / 0.25);
-  transform: translateX(-50%);
-  opacity: 0.88;
-}
-/* Cross-hatched shading on the moon's lower right. */
-.mb-moon::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background:
-    repeating-linear-gradient(135deg, rgb(40 18 64 / 0.55) 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(45deg, rgb(40 18 64 / 0.35) 0 1px, transparent 1px 7px);
-  mask-image: radial-gradient(circle at 78% 80%, #000 18%, transparent 62%);
-}
-.mb-skyline { position: absolute; right: -2%; bottom: 30%; left: -2%; height: 34%; opacity: 0.95; }
-.mb-building {
-  position: absolute;
-  bottom: 0;
-  background: repeating-linear-gradient(118deg, rgb(167 139 250 / 0.09) 0 1px, transparent 1px 6px), #0d0818;
-  box-shadow: inset 0 2px 0 rgb(255 110 199 / calc(0.25 + var(--mb-pulse) * 0.35));
-  outline: 1px solid rgb(0 0 0 / 0.6);
-}
-.mb-building::after {
-  content: "";
-  position: absolute;
-  inset: 10% 18%;
-  background-image: radial-gradient(circle, rgb(103 227 244 / 0.55) 1px, transparent 1.6px);
-  background-size: 9px 11px;
-  opacity: calc(0.25 + var(--mb-pulse) * 0.45);
-}
+.mb-fever .mb-backdrop-wash { opacity: 1; }
+/* An idle stage sits dim and the vibe lifts it. */
+.mb-backdrop-dim { position: absolute; inset: 0; background: #07040f; opacity: calc(0.3 - var(--mb-vibe) * 0.3); }
+.mb-fx-off .mb-layer-fever,
+.mb-fx-off .mb-backdrop-wash { transition: none; }
 .mb-spot {
   position: absolute;
   top: -10%;
@@ -284,57 +236,6 @@
 .mb-fx-off .mb-spot { animation: none; }
 @keyframes mb-sweep-l { 0%, 100% { transform: rotate(-18deg); } 50% { transform: rotate(14deg); } }
 @keyframes mb-sweep-r { 0%, 100% { transform: rotate(16deg); } 50% { transform: rotate(-12deg); } }
-.mb-floor {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 32%;
-  background:
-    linear-gradient(rgb(8 5 15 / 0), rgb(8 5 15 / 0.92)),
-    repeating-linear-gradient(90deg, rgb(255 110 199 / calc(0.1 + var(--mb-pulse) * 0.18)) 0 1px, transparent 1px 80px),
-    repeating-linear-gradient(0deg, rgb(167 139 250 / calc(0.1 + var(--mb-pulse) * 0.12)) 0 1px, transparent 1px 40px),
-    #0d0717;
-  transform: perspective(500px) rotateX(55deg);
-  transform-origin: top center;
-}
-.mb-floor-edge {
-  position: absolute;
-  right: 0;
-  bottom: 32%;
-  left: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--mb-pink), var(--mb-cyan), transparent);
-  opacity: calc(0.4 + var(--mb-pulse) * 0.6);
-}
-.mb-fever .mb-floor-edge { background: linear-gradient(90deg, transparent, var(--mb-gold), var(--mb-pink), var(--mb-gold), transparent); }
-.mb-speaker {
-  position: absolute;
-  bottom: 20%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-evenly;
-  width: 9vw;
-  max-width: 120px;
-  aspect-ratio: 0.62;
-  padding: 8px;
-  border-radius: 12px;
-  background: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.03) 0 1px, transparent 1px 5px), linear-gradient(#150d22, #09060f);
-  outline: 2px solid rgb(0 0 0 / 0.7);
-  box-shadow: 0 0 0 1px rgb(255 110 199 / 0.22);
-}
-.mb-speaker i {
-  display: block;
-  width: 62%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, #050308 18%, #241a33 20%, #0e0a16 60%);
-  outline: 2px solid rgb(103 227 244 / calc(0.15 + var(--mb-pulse) * 0.6));
-  transform: scale(calc(1 + var(--mb-pulse) * 0.09 * var(--mb-pulse-scale)));
-}
-.mb-speaker i + i { width: 40%; }
-.mb-speaker-r { right: 3%; }
 
 .mb-feverbanner {
   position: absolute;
@@ -364,7 +265,8 @@
 .mb-scene > * { min-width: 0; }
 
 /* Mewbit */
-.mb-char { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 14%; }
+/* Feet on the painted roof: the canvas is as tall as the stage, or 9/16 of its width when the sky gets cropped. */
+.mb-char { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: calc(max(100cqh, 56.25cqw) * 0.13); }
 /* The frames leave room around Mewbit for jumps and raised arms, so the box may outgrow its column. */
 .mb-char-box { position: relative; flex: none; width: min(140%, 560px, 68vh); aspect-ratio: 1; }
 .mb-aura {
@@ -398,7 +300,8 @@
   border-radius: inherit;
   pointer-events: none;
 }
-.mb-highway-fever { outline: 2px solid var(--mb-gold); }
+/* The FEVER backdrop is much brighter, so the lanes need more cover to keep the notes readable. */
+.mb-highway-fever { outline: 2px solid var(--mb-gold); background: linear-gradient(rgb(12 14 18 / 0.55), rgb(12 14 18 / 0.97) 30%); }
 .mb-fevertime { position: absolute; top: 0; right: 0; left: 0; height: 3px; background: var(--mb-gold); transform-origin: left center; }
 .mb-fx-off .mb-mult,
 .mb-fx-off .mb-judgement,
@@ -538,13 +441,13 @@
 .mb-vibe-hint-ready { color: var(--mb-gold); font-weight: 700; animation: mb-blink 800ms steps(1) infinite; }
 @keyframes mb-blink { 50% { opacity: 0.45; } }
 
-/* narrow widths: Mewbit, speakers, spotlights and skyline go; the highway comes first, the cards below it */
+/* narrow widths: Mewbit and the spotlights go; the highway comes first, the cards below it */
 @media (max-width: 900px) {
   /* Two rows remain: the highway takes the space left, the cards their own height.
      The highway never gets less than 260px; on a short viewport the stage scrolls instead of squeezing it. */
   .mb-stage { overflow-y: auto; background: #0b0a14; }
   .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) auto; gap: 12px; height: auto; min-height: 100%; padding: 12px 16px 16px; }
-  .mb-char, .mb-speaker, .mb-spot, .mb-skyline, .mb-moon { display: none; }
+  .mb-char, .mb-spot { display: none; }
   .mb-highway-slot { justify-self: center; width: min(100%, 460px); min-height: 260px; padding-top: 0; }
   .mb-highway { border-radius: 18px; }
   .mb-side { align-self: start; justify-self: center; width: min(100%, 460px); padding: 0; }
@@ -722,5 +625,7 @@
   .mb-btn,
   .mb-highway,
   .mb-stage,
+  .mb-layer-fever,
+  .mb-backdrop-wash,
   .mb-mult-fg { transition: none; }
 }
