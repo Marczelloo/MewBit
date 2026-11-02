@@ -4,13 +4,12 @@ All samples come from [osu-resources](https://github.com/ppy/osu-resources) (com
 
 | File | Plays on | Original file |
 | --- | --- | --- |
-| `tick.wav` | Every second of a countdown | `Multiplayer/countdown-tick.wav` |
-| `warn.wav` | With the tick for the last three seconds | `Multiplayer/countdown-warn.wav` |
-| `go.wav` | The end of a countdown | `Multiplayer/countdown-warn-final.wav` |
-| `hit.wav` | A key press, when Hit sounds is on | `Gameplay/normal-hitnormal.wav` |
+| `tick.wav` | Every second of a countdown | `Multiplayer/Matchmaking/round-up.wav` |
+| `go.wav` | The end of a countdown, over `hit.wav` | `Multiplayer/Matchmaking/stage-segment.wav` |
+| `hit.wav` | A key press, when Hit sounds is on | `Gameplay/nightcore-kick.wav` |
 | `combobreak.mp3` | A miss that breaks a combo over 20 | `Gameplay/combobreak.mp3` |
-| `complete.mp3` | The end of a song | `Gameplay/sectionpass.mp3` |
-| `full-combo.mp3` | The end of a song with a full combo | `MedalSplash/medal-get.mp3` |
+| `complete.wav` | The end of a song | `UI/bss-complete.wav` |
+| `full-combo.wav` | The end of a song with a full combo | `Multiplayer/Matchmaking/match-found.wav` |
 | `swoosh.wav` | The results, as the score starts counting | `Results/swoosh-up.wav` |
 | `score-tick.wav` | The results, while the score counts | `Results/score-tick.wav` |
 | `dink.wav` | The results, each stat after the score | `Results/badge-dink.wav` |

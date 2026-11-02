@@ -4,7 +4,6 @@
 export const PEEK_WINDOW_MS = 15_000; // Mewbit peeks in the last 15 s before a round
 export const GO_WINDOW_MS = 800; // how long "GO!" stays on screen after the start
 const QUIET_TICK_LEVEL = 0.35; // a tick more than five seconds before the start
-const WARN_SECONDS = 3; // the warning that joins the ticks, as in osu!'s multiplayer countdown
 
 export function memberOf(room, userId) {
   return room?.members?.find((m) => m.userId === userId) ?? null;
@@ -79,11 +78,10 @@ export function nextCountdownSecond(leftMs) {
   return { second, inMs: leftMs - second * 1000 };
 }
 
-// What a countdown reaching a second plays: the long wait ticks quietly, the final seconds in full with a warning on the last three, and 0 is "GO!".
+// What a countdown reaching a second plays: the long wait ticks quietly, the final seconds in full, and 0 is "GO!".
 export function countdownSounds(second) {
-  if (second === 0) return [{ name: "tick", level: 1 }, { name: "go", level: 1 }];
-  const tick = { name: "tick", level: second > 5 ? QUIET_TICK_LEVEL : 1 };
-  return second <= WARN_SECONDS ? [tick, { name: "warn", level: 1 }] : [tick];
+  if (second === 0) return [{ name: "go", level: 1 }, { name: "hit", level: 1 }]; // the kick gives GO its weight
+  return [{ name: "tick", level: second > 5 ? QUIET_TICK_LEVEL : 1 }];
 }
 
 // "m:ss" for a remaining time; never negative.

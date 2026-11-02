@@ -192,10 +192,10 @@ test("nextCountdownSecond lands on the moment the digit changes, down to GO and 
   }
 });
 
-test("countdownSounds: GO at zero, a warning for the last three, full ticks for the last five, quiet ones before", () => {
+test("countdownSounds: GO on a kick at zero, full ticks for the last five, quiet ones before", () => {
   const tick = { name: "tick", level: 1 };
-  assert.deepEqual(countdownSounds(0), [tick, { name: "go", level: 1 }]);
-  assert.deepEqual(countdownSounds(3), [tick, { name: "warn", level: 1 }]);
+  assert.deepEqual(countdownSounds(0), [{ name: "go", level: 1 }, { name: "hit", level: 1 }]);
+  assert.deepEqual(countdownSounds(3), [tick]);
   assert.deepEqual(countdownSounds(4), [tick]);
   assert.deepEqual(countdownSounds(5), [tick]);
   const [quiet, ...rest] = countdownSounds(6);
