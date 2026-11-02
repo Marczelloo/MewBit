@@ -1,43 +1,32 @@
-// Stage scenery behind the game: sky, spotlights, skyline, floor and speakers. Pure decoration, so
-// everything is aria-hidden and ignores the pointer. The look is driven by CSS variables set on
-// .mb-stage (--mb-vibe, --mb-pulse), see mewbeat.css.
+// Stage scenery behind the game: stacked painted layers on one 2560x1440 canvas, plus spotlights.
+// Pure decoration, so everything is aria-hidden and ignores the pointer. The look is driven by CSS
+// variables set on .mb-stage (--mb-vibe, --mb-pulse), see mewbeat.css.
+import sky from "./backdrop/sky.webp";
+import skyFever from "./backdrop/sky-fever.webp";
+import skyline from "./backdrop/skyline.webp";
+import skylineLit from "./backdrop/skyline-lit.webp";
+import neon from "./backdrop/neon.webp";
+import neonGlow from "./backdrop/neon-glow.webp";
+import roof from "./backdrop/roof.webp";
 
-// A fixed skyline: the same seeded sequence the v3 mockup used, computed once at load so the
-// buildings never change between renders.
-function buildSkyline() {
-  const buildings = [];
-  let seed = 7;
-  const rnd = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-  let x = 0;
-  while (x < 104) {
-    const width = 3 + rnd() * 6;
-    const height = 30 + rnd() * 70;
-    buildings.push({ left: Number(x.toFixed(2)), width: Number(width.toFixed(2)), height: Number(height.toFixed(2)) });
-    x += width + 0.4;
-  }
-  return buildings;
+function Layer({ src, name = "" }) {
+  return <img className={`mb-layer ${name}`.trim()} src={src} alt="" draggable={false} />;
 }
-
-const SKYLINE = buildSkyline();
 
 export default function Stage() {
   return (
     <div className="mb-backdrop" aria-hidden="true">
-      <div className="mb-sky" />
+      <Layer src={sky} />
+      <Layer src={skyFever} name="mb-layer-fever" />
+      <Layer src={skyline} />
+      <Layer src={skylineLit} name="mb-layer-lit" />
       <div className="mb-spot mb-spot-l" />
       <div className="mb-spot mb-spot-r" />
-      <div className="mb-skyline">
-        {SKYLINE.map((b) => (
-          <div key={b.left} className="mb-building" style={{ left: `${b.left}%`, width: `${b.width}%`, height: `${b.height}%` }} />
-        ))}
-      </div>
-      <div className="mb-floor-edge" />
-      <div className="mb-floor" />
-      <div className="mb-speaker mb-speaker-l"><i /><i /></div>
-      <div className="mb-speaker mb-speaker-r"><i /><i /></div>
+      <Layer src={neonGlow} name="mb-layer-glow" />
+      <Layer src={neon} name="mb-layer-neon" />
+      <Layer src={roof} />
+      <div className="mb-backdrop-wash" />
+      <div className="mb-backdrop-dim" />
     </div>
   );
 }
