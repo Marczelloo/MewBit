@@ -10,6 +10,8 @@ const { backupCorruptFileSync, writeJsonAtomic } = require("../data/atomicJson")
 function createDebouncedJson({ file, debounceMs = 2000, log = Log }) {
   let timer = null;
   let snapshot = () => null;
+  // Writes run one after another, so an older snapshot never lands after a newer one.
+  let writing = Promise.resolve();
 
   function load() {
     let text;
@@ -32,12 +34,15 @@ function createDebouncedJson({ file, debounceMs = 2000, log = Log }) {
     }
   }
 
-  async function write() {
-    try {
-      await writeJsonAtomic(file, snapshot());
-    } catch (error) {
-      log.warning("mewbeat could not save", file, error?.message);
-    }
+  function write() {
+    writing = writing.then(async () => {
+      try {
+        await writeJsonAtomic(file, snapshot());
+      } catch (error) {
+        log.warning("mewbeat could not save", file, error?.message);
+      }
+    });
+    return writing;
   }
 
   // `build` returns the value to write; it runs when the write happens.
@@ -51,11 +56,14 @@ function createDebouncedJson({ file, debounceMs = 2000, log = Log }) {
     timer.unref?.();
   }
 
+  // Also waits for a write already under way (shutdown calls this right before exiting).
   async function flush() {
-    if (!timer) return;
-    clearTimeout(timer);
-    timer = null;
-    await write();
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+      write();
+    }
+    await writing;
   }
 
   return { load, schedule, flush };
