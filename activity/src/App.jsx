@@ -56,6 +56,7 @@ import { createMockState, createEmptyState, mockSearchResults } from "./mockStat
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
 import { createKonamiMatcher } from "./mewbeat/konami.js";
 import { isDesktopClient } from "./mewbeat/platform.js";
+import GlitchCut from "./mewbeat/GlitchCut.jsx";
 import UnlockReveal from "./mewbeat/UnlockReveal.jsx";
 
 import ActivityGate from "./views/ActivityGate.jsx";
@@ -67,7 +68,8 @@ import "./motion.css";
 const LazyFiltersPanel = lazy(() => import("./views/FiltersPanel.jsx"));
 const LazyHomePanel = lazy(() => import("./views/HomePanel.jsx"));
 const LazyLyricsPanel = lazy(() => import("./views/LyricsPanel.jsx"));
-const LazyMewbeatGame = lazy(() => import("./mewbeat/MewbeatGame.jsx"));
+const loadMewbeatGame = () => import("./mewbeat/MewbeatGame.jsx");
+const LazyMewbeatGame = lazy(loadMewbeatGame);
 
 // Mock preview is a dev-only affordance: production builds never render mock
 // data or search results, even if someone appends ?mock=1 to the URL.
@@ -2565,6 +2567,8 @@ function App() {
   const stateRef = useRef(state);
   const [mewbeatOpen, setMewbeatOpen] = useState(false);
   const [mewbeatRevealOpen, setMewbeatRevealOpen] = useState(false);
+  // The glitch into the game; dimFrom is how dark the screen already is when it starts.
+  const [mewbeatCut, setMewbeatCut] = useState(null);
   // Task 8's link reads the socket through these: it sends via mewbeatSocketRef and receives by setting mewbeatHandlerRef.
   const mewbeatSocketRef = useRef(null);
   const mewbeatHandlerRef = useRef(null);
@@ -3268,7 +3272,7 @@ function App() {
 
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (mewbeatOpen || mewbeatRevealOpen) return;
+      if (mewbeatOpen || mewbeatRevealOpen || mewbeatCut) return;
       if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "/") {
         event.preventDefault();
@@ -3289,14 +3293,14 @@ function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goToView, mewbeatOpen, mewbeatRevealOpen, onAction, state.player.currentTrack]);
+  }, [goToView, mewbeatCut, mewbeatOpen, mewbeatRevealOpen, onAction, state.player.currentTrack]);
 
   const mewbeatUnlocked = Boolean(state.mewbeat?.unlocked);
   const mewbeatDesktop = isDesktopClient(context);
 
   // Konami code: desktop only. Arrow keys are only swallowed when the code completes.
   useEffect(() => {
-    if (!mewbeatDesktop || mewbeatOpen || mewbeatRevealOpen) return undefined;
+    if (!mewbeatDesktop || mewbeatOpen || mewbeatRevealOpen || mewbeatCut) return undefined;
     konamiMatcher.current ??= createKonamiMatcher();
     const matcher = konamiMatcher.current;
     const onKeyDown = (event) => {
@@ -3304,13 +3308,13 @@ function App() {
       if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
       if (!matcher.push(event.key)) return;
       event.preventDefault();
-      if (mewbeatUnlocked) { setMewbeatOpen(true); return; }
+      if (mewbeatUnlocked) { setMewbeatCut({ dimFrom: 0 }); return; }
       setMewbeatRevealOpen(true);
       void onAction("mewbeat_unlock");
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mewbeatDesktop, mewbeatOpen, mewbeatRevealOpen, mewbeatUnlocked, onAction]);
+  }, [mewbeatCut, mewbeatDesktop, mewbeatOpen, mewbeatRevealOpen, mewbeatUnlocked, onAction]);
 
   /* Terminal states: the room cannot be joined at all, so the cockpit would be
      a set of controls wired to nothing. */
@@ -3378,7 +3382,7 @@ function App() {
                 </div>
                 <div className="stage-actions" aria-label="Player tools">
                   <IconButton label="Room activity" className={`${activeTab === "activity" ? "is-active" : ""} ${hasActivityErrors ? "has-issues" : ""}`} onClick={() => goToView("activity")}><Bell size={17} weight={activeTab === "activity" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
-                  {mewbeatUnlocked && mewbeatDesktop ? <IconButton label="mewbeat" onClick={() => setMewbeatOpen(true)}><GameController size={17} aria-hidden="true" /></IconButton> : null}
+                  {mewbeatUnlocked && mewbeatDesktop ? <IconButton label="mewbeat" onClick={() => setMewbeatCut({ dimFrom: 0 })}><GameController size={17} aria-hidden="true" /></IconButton> : null}
                   <IconButton label="Playback history" className={activeTab === "history" ? "is-active" : ""} aria-pressed={activeTab === "history"} onClick={() => goToView("history")}><ClockCounterClockwise size={17} weight={activeTab === "history" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                   <IconButton label="Toggle queue" className={rightSidebarOpen ? "is-active" : ""} aria-pressed={rightSidebarOpen} onClick={() => { if (window.matchMedia("(max-width: 900px)").matches) setLeftSidebarOpen(false); setRightSidebarOpen((value) => !value); }}><Queue size={17} weight={rightSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                 </div>
@@ -3402,7 +3406,8 @@ function App() {
       </>}
       </div>
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
-      {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatOpen(true); }} /> : null}
+      {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
+      {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}
       {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={() => setMewbeatOpen(false)} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>
