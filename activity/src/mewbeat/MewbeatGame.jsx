@@ -647,6 +647,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           onResetTiming={resetTiming}
           onPreviewHit={previewHit}
           onPreviewMusic={previewMusic}
+          liveCalibration={mode === "live"}
         /> : null}
     </div>
   );

@@ -64,7 +64,7 @@ function Segmented({ label, options, value, onChange }) {
 
 // The settings drawer. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewMusic }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewMusic, liveCalibration = true }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -305,12 +305,16 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                 ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
                 : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
             </p>
-            <p className="mb-field-help">Calibration clicks: the bot plays a metronome in voice. Close settings and press any lane key on each click as you hear it. The notes stay hidden, so only your ears count.</p>
+            <p className="mb-field-help">
+              {liveCalibration
+                ? "Calibration clicks: the bot plays a metronome in voice. Close settings and press any lane key on each click as you hear it. The notes stay hidden, so only your ears count."
+                : "Calibration clicks play through the bot in voice, so they only work in Live. Here, tap along to a song instead."}
+            </p>
             <div className="mb-calib-row">
               <button
                 type="button"
                 className="mb-btn"
-                disabled={clicksPending}
+                disabled={clicksPending || !liveCalibration}
                 onClick={() => {
                   setClicksPending(true);
                   Promise.resolve(onActionRef.current?.("mewbeat_calibrate")).finally(() => setClicksPending(false));
