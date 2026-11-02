@@ -2,6 +2,7 @@ const assert = require("node:assert");
 const { describe, it } = require("node:test");
 
 const { createMewbeatChannel } = require("../../../helpers/mewbeat/activityChannel");
+const { createSoloTracks } = require("../../../helpers/mewbeat/soloTracks");
 
 const NOW = 1_700_000_000_000;
 const KEY = "youtube:abc:200000";
@@ -158,5 +159,94 @@ describe("mewbeat activity channel", () => {
       isUnlocked: () => true,
     });
     await assert.rejects(channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "easy" }), /disk gone/);
+  });
+  describe("solo prepare", () => {
+    const SOLO_KEY = "spotify:xyz:180000";
+    const soloTrack = { track: "encoded", info: { sourceName: "spotify", identifier: "xyz", length: 180000, title: "Song", author: "Band", uri: "https://open.spotify.com/track/xyz", artworkUrl: "https://img/a.jpg" } };
+
+    function soloSetup({ unlocked = true, resolved = { track: soloTrack, node: "node-2" }, playback } = {}) {
+      const soloTracks = createSoloTracks();
+      const resolveCalls = [];
+      const chartCalls = [];
+      const channel = createMewbeatChannel({
+        readPlayback: () => (playback === undefined
+          ? { track: fakeTrack(), node: "node-1", positionMs: 0, paused: false, durationMs: 200000 }
+          : playback),
+        chartStore: {
+          getCharts: async (track, node) => {
+            chartCalls.push({ track, node });
+            return { status: "ready", charts: { easy: { id: "e" }, normal: { id: "n" }, hard: { id: "h" }, hell: { id: "x" } } };
+          },
+        },
+        isUnlocked: () => unlocked,
+        resolveTrack: async (guildId, query) => { resolveCalls.push({ guildId, ...query }); return resolved; },
+        soloTracks,
+        log: { warning() {} },
+      });
+      return { channel, soloTracks, resolveCalls, chartCalls };
+    }
+
+    it("resolves the song, registers it and starts charting", async () => {
+      const { channel, soloTracks, resolveCalls, chartCalls } = soloSetup();
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "https://open.spotify.com/track/xyz", source: "spotify" });
+      assert.deepStrictEqual(reply, {
+        type: "mewbeat_solo_prepare",
+        id: "p1",
+        status: "ok",
+        audioKey: SOLO_KEY,
+        track: { title: "Song", artist: "Band", durationMs: 180000, artworkUrl: "https://img/a.jpg", uri: "https://open.spotify.com/track/xyz", source: "spotify" },
+      });
+      assert.deepStrictEqual(resolveCalls, [{ guildId: "g", uri: "https://open.spotify.com/track/xyz", source: "spotify" }]);
+      assert.strictEqual(soloTracks.get(SOLO_KEY).node, "node-2");
+      assert.deepStrictEqual(chartCalls, [{ track: soloTrack, node: "node-2" }]);
+    });
+
+    it("refuses a locked account without resolving", async () => {
+      const { channel, resolveCalls } = soloSetup({ unlocked: false });
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "x", source: "" });
+      assert.deepStrictEqual(reply, { type: "error", error: "Unlock mewbeat first." });
+      assert.strictEqual(resolveCalls.length, 0);
+    });
+
+    it("answers an error when nothing resolves", async () => {
+      const { channel, soloTracks } = soloSetup({ resolved: null });
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "nothing", source: "youtube" });
+      assert.deepStrictEqual(reply, { type: "mewbeat_solo_prepare", id: "p1", status: "error", reason: "not_found" });
+      assert.strictEqual(soloTracks.get(SOLO_KEY), null);
+    });
+
+    it("rejects a bad uri or source", async () => {
+      const { channel, resolveCalls } = soloSetup();
+      for (const bad of [{ uri: 5 }, { uri: "" }, { uri: "x".repeat(1001) }, { uri: "x", source: "y".repeat(41) }, { uri: "x", source: 3 }]) {
+        const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", ...bad });
+        assert.strictEqual(reply.status, "error");
+      }
+      assert.strictEqual(resolveCalls.length, 0);
+    });
+
+    it("serves charts for a registered song while the bot plays something else", async () => {
+      const { channel, chartCalls } = soloSetup();
+      await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "u", source: "spotify" });
+      chartCalls.length = 0;
+      const reply = await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: SOLO_KEY, difficulty: "hard" });
+      assert.deepStrictEqual(reply, { type: "mewbeat_chart", audioKey: SOLO_KEY, difficulty: "hard", status: "ready", chart: { id: "h" } });
+      assert.deepStrictEqual(chartCalls, [{ track: soloTrack, node: "node-2" }]);
+    });
+
+    it("serves a registered song when nothing plays, and stays stale for unknown keys", async () => {
+      const { channel } = soloSetup({ playback: null });
+      await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "u", source: "spotify" });
+      const known = await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: SOLO_KEY, difficulty: "easy" });
+      assert.strictEqual(known.status, "ready");
+      const unknown = await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: "spotify:other:1", difficulty: "easy" });
+      assert.strictEqual(unknown.status, "stale");
+    });
+
+    it("accepts a profile and exposes disconnect", async () => {
+      const { channel } = soloSetup();
+      const reply = await channel.handle("g", "u", { type: "mewbeat_sync", id: "s", clientSentAt: 1 }, { id: "u", username: "U", avatarUrl: null });
+      assert.strictEqual(reply.type, "mewbeat_sync");
+      assert.strictEqual(channel.disconnect("g", "u"), undefined);
+    });
   });
 });

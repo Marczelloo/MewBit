@@ -1,4 +1,6 @@
 const { randomUUID } = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const http = require("node:http");
 const { URL } = require("node:url");
 const { WebSocketServer } = require("ws");
@@ -43,6 +45,7 @@ const { getPoru } = require("../lavalink/players");
 const { markManualTrack, moveQueueTrackWithinOrigin, normalizeQueueAutoplayPartition } = require("../lavalink/queueOrdering");
 const { withTimeout } = require("../lavalink/resolveTimeout");
 const { searchAcrossSources, searchSingleSource } = require("../lavalink/searchAggregator");
+const { getSearchPrefix } = require("../lavalink/searchSources");
 const { filterRelevantSearchResults, rankSearchResults } = require("../lavalink/searchRanking");
 const { searchWithCorrection } = require("../lavalink/searchSuggestions");
 const { getSimilarSearchTracks } = require("../lavalink/similarSearch");
@@ -55,7 +58,9 @@ const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormal
 const Log = require("../logs/log");
 const { createMewbeatChannel } = require("../mewbeat/activityChannel");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
+const { createAudioStore } = require("../mewbeat/audioStore");
 const { chartStore } = require("../mewbeat/chartStore");
+const { createSoloTracks } = require("../mewbeat/soloTracks");
 const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
@@ -146,8 +151,7 @@ function stringifyJson(payload) {
   });
 }
 
-function sendJson(response, statusCode, payload, config) {
-  const serializedPayload = stringifyJson(payload);
+function corsHeaders(response, config) {
   const requestedOrigin = response.req?.headers?.origin;
   const allowOrigin = config.allowedOrigins.includes("*")
     ? "*"
@@ -155,12 +159,20 @@ function sendJson(response, statusCode, payload, config) {
       ? requestedOrigin
       : "null";
 
-  response.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
+  return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+}
+
+function sendJson(response, statusCode, payload, config) {
+  const serializedPayload = stringifyJson(payload);
+
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    ...corsHeaders(response, config),
   });
   response.end(serializedPayload);
 }
@@ -685,12 +697,99 @@ function readMewbeatPlayback(guildId) {
   };
 }
 
+const soloTracks = createSoloTracks();
+const audioStore = createAudioStore({ dir: path.join(__dirname, "..", "data", "mewbeat", "audio") });
+
+// A search result or history entry as an encoded track for solo play. A link
+// resolves as is; anything else is searched on `source` (YouTube by default).
+// Any connected node can render and analyse it.
+async function resolveMewbeatTrack(_guildId, { uri, source }) {
+  const poru = getPoru();
+  if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
+  const node = poru.leastUsedNodes?.[0];
+  if (!node) throw Object.assign(new Error("No Lavalink node is available."), { statusCode: 503 });
+
+  const isUrl = /^https?:\/\//i.test(uri);
+  const result = isUrl
+    ? await poru.resolve({ query: uri }, node)
+    : await poru.resolve({ query: uri, source: getSearchPrefix(normalizeSource(source || "youtube")) }, node);
+  const track = (Array.isArray(result?.tracks) ? result.tracks : []).find((candidate) =>
+    typeof candidate?.track === "string" && candidate.track && candidate.info && !candidate.info.isStream);
+  if (!track) return null;
+
+  const serialized = serializeTrack(track);
+  return {
+    track,
+    node,
+    info: {
+      title: serialized.title,
+      artist: serialized.author,
+      durationMs: serialized.durationMs,
+      artworkUrl: serialized.artworkUrl,
+      uri: serialized.uri,
+      source: serialized.source,
+    },
+  };
+}
+
+// userIds is an array of user ids, or null for everyone in the guild.
+function sendToGuildSockets(guildId, userIds, payload) {
+  for (const socket of sockets) {
+    if (!socket.authorized || socket.guildId !== guildId) continue;
+    if (userIds && !userIds.includes(socket.identity?.id)) continue;
+    sendSocket(socket, payload);
+  }
+}
+
 const mewbeatChannel = createMewbeatChannel({
   readPlayback: readMewbeatPlayback,
   chartStore,
   isUnlocked: (userId) => getMewbeatRecord(userId).unlocked,
   audioLatencyMs: MEWBEAT_AUDIO_LATENCY_MS,
+  resolveTrack: resolveMewbeatTrack,
+  soloTracks,
+  broadcast: sendToGuildSockets,
+  sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
 });
+
+function mewbeatProfileOf(identity) {
+  return {
+    id: identity.id,
+    username: identity.username,
+    avatarUrl: identity.avatar ? `https://cdn.discordapp.com/avatars/${identity.id}/${identity.avatar}.png?size=64` : null,
+  };
+}
+
+// Streams a prepared song's Ogg file, rendering it through the plugin first.
+async function sendMewbeatAudio(response, config, guildId, audioKey) {
+  const entry = soloTracks.get(audioKey);
+  if (!entry) return sendJson(response, 404, { ok: false, error: "Unknown song. Prepare it again." }, config);
+
+  let file;
+  let size;
+  try {
+    file = await audioStore.get(audioKey, entry.track, entry.node);
+    size = (await fs.promises.stat(file)).size;
+  } catch (error) {
+    Log.warning("mewbeat audio unavailable", error?.message, `guild=${guildId}`);
+    const busy = error?.statusCode === 503;
+    return sendJson(response, busy ? 503 : 502, {
+      ok: false,
+      error: busy ? "The audio renderer is busy. Try again shortly." : "The song audio could not be prepared.",
+    }, config);
+  }
+
+  response.writeHead(200, {
+    "Content-Type": "audio/ogg",
+    "Content-Length": size,
+    "Cache-Control": "private, max-age=86400",
+    ...corsHeaders(response, config),
+  });
+  const stream = fs.createReadStream(file);
+  stream.on("error", () => response.destroy());
+  response.on("close", () => stream.destroy());
+  stream.pipe(response);
+}
 
 function limitText(value, max = 200) {
   return String(value || "").trim().slice(0, max);
@@ -1471,6 +1570,14 @@ function createActivityServer(client) {
         return sendJson(response, 200, { ok: true, state: buildActivityState(client, guildId, identity.id), identity: { id: identity.id, username: identity.username } }, config);
       }
 
+      if (url.pathname === "/api/activity/mewbeat/audio" && request.method === "GET") {
+        enforceRateLimit(request, "mewbeat-audio", 60, 60_000);
+        const guildId = limitText(url.searchParams.get("guildId") || config.devGuildId, 80);
+        const identity = await authenticateRequest(client, request, guildId, config);
+        if (!getMewbeatRecord(identity.id).unlocked) throw Object.assign(new Error("Unlock mewbeat first."), { statusCode: 403 });
+        return await sendMewbeatAudio(response, config, guildId, limitText(url.searchParams.get("audioKey"), 300));
+      }
+
       if (url.pathname === "/api/activity/search/library" && request.method === "POST") {
         enforceRateLimit(request, "search-library", 120, 60_000);
         const body = await readJson(request);
@@ -1579,7 +1686,7 @@ function createActivityServer(client) {
         if (typeof message.type === "string" && message.type.startsWith("mewbeat_")) {
           const mewbeatLimit = consumeRateLimit(`ws-mewbeat:${socket.identity.id}`, { limit: 600, windowMs: 60_000 });
           if (!mewbeatLimit.allowed) throw Object.assign(new Error("Too many mewbeat messages. Try again shortly."), { statusCode: 429 });
-          const reply = await mewbeatChannel.handle(socket.guildId, socket.identity.id, message);
+          const reply = await mewbeatChannel.handle(socket.guildId, socket.identity.id, message, mewbeatProfileOf(socket.identity));
           if (reply) sendSocket(socket, reply);
           return;
         }
@@ -1593,8 +1700,22 @@ function createActivityServer(client) {
       }
     });
 
-    socket.on("close", () => { unregisterActivitySession(socket.guildId, socket); sockets.delete(socket); });
-    socket.on("error", () => { unregisterActivitySession(socket.guildId, socket); sockets.delete(socket); });
+    // Close and error can both fire; the channel hears about the user once,
+    // and only when this was their last socket in the guild.
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      const { guildId, identity } = socket;
+      unregisterActivitySession(guildId, socket);
+      sockets.delete(socket);
+      if (!socket.authorized || !identity) return;
+      const otherWindow = [...sockets].some((other) =>
+        other.authorized && other.guildId === guildId && other.identity?.id === identity.id);
+      if (!otherWindow) mewbeatChannel.disconnect(guildId, identity.id);
+    };
+    socket.on("close", release);
+    socket.on("error", release);
   });
 
   return {
