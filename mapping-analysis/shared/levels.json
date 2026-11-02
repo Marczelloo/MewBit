@@ -1,0 +1,10 @@
+{
+  "ranges": {
+    "easy": [0.0, 1.65],
+    "normal": [1.65, 2.7],
+    "hard": [2.7, 3.4]
+  },
+  "decided": "2026-11-02",
+  "rule": "AIMod (2.0 / 2.7 / 4.0) unless the data cut point (Youden J between neighbouring name classes) differs by more than 0.3 stars; then the data value (shared/levels.md)",
+  "evidence": "data/corpus/levels_evidence.json (from pipeline/corpus/derive_levels.py on data/corpus/listing.json)"
+}
