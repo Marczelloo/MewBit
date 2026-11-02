@@ -67,7 +67,7 @@ describe("mewbeat channel scores", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ charts = makeCharts(), unlocked = true, playback = null, register = true } = {}) {
+  function setup({ charts = makeCharts(), unlocked = true, playback = null, register = true, log } = {}) {
     let clock = 1_000;
     const now = () => (clock += 10);
     const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now });
@@ -96,6 +96,7 @@ describe("mewbeat channel scores", () => {
       soloTracks,
       scoreStore,
       historyStore,
+      log,
     });
     return { channel, scoreStore, historyStore, peeked };
   }
@@ -354,6 +355,7 @@ describe("mewbeat channel scores", () => {
       assert.strictEqual(track.plays, 2);
       assert.strictEqual(track.stars.easy, 1.5);
       assert.strictEqual(typeof track.stars.hell, "number");
+      assert.deepStrictEqual(track.notes, { easy: 5, normal: 5, hard: 5, hell: 5 });
       assert.deepStrictEqual(Object.keys(track.bests).sort(), ["easy", "hard"]);
       assert.strictEqual(track.bests.hard.score, 1500);
       assert.strictEqual(track.bests.hard.grade, "B");
@@ -372,6 +374,7 @@ describe("mewbeat channel scores", () => {
       });
       const reply = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "server", limit: 500 });
       assert.strictEqual(reply.tracks[0].stars, null);
+      assert.deepStrictEqual(reply.tracks[0].notes, {});
       assert.deepStrictEqual(reply.tracks[0].bests, {});
     });
 
@@ -379,6 +382,68 @@ describe("mewbeat channel scores", () => {
       const { channel } = setup();
       const reply = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "mine" });
       assert.strictEqual(reply.status, "error");
+    });
+  });
+
+  describe("song stats", () => {
+    const statsMessage = (overrides) => ({ type: "mewbeat_song_stats", id: "t1", audioKey: KEY, ...overrides });
+
+    it("gives stars, note count and the player's best per difficulty", async () => {
+      const { channel } = setup();
+      await submit(channel, submitMessage());
+      const reply = await submit(channel, statsMessage());
+      assert.strictEqual(reply.type, "mewbeat_song_stats");
+      assert.strictEqual(reply.id, "t1");
+      assert.strictEqual(reply.status, "ok");
+      assert.deepStrictEqual(Object.keys(reply.stats), ["easy", "normal", "hard", "hell"]);
+      assert.strictEqual(reply.stats.easy.stars, 1.5);
+      assert.strictEqual(typeof reply.stats.hell.stars, "number");
+      assert.strictEqual(reply.stats.hard.notes, 5);
+      assert.deepStrictEqual(reply.stats.hard.best, { score: 1500, grade: "B" });
+      assert.strictEqual(reply.stats.easy.best, null);
+      // Another player has no best of their own.
+      const other = await submit(channel, statsMessage(), { userId: "bo", profile: BO });
+      assert.strictEqual(other.stats.hard.best, null);
+    });
+
+    it("answers null stats while no charts are known", async () => {
+      const { channel } = setup({ charts: null });
+      assert.deepStrictEqual(await submit(channel, statsMessage()), { type: "mewbeat_song_stats", id: "t1", status: "ok", stats: null });
+      assert.strictEqual((await submit(setup().channel, statsMessage({ audioKey: "youtube:other:1" }))).stats, null);
+    });
+
+    it("refuses a locked user, a bad key and a bad id", async () => {
+      assert.deepStrictEqual(
+        await submit(setup({ unlocked: false }).channel, statsMessage()),
+        { type: "mewbeat_song_stats", id: "t1", status: "error", reason: "locked" },
+      );
+      const { channel } = setup();
+      assert.strictEqual((await submit(channel, statsMessage({ audioKey: 5 }))).reason, "bad_request");
+      assert.strictEqual((await submit(channel, statsMessage({ audioKey: undefined }))).reason, "bad_request");
+      assert.strictEqual((await submit(channel, statsMessage({ id: "" }))).type, "error");
+    });
+  });
+
+  describe("failed submits", () => {
+    it("log one warning with the reason and what was claimed, without the events", async () => {
+      const warnings = [];
+      const { channel } = setup({ log: { warning: (...args) => warnings.push(args) } });
+      const reply = await submit(channel, submitMessage({ chartVersion: VERSION + 1 }));
+      assert.strictEqual(reply.reason, "stale_chart");
+      assert.strictEqual(warnings.length, 1);
+      const text = warnings[0].join(" ");
+      assert.match(text, /stale_chart/);
+      assert.match(text, /mode=solo/);
+      assert.match(text, /user=ann/);
+      assert.match(text, new RegExp(`audioKey=${KEY}`));
+      assert.match(text, new RegExp(`chartVersion=${VERSION + 1}`));
+      assert.match(text, new RegExp(`stored=${VERSION}`));
+
+      await submit(channel, submitMessage({ difficulty: "nope" }));
+      assert.strictEqual(warnings.length, 2);
+      assert.match(warnings[1].join(" "), /bad_difficulty.*stored=-/);
+      await submit(channel, submitMessage());
+      assert.strictEqual(warnings.length, 2);
     });
   });
 });

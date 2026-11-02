@@ -159,6 +159,31 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "7" })).reason, "empty_queue");
   });
 
+  it("passes spectate through, validates it, and starts the round when the last Ready comes in", async () => {
+    const { send, lastRoom } = setup();
+    await send(ANN, { type: "mewbeat_room_join", id: "1" });
+    await send(BO, { type: "mewbeat_room_join", id: "2" });
+    assert.strictEqual((await send(BO, { type: "mewbeat_room_ready", id: "3", spectate: "yes" })).reason, "bad_request");
+    assert.deepStrictEqual(
+      await send(BO, { type: "mewbeat_room_ready", id: "4", spectate: true }),
+      { type: "mewbeat_room_ready", id: "4", status: "ok" },
+    );
+    const bo = () => lastRoom().members.find((member) => member.userId === "bo");
+    assert.deepStrictEqual([bo().spectator, bo().watching], [true, true]);
+    assert.deepStrictEqual(
+      await send(BO, { type: "mewbeat_room_ready", id: "5", ready: true }),
+      { type: "mewbeat_room_ready", id: "5", status: "error", reason: "spectating" },
+    );
+
+    await send(ANN, { type: "mewbeat_room_queue_add", id: "6", uri: "abc", source: "youtube" });
+    await send(ANN, { type: "mewbeat_room_ready", id: "7", ready: true });
+    assert.strictEqual(lastRoom().phase, "loading");
+    assert.deepStrictEqual(
+      await send(ANN, { type: "mewbeat_room_ready", id: "8", spectate: true }),
+      { type: "mewbeat_room_ready", id: "8", status: "error", reason: "in_round" },
+    );
+  });
+
   describe("invites", () => {
     const invite = (send, profile, id) => send(profile, { type: "mewbeat_room_invite", id });
 
@@ -168,7 +193,13 @@ describe("mewbeat channel rooms", () => {
       await send(ANN, { type: "mewbeat_room_join", id: "1" });
       await send(BO, { type: "mewbeat_room_join", id: "2" });
       assert.deepStrictEqual(await invite(send, BO, "3"), { type: "mewbeat_room_invite", id: "3", status: "ok" });
-      assert.deepStrictEqual(posts, [{ guildId: "g1", userId: "bo", username: "Bo" }]);
+      assert.deepStrictEqual(posts, [{
+        guildId: "g1",
+        userId: "bo",
+        username: "Bo",
+        avatarUrl: null,
+        room: { title: null, artist: "", artworkUrl: null, players: 2, maxPlayers: 10, queued: 0, inRound: false },
+      }]);
 
       advance(20_000);
       assert.deepStrictEqual(
@@ -207,6 +238,27 @@ describe("mewbeat channel rooms", () => {
       assert.strictEqual((await invite(send, ANN, "3")).reason, "send_failed");
       result = { ok: true };
       assert.strictEqual((await invite(send, ANN, "4")).status, "ok");
+    });
+
+    it("describes the queued song, then the song being played, for the invite", async () => {
+      const posts = [];
+      const { send, advance } = setup({ postInvite: async (args) => { posts.push(args); return { ok: true }; } });
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      await send(BO, { type: "mewbeat_room_join", id: "2" });
+      await send(ANN, { type: "mewbeat_room_queue_add", id: "3", uri: "abc", source: "youtube" });
+      await send(ANN, { type: "mewbeat_room_queue_add", id: "4", uri: "abc", source: "youtube" });
+      await invite(send, ANN, "5");
+      assert.deepStrictEqual(posts[0].room, {
+        title: "Song abc", artist: "Artist", artworkUrl: null, players: 2, maxPlayers: 10, queued: 2, inRound: false,
+      });
+      assert.strictEqual(posts[0].avatarUrl, "https://a/ann.png");
+
+      advance(60_000);
+      await send(ANN, { type: "mewbeat_room_start", id: "6" });
+      await invite(send, BO, "7");
+      assert.deepStrictEqual(posts[1].room, {
+        title: "Song abc", artist: "Artist", artworkUrl: null, players: 2, maxPlayers: 10, queued: 1, inRound: true,
+      });
     });
 
     it("treats a throwing poster as a failed send", async () => {

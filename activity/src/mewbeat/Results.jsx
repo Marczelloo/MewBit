@@ -1,3 +1,4 @@
+import { ArrowCounterClockwise, ArrowLeft, ArrowRight, MusicNotesSimple } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
@@ -29,7 +30,7 @@ const BUBBLES = {
 };
 const NEW_BEST_BUBBLE = "NEW BEST!! ✦";
 
-const COUNT_UP_MS = 1200;
+const COUNT_UP_MS = 900;
 const TOP_ROWS = 5;
 // The offset slider's range and step (SettingsPanel.jsx).
 const OFFSET_MIN = -300;
@@ -69,7 +70,8 @@ function useCountUp(target, animate) {
     const start = performance.now();
     let raf = 0;
     const step = (now) => {
-      const k = Math.min(1, (now - start) / COUNT_UP_MS);
+      // A frame timestamp can predate performance.now() taken in the effect: never a negative first score.
+      const k = Math.max(0, Math.min(1, (now - start) / COUNT_UP_MS));
       setValue(Math.round(target * (1 - (1 - k) ** 3)));
       if (k < 1) raf = window.requestAnimationFrame(step);
     };
@@ -124,7 +126,7 @@ function CalibrationResult({ timing, savedOffset, onApplyOffset }) {
   }
   const applied = timing.offsetMs === savedOffset;
   return (
-    <div className="mb-res-card mb-res-calib" role="status">
+    <div className="mb-res-card mb-res-calib mb-res-in" style={{ "--d": "380ms" }} role="status">
       <p className="mb-res-note">
         Your {timing.taps} taps suggest <b>{formatOffset(timing.offsetMs)}</b> (spread ±{timing.spreadMs} ms). Saved: {formatOffset(savedOffset)}.
       </p>
@@ -169,6 +171,25 @@ function Avatar({ name, url }) {
   return src ? <img className="mb-res-av" src={src} alt="" draggable="false" /> : <span className="mb-res-av mb-res-av-text" aria-hidden="true">{initials}</span>;
 }
 
+// One player's line, shared by the room's standings and the server's best list. vote: they are ready for the next round.
+function PlayerRow({ position, me, name, avatarUrl, sub, score, grade, vote, style }) {
+  return (
+    <li className={me ? "mb-res-me" : undefined} style={style}>
+      <span className="mb-res-pos">{position}</span>
+      <Avatar name={name} url={avatarUrl} />
+      <span className="mb-res-who">
+        <b>{name}{me ? <span className="mb-res-you">YOU</span> : null}</b>
+        <small>{sub}</small>
+      </span>
+      <span className="mb-res-score">
+        <b>{formatScore(score ?? 0)}</b>
+        <span className={`mb-ss-grade-${gradeKey(grade)}`}>{grade ?? ""}</span>
+        {vote ? <span className="mb-res-vote"> · next ✓</span> : null}
+      </span>
+    </li>
+  );
+}
+
 // A room's standings after the round (only given in rooms): one row per player, with who is ready for the next round.
 function Standings({ rows }) {
   return (
@@ -176,19 +197,17 @@ function Standings({ rows }) {
       <h3>Standings <small>{rows.length} {rows.length === 1 ? "player" : "players"}</small></h3>
       <ol>
         {rows.map((row, index) => (
-          <li key={row.userId ?? index} className={row.me ? "mb-res-me" : undefined}>
-            <span className="mb-res-pos">{index + 1}</span>
-            <Avatar name={row.username} url={row.avatarUrl} />
-            <span className="mb-res-who">
-              <b>{row.username}{row.me ? <span className="mb-res-you">YOU</span> : null}</b>
-              <small>{[capitalize(row.difficulty), Number.isFinite(row.accuracy) ? formatAccuracy(row.accuracy) : null].filter(Boolean).join(" · ")}</small>
-            </span>
-            <span className="mb-res-score">
-              <b>{formatScore(row.score ?? 0)}</b>
-              <span className={`mb-ss-grade-${gradeKey(row.grade)}`}>{row.grade ?? ""}</span>
-              {"next" in row ? <span className={`mb-res-vote${row.next ? "" : " mb-res-vote-no"}`}> · {row.next ? "next ✓" : "…"}</span> : null}
-            </span>
-          </li>
+          <PlayerRow
+            key={row.userId ?? index}
+            position={index + 1}
+            me={row.me}
+            name={row.username}
+            avatarUrl={row.avatarUrl}
+            sub={[capitalize(row.difficulty), Number.isFinite(row.accuracy) ? formatAccuracy(row.accuracy) : null].filter(Boolean).join(" · ")}
+            score={row.score}
+            grade={row.grade}
+            vote={Boolean(row.next)}
+          />
         ))}
       </ol>
     </section>
@@ -198,16 +217,26 @@ function Standings({ rows }) {
 function ServerBest({ entries, meId, difficulty }) {
   return (
     <section className="mb-res-board" aria-label="Server best">
-      <span className="mb-res-label">Server best{difficulty ? ` · ${capitalize(difficulty)}` : ""}</span>
-      <ol>
-        {entries.slice(0, TOP_ROWS).map((entry, index) => (
-          <li key={entry.userId ?? index} className={entry.userId === meId ? "mb-res-me" : undefined}>
-            <span className="mb-res-pos">{index + 1}</span>
-            <span className="mb-res-name">{entry.username}</span>
-            <span className="mb-res-value">{formatScore(entry.score)}</span>
-          </li>
-        ))}
-      </ol>
+      <h3>Server best <small>{difficulty ? capitalize(difficulty) : ""}</small></h3>
+      {entries.length ? (
+        <ol>
+          {entries.slice(0, TOP_ROWS).map((entry, index) => (
+            <PlayerRow
+              key={entry.userId ?? index}
+              position={index + 1}
+              me={entry.userId === meId}
+              name={entry.username}
+              avatarUrl={entry.avatarUrl}
+              sub={[Number.isFinite(entry.accuracy) ? formatAccuracy(entry.accuracy) : null, entry.maxCombo > 0 ? `${entry.maxCombo} combo` : null].filter(Boolean).join(" · ")}
+              score={entry.score}
+              grade={entry.grade}
+              style={{ "--i": index }}
+            />
+          ))}
+        </ol>
+      ) : (
+        <p className="mb-res-empty">Nobody's on the board yet. Be the first.</p>
+      )}
     </section>
   );
 }
@@ -228,6 +257,7 @@ export default function Results({
   onApplyOffset,
   onBack,
   onSongSelect,
+  onRestart,
   onNext = null,
   nextLabel = "Next round",
   nextCount = null,
@@ -242,9 +272,12 @@ export default function Results({
   const peak = Math.max(1, ...bins);
   const meId = result?.best?.userId ?? null;
   const topList = result?.serverTop ?? [];
-  const showSide = Boolean(standings?.length) || topList.length > 0;
+  // A ranked-mode reply with an empty board still gets the panel, so the empty state reads as intended.
+  const boardEmpty = topList.length === 0 && Boolean(result) && !standings?.length && !summary.calibration;
+  const showSide = Boolean(standings?.length) || topList.length > 0 || boardEmpty;
   const grade = gradeKey(summary.grade);
-  const note = PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null);
+  // Only Live follows what the bot plays; Solo and rooms move on by themselves.
+  const note = mode === "live" ? PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null) : null;
   const cover = resolveArtworkUrl(summary.artworkUrl);
 
   // Primary action: what Enter does. A room's next round, else leaving for the next thing to play.
@@ -257,11 +290,19 @@ export default function Results({
   useEffect(() => {
     if (!active) return undefined;
     const onKeyDown = (event) => {
-      if (event.key !== "Enter" || event.repeat) return;
-      // A focused button or field takes Enter itself.
-      if (event.target instanceof HTMLElement && ["BUTTON", "INPUT", "SELECT", "TEXTAREA", "A"].includes(event.target.tagName)) return;
-      event.preventDefault();
-      runPrimary();
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (event.key === "Enter") {
+        // A focused button or field takes Enter itself.
+        if (target && ["BUTTON", "INPUT", "SELECT", "TEXTAREA", "A"].includes(target.tagName)) return;
+        event.preventDefault();
+        runPrimary();
+      } else if (onRestart && (event.key === "r" || event.key === "R")) {
+        // Buttons don't use R, so only typing blocks it.
+        if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable)) return;
+        event.preventDefault();
+        onRestart();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -273,8 +314,10 @@ export default function Results({
 
   return (
     <section className={`mb-res${showSide ? " mb-res-has-side" : ""}`} aria-label="Run results">
+      {/* The cover, blurred far behind everything; the shade keeps the text readable. */}
+      {cover ? <div className="mb-res-backdrop" aria-hidden="true"><img src={cover} alt="" draggable="false" /></div> : null}
       <div className="mb-res-main">
-        <div className="mb-res-head">
+        <div className="mb-res-head mb-res-in">
           {cover ? <img className="mb-res-cover" src={cover} alt="" draggable="false" /> : <div className="mb-res-cover mb-res-cover-empty" aria-hidden="true" />}
           <div className="mb-res-title">
             <span className="mb-res-label">{`${summary.calibration ? "Calibration" : "Run complete"}${summary.difficulty ? ` · ${capitalize(summary.difficulty)}` : ""}`}</span>
@@ -286,7 +329,7 @@ export default function Results({
 
         <div className="mb-res-body">
           <div className="mb-res-cards">
-            <div className="mb-res-card mb-res-mine">
+            <div className="mb-res-card mb-res-mine mb-res-in" style={{ "--d": "80ms" }}>
               <div className={`mb-grade mb-grade-${grade} mb-res-grade`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
               <div className="mb-res-numbers">
                 <div className="mb-res-scoreline">
@@ -301,14 +344,14 @@ export default function Results({
                   <div><dt className="mb-res-label">Avg offset</dt><dd>{shownTiming ? formatOffset(shownTiming.mean) : "--"}</dd></div>
                 </dl>
                 <ul className="mb-res-judges">
-                  {JUDGEMENTS.map(([key, label]) => (
-                    <li key={key} className={`mb-j-${key}`}><span>{label}</span>{summary.counts[key]}</li>
+                  {JUDGEMENTS.map(([key, label], index) => (
+                    <li key={key} className={`mb-j-${key}`} style={{ "--i": index }}><span>{label}</span>{summary.counts[key]}</li>
                   ))}
                 </ul>
               </div>
             </div>
 
-            <div className="mb-res-card mb-res-timing">
+            <div className="mb-res-card mb-res-timing mb-res-in" style={{ "--d": "320ms" }}>
               <div className="mb-res-histwrap">
                 <span className="mb-res-label">Hit timing</span>
                 <div className="mb-res-hist" role="img" aria-label={shownTiming ? `Hit timing, average ${formatOffset(shownTiming.mean)}` : "Hit timing"}>
@@ -347,17 +390,30 @@ export default function Results({
           </div>
         </div>
 
-        <div className="mb-res-footer">
+        <div className="mb-res-footer mb-res-in" style={{ "--d": "420ms" }}>
           {note ? <p className="mb-res-note" role="status">{note}</p> : null}
           {mode !== "solo" && upNext?.title ? (
             <p className="mb-res-next">Up next: <b>{upNext.title}</b>{upNext.ready ? " · chart ready" : ""}</p>
           ) : null}
           <div className="mb-res-actions">
-            {mode === "solo" ? null : <button type="button" className={`mb-btn${primary === "back" ? " mb-btn-primary" : ""}`} onClick={onBack}>Back{primary === "back" ? <> <kbd className="mb-kbd">Enter</kbd></> : null}</button>}
-            {mode === "solo" || onSongSelect ? <button type="button" className={`mb-btn${primary === "songs" ? " mb-btn-primary" : ""}`} onClick={onSongSelect}>Song select{primary === "songs" ? <> <kbd className="mb-kbd">Enter</kbd></> : null}</button> : null}
+            {onRestart ? (
+              <button type="button" className="mb-btn" onClick={onRestart}>
+                <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" />Restart <kbd className="mb-kbd">R</kbd>
+              </button>
+            ) : null}
+            {mode === "solo" ? null : (
+              <button type="button" className={`mb-btn${primary === "back" ? " mb-btn-primary" : ""}`} onClick={onBack}>
+                <ArrowLeft size={16} weight="bold" aria-hidden="true" />Back{primary === "back" ? <> <kbd className="mb-kbd">Enter</kbd></> : null}
+              </button>
+            )}
+            {mode === "solo" || onSongSelect ? (
+              <button type="button" className={`mb-btn${primary === "songs" ? " mb-btn-primary" : ""}`} onClick={onSongSelect}>
+                <MusicNotesSimple size={16} weight="bold" aria-hidden="true" />Song select{primary === "songs" ? <> <kbd className="mb-kbd">Enter</kbd></> : null}
+              </button>
+            ) : null}
             {onNext ? (
               <button type="button" className="mb-btn mb-btn-primary" onClick={onNext}>
-                {nextLabel} {nextCount ? <span className="mb-res-count">{nextCount}</span> : null}<kbd className="mb-kbd">Enter</kbd>
+                {nextLabel} {nextCount ? <span className="mb-res-count">{nextCount}</span> : null}<ArrowRight size={16} weight="bold" aria-hidden="true" /><kbd className="mb-kbd">Enter</kbd>
               </button>
             ) : null}
           </div>
@@ -367,7 +423,7 @@ export default function Results({
       {showSide ? (
         <aside className="mb-res-side">
           {standings?.length ? <Standings rows={standings} /> : null}
-          {topList.length ? <ServerBest entries={topList} meId={meId} difficulty={summary.difficulty} /> : null}
+          {topList.length || boardEmpty ? <ServerBest entries={topList} meId={meId} difficulty={summary.difficulty} /> : null}
         </aside>
       ) : null}
     </section>

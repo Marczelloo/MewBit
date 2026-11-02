@@ -46,7 +46,7 @@ function starsOf(row, difficulty) {
   return Number.isFinite(value) ? value : null;
 }
 
-function gradeClass(grade) {
+export function gradeClass(grade) {
   return `mb-ss-grade-${["S", "A", "B", "C"].includes(grade) ? grade : "D"}`;
 }
 

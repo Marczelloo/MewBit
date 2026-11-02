@@ -125,12 +125,98 @@ test("further loading snapshots of the same round do not reload", async () => {
   assert.deepEqual(env.anchors, ["init"]);
 });
 
-test("spectators never load a round", async () => {
+const spectatorMe = [member("host", { loaded: true }), member("me", { spectator: true })];
+
+test("a spectator loads the round to watch it and never reports loaded", async () => {
   const env = setup();
-  env.link.setRoom(snapshot({ members: [member("host"), member("me", { spectator: true })] }), 0);
+  env.link.setRoom(snapshot({ members: spectatorMe }), 0);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(env.calls.some((c) => c.startsWith("load:")), false);
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("load:")), ["load:song"]);
+  assert.equal(env.link.state().stage, "ready");
+  assert.equal(env.link.state().spectating, true);
+  env.link.chartAccepted();
+  assert.equal(env.link.state().stage, "waiting");
+  assert.equal(env.sent.some((m) => m.type === "mewbeat_room_loaded"), false);
+  assert.equal(env.link.state().prepared, false);
+});
+
+test("a spectator plays along with the countdown although the server never counts them as loaded", async () => {
+  const env = setup();
+  env.link.setRoom(snapshot({ members: spectatorMe }), 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "countdown", members: spectatorMe, startAt: 6000, serverNow: 1000 }), 0);
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("play:")), ["play:0:5000"]);
+  assert.equal(env.link.state().stage, "countdown");
+  env.scheduler.advance(5000);
+  assert.equal(env.link.state().stage, "playing");
+  assert.equal(env.anchors.includes("snap"), false, "an on-time start needs no catching up");
+});
+
+test("a spectator who joins a song in progress starts at the song's true position, with no burst", async () => {
+  const env = setup();
+  const seen = [];
+  env.link.onAnchor((kind) => seen.push([kind, env.link.songClock.songTimeAt(0), env.link.songClock.paused()]));
+  env.scheduler.advance(7000);
+  const room = snapshot({ phase: "playing", members: spectatorMe, startAt: 6000, serverNow: 7000 });
+  env.link.setRoom(room, 7000);
+  await new Promise((resolve) => setImmediate(resolve));
+  env.link.chartAccepted();
+  assert.equal(env.calls.find((c) => c.startsWith("play:")), "play:1060:-");
+  // The run jumps to the position while the clock is still paused on it, and only then resumes.
+  assert.deepEqual(seen.map(([kind]) => kind), ["init", "snap", "resume"]);
+  assert.equal(seen[1][1], 1060);
+  assert.equal(seen[1][2], true);
+  assert.equal(seen[2][2], false);
+  assert.equal(env.link.state().stage, "playing");
+  assert.equal(env.sent.some((m) => m.type === "mewbeat_room_loaded"), false);
+});
+
+test("a player whose chart arrives after the loading phase becomes a spectator of that round", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.setRoom(snapshot({ phase: "countdown", members: [member("host", { loaded: true }), member("me")], startAt: 6000 }), 0);
+  env.link.chartAccepted();
+  assert.equal(env.sent.some((m) => m.type === "mewbeat_room_loaded"), false);
+  assert.equal(env.link.state().prepared, false);
+  assert.equal(env.link.state().spectating, true);
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("play:")), ["play:0:5000"]);
+});
+
+test("a player who is loaded and counted keeps the player path", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  assert.equal(env.link.state().spectating, false);
+  env.link.setRoom(snapshot({ phase: "countdown", members: loadedMe, startAt: 6000 }), 0);
+  assert.equal(env.link.state().spectating, false);
+  assert.equal(env.link.state().prepared, true);
+  assert.equal(env.anchors.includes("snap"), false);
+});
+
+test("abandoning a spectated round clears spectating", async () => {
+  const env = setup();
+  env.link.setRoom(snapshot({ members: spectatorMe }), 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  env.link.chartAccepted();
+  assert.equal(env.link.state().spectating, true);
+  env.link.setRoom(snapshot({ phase: "intermission", endedAt: 9000, members: spectatorMe, nextAt: 99_000 }), 100);
+  assert.equal(env.link.state().spectating, false);
   assert.equal(env.link.state().stage, "idle");
+  assert.equal(env.anchors.at(-1), "clear");
+  env.link.setRoom(snapshot({ round: 2, members: spectatorMe }), 200);
+  await new Promise((resolve) => setImmediate(resolve));
+  env.link.leaveRound();
+  assert.equal(env.link.state().spectating, false);
+});
+
+test("a player who turns spectator mid-loading is dropped and re-engages as a spectator", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.setRoom(snapshot({ members: [member("host"), member("me", { spectator: true })] }), 10);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(env.link.state().spectating, true);
+  assert.equal(env.calls.filter((c) => c.startsWith("load:")).length, 2);
 });
 
 test("countdown: the audio is scheduled at startAt on the audio clock and the run resumes just before", async () => {

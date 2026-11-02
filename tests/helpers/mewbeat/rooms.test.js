@@ -68,7 +68,7 @@ describe("mewbeat rooms membership", () => {
     assert.strictEqual(room.phase, "lobby");
     assert.deepStrictEqual(room.members, [{
       userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal",
-      ready: false, loaded: false, spectator: false, submitted: false,
+      ready: false, loaded: false, spectator: false, watching: false, submitted: false,
     }]);
     assert.deepStrictEqual(room.queue, []);
     assert.strictEqual(room.current, null);
@@ -401,6 +401,8 @@ describe("mewbeat rooms rounds", () => {
     const { rooms, clock } = ctx;
     rooms.start(G, "ann");
     clock.advance(20_000);
+    assert.strictEqual(phaseOf(rooms), "loading"); // a song still in analysis gets longer
+    clock.advance(120_000);
     const room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "lobby");
     assert.strictEqual(room.current, null);
@@ -421,6 +423,15 @@ describe("mewbeat rooms rounds", () => {
     const room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "intermission");
     assert.deepStrictEqual(room.results.map((entry) => entry.userId), ["ann"]);
+  });
+
+  it("starts for the first player to load once the song has run late", () => {
+    const { rooms, clock } = ctx;
+    rooms.start(G, "ann");
+    clock.advance(60_000);
+    assert.strictEqual(phaseOf(rooms), "loading");
+    rooms.loaded(G, "bo", KEY_A);
+    assert.strictEqual(phaseOf(rooms), "countdown");
   });
 
   it("does not wait for a player whose audio never loaded", () => {
@@ -622,7 +633,7 @@ describe("mewbeat rooms review fixes", () => {
     const ctx = setup();
     await started(ctx);
     ctx.rooms.start(G, "ann");
-    ctx.clock.advance(20_000);
+    ctx.clock.advance(140_000);
     const room = ctx.rooms.snapshot(G);
     assert.strictEqual(room.phase, "lobby");
     assert.strictEqual(room.endedAt, null);
@@ -679,7 +690,7 @@ describe("mewbeat rooms review fixes", () => {
     assert.deepStrictEqual(await rooms.queueAdd(G, "dy", { uri: "late" }), { ok: false, reason: "queue_full" });
     assert.deepStrictEqual(await rooms.queueAdd(G, "ann", { uri: "late" }), { ok: true });
     assert.strictEqual(rooms.snapshot(G).queue.length, 20);
-    clock.advance(20_000); // nobody loaded
+    clock.advance(140_000); // nobody loaded
     const room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "lobby");
     assert.strictEqual(room.queue.length, 20);
@@ -779,5 +790,157 @@ describe("mewbeat rooms review fixes", () => {
       assert.strictEqual(room.phase, "lobby");
       assert.strictEqual(room.round, 0);
     });
+  });
+});
+
+describe("mewbeat rooms ready and spectating", () => {
+  const KEY_A = "youtube:a:200000";
+
+  async function lobby(users = ["ann", "bo"], songs = ["a", "b"]) {
+    const ctx = setup();
+    for (const user of users) ctx.rooms.join(G, profile(user));
+    for (const uri of songs) await ctx.rooms.queueAdd(G, "ann", { uri });
+    return ctx;
+  }
+
+  it("starts the round when the last player presses Ready, and clears everyone's ready", async () => {
+    const { rooms, clock } = await lobby();
+    rooms.ready(G, "ann", { ready: true });
+    assert.strictEqual(phaseOf(rooms), "lobby");
+    assert.deepStrictEqual(rooms.ready(G, "bo", { ready: true }), { ok: true });
+    const room = rooms.snapshot(G);
+    assert.strictEqual(room.phase, "loading");
+    assert.strictEqual(room.current.audioKey, KEY_A);
+    assert.deepStrictEqual(room.members.map((member) => member.ready), [false, false]);
+    assert.strictEqual(clock.pending(), 1);
+  });
+
+  it("starts a round during the intermission and drops its auto-start timer", async () => {
+    const { rooms, clock } = await lobby();
+    rooms.start(G, "ann");
+    rooms.loaded(G, "ann", KEY_A);
+    rooms.loaded(G, "bo", KEY_A);
+    clock.advance(5000);
+    rooms.submitted(G, "ann", result(1, 0.5));
+    rooms.submitted(G, "bo", result(2, 0.5));
+    assert.strictEqual(phaseOf(rooms), "intermission");
+    rooms.ready(G, "ann", { ready: true });
+    rooms.ready(G, "bo", { ready: true });
+    assert.strictEqual(phaseOf(rooms), "loading");
+    assert.strictEqual(rooms.snapshot(G).round, 2);
+    assert.strictEqual(clock.pending(), 1); // only the new loading timer
+  });
+
+  it("does not start without a queued song, and does once one is added", async () => {
+    const { rooms } = await lobby(["ann", "bo"], []);
+    rooms.ready(G, "ann", { ready: true });
+    rooms.ready(G, "bo", { ready: true });
+    assert.strictEqual(phaseOf(rooms), "lobby");
+    assert.strictEqual(rooms.snapshot(G).round, 0);
+    await rooms.queueAdd(G, "ann", { uri: "a" });
+    assert.strictEqual(phaseOf(rooms), "loading");
+    assert.strictEqual(rooms.snapshot(G).current.audioKey, KEY_A);
+  });
+
+  it("starts when the only player who was not ready leaves", async () => {
+    const { rooms } = await lobby();
+    rooms.ready(G, "ann", { ready: true });
+    rooms.leave(G, "bo");
+    assert.strictEqual(phaseOf(rooms), "loading");
+  });
+
+  it("does not count a spectator's readiness, and refuses it", async () => {
+    const { rooms } = await lobby(["ann", "bo", "cy"]);
+    assert.deepStrictEqual(rooms.ready(G, "cy", { spectate: true }), { ok: true });
+    rooms.ready(G, "ann", { ready: true });
+    assert.strictEqual(phaseOf(rooms), "lobby"); // bo is not ready
+    assert.deepStrictEqual(rooms.ready(G, "cy", { ready: true }), { ok: false, reason: "spectating" });
+    assert.strictEqual(memberOf(rooms, "cy").ready, false);
+    rooms.ready(G, "bo", { ready: true });
+    assert.strictEqual(phaseOf(rooms), "loading"); // cy never had to be ready
+  });
+
+  it("starts when the last unready player switches to spectating", async () => {
+    const { rooms } = await lobby();
+    rooms.ready(G, "ann", { ready: true });
+    rooms.ready(G, "bo", { spectate: true });
+    assert.strictEqual(phaseOf(rooms), "loading");
+    assert.strictEqual(memberOf(rooms, "bo").spectator, true);
+  });
+
+  it("never starts a round for a room of only spectators", async () => {
+    const { rooms } = await lobby(["ann"]);
+    rooms.ready(G, "ann", { spectate: true });
+    assert.deepStrictEqual(memberOf(rooms, "ann"), { ...memberOf(rooms, "ann"), spectator: true, watching: true, ready: false });
+    assert.deepStrictEqual(rooms.start(G, "ann"), { ok: false, reason: "no_players" });
+    assert.deepStrictEqual(rooms.ready(G, "ann", { ready: true }), { ok: false, reason: "spectating" });
+    await rooms.queueAdd(G, "ann", { uri: "c" });
+    assert.strictEqual(phaseOf(rooms), "lobby");
+    assert.strictEqual(rooms.snapshot(G).round, 0);
+  });
+
+  it("leaves watching members alone when a round starts and when it settles", async () => {
+    const { rooms, clock } = await lobby(["ann", "bo", "cy"]);
+    rooms.ready(G, "cy", { spectate: true });
+    assert.deepStrictEqual(rooms.start(G, "ann"), { ok: true });
+    assert.strictEqual(memberOf(rooms, "cy").spectator, true);
+    rooms.loaded(G, "ann", KEY_A);
+    rooms.loaded(G, "bo", KEY_A);
+    clock.advance(5000);
+    rooms.submitted(G, "ann", result(1, 0.5));
+    rooms.submitted(G, "bo", result(2, 0.5));
+    assert.strictEqual(phaseOf(rooms), "intermission");
+    assert.deepStrictEqual([memberOf(rooms, "cy").spectator, memberOf(rooms, "cy").watching], [true, true]);
+    rooms.start(G, "ann");
+    assert.strictEqual(memberOf(rooms, "cy").spectator, true);
+  });
+
+  it("does not let a player pick spectating in the middle of a round", async () => {
+    const { rooms } = await lobby();
+    rooms.start(G, "ann");
+    assert.deepStrictEqual(rooms.ready(G, "bo", { spectate: true }), { ok: false, reason: "in_round" });
+    assert.deepStrictEqual(rooms.ready(G, "bo", { spectate: true, difficulty: "hell" }), { ok: false, reason: "in_round" });
+    assert.deepStrictEqual(
+      [memberOf(rooms, "bo").spectator, memberOf(rooms, "bo").watching, memberOf(rooms, "bo").difficulty],
+      [false, false, "normal"],
+    );
+  });
+
+  it("keeps a mid-round spectator out of the round until it ends, then seats them", async () => {
+    const { rooms, clock } = await lobby();
+    rooms.start(G, "ann");
+    rooms.join(G, profile("cy"));
+    rooms.ready(G, "cy", { spectate: true });
+    assert.strictEqual(memberOf(rooms, "cy").watching, true);
+    rooms.ready(G, "cy", { spectate: false });
+    assert.deepStrictEqual([memberOf(rooms, "cy").spectator, memberOf(rooms, "cy").watching], [true, false]);
+    rooms.loaded(G, "ann", KEY_A);
+    rooms.loaded(G, "bo", KEY_A);
+    clock.advance(5000);
+    rooms.submitted(G, "ann", result(1, 0.5));
+    rooms.submitted(G, "bo", result(2, 0.5));
+    assert.strictEqual(memberOf(rooms, "cy").spectator, false);
+  });
+
+  it("seats a member at once when they stop watching between rounds, if a seat is free", async () => {
+    const { rooms } = await lobby();
+    rooms.ready(G, "bo", { spectate: true });
+    rooms.ready(G, "bo", { spectate: false });
+    assert.deepStrictEqual([memberOf(rooms, "bo").spectator, memberOf(rooms, "bo").watching], [false, false]);
+
+    const full = setup();
+    for (let i = 0; i < 11; i += 1) full.rooms.join(G, profile(`u${i}`));
+    full.rooms.ready(G, "u10", { spectate: true });
+    full.rooms.ready(G, "u10", { spectate: false });
+    assert.deepStrictEqual([memberOf(full.rooms, "u10").spectator, memberOf(full.rooms, "u10").watching], [true, false]);
+    full.rooms.leave(G, "u0");
+    assert.strictEqual(memberOf(full.rooms, "u10").spectator, false);
+  });
+
+  it("reports watching in the snapshot", async () => {
+    const { rooms } = await lobby();
+    assert.strictEqual(memberOf(rooms, "bo").watching, false);
+    rooms.ready(G, "bo", { spectate: true });
+    assert.strictEqual(memberOf(rooms, "bo").watching, true);
   });
 });

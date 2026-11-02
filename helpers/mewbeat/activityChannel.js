@@ -3,7 +3,7 @@ const { audioKeyOf } = require("./audioKey");
 const { starsOf } = require("./charts/stars");
 const { createLiveBoard } = require("./liveBoard");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
-const { DIFFICULTIES: ROOM_DIFFICULTIES, createRooms } = require("./rooms");
+const { DIFFICULTIES: ROOM_DIFFICULTIES, MAX_PLAYERS, createRooms } = require("./rooms");
 const { createSoloTracks } = require("./soloTracks");
 
 const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
@@ -20,6 +20,7 @@ const SERVER_TOP = 5;
 const BOARD_LIMIT = 50;
 const PLAYED_LIMIT = 100;
 const INVITE_COOLDOWN_MS = 60_000;
+const ROUND_PHASES = ["loading", "countdown", "playing"];
 
 function errorReply(message) {
   return { type: "error", error: message };
@@ -39,8 +40,9 @@ function errorReply(message) {
 // their state with broadcast(guildId, userIds, payload) and run their phases
 // on setTimer/clearTimer, so tests can drive them with a fake clock; the live
 // board pushes and expires its entries the same way. postInvite({ guildId,
-// userId, username }) -> { ok } | { ok: false, reason } posts the lobby invite
-// in the inviter's voice channel chat; the channel only rate-limits it.
+// userId, username, avatarUrl, room }) -> { ok } | { ok: false, reason } posts
+// the lobby invite in the inviter's voice channel chat (room says what is on:
+// song, seats, queue; or null); the channel only rate-limits it.
 // warmAudio(audioKey, track, node) starts rendering a room song's audio when it
 // is queued, so the round's loading window doesn't pay for a cold render.
 function createMewbeatChannel({
@@ -201,6 +203,23 @@ function createMewbeatChannel({
 
   const inviteCooldownUntil = new Map();
 
+  // What the invite shows of the room: the song being played, else the one up next.
+  function inviteRoomOf(guildId) {
+    const room = rooms.snapshot(guildId);
+    if (!room) return null;
+    const inRound = ROUND_PHASES.includes(room.phase);
+    const song = (inRound ? room.current : null) ?? room.queue[0] ?? null;
+    return {
+      title: song?.title ?? null,
+      artist: song?.artist ?? "",
+      artworkUrl: song?.artworkUrl ?? null,
+      players: room.members.filter((member) => !member.spectator).length,
+      maxPlayers: MAX_PLAYERS,
+      queued: room.queue.length,
+      inRound,
+    };
+  }
+
   // One invite per guild per minute. The slot is taken before the post so two
   // quick requests can't both go out, and given back when nothing was posted.
   async function invite(guildId, userId, type, id, profile) {
@@ -214,7 +233,13 @@ function createMewbeatChannel({
 
     let result;
     try {
-      result = await postInvite({ guildId, userId, username: profile?.username });
+      result = await postInvite({
+        guildId,
+        userId,
+        username: profile?.username,
+        avatarUrl: profile?.avatarUrl ?? null,
+        room: inviteRoomOf(guildId),
+      });
     } catch (error) {
       log.warning("mewbeat invite failed", error?.message);
       result = { ok: false, reason: "send_failed" };
@@ -250,10 +275,12 @@ function createMewbeatChannel({
       case "mewbeat_room_queue_remove": return reply(rooms.queueRemove(guildId, userId, message.index));
       case "mewbeat_room_ready": {
         const { ready, difficulty } = message;
-        // No `ready` keeps the current state: a difficulty-only change.
+        const { spectate } = message;
+        // No `ready` keeps the current state: a difficulty-only or spectate-only change.
         if (ready !== undefined && typeof ready !== "boolean") return reply({ ok: false, reason: "bad_request" });
+        if (spectate !== undefined && typeof spectate !== "boolean") return reply({ ok: false, reason: "bad_request" });
         if (difficulty !== undefined && !ROOM_DIFFICULTIES.includes(difficulty)) return reply({ ok: false, reason: "bad_difficulty" });
-        return reply(rooms.ready(guildId, userId, { ready, difficulty }));
+        return reply(rooms.ready(guildId, userId, { ready, difficulty, spectate }));
       }
       case "mewbeat_room_start": return reply(rooms.start(guildId, userId));
       case "mewbeat_room_loaded":
@@ -316,6 +343,9 @@ function createMewbeatChannel({
     return scoreStore.latestChartKey(audioKey, difficulty);
   }
 
+  const starsFor = (chart) => (chart ? chart.stars ?? starsOf(chart) : null);
+  const noteCountOf = (chart) => (chart ? chart.notes.length : null);
+
   function clampedLimit(value, fallback, max) {
     const limit = Number(value);
     return Number.isInteger(limit) && limit >= 1 ? Math.min(limit, max) : fallback;
@@ -323,8 +353,22 @@ function createMewbeatChannel({
 
   async function submit(guildId, userId, message, profile) {
     const { id, mode, audioKey, difficulty, chartVersion, events, fevers, flags, round } = message;
-    const fail = (reason) => ({ type: "mewbeat_submit", id, status: "error", reason });
-    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat submit.");
+    // Every refusal is logged with what the client claimed, so a run that
+    // "didn't count" can be traced afterwards.
+    let storedVersion = null;
+    const clip = (value) => String(value).slice(0, 120);
+    const refuse = (reason) => log.warning(
+      "mewbeat submit refused",
+      `${reason} mode=${clip(mode)} user=${userId} audioKey=${clip(audioKey)} chartVersion=${clip(chartVersion)} stored=${storedVersion ?? "-"}`,
+    );
+    const fail = (reason) => {
+      refuse(reason);
+      return { type: "mewbeat_submit", id, status: "error", reason };
+    };
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) {
+      refuse("bad_id");
+      return errorReply("Bad mewbeat submit.");
+    }
     if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore || !historyStore) return fail("unavailable");
     if (!DIFFICULTIES.includes(difficulty)) return fail("bad_difficulty");
@@ -337,6 +381,7 @@ function createMewbeatChannel({
     if (!source) return fail("stale_chart");
     const stored = peekChartsOf(source.track)?.[difficulty];
     if (!stored) return fail("unknown_chart");
+    storedVersion = stored.version;
     // The client played another version of the chart than the one on record
     // (it was regenerated since); the events can't be judged against these notes.
     if (chartVersion !== stored.version) return fail("stale_chart");
@@ -456,20 +501,45 @@ function createMewbeatChannel({
     const tracks = historyStore.played({ guildId: scope === "server" ? guildId : null, limit }).map((track) => {
       const charts = peekChartsOf(trackFromAudioKey(track.audioKey));
       const stars = charts
-        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [
-          difficulty,
-          charts[difficulty] ? charts[difficulty].stars ?? starsOf(charts[difficulty]) : null,
-        ]))
+        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, starsFor(charts[difficulty])]))
         : null;
+      const notes = charts
+        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, noteCountOf(charts[difficulty])]))
+        : {};
       const bests = {};
       for (const difficulty of DIFFICULTIES) {
         const chartKey = chartKeyFor(track.audioKey, difficulty);
         const best = chartKey && scoreStore.bestOf(chartKey, userId);
         if (best) bests[difficulty] = { score: best.score, grade: best.grade };
       }
-      return { ...track, stars, bests, highlightMs: highlightOf(charts) };
+      return { ...track, stars, notes, bests, highlightMs: highlightOf(charts) };
     });
     return { type: "mewbeat_played", id, tracks };
+  }
+
+  // Per difficulty: stars, note count and the player's best. `null` stats means
+  // no charts are known yet (a chart that is missing has null stars and notes).
+  function songStats(guildId, userId, message) {
+    const { id, audioKey } = message;
+    const fail = (reason) => ({ type: "mewbeat_song_stats", id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat song stats.");
+    if (!isUnlocked(userId)) return fail("locked");
+    if (!scoreStore) return fail("unavailable");
+    if (typeof audioKey !== "string" || audioKey.length > MAX_URI_LENGTH) return fail("bad_request");
+
+    const charts = peekChartsOf(trackFromAudioKey(audioKey));
+    if (!charts) return { type: "mewbeat_song_stats", id, status: "ok", stats: null };
+    const stats = {};
+    for (const difficulty of DIFFICULTIES) {
+      const chartKey = chartKeyFor(audioKey, difficulty);
+      const best = chartKey ? scoreStore.bestOf(chartKey, userId) : null;
+      stats[difficulty] = {
+        stars: starsFor(charts[difficulty]),
+        notes: noteCountOf(charts[difficulty]),
+        best: best ? { score: best.score, grade: best.grade } : null,
+      };
+    }
+    return { type: "mewbeat_song_stats", id, status: "ok", stats };
   }
 
   return {
@@ -481,6 +551,7 @@ function createMewbeatChannel({
         case "mewbeat_solo_prepare": return soloPrepare(guildId, userId, message);
         case "mewbeat_submit": return submit(guildId, userId, message, profile);
         case "mewbeat_board": return board(guildId, userId, message);
+        case "mewbeat_song_stats": return songStats(guildId, userId, message);
         case "mewbeat_played": return played(guildId, userId, message);
         case "mewbeat_live": return live(guildId, userId, message, profile);
         default:

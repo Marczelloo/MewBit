@@ -112,3 +112,16 @@ test("actions pass their bodies and never throw", async () => {
   assert.deepEqual(sent[1], { type: "mewbeat_room_queue_add", uri: "u", source: "youtube" });
   assert.deepEqual(sent[2], { type: "mewbeat_room_queue_remove", index: 2 });
 });
+
+test("songStats asks for the song's numbers and returns them", async () => {
+  const stats = { easy: { stars: 1.2, notes: 80, best: null }, hell: { stars: 7.9, notes: 900, best: { score: 812345, grade: "A" } } };
+  const { store, sent } = setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "ok", stats } });
+  assert.deepEqual(await store.songStats("song"), stats);
+  assert.deepEqual(sent[0], { type: "mewbeat_song_stats", audioKey: "song" });
+});
+
+test("songStats gives null when the server has no numbers or the call fails", async () => {
+  assert.equal(await setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "ok", stats: null } }).store.songStats("song"), null);
+  assert.equal(await setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "error", reason: "unknown_song" } }).store.songStats("song"), null);
+  assert.equal(await setup({ mewbeat_song_stats: new Error("down") }).store.songStats("song"), null);
+});

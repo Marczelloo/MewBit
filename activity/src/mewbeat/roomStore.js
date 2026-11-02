@@ -70,5 +70,10 @@ export function createRoomStore({ requests, now = () => performance.now(), onRoo
     queueAdd: ({ uri, source }) => act("mewbeat_room_queue_add", { uri, source }, 40_000),
     queueRemove: (index) => act("mewbeat_room_queue_remove", { index }),
     invite: () => act("mewbeat_room_invite"),
+    // Per-difficulty stars, note counts and my best for a song; null when the bot can't tell (never throws).
+    songStats: async (audioKey) => {
+      const reply = await act("mewbeat_song_stats", { audioKey });
+      return reply?.status === "ok" ? reply.stats ?? null : null;
+    },
   };
 }

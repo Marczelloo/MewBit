@@ -156,6 +156,7 @@ test("inviteMessage maps every reply", () => {
 test("roomErrorText has copy for known reasons and a fallback", () => {
   assert.match(roomErrorText("queue_full"), /full/);
   assert.match(roomErrorText({ reason: "not_host" }), /host/);
+  assert.match(roomErrorText("in_round"), /middle of your round/);
   assert.match(roomErrorText("???"), /Something went wrong/);
 });
 

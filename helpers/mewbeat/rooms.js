@@ -7,6 +7,8 @@ const MAX_QUEUE = 20;
 // One member can't fill the whole queue.
 const MAX_QUEUE_PER_USER = 5;
 const LOADING_MS = 20_000;
+// A song nobody has yet may still be in analysis: with no player loaded the round waits this much longer.
+const LOADING_LATE_MS = 120_000;
 const COUNTDOWN_MS = 5_000;
 // A round that nobody finishes ends this long after the song would have; the
 // slack also covers a slow client or a long server-side recompute.
@@ -59,6 +61,7 @@ function createRooms({
         ready: member.ready,
         loaded: member.loaded,
         spectator: member.spectator,
+        watching: member.watching,
         submitted: member.submitted,
       })),
       queue: room.queue.map((entry) => ({ ...entry })),
@@ -106,11 +109,30 @@ function createRooms({
     }, ms);
   }
 
+  // Spectators who chose to watch stay put; only the ones kept out of a round
+  // (or out of a full room) take the free seats.
   function promoteSpectators(room) {
     for (const member of room.members) {
       if (playersOf(room).length >= MAX_PLAYERS) return;
-      if (member.spectator) member.spectator = false;
+      if (member.spectator && !member.watching) member.spectator = false;
     }
+  }
+
+  // A waiting room whose players are all ready starts at once, if a song is queued.
+  function maybeStart(room) {
+    if (!IDLE_PHASES.includes(room.phase) || !room.queue.length) return;
+    const players = playersOf(room);
+    if (!players.length || !players.every((member) => member.ready)) return;
+    startRound(room);
+  }
+
+  // Someone came, left or switched to watching in a waiting phase: free seats
+  // fill, an intermission with nobody to play falls back, an all-ready room starts.
+  function rosterChanged(room) {
+    if (!IDLE_PHASES.includes(room.phase)) return;
+    promoteSpectators(room);
+    if (room.phase === "intermission" && !playersOf(room).length) settle(room);
+    maybeStart(room);
   }
 
   function sortedResults(room) {
@@ -165,6 +187,7 @@ function createRooms({
     room.current = room.queue.shift();
     room.round += 1;
     room.phase = "loading";
+    room.loadingLate = false;
     room.startAt = null;
     room.nextAt = null;
     room.endedAt = null;
@@ -173,8 +196,14 @@ function createRooms({
     for (const member of room.members) {
       member.loaded = false;
       member.submitted = false;
+      // Ready is for the round that is about to start, not the next one.
+      member.ready = false;
     }
-    after(room, "loading", LOADING_MS, ["loading"], () => beginCountdown(room));
+    after(room, "loading", LOADING_MS, ["loading"], () => {
+      if (playersOf(room).some((member) => member.loaded)) return beginCountdown(room);
+      room.loadingLate = true;
+      after(room, "loading", LOADING_LATE_MS, ["loading"], () => beginCountdown(room));
+    });
     reprepare(room);
   }
 
@@ -226,7 +255,7 @@ function createRooms({
     if (room.phase !== "loading") return;
     const players = playersOf(room);
     if (!players.length) return abortRound(room);
-    if (players.every((member) => member.loaded)) beginCountdown(room);
+    if (players.every((member) => member.loaded) || (room.loadingLate && players.some((member) => member.loaded))) beginCountdown(room);
   }
 
   function destroy(room) {
@@ -274,6 +303,8 @@ function createRooms({
         // Someone who arrives while a song is on, or after the seats are
         // taken, watches until the next round.
         spectator: ROUND_PHASES.includes(room.phase) || playersOf(room).length >= MAX_PLAYERS,
+        // Chose to spectate (survives rounds), unlike `spectator`, which only means "not in this round".
+        watching: false,
         submitted: false,
       });
     }
@@ -294,8 +325,7 @@ function createRooms({
     }
     if (room.hostId === userId) room.hostId = room.members[0].userId;
     if (IDLE_PHASES.includes(room.phase)) {
-      promoteSpectators(room);
-      if (room.phase === "intermission" && !playersOf(room).length) settle(room);
+      rosterChanged(room);
     } else if (room.phase === "loading") {
       checkLoaded(room);
     } else if (room.phase === "countdown" || room.phase === "playing") {
@@ -344,6 +374,8 @@ function createRooms({
       source: track.source ?? source ?? "",
       addedBy: userId,
     });
+    // A lobby that was waiting only for a song starts now.
+    maybeStart(room);
     push(room);
     return ok();
   }
@@ -362,13 +394,27 @@ function createRooms({
     return ok();
   }
 
-  function ready(guildId, userId, { ready: isReady, difficulty } = {}) {
+  // `spectate: true` is a choice to watch (kept across rounds); `false` asks for
+  // a seat, which a running round or a full room defers to the next promotion.
+  function ready(guildId, userId, { ready: isReady, difficulty, spectate } = {}) {
     const room = rooms.get(guildId);
     const member = room && findMember(room, userId);
     if (!member) return fail("not_in_room");
     if (difficulty !== undefined && !DIFFICULTIES.includes(difficulty)) return fail("bad_difficulty");
+    // Everything is checked before anything changes, so a refusal leaves the member as it was.
+    if (spectate === true && !member.spectator && ROUND_PHASES.includes(room.phase)) return fail("in_round");
+    let spectatorAfter = member.spectator;
+    if (spectate === true) spectatorAfter = true;
+    else if (spectate === false && !ROUND_PHASES.includes(room.phase) && playersOf(room).length < MAX_PLAYERS) spectatorAfter = false;
+    if (isReady === true && spectatorAfter) return fail("spectating");
+
     if (difficulty !== undefined) member.difficulty = difficulty;
+    if (spectate === true) member.watching = true;
+    else if (spectate === false) member.watching = false;
+    member.spectator = spectatorAfter;
     if (typeof isReady === "boolean") member.ready = isReady;
+    if (member.spectator) member.ready = false;
+    rosterChanged(room);
     push(room);
     return ok();
   }

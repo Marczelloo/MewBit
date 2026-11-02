@@ -21,6 +21,11 @@ const FLASH_KEEP_MS = 400;
 const SWAP_TIMEOUT_MS = 20000; // a difficulty change whose chart never arrives gives up and keeps the old chart
 const SWAP_FAILED_SHOW_MS = 3500;
 
+// m:ss for the progress readout
+function clockText(totalSeconds) {
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+}
+
 const EMPTY_COUNTS = { perfect: 0, great: 0, good: 0, miss: 0 };
 export const EMPTY_HUD = {
   score: 0,
@@ -87,12 +92,14 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
   const canvasRef = useRef(null);
   const progressRef = useRef(null);
+  const progressTimeRef = useRef(null);
   const rendererRef = useRef(null);
   const phaseRef = useRef("connecting");
   const resumePhaseRef = useRef("connecting"); // what "offline" interrupted
   const runRef = useRef(null);
   const chartRef = useRef(null);
   const runAutoplayRef = useRef(false);
+  const runSpectatingRef = useRef(false); // the run on stage is someone else's round: autoplay, silent, no keys, no score
   const autoplayRef = useRef(false);
   const dirtyRef = useRef(false);
   const lastSongMsRef = useRef(0);
@@ -128,6 +135,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   // Latest props for the long-lived callbacks below.
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
+  const spectating = Boolean(cfg.spectating);
+  // A room link's own state is current the moment a round is abandoned or taken over; the prop is a render behind.
+  const spectatingNow = () => Boolean(link.state?.().spectating ?? cfgRef.current.spectating);
   const trackRef = useRef(trackInfo);
   trackRef.current = trackInfo;
   const onExitRef = useRef(onExit);
@@ -231,14 +241,18 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       const chart = chartRef.current;
       const songMs = songClock.songTimeAt(performance.now());
       if (!chart || songMs === null) return;
+      // The link knows first (cfg follows a render later); a spectated round always autoplays, whatever the toggle says.
+      const spectating = spectatingNow();
+      const autoplay = autoplayRef.current || spectating;
       const run = createRun({
         chart,
         startSongMs: songMs,
         offsetMs: cfgRef.current.offsetMs,
-        autoplay: autoplayRef.current,
+        autoplay,
       });
       runRef.current = run;
-      runAutoplayRef.current = autoplayRef.current;
+      runAutoplayRef.current = autoplay;
+      runSpectatingRef.current = spectating;
       runTrackRef.current = trackRef.current;
       runCalibrationRef.current = Boolean(chartRef.current?.calibration);
       runMetaRef.current = { audioKey: songClock.audioKey(), difficulty: cfgRef.current.liveDifficulty, chartVersion: chart.version ?? null, highlightMs: chart.highlightMs ?? null };
@@ -283,7 +297,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       endLive(snap);
       clearSwap();
       setRunDifficulty(null);
-      if (snap.judged >= 1) {
+      // Nobody is graded for watching: a spectated run leaves no summary and sends nothing.
+      if (snap.judged >= 1 && !runSpectatingRef.current) {
         const { hits, ranked, skipped, ...rest } = snap;
         const meta = runMetaRef.current ?? {};
         const { events, fevers } = run.log();
@@ -407,7 +422,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           comboRef.current += 1;
           // The player's presses sound on the key (see onLane); autoplay has no keys, so its heads
           // sound here. A tail counts for combo and the popup, but it has no sound of its own.
-          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runCalibrationRef.current && event.part !== "tail") soundsRef.current?.play(cfgRef.current.hitVolume);
+          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && event.part !== "tail") soundsRef.current?.play(cfgRef.current.hitVolume);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -436,7 +451,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       setHud(toHud(snap));
       liveRef.current?.update(liveSample(snap));
       // Autoplay plays the whole game, FEVER included.
-      if (runAutoplayRef.current && snap.vibe >= 1 && !snap.feverActive) {
+      if (runAutoplayRef.current && !runSpectatingRef.current && snap.vibe >= 1 && !snap.feverActive) {
         const fever = run.fever(songMs);
         if (fever) handleEvents([fever], run.heardTime(songMs));
       }
@@ -555,6 +570,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     const buildRouter = (keys) => createKeyRouter({
       keys,
       onLane: (lane, timeStamp) => {
+        if (runSpectatingRef.current) return; // the keys do nothing while watching
         lanesDownRef.current[lane] = true;
         const run = runRef.current;
         if (!run || phaseRef.current !== "playing") return;
@@ -577,7 +593,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       },
       onFever: () => {
         const run = runRef.current;
-        if (!run || phaseRef.current !== "playing") return;
+        if (!run || phaseRef.current !== "playing" || runSpectatingRef.current) return;
         const songMs = songClock.songTimeAt(performance.now());
         if (songMs === null) return;
         const fever = run.fever(songMs);
@@ -606,7 +622,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         lanesDownRef.current[lane] = false;
         const run = runRef.current;
         const songMs = songClock.songTimeAt(event.timeStamp);
-        if (run && songMs !== null) handleEvents(run.release(lane, songMs), run.heardTime(songMs));
+        if (run && songMs !== null && !runSpectatingRef.current) handleEvents(run.release(lane, songMs), run.heardTime(songMs));
       }
       // Space is FEVER and keydown already took it; keep its keyup from clicking a focused button.
       if (lane >= 0 || event.code === "Space") {
@@ -622,6 +638,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     // ---- render loop ----
     let raf = 0;
     let lastPercent = -1;
+    let lastTimeKey = "";
     const emptyFrame = { heardMs: 0, notes: [], lanesDown: [], flashes: [], feverActive: false };
     function frame() {
       raf = window.requestAnimationFrame(frame);
@@ -635,6 +652,14 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         if (percent !== lastPercent) {
           lastPercent = percent;
           progressRef.current.parentElement?.setAttribute("aria-valuenow", String(percent));
+        }
+      }
+      if (progressTimeRef.current) {
+        const elapsed = songMs !== null && songMs > 0 ? Math.floor((duration > 0 ? Math.min(songMs, duration) : songMs) / 1000) : 0;
+        const key = duration > 0 ? `${elapsed}/${Math.round(duration / 1000)}` : String(elapsed);
+        if (key !== lastTimeKey) {
+          lastTimeKey = key;
+          progressTimeRef.current.textContent = duration > 0 ? `${clockText(elapsed)} / ${clockText(Math.round(duration / 1000))}` : clockText(elapsed);
         }
       }
 
@@ -730,18 +755,19 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   }, [effectsLevel]);
 
   // Autoplay applies to the next run. A run that has not judged a note yet restarts so it takes effect now.
-  const setAutoplay = useCallback((next) => {
-    const value = Boolean(next);
-    autoplayRef.current = value;
-    setAutoplayState(value);
+  // A spectated round stays autoplay whatever the toggle says (the toggle itself is left as the user set it).
+  const restartRun = useCallback((value) => {
+    const forced = spectatingNow();
+    const effective = value || forced;
     const run = runRef.current;
     const songMs = link.songClock.songTimeAt(performance.now());
     if (run && songMs !== null && run.snapshot(songMs).judged === 0 && !run.flags.difficultyChanged && chartRef.current) {
       const chart = chartRef.current;
-      const restarted = createRun({ chart, startSongMs: songMs, offsetMs: cfgRef.current.offsetMs, autoplay: value });
+      const restarted = createRun({ chart, startSongMs: songMs, offsetMs: cfgRef.current.offsetMs, autoplay: effective });
       runRef.current = restarted;
-      runAutoplayRef.current = value;
-      if (value && liveRef.current) {
+      runAutoplayRef.current = effective;
+      runSpectatingRef.current = forced;
+      if (effective && liveRef.current) {
         // An autoplayed run is not a score to put on the board.
         liveRef.current.end();
         liveRef.current = null;
@@ -749,11 +775,23 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       }
       const snap = restarted.snapshot(songMs);
       const { hits, ranked, skipped, ...rest } = snap;
-      setHud({ ...rest, unranked: value || skipped > 0, judgement: null });
+      setHud({ ...rest, unranked: effective || skipped > 0, judgement: null });
       judgementRef.current = null;
       flashesRef.current = [];
     }
   }, [link]);
+
+  const setAutoplay = useCallback((next) => {
+    const value = Boolean(next);
+    autoplayRef.current = value;
+    setAutoplayState(value);
+    restartRun(value);
+  }, [restartRun]);
+
+  // A player whose chart came too late turns into a spectator with the run already built: take it over now.
+  useEffect(() => {
+    if (spectating) restartRun(autoplayRef.current);
+  }, [spectating, restartRun]);
 
   const resetTiming = useCallback(() => {
     tapTiming.reset();
@@ -762,5 +800,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
   const changeDifficulty = useCallback((next) => requestSwapRef.current(next), []);
 
-  return { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
+  return { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating };
 }

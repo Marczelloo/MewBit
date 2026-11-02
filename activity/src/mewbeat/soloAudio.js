@@ -262,11 +262,11 @@ export function createSoloAudio({
     }
   }
 
-  // Plays a stretch of clipBuffer from fromS with fades, looping until something stops it.
+  // Plays clipBuffer from fromS to the end of the song with fades, once.
   function startClip(clipBuffer, fromS, level) {
     dropClip(CLIP_SWAP_FADE_S);
     const c = ctx;
-    const lengthS = Math.min(CLIP_WINDOW_S, clipBuffer.duration - fromS);
+    const lengthS = clipBuffer.duration - fromS;
     if (!(lengthS > 0)) return;
     const clipGain = c.createGain();
     clipGain.connect(gain);
@@ -286,7 +286,6 @@ export function createSoloAudio({
       clip = null;
       try { node.disconnect(); } catch { /* already disconnected */ }
       try { clipGain.disconnect(); } catch { /* already disconnected */ }
-      startClip(clipBuffer, fromS, level);
     };
     node.start(at, fromS, lengthS);
     clip = current;
@@ -294,7 +293,7 @@ export function createSoloAudio({
 
   function clipStartS(fromMs, durationS) {
     const wanted = Number.isFinite(fromMs) && fromMs >= 0 ? fromMs / 1000 : durationS * CLIP_DEFAULT_SHARE;
-    // A highlight near the end starts early enough to fill the window.
+    // A highlight near the end starts early enough to leave the window to hear.
     return Math.max(0, Math.min(wanted, durationS - CLIP_WINDOW_S));
   }
 
@@ -322,8 +321,8 @@ export function createSoloAudio({
     }
   }
 
-  // Previews a song without loading it for play: the game's buffer stays as it is, and only the stretch that plays
-  // is kept. Resolves true once it plays, false when it was replaced, stopped or failed (a preview never reports).
+  // Previews a song without loading it for play: the game's buffer stays as it is, and the decoded preview goes when
+  // its clip does. Resolves true once it plays, false when it was replaced, stopped or failed (a preview never reports).
   async function preview(audioKey, { fromMs = null, level = PREVIEW_LEVEL } = {}) {
     const seq = ++clipSeq;
     if (ctx) dropClip(CLIP_SWAP_FADE_S);
@@ -337,21 +336,14 @@ export function createSoloAudio({
         await c.resume();
         if (seq !== clipSeq || c.state !== "running") return false;
       }
-      const fromS = clipStartS(fromMs, decoded.duration);
-      const start = Math.floor(fromS * decoded.sampleRate);
-      const length = Math.min(Math.ceil(CLIP_WINDOW_S * decoded.sampleRate), decoded.length - start);
-      const stretch = c.createBuffer(decoded.numberOfChannels, length, decoded.sampleRate);
-      for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
-        stretch.copyToChannel(decoded.getChannelData(channel).subarray(start, start + length), channel);
-      }
-      startClip(stretch, 0, level);
+      startClip(decoded, clipStartS(fromMs, decoded.duration), level);
       return true;
     } catch {
       return false;
     }
   }
 
-  // Plays a stretch of the loaded song from fromMs (no highlight known: from CLIP_DEFAULT_SHARE of it).
+  // Plays the loaded song on from fromMs (no highlight known: from CLIP_DEFAULT_SHARE of it).
   function highlight(fromMs, { level = HIGHLIGHT_LEVEL } = {}) {
     if (!buffer || !ctx) return false;
     clipSeq += 1;

@@ -9,7 +9,7 @@ const RESUME_LEAD_MS = 40;
 // A start that is already in the past plays from where the song would be now, plus the audio's own lead.
 const LATE_LEAD_MS = 60;
 
-const IDLE_STATE = { stage: "idle", round: null, audioKey: null, error: null, prepared: false, startPerf: null, playedRound: null };
+const IDLE_STATE = { stage: "idle", round: null, audioKey: null, error: null, prepared: false, spectating: false, startPerf: null, playedRound: null };
 
 // The link of a room round. Same surface as createSoloLink/createMewbeatLink, so useMewbeatGame runs
 // unchanged on it. It is driven by room snapshots (setRoom):
@@ -17,6 +17,8 @@ const IDLE_STATE = { stage: "idle", round: null, audioKey: null, error: null, pr
 //                difficulty; once the game took the chart, tell the server (mewbeat_room_loaded)
 //   countdown -> start the audio exactly at startAt, mapped onto the audio clock
 //   anything else (the round ended, I left, a new round) drops the run.
+// A spectator (or a player whose chart came too late) engages the same way but in any active phase, never
+// reports "loaded", and joins the audio wherever the song is: the game runs an autoplay chart for them.
 //
 // Stages: idle -> loading -> ready (anchored, waiting for the chart) -> waiting (chart taken, "loaded"
 // sent) -> countdown -> playing -> ended; "error" carries a message (the audio could not start).
@@ -69,14 +71,14 @@ export function createRoomLink({
     if (had) emitAnchor("clear");
   }
 
-  async function begin(room) {
+  async function begin(room, spectate = false) {
     audio.unlock?.();
     // Leaving a previous round's song: the game drops its run before the new one is charted.
     abandon();
     const mine = token;
     const audioKey = room.current.audioKey;
     engaged = room.round;
-    setState({ stage: "loading", round: room.round, audioKey });
+    setState({ stage: "loading", round: room.round, audioKey, spectating: spectate });
     let loaded;
     try {
       loaded = await audio.load(audioKey);
@@ -98,10 +100,17 @@ export function createRoomLink({
   function chartAccepted(chart) {
     if (state.stage !== "ready") return;
     if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
+    if (state.spectating) {
+      // A spectator is never counted as loaded: just wait for the start to join the audio.
+      setState({ stage: "waiting", prepared: false });
+      drive();
+      return;
+    }
     const phase = latest?.room?.phase;
     if (phase !== "loading" || latest.room.round !== engaged) {
-      // Too late: the server already moved on without this player.
-      setState({ stage: "waiting", prepared: false });
+      // Too late: the server already moved on without this player, so the round is only watched from here.
+      setState({ stage: "waiting", prepared: false, spectating: true });
+      drive();
       return;
     }
     setState({ stage: "waiting", prepared: true });
@@ -121,17 +130,25 @@ export function createRoomLink({
     const nowPerf = now();
     setState({ stage: "countdown", startPerf, playedRound: room.round });
     const late = nowPerf >= startPerf - 5;
-    const play = late
-      ? audio.play(Math.max(0, nowPerf - startPerf) + LATE_LEAD_MS)
-      : audio.play(0, startPerf);
+    const fromMs = Math.max(0, nowPerf - startPerf) + LATE_LEAD_MS;
+    // A spectator who joins a song in progress: the paused clock reads where the song is now and the run
+    // jumps there before it resumes, so the autoplay does not burst through everything it "missed".
+    const catchUp = late && state.spectating;
+    if (catchUp) {
+      soloClock.set({ positionMs: fromMs });
+      emitAnchor("snap");
+    }
+    const play = late ? audio.play(fromMs) : audio.play(0, startPerf);
     Promise.resolve(play).then(null, () => {
       if (mine !== token) return;
+      // Not retried on every snapshot: a spectator would otherwise re-engage the same round at once.
+      failedRound = room.round;
       abandon({ error: "The audio couldn't start. Tap the screen and join the next round." });
     });
     const resume = () => {
       startTimer = null;
       if (mine !== token || state.stage !== "countdown") return;
-      soloClock.set({ paused: false, positionMs: 0 });
+      soloClock.set(catchUp ? { paused: false } : { paused: false, positionMs: 0 });
       setState({ stage: "playing" });
       emitAnchor("resume");
     };
@@ -145,15 +162,19 @@ export function createRoomLink({
     const { room, receivedAt } = latest;
     const userId = getUserId();
     const me = memberOf(room, userId);
-    const inRound = roundActive(room) && room.current && me && !me.spectator;
+    const spectator = Boolean(me?.spectator);
+    const inRound = roundActive(room) && room.current && me;
     // The round ended, a new one started, or I left it: the run is dropped (its Results stay with the game).
-    if (engaged != null && (!inRound || room.round !== engaged)) abandon();
+    // A player who turned spectator while loading is dropped too and re-engages as one.
+    if (engaged != null && (!inRound || room.round !== engaged || (spectator && !state.spectating))) abandon();
     if (!inRound) return;
-    if (engaged == null && room.phase === "loading" && failedRound !== room.round) {
-      begin(room);
+    // A player can only join a round in its loading phase; a spectator joins wherever the round is.
+    if (engaged == null && failedRound !== room.round && (spectator || room.phase === "loading")) {
+      begin(room, spectator);
       return;
     }
-    if (engaged === room.round && !scheduled && state.stage === "waiting" && state.prepared && me.loaded && (room.phase === "countdown" || room.phase === "playing") && Number.isFinite(room.startAt)) {
+    const counted = state.spectating || (state.prepared && me.loaded);
+    if (engaged === room.round && !scheduled && state.stage === "waiting" && counted && (room.phase === "countdown" || room.phase === "playing") && Number.isFinite(room.startAt)) {
       schedule(room, receivedAt);
     }
   }

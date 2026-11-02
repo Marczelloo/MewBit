@@ -295,7 +295,7 @@
 .mb-char .mb-mewbit-bubble { right: 18%; font-size: 20px; }
 
 /* highway */
-.mb-highway-slot { box-sizing: border-box; display: flex; justify-content: center; min-height: 0; padding-top: 18px; z-index: 2; }
+.mb-highway-slot { position: relative; box-sizing: border-box; display: flex; justify-content: center; min-height: 0; padding-top: 18px; z-index: 2; }
 .mb-highway {
   position: relative;
   width: 100%;
@@ -322,8 +322,17 @@
 .mb-fx-off .mb-judgement,
 .mb-fx-off .mb-feverbanner,
 .mb-fx-off .mb-res-grade,
+.mb-fx-off .mb-res-grade::before,
 .mb-fx-off .mb-res-mew,
+.mb-fx-off .mb-res-bubble,
+.mb-fx-off .mb-res-in,
+.mb-fx-off .mb-res-judges li,
+.mb-fx-off .mb-res-newbest::after,
+.mb-fx-off .mb-res-board li,
 .mb-fx-off .mb-res-standings li { animation: none; }
+.mb-fx-off .mb-fever-ready .mb-fever-bar::after { animation: none; opacity: 1; }
+/* Effects off drops the big blurred layer too: it is the costliest paint on the screen. */
+.mb-fx-off .mb-res-backdrop { display: none; }
 .mb-fx-off .mb-highway,
 .mb-fx-off .mb-mult-fg { transition: none; }
 .mb-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
@@ -406,7 +415,9 @@
 .mb-grade-D, .mb-grade-none { color: var(--mb-danger); }
 
 /* right column */
-.mb-side { display: flex; flex-direction: column; gap: 12px; justify-self: end; width: min(100%, 280px); padding: 18px 14px; }
+/* The left padding leaves room for the FEVER bar, which sits in the gap beside the highway (see .mb-fever). */
+.mb-side { display: flex; flex-direction: column; gap: 12px; justify-self: end; width: min(100%, 288px); min-height: 0; padding: 18px 14px 18px 22px; }
+.mb-side > .mb-track, .mb-side > .mb-hud, .mb-side > .mb-spectate { flex: none; }
 .mb-card {
   padding: 14px;
   border-radius: 16px;
@@ -415,11 +426,13 @@
   backdrop-filter: blur(6px);
 }
 .mb-card .mb-label { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; color: var(--mb-faint); }
-.mb-live { display: inline-flex; align-items: center; gap: 6px; }
-.mb-card .mb-live { color: var(--mb-pink); }
-.mb-live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--mb-pink); }
-.mb-track-title { display: block; margin-top: 6px; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.mb-track-artist { display: block; color: var(--mb-muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.mb-track-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mb-track-cover { flex: none; width: 64px; height: 64px; border-radius: 14px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
+.mb-track-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
+.mb-track-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mb-track-title, .mb-track-artist { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-track-title { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
+.mb-track-artist { color: var(--mb-muted); font-size: 12.5px; }
 .mb-diff { display: grid; gap: 4px; margin-top: 10px; }
 .mb-diff-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 2px; border-radius: 10px; background: var(--mb-bg); outline: 1px solid var(--mb-line); }
 .mb-diff-btn {
@@ -441,23 +454,56 @@
 .mb-diff-loading { color: var(--mb-violet); animation: mb-blink 900ms steps(1) infinite; }
 .mb-diff-failed { color: var(--mb-danger); }
 .mb-fx-reduced .mb-diff-loading, .mb-fx-off .mb-diff-loading { animation: none; }
-.mb-progress { height: 3px; margin-top: 12px; border-radius: 2px; background: var(--mb-high-bg); overflow: hidden; }
+.mb-track-prog { margin-top: 12px; }
+.mb-progress { height: 6px; border-radius: 3px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
 .mb-progress i { display: block; width: 100%; height: 100%; background: var(--mb-text); transform: scaleX(0); transform-origin: left center; }
+.mb-track-time { display: block; margin-top: 6px; color: var(--mb-faint); font: 500 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
 .mb-hud-card { display: block; }
-.mb-hud-score { margin-top: 4px; font: 900 30px/1.2 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.mb-hud-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 0; color: var(--mb-muted); font-size: 12.5px; }
-.mb-hud-stats b { display: block; color: var(--mb-text); font: 700 14px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.mb-hud-vibe-label { display: block; margin-top: 12px; }
-.mb-vibe { height: 8px; margin-top: 10px; border-radius: 999px; background: var(--mb-high-bg); overflow: hidden; }
-.mb-vibe i { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, var(--mb-cyan), var(--mb-violet), var(--mb-pink)); transform-origin: left center; }
-.mb-vibe-full i { background: var(--mb-gold); }
-.mb-vibe-hint { min-height: 16px; margin-top: 6px; color: var(--mb-faint); font-size: 11.5px; }
-.mb-vibe-hint-ready { color: var(--mb-gold); font-weight: 700; animation: mb-blink 800ms steps(1) infinite; }
+.mb-hud-score { margin-top: 6px; font: 900 30px/1.2 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mb-hud-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--mb-line); color: var(--mb-muted); font-size: 12.5px; line-height: 1.4; }
+.mb-hud-stats b { display: block; margin-top: 2px; color: var(--mb-text); font: 700 14px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 @keyframes mb-blink { 50% { opacity: 0.45; } }
 
+/* FEVER meter: a column in the gap right of the highway, outside the canvas so the highway keeps its size.
+   Quiet while the vibe fills, glowing once it is full (Space starts FEVER), then draining over the FEVER time. */
+.mb-fever {
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: calc(100% + 4px);
+  width: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.mb-fever-top, .mb-fever-cap {
+  flex: none;
+  height: 34px;
+  color: var(--mb-faint);
+  font: 700 9px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+.mb-fever-bar { position: relative; flex: 1 1 0; width: 100%; min-height: 0; }
+.mb-fever-track { position: absolute; inset: 0; border-radius: 999px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
+.mb-fever-track i { display: block; width: 100%; height: 100%; background: linear-gradient(0deg, var(--mb-cyan), var(--mb-violet), var(--mb-pink)); transform: scaleY(0); transform-origin: bottom center; }
+.mb-fever-ready .mb-fever-track i { background: var(--mb-gold); }
+.mb-fever-on .mb-fever-track i { background: linear-gradient(0deg, var(--mb-gold), var(--mb-pink)); }
+.mb-fever-ready .mb-fever-top, .mb-fever-on .mb-fever-top, .mb-fever-on .mb-fever-cap { color: var(--mb-gold); }
+/* The glow is a static shadow whose opacity pulses, so only opacity animates. */
+.mb-fever-bar::after { content: ""; position: absolute; inset: -2px; border-radius: 999px; box-shadow: 0 0 12px 2px color-mix(in srgb, var(--mb-gold) 70%, transparent); opacity: 0; pointer-events: none; }
+.mb-fever-ready .mb-fever-bar::after { animation: mb-fever-glow 900ms ease-in-out infinite; }
+@keyframes mb-fever-glow { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+
 /* live leaderboard: top 5 of the session plus the player's own row */
-.mb-lb-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
-.mb-lb-row { display: grid; grid-template-columns: 16px 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--mb-high); font-size: 13px; }
+/* The board gives way first when the column runs out of height: its list scrolls, the cards above keep their size. */
+.mb-lb { display: flex; flex-direction: column; min-height: 0; }
+.mb-lb-list { display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-height: 0; margin: 10px 0 0; padding: 0; overflow-y: auto; scrollbar-width: thin; list-style: none; }
+.mb-lb-row { display: grid; grid-template-columns: 16px 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; flex: none; min-height: 24px; color: var(--mb-high); font-size: 13px; line-height: 1; }
 .mb-lb-gap { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--mb-line); }
 .mb-lb-rank { color: var(--mb-faint); font: 700 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
 .mb-lb-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; outline: 1px solid var(--mb-line); }
@@ -477,6 +523,7 @@
   .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) auto; gap: 12px; height: auto; min-height: 100%; padding: 12px 16px 16px; }
   .mb-char, .mb-spot { display: none; }
   .mb-highway-slot { justify-self: center; width: min(100%, 460px); min-height: 260px; padding-top: 0; }
+  .mb-fever { top: 0; }
   .mb-highway { border-radius: 18px; }
   .mb-side { align-self: start; justify-self: center; width: min(100%, 460px); padding: 0; }
   .mb-header { flex-wrap: wrap; padding: 8px 16px; }
@@ -490,13 +537,11 @@
   .mb-side { gap: 8px; }
   .mb-track { padding: 8px 12px; }
   .mb-track .mb-label, .mb-track-artist { display: none; }
-  .mb-track-title { margin-top: 0; }
-  .mb-progress { margin-top: 6px; }
+  .mb-track-cover { width: 40px; height: 40px; border-radius: 8px; }
+  .mb-track-prog { margin-top: 6px; }
   .mb-hud-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 12px; }
   .mb-hud-card .mb-label, .mb-hud-stats { display: none; }
   .mb-hud-score { margin-top: 0; font-size: 22px; }
-  .mb-vibe { flex: 1 1 80px; margin-top: 0; }
-  .mb-vibe-hint { flex: 1 0 100%; margin-top: 0; font-size: 11px; }
   .mb-lb { display: none; }
 }
 @media (max-width: 560px) {
@@ -596,14 +641,20 @@
   .mb-mult,
   .mb-judgement,
   .mb-res-grade,
+  .mb-res-grade::before,
   .mb-res-mew,
+  .mb-res-bubble,
+  .mb-res-in,
+  .mb-res-judges li,
+  .mb-res-newbest::after,
+  .mb-res-board li,
   .mb-res-standings li,
   .mb-feverbanner,
   .mb-spot,
   .mb-pulse-a,
   .mb-pulse-b,
-  .mb-vibe-hint-ready { animation: none; }
-  .mb-feverbanner, .mb-vibe-hint-ready { opacity: 1; }
+  .mb-fever-ready .mb-fever-bar::after { animation: none; }
+  .mb-feverbanner, .mb-fever-ready .mb-fever-bar::after { opacity: 1; }
   .mb-btn,
   .mb-highway,
   .mb-stage,
@@ -824,9 +875,10 @@
 }
 .mb-pause-title { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; text-align: center; }
 .mb-pause-actions { display: flex; flex-direction: column; gap: 8px; }
-.mb-pause-actions .mb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.mb-pause-actions .mb-btn, .mb-pause-exit { display: inline-flex; align-items: center; justify-content: flex-start; gap: 10px; }
+.mb-pause .mb-btn svg { flex: none; }
+.mb-pause .mb-kbd { margin-left: auto; }
 .mb-pause-note { margin: -6px 0 0; color: var(--mb-muted); font-size: 13px; text-align: center; }
-.mb-pause-exit { justify-content: center; }
 @media (prefers-reduced-motion: reduce) {
   .mb-pause-scrim, .mb-countin b { animation: none; }
   .mb-mode, .mb-ss-row, .mb-ss-diff { transition: none; }
@@ -848,6 +900,25 @@
   animation: mb-fade-in 240ms ease-out both;
 }
 .mb-res-has-side { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+/* The cover, blurred and dimmed, behind the whole screen; the shade holds the text's contrast. */
+.mb-res-backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.mb-res-backdrop img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0.22; transform: scale(1.2); filter: blur(40px) saturate(1.3); }
+.mb-res-backdrop::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--mb-bg) 35%, transparent), color-mix(in srgb, var(--mb-bg) 85%, transparent)); }
+.mb-res-main, .mb-res-side { position: relative; z-index: 1; }
+/* One staged entrance: each block rises in after the one above it (--d), once per summary. */
+.mb-res-in { animation: mb-res-rise 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: var(--d, 0ms); }
+@keyframes mb-res-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes mb-res-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Reduced effects keep only opacity fades. */
+.mb-fx-reduced .mb-res-in,
+.mb-fx-reduced .mb-res-judges li,
+.mb-fx-reduced .mb-res-mew,
+.mb-fx-reduced .mb-res-bubble,
+.mb-fx-reduced .mb-res-grade,
+.mb-fx-reduced .mb-res-board li,
+.mb-fx-reduced .mb-res-standings li { animation: mb-res-fade 240ms ease-out backwards; }
+.mb-fx-reduced .mb-res-grade::before,
+.mb-fx-reduced .mb-res-newbest::after { animation: none; }
 .mb-res-label { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
 .mb-res-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 18px 22px; overflow-y: auto; }
 
@@ -863,19 +934,26 @@
 .mb-res-unranked b { font: 700 13px "JetBrains Mono", ui-monospace, monospace; color: var(--mb-high); }
 .mb-res-unranked small, .mb-res-quiet { color: var(--mb-faint); font: 500 11px/1.4 "JetBrains Mono", ui-monospace, monospace; }
 
-.mb-res-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(150px, 27%, 270px); gap: 14px; }
+/* Never shorter than its cards: on a short window the column scrolls, so the footer can't land on them. */
+.mb-res-body { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) clamp(220px, 36%, 400px); gap: 14px; }
 .mb-res-cards { display: flex; flex-direction: column; gap: 16px; justify-content: center; min-width: 0; }
 .mb-res-card { background: var(--mb-surface); border: 1px solid var(--mb-line); border-radius: 18px; }
 .mb-res-mine { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; padding: 18px 20px; border-color: rgb(103 227 244 / 0.45); border-radius: 20px; }
-.mb-res-grade { width: 76px; font-size: 84px; line-height: 0.85; letter-spacing: -0.06em; text-align: center; animation: mb-res-grade-in 600ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.mb-res-grade { position: relative; isolation: isolate; width: 76px; font-size: 84px; line-height: 0.85; letter-spacing: -0.06em; text-align: center; animation: mb-res-grade-in 600ms cubic-bezier(0.3, 1.6, 0.5, 1) 160ms both; }
 @keyframes mb-res-grade-in { from { transform: scale(2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* One soft pulse in the grade's own colour once the pop has landed. */
+.mb-res-grade::before { content: ""; position: absolute; inset: -30% -50%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, currentColor 55%, transparent), transparent); opacity: 0; pointer-events: none; animation: mb-res-glow 1100ms ease-out 700ms both; }
+@keyframes mb-res-glow { 0% { opacity: 0; transform: scale(0.6); } 35% { opacity: 0.55; } 100% { opacity: 0; transform: scale(1.35); } }
 .mb-res-scoreline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
 .mb-res-scoreline b { font: 700 38px "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.mb-res-newbest { padding: 3px 6px; border-radius: 5px; background: var(--mb-gold); color: var(--mb-bg); font: 700 10px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
+.mb-res-newbest { position: relative; overflow: hidden; padding: 3px 6px; border-radius: 5px; background: var(--mb-gold); color: var(--mb-bg); font: 700 10px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
+/* A single shine across the chip, once the score has finished counting. */
+.mb-res-newbest::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.65) 50%, transparent 65%); transform: translateX(-120%); pointer-events: none; animation: mb-res-shine 900ms ease-in-out 1000ms both; }
+@keyframes mb-res-shine { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
 .mb-res-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 10px; margin: 12px 0 0; }
 .mb-res-stats dd { margin: 0; font: 700 16px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .mb-res-judges { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
-.mb-res-judges li { padding: 5px 8px; border-radius: 8px; background: #161920; font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-res-judges li { padding: 5px 8px; border-radius: 8px; background: #161920; font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; animation: mb-res-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(200ms + var(--i, 0) * 40ms); }
 .mb-res-judges li span { margin-right: 6px; color: var(--mb-faint); font-weight: 500; text-transform: uppercase; }
 
 .mb-res-timing { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; padding: 14px 18px; }
@@ -889,9 +967,18 @@
 .mb-res-tip p { margin: 0; color: var(--mb-muted); font-size: 12.5px; line-height: 1.4; }
 .mb-res-calib { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 18px; }
 .mb-res-calib b { color: var(--mb-text); }
+/* A short window tightens the cards so everything, footer included, still fits without scrolling. */
+@media (max-height: 780px) {
+  .mb-res-mine { padding: 12px 16px; }
+  .mb-res-stats { margin-top: 8px; }
+  .mb-res-judges { margin-top: 8px; }
+  .mb-res-hist { height: 44px; }
+  .mb-res-tip { max-width: none; }
+}
 
-.mb-res-stage { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; padding-bottom: 8px; }
-.mb-res-stage::before { content: ""; position: absolute; right: 6%; bottom: 22px; left: 6%; height: 26px; border-radius: 50%; background: radial-gradient(closest-side, rgb(255 212 121 / 0.3), transparent); }
+/* A size container: Mewbit is square, so it takes the smaller of the column's width and height (never taller than the stage). */
+.mb-res-stage { position: relative; container-type: size; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; padding-bottom: 8px; }
+.mb-res-stage::before { content: ""; position: absolute; right: 6%; bottom: 14px; left: 6%; height: 36px; border-radius: 50%; background: radial-gradient(closest-side, rgb(255 212 121 / 0.3), transparent); }
 .mb-res-spot {
   position: absolute;
   top: 0;
@@ -903,8 +990,13 @@
   clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%);
   pointer-events: none;
 }
-.mb-res-mew { position: relative; width: 100%; max-width: 270px; }
-.mb-res-bubble { position: absolute; top: 2%; right: -2%; max-width: 160px; padding: 7px 10px; border-radius: 12px 12px 12px 3px; background: var(--mb-text); color: var(--mb-bg); font-weight: 800; font-size: 12.5px; line-height: 1.25; }
+.mb-res-mew { position: relative; width: min(100%, 400px); max-width: 400px; animation: mb-res-mew-in 650ms cubic-bezier(0.22, 1, 0.36, 1) 150ms backwards; }
+@supports (width: 1cqh) { .mb-res-mew { width: min(100cqw, 100cqh, 400px); } }
+/* Rises in with a small overshoot. */
+@keyframes mb-res-mew-in { 0% { opacity: 0; transform: translateY(26px) scale(0.94); } 60% { opacity: 1; transform: translateY(-6px) scale(1.01); } 100% { opacity: 1; transform: none; } }
+/* Up in the corner, off Mewbit's face; it pops in once Mewbit has landed. */
+.mb-res-bubble { position: absolute; top: 0; right: 0; max-width: 150px; padding: 7px 10px; border-radius: 12px 12px 12px 3px; background: var(--mb-text); color: var(--mb-bg); font-weight: 800; font-size: 12.5px; line-height: 1.25; transform-origin: 0 100%; animation: mb-res-bubble-in 320ms cubic-bezier(0.3, 1.5, 0.5, 1) 700ms backwards; }
+@keyframes mb-res-bubble-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 
 .mb-res-footer { display: flex; flex-direction: column; gap: 10px; }
 .mb-res-note { margin: 0; color: var(--mb-muted); font-size: 13px; }
@@ -912,19 +1004,31 @@
 .mb-res-next b { color: var(--mb-text); }
 .mb-res-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .mb-res-actions .mb-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 18px; border-radius: 14px; font-size: 14px; font-weight: 800; }
+.mb-res-actions .mb-btn svg { flex: none; }
+/* Lift on hover through `translate` so the press scale (transform) still stacks with it. */
+.mb-res .mb-btn { transition: transform 120ms ease-out, translate 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out; }
+.mb-res .mb-btn:hover:not(:disabled) { translate: 0 -1px; }
+.mb-res .mb-btn:active:not(:disabled) { transform: scale(0.97); }
 .mb-res-count { font: 700 13px "JetBrains Mono", ui-monospace, monospace; }
 
 .mb-res-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 18px 16px; overflow-y: auto; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
 .mb-res-side ol { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .mb-res-pos { color: var(--mb-faint); font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; text-align: right; }
-.mb-res-board > .mb-res-label { display: block; margin-bottom: 6px; }
-.mb-res-board li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13px; }
+/* Whichever lists the panel holds, a short one sits in the middle of the free height (auto margins, so a long one still scrolls). */
+.mb-res-side > :first-child { margin-top: auto; }
+.mb-res-side > :last-child { margin-bottom: auto; }
+.mb-res-board li { display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 52px; padding: 8px 10px; border-radius: 10px; font-variant-numeric: tabular-nums; animation: mb-res-row-in 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(120ms + var(--i, 0) * 50ms); }
 .mb-res-board li:nth-child(even) { background: rgb(255 255 255 / 0.02); }
-.mb-res-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mb-res-value { font: 700 12.5px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-res-board .mb-res-av { width: 32px; height: 32px; }
+.mb-res-board .mb-res-who b { font-size: 13px; }
+.mb-res-board .mb-res-who b, .mb-res-board .mb-res-who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-res-board .mb-res-score b { font-size: 13px; }
 .mb-res-board li.mb-res-me { outline: 1px solid rgb(103 227 244 / 0.45); }
-.mb-res-standings h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 10px; font-size: 15px; font-weight: 900; }
-.mb-res-standings h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-res-board li:first-child .mb-res-pos { color: var(--mb-gold); }
+.mb-res-empty { margin: 0; padding: 18px 10px; border: 1px dashed var(--mb-line); border-radius: 12px; color: var(--mb-muted); font-size: 13px; line-height: 1.4; text-align: center; }
+.mb-res-standings h3, .mb-res-board h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 10px; font-size: 15px; font-weight: 900; }
+.mb-res-board h3 { padding: 0 10px; }
+.mb-res-standings h3 small, .mb-res-board h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
 .mb-res-standings ol { gap: 10px; }
 .mb-res-standings li {
   display: grid;
@@ -952,7 +1056,15 @@
 .mb-res-score b { display: block; font: 700 14px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .mb-res-score > span:first-of-type { font-size: 13px; font-weight: 900; }
 .mb-res-vote { color: var(--mb-cyan); font-size: 11px; }
-.mb-res-vote-no { color: var(--mb-faint); }
+
+/* Motion off, after the rules it overrides (the shared lists higher up come first, so they lose on equal specificity). */
+.mb-fx-off .mb-res .mb-btn:hover:not(:disabled),
+.mb-fx-reduced .mb-res .mb-btn:hover:not(:disabled) { translate: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mb-res-grade, .mb-res-grade::before, .mb-res-mew, .mb-res-bubble, .mb-res-in, .mb-res-judges li, .mb-res-newbest::after, .mb-res-board li, .mb-res-standings li { animation: none; }
+  .mb-res .mb-btn { transition: none; }
+  .mb-res .mb-btn.mb-btn:hover:not(:disabled) { translate: none; }
+}
 
 @media (max-width: 760px) {
   .mb-res, .mb-res-has-side { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
@@ -1055,7 +1167,23 @@
 
 /* my difficulty and the informational ready toggle */
 .mb-lobby-mine { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
-.mb-lobby-diffs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.mb-lobby-role, .mb-lobby-watching { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mb-lobby-pick { min-width: 0; }
+/* Player / Spectator segmented control */
+.mb-lobby-mode { display: inline-flex; align-self: flex-start; padding: 3px; gap: 3px; border-radius: 11px; outline: 1px solid var(--mb-line); background: var(--mb-surface); }
+.mb-lobby-mode-btn { padding: 7px 16px; border: 0; border-radius: 8px; background: transparent; color: var(--mb-muted); font: 800 13px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
+.mb-lobby-mode-btn:hover:not(:disabled):not(.mb-lobby-mode-on) { color: var(--mb-text); }
+.mb-lobby-mode-btn:disabled { opacity: 0.55; cursor: default; }
+.mb-lobby-mode-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
+.mb-lobby-mode-on { background: var(--mb-raised); color: var(--mb-text); }
+/* last round, shown to a spectator between rounds */
+.mb-lobby-last { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; max-width: 360px; }
+.mb-lobby-last li:not(.mb-lobby-lbl) { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 9px; background: var(--mb-surface); font-size: 13px; }
+.mb-lobby-last b { font-weight: 800; overflow-wrap: anywhere; }
+.mb-lobby-last-pos { color: var(--mb-faint); font: 700 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-lobby-last-score { font: 700 12px "JetBrains Mono", ui-monospace, monospace; }
+.mb-lobby-last-me { outline: 1px solid rgb(103 227 244 / 0.45); }
+.mb-lobby-diffs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .mb-lobby-diff { padding: 11px 12px; border: 0; border-radius: 12px; outline: 1px solid var(--mb-line); background: var(--mb-surface); color: var(--mb-text); font: 800 14px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; text-align: left; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
 .mb-lobby-diff:hover:not(:disabled) { background: var(--mb-raised); }
 .mb-lobby-diff:active:not(:disabled) { transform: scale(0.97); }
@@ -1064,6 +1192,13 @@
 .mb-lobby-diff-cyan { --c: var(--mb-cyan); }
 .mb-lobby-diff-violet { --c: var(--mb-violet); }
 .mb-lobby-diff-pink { --c: var(--mb-pink); }
+.mb-lobby-diff-hell { --c: var(--mb-danger); }
+/* numbers under the name: stars, notes, best score; they sit in a fixed block so the card does not jump when stats arrive */
+.mb-lobby-diff { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mb-lobby-diff small { color: var(--mb-faint); font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace; overflow-wrap: anywhere; }
+.mb-lobby-diff-stars { color: var(--c) !important; }
+.mb-lobby-diff-best { margin-top: 2px; color: var(--mb-muted) !important; }
+.mb-lobby-diff-best b { font-weight: 800; }
 .mb-lobby-diff-on { outline: 2px solid var(--c); background: var(--mb-raised); }
 .mb-lobby-ready { min-width: 150px; padding: 15px 22px; border: 0; border-radius: 14px; background: var(--mb-text); color: var(--mb-bg); font: 900 15px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
 .mb-lobby-ready:active:not(:disabled) { transform: scale(0.97); }
@@ -1089,6 +1224,7 @@
 .mb-lobby-pill-cyan { color: var(--mb-cyan); }
 .mb-lobby-pill-violet { color: var(--mb-violet); }
 .mb-lobby-pill-pink { color: var(--mb-pink); }
+.mb-lobby-pill-hell { color: var(--mb-danger); }
 .mb-lobby-st { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .mb-lobby-st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .mb-lobby-st-ok { color: var(--mb-cyan); }
@@ -1141,6 +1277,7 @@
   .mb-lobby-stage { grid-template-columns: minmax(0, 1fr); }
   .mb-lobby-mewbox { max-width: 180px; }
   .mb-lobby-mine { grid-template-columns: minmax(0, 1fr); }
+  .mb-lobby-diffs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mb-lobby-side { overflow: visible; border-top: 1px solid var(--mb-line); border-left: 0; }
 }
 
@@ -1177,3 +1314,54 @@
 /* Song select: the preview note beside the song's chips. */
 .mb-ss-chip-preview { display: inline-flex; align-items: center; gap: 5px; color: var(--mb-faint); }
 .mb-ss-chip-preview-on { color: var(--mb-violet); }
+
+/* Spectating: the card that replaces the score while another player's round is on the highway. */
+.mb-spectate { display: flex; flex-direction: column; gap: 10px; }
+.mb-spectate-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mb-spectate-av { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+.mb-spectate-av-text { background: var(--mb-violet); color: var(--mb-bg); font-size: 11px; font-weight: 900; }
+.mb-spectate-name { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.mb-spectate-name b { font-size: 14px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-spectate-name small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-spectate-step { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; outline: 1px solid var(--mb-line); background: var(--mb-surface); color: var(--mb-muted); cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
+.mb-spectate-step:hover { background: var(--mb-raised); color: var(--mb-text); }
+.mb-spectate-step:active { transform: scale(0.94); }
+.mb-spectate-step:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .mb-spectate-step, .mb-lobby-mode-btn { transition: none; }
+}
+
+
+/* ---------- screen transitions ---------- */
+/* Results, lobby, joining and song select each sit in one of these. It is the grid cell they used to take
+   themselves, and it fades them in (and, via useScreenExit, out). The inner screens keep their own looks. */
+.mb-screen {
+  grid-area: 2 / 1;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  animation: mb-screen-in 240ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.mb-screen > .mb-res,
+.mb-screen > .mb-ss,
+.mb-screen > .mb-lobby,
+.mb-screen > .mb-lobby-join { grid-area: auto; animation: none; }
+/* A screen on its way out ignores the pointer too (it is inert for the keyboard); the scene it covers shows through. */
+.mb-screen-out { pointer-events: none; animation: mb-screen-out 160ms ease-in forwards; }
+/* The scene stays laid out under a screen while it fades in or out, so the two cross-fade. */
+.mb-stage-under { grid-area: 2 / 1; }
+@keyframes mb-screen-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mb-screen-out { from { opacity: 1; } to { opacity: 0; } }
+.mb-fx-reduced .mb-screen:not(.mb-screen-out) { animation-name: mb-fade-in; }
+.mb-fx-off .mb-screen,
+.mb-fx-off .mb-screen-out { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mb-screen,
+  .mb-screen-out { animation: none; }
+}

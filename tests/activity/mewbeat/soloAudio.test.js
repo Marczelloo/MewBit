@@ -256,30 +256,27 @@ test("close() and a newer load abort the download in flight", async () => {
 
 const turn = () => new Promise((resolve) => { setImmediate(resolve); });
 
-test("a preview plays a stretch beside the game and leaves its song and clock alone", async () => {
+test("a preview plays to the song's end beside the game and leaves its song and clock alone", async () => {
   const { env, audio } = harness();
   assert.equal(await audio.preview("k1", { fromMs: 50_000 }), true);
   assert.equal(audio.loadedKey(), null);
   assert.equal(audio.songTimeAt(env.perf), null);
   assert.equal(audio.playing(), false);
   const node = env.sources.at(-1);
-  // The stretch is its own short buffer, and it fades in from silence.
-  assert.equal(node.buffer.duration, 30);
-  assert.equal(node.started.offset, 0);
-  assert.equal(node.started.length, 30);
+  // It runs on from the highlight, and it fades in from silence.
+  assert.equal(node.started.offset, 50);
+  assert.equal(node.started.length, 150);
   assert.equal(env.gains.at(-1).ramps[0].value, 0);
+  // At the end of the song it stops rather than going round again.
+  const played = env.sources.length;
+  node.onended();
+  assert.equal(env.sources.length, played);
 });
 
 test("a preview with no known highlight starts 40% into the song", async () => {
-  const { ctx, audio } = harness();
-  const copies = [];
-  const create = ctx.createBuffer;
-  ctx.createBuffer = (...args) => ({ ...create(...args), copyToChannel: (data) => copies.push(data) });
-  const channel = new Float32Array(20_000).map((_, index) => index);
-  const decode = ctx.decodeAudioData;
-  ctx.decodeAudioData = async (data) => ({ ...(await decode(data)), getChannelData: () => channel });
+  const { env, audio } = harness();
   await audio.preview("k1");
-  assert.equal(copies[0][0], 8000);
+  assert.equal(env.sources.at(-1).started.offset, 80);
 });
 
 test("a newer preview replaces an older one still downloading, and only one download runs at a time", async () => {
@@ -335,27 +332,27 @@ test("the game loading its song silences a clip at once", async () => {
   assert.equal(audio.durationMs(), 200_000);
 });
 
-test("highlight plays the loaded song from fromMs and loops, without touching the clock", async () => {
+test("highlight plays the loaded song on from fromMs once, without touching the clock", async () => {
   const { env, audio } = harness();
   assert.equal(audio.highlight(60_000), false, "nothing loaded yet");
   await audio.load("k1");
   assert.equal(audio.highlight(60_000), true);
   const node = env.sources.at(-1);
   assert.equal(node.started.offset, 60);
-  assert.equal(node.started.length, 30);
+  assert.equal(node.started.length, 140);
   assert.equal(audio.songTimeAt(env.perf), null);
   node.onended();
-  const next = env.sources.at(-1);
-  assert.notEqual(next, node);
-  assert.equal(next.started.offset, 60);
+  assert.equal(env.sources.at(-1), node);
   // A stopped clip fades out and stays stopped when its end arrives.
+  audio.highlight(60_000);
+  const next = env.sources.at(-1);
   audio.stopClip();
   assert.equal(next.stopped, true);
   next.onended();
   assert.equal(env.sources.at(-1), next);
 });
 
-test("a highlight near the end starts early enough to fill the window, and none known falls back", async () => {
+test("a highlight near the end starts early enough to leave the window to hear, and none known falls back", async () => {
   const { env, audio } = harness({ durationSec: 100 });
   await audio.load("k1");
   audio.highlight(95_000);

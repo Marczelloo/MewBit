@@ -196,6 +196,7 @@ const ROOM_ERRORS = {
   bad_index: "That song is already gone from the queue.",
   wrong_track: "That song can't be played here.",
   spectator: "Spectators can't do that until the next round.",
+  in_round: "You can't switch to spectator in the middle of your round.",
   bad_difficulty: "Pick a valid difficulty.",
   bad_request: "That didn't work. Try again.",
   room_full: "The room is full.",

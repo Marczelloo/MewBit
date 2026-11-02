@@ -1,7 +1,8 @@
 import { Plus, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { formatScore } from "./GameHud.jsx";
 import LiveBoard from "./LiveBoard.jsx";
-import { resolveArtworkUrl } from "./SongSelect.jsx";
+import { gradeClass, resolveArtworkUrl } from "./SongSelect.jsx";
 import { keyLabel } from "./input.js";
 import Mewbit from "./mewbit/Mewbit.jsx";
 import {
@@ -24,6 +25,7 @@ const DIFFICULTIES = [
   { id: "easy", label: "Easy", tone: "cyan" },
   { id: "normal", label: "Normal", tone: "violet" },
   { id: "hard", label: "Hard", tone: "pink" },
+  { id: "hell", label: "Hell", tone: "hell" },
 ];
 const IDLE_BEATS = [
   { pose: "stretch", text: "warming up the paws…" },
@@ -145,7 +147,7 @@ function Timeline({ room, userId, nowPerf, mapping, busy, onRemove }) {
 
 // The room lobby: what is queued, when the round starts, who is here and what each of them plays.
 // `view` is "lobby" (between rounds) or "watching" (a round is running without this player).
-export default function Lobby({ room, userId, view, receivedAt, serverClock, store, board, effects, keys, offsetMs, notice, onAddSongs, onLeave, onCalibrate }) {
+export default function Lobby({ room, userId, view, receivedAt, serverClock, store, board, effects, keys, offsetMs, notice, standings = [], onAddSongs, onLeave, onCalibrate }) {
   const me = memberOf(room, userId);
   const host = isHost(room, userId);
   const active = roundActive(room);
@@ -155,6 +157,9 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
   const [inviteNote, setInviteNote] = useState(null);
+  // Per-difficulty stars, notes and my best of the hero song. Kept per song, so a new song shows names only
+  // until its numbers arrive, and the old ones stay put while a refetch (after a round) is in flight.
+  const [songStats, setSongStats] = useState({ key: null, stats: null });
 
   useEffect(() => {
     mounted.current = true;
@@ -187,6 +192,21 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   const heroTrack = active || (watching && room.current) ? room.current : queue[0] ?? null;
   const nameOf = (id) => memberOf(room, id)?.username ?? "someone";
 
+  // Fetched again when the song changes and when a round ends (my best may have moved). A failed fetch
+  // answers null, which leaves the buttons with their names only.
+  const heroKey = heroTrack?.audioKey ?? null;
+  useEffect(() => {
+    if (!heroKey || active || !store?.songStats) return undefined;
+    let cancelled = false;
+    store.songStats(heroKey).then((stats) => {
+      if (!cancelled && mounted.current) setSongStats({ key: heroKey, stats });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [heroKey, active, room.round, store]);
+  const stats = songStats.key === heroKey ? songStats.stats : null;
+
   // Mewbit: peek in the last seconds of the intermission, otherwise the idle poses in turn.
   const pose = lobbyPose({ phase: room.phase, remainingMs: left });
   const beat = IDLE_BEATS[Math.floor(nowPerf / IDLE_BEAT_MS) % IDLE_BEATS.length];
@@ -194,7 +214,9 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   const stageText = pose === "peek" ? "it's almost our turn!" : beat.text;
 
   const canChange = Boolean(me) && !active;
-  const canStart = host && !active && queue.length > 0;
+  const spectating = Boolean(me?.watching); // chose to watch; a member who only joined mid-round is a plain spectator
+  // A round with nobody playing has nothing to run (the server refuses it too).
+  const canStart = host && !active && queue.length > 0 && room.members.some((member) => !member.watching);
 
   let clockLabel;
   let clock;
@@ -207,6 +229,10 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
     clockLabel = "The queue is empty";
     clock = "–:––";
     clockText = <>Add a song and the round can begin.</>;
+  } else if (room.members.every((member) => member.watching)) {
+    clockLabel = "Nobody is playing";
+    clock = "–:––";
+    clockText = <>A round needs at least one player. Everyone here is watching.</>;
   } else {
     clockLabel = host ? "Ready when you are" : "Waiting for the host";
     clock = "–:––";
@@ -246,7 +272,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
             <div className="mb-lobby-watch">
               <span className="mb-lobby-lbl">Round in progress</span>
               <p className="mb-lobby-count-text">
-                {me?.spectator ? "You're watching this one." : "You missed the start of this round."} You join the next round as a player.
+                {me?.spectator ? "You're watching this one." : "You missed the start of this round."} {spectating ? "Pick Player to join the next one." : "You join the next round as a player."}
               </p>
               <LiveBoard store={board} session="room" meId={userId} label="Round" />
             </div>
@@ -285,32 +311,81 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
         </div>
 
         <div className="mb-lobby-mine">
-          <div>
-            <span className="mb-lobby-lbl">Your difficulty</span>
-            <div className="mb-lobby-diffs" role="group" aria-label="Your difficulty">
-              {DIFFICULTIES.map(({ id, label, tone }) => (
+          <div className="mb-lobby-role">
+            <span className="mb-lobby-lbl">You are</span>
+            <div className="mb-lobby-mode" role="group" aria-label="Player or spectator">
+              {[{ id: false, label: "Player" }, { id: true, label: "Spectator" }].map(({ id, label }) => (
                 <button
-                  key={id}
+                  key={label}
                   type="button"
-                  className={`mb-lobby-diff mb-lobby-diff-${tone}${me?.difficulty === id ? " mb-lobby-diff-on" : ""}`}
-                  aria-pressed={me?.difficulty === id}
-                  disabled={!canChange || busy === "difficulty"}
-                  onClick={() => me?.difficulty !== id && run("difficulty", () => store.ready({ difficulty: id }))}
+                  className={`mb-lobby-mode-btn${spectating === id ? " mb-lobby-mode-on" : ""}`}
+                  aria-pressed={spectating === id}
+                  disabled={!me || busy === "spectate"}
+                  onClick={() => spectating !== id && run("spectate", () => store.ready({ spectate: id }))}
                 >
                   {label}
                 </button>
               ))}
             </div>
           </div>
-          <button
-            type="button"
-            className={`mb-lobby-ready${me?.ready ? " mb-lobby-ready-on" : ""}`}
-            aria-pressed={Boolean(me?.ready)}
-            disabled={!canChange || busy === "ready"}
-            onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}
-          >
-            {me?.ready ? "Ready ✓" : "Ready"}
-          </button>
+          {spectating ? (
+            <div className="mb-lobby-watching">
+              <p className="mb-lobby-count-text">You're watching. Pick Player to join the next round.</p>
+              {standings.length ? (
+                <ol className="mb-lobby-last" aria-label="Last round">
+                  <li className="mb-lobby-lbl">Last round</li>
+                  {standings.map((row, index) => (
+                    <li key={row.userId} className={row.me ? "mb-lobby-last-me" : undefined}>
+                      <span className="mb-lobby-last-pos">{index + 1}</span>
+                      <b>{row.username}</b>
+                      <span className="mb-lobby-last-score">{formatScore(row.score)}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <div className="mb-lobby-pick">
+                <span className="mb-lobby-lbl">Your difficulty</span>
+                <div className="mb-lobby-diffs" role="group" aria-label="Your difficulty">
+                  {DIFFICULTIES.map(({ id, label, tone }) => {
+                    const stat = stats?.[id];
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`mb-lobby-diff mb-lobby-diff-${tone}${me?.difficulty === id ? " mb-lobby-diff-on" : ""}`}
+                        aria-pressed={me?.difficulty === id}
+                        disabled={!canChange || busy === "difficulty"}
+                        onClick={() => me?.difficulty !== id && run("difficulty", () => store.ready({ difficulty: id }))}
+                      >
+                        <b>{label}</b>
+                        {stat ? (
+                          <>
+                            <small className="mb-lobby-diff-stars">{Number.isFinite(stat.stars) ? `★ ${stat.stars.toFixed(1)}` : "★ –"}</small>
+                            <small>{Number.isFinite(stat.notes) ? `${stat.notes.toLocaleString("en-US")} notes` : ""}</small>
+                            <small className="mb-lobby-diff-best">
+                              {stat.best ? <>best {formatScore(stat.best.score)} · <b className={gradeClass(stat.best.grade)}>{stat.best.grade}</b></> : "no score yet"}
+                            </small>
+                          </>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`mb-lobby-ready${me?.ready ? " mb-lobby-ready-on" : ""}`}
+                aria-pressed={Boolean(me?.ready)}
+                disabled={!canChange || busy === "ready"}
+                onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}
+              >
+                {me?.ready ? "Ready ✓" : "Ready"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -319,17 +394,18 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
         <ul className="mb-lobby-players">
           {room.members.map((member) => {
             const status = memberStatus(room, member);
-            const tone = DIFFICULTIES.find((d) => d.id === member.difficulty)?.tone ?? "violet";
+            const difficulty = DIFFICULTIES.find((d) => d.id === member.difficulty);
+            const tone = difficulty?.tone ?? "violet";
             const isMe = member.userId === userId;
             return (
               <li key={member.userId} className={`mb-lobby-pl${isMe ? " mb-lobby-pl-me" : ""}`}>
                 <Avatar name={member.username} url={member.avatarUrl} />
                 <span className="mb-lobby-who">
                   <b>{member.username}{isMe ? <span className="mb-lobby-you">YOU</span> : null}</b>
-                  <small>{[member.userId === room.hostId ? "host" : null, member.spectator ? "spectator" : null].filter(Boolean).join(" · ") || " "}</small>
+                  <small>{[member.userId === room.hostId ? "host" : null, member.watching ? "spectating" : member.spectator ? "spectator" : null].filter(Boolean).join(" · ") || " "}</small>
                 </span>
                 <span className="mb-lobby-state">
-                  {member.spectator ? null : <span className={`mb-lobby-pill mb-lobby-pill-${tone}`}>{DIFFICULTIES.find((d) => d.id === member.difficulty)?.label ?? member.difficulty}</span>}
+                  {member.spectator ? null : <span className={`mb-lobby-pill mb-lobby-pill-${tone}`}>{difficulty?.label ?? member.difficulty}</span>}
                   <span className={`mb-lobby-st mb-lobby-st-${status.tone}`}>{status.text}</span>
                 </span>
               </li>

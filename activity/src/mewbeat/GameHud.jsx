@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DIFFICULTIES } from "./SongSelect.jsx";
+import { DIFFICULTIES, resolveArtworkUrl } from "./SongSelect.jsx";
 
 const RING_LENGTH = 145; // circumference of the r=23 ring
 const JUDGEMENT_CLASS = { perfect: "mb-j-perfect", great: "mb-j-great", good: "mb-j-good", miss: "mb-j-miss" };
@@ -87,29 +87,72 @@ function DifficultyControl({ difficulty, disabled, swap, onChange }) {
   );
 }
 
-// Track card in the right column. The progress bar lives here: the game hook writes into the <i> through progressRef.
+// Square cover of the track card; a plain placeholder of the same size stands in when there is no artwork or it fails to load.
+function TrackCover({ artworkUrl }) {
+  const src = resolveArtworkUrl(artworkUrl);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (src && !failed) return <img className="mb-track-cover" src={src} alt="" draggable={false} onError={() => setFailed(true)} />;
+  return <span className="mb-track-cover mb-track-cover-empty" aria-hidden="true" />;
+}
+
+// Track card in the right column. The progress bar and its time readout live here: the game hook writes into
+// the <i> through progressRef and into the readout through progressTimeRef.
 // The difficulty control is Live's alone, where the song plays on whatever the player does: Solo and rooms pick theirs before the song.
-export function TrackCard({ track, difficulty, progressRef, mode = "live", disabled = false, swap = null, onDifficulty }) {
+export function TrackCard({ track, difficulty, progressRef, progressTimeRef, disabled = false, swap = null, onDifficulty }) {
+  const label = DIFFICULTIES.find((d) => d.id === difficulty)?.label ?? difficulty;
   return (
     <section className="mb-card mb-track" aria-label="Track">
-      <span className="mb-label mb-live">{`${mode} · ${difficulty}`}</span>
-      <b className="mb-track-title">{track?.title ?? "No track"}</b>
-      {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
+      <div className="mb-track-head">
+        <TrackCover artworkUrl={track?.artworkUrl} />
+        <div className="mb-track-meta">
+          <span className="mb-label">{label}</span>
+          <b className="mb-track-title">{track?.title ?? "No track"}</b>
+          {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
+        </div>
+      </div>
       {onDifficulty ? <DifficultyControl difficulty={difficulty} disabled={disabled} swap={swap} onChange={onDifficulty} /> : null}
-      <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
-        <i ref={progressRef} />
+      <div className="mb-track-prog">
+        <div className="mb-progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
+          <i ref={progressRef} />
+        </div>
+        <span className="mb-track-time" ref={progressTimeRef}>0:00</span>
       </div>
     </section>
   );
 }
 
-export default function GameHud({ hud }) {
-  const full = hud.vibe >= 1 && !hud.feverActive;
-  const feverSeconds = useFeverSeconds(hud.feverActive, hud.feverLeftMs);
+// Vertical vibe meter beside the highway: filling, ready (Space starts FEVER), then FEVER draining.
+// Its slot is the highway's, so it sits in the gap next to the canvas without taking any of its width.
+export function FeverBar({ hud }) {
+  const ready = hud.vibe >= 1 && !hud.feverActive;
+  const seconds = useFeverSeconds(hud.feverActive, hud.feverLeftMs);
   // During FEVER the vibe drains over the time it has left; a linear transition draws that without per-frame state.
-  const vibeStyle = hud.feverActive
-    ? { transform: "scaleX(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
-    : { transform: `scaleX(${hud.vibe})`, transition: "transform 200ms ease-out" };
+  const fillStyle = hud.feverActive
+    ? { transform: "scaleY(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
+    : { transform: `scaleY(${hud.vibe})`, transition: "transform 200ms ease-out" };
+  return (
+    <div className={`mb-fever${ready ? " mb-fever-ready" : ""}${hud.feverActive ? " mb-fever-on" : ""}`}>
+      <span className="mb-fever-top" aria-hidden="true">{hud.feverActive ? `${seconds.toFixed(1)}s` : ready ? "SPACE" : ""}</span>
+      <div className="mb-fever-bar">
+        <div
+          className="mb-fever-track"
+          role="progressbar"
+          aria-label="Fever"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(hud.vibe * 100)}
+          aria-valuetext={hud.feverActive ? `FEVER, ${seconds.toFixed(1)} seconds left` : ready ? "Ready, press Space" : undefined}
+        >
+          <i style={fillStyle} />
+        </div>
+      </div>
+      <span className="mb-fever-cap" aria-hidden="true">FEVER</span>
+    </div>
+  );
+}
+
+export default function GameHud({ hud }) {
   return (
     <section className="mb-hud" aria-label="Score">
       <div className="mb-card mb-hud-card">
@@ -124,20 +167,6 @@ export default function GameHud({ hud }) {
             Max combo
             <b>{hud.maxCombo}</b>
           </div>
-        </div>
-        <span className="mb-label mb-hud-vibe-label">Vibe</span>
-        <div
-          className={`mb-vibe ${full ? "mb-vibe-full" : ""} ${hud.feverActive ? "mb-vibe-fever" : ""}`.trim()}
-          role="progressbar"
-          aria-label="Vibe"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(hud.vibe * 100)}
-        >
-          <i style={vibeStyle} />
-        </div>
-        <div className={`mb-vibe-hint ${full ? "mb-vibe-hint-ready" : ""}`.trim()}>
-          {hud.feverActive ? `FEVER · double points · ${feverSeconds.toFixed(1)} s left` : full ? "Space for FEVER!" : "Fill vibe with hits"}
         </div>
       </div>
     </section>
