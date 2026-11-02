@@ -35,10 +35,20 @@ describe("mewbeat solo track registry", () => {
     let time = 1000;
     const tracks = createSoloTracks({ ttlMs: 500, now: () => time });
     tracks.put("a", 1);
-    time = 1499;
-    assert.strictEqual(tracks.get("a"), 1);
     time = 1500;
     assert.strictEqual(tracks.get("a"), null);
+  });
+
+  it("keeps an entry alive while it is read", () => {
+    let time = 1000;
+    const tracks = createSoloTracks({ ttlMs: 500, now: () => time });
+    tracks.put("a", 1);
+    time = 1499;
+    assert.strictEqual(tracks.get("a"), 1);
+    time = 1998;
+    assert.strictEqual(tracks.get("a"), 1);
+    time = 2497;
+    assert.strictEqual(tracks.get("a"), 1);
   });
 
   it("restarts the lifetime when an entry is put again", () => {

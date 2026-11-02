@@ -10,8 +10,8 @@ function createSoloTracks({ max = 128, ttlMs = 6 * 3600e3, now = Date.now } = {}
     while (entries.size > max) entries.delete(entries.keys().next().value);
   }
 
-  // Reading refreshes the recency, not the lifetime: an entry the clients keep
-  // asking for is still dropped after ttlMs and prepared again on demand.
+  // Reading refreshes both recency and lifetime: a song still being played or
+  // charted stays registered; one nobody asked for in ttlMs is dropped.
   function get(audioKey) {
     const stored = entries.get(audioKey);
     if (!stored) return null;
@@ -20,7 +20,7 @@ function createSoloTracks({ max = 128, ttlMs = 6 * 3600e3, now = Date.now } = {}
       return null;
     }
     entries.delete(audioKey);
-    entries.set(audioKey, stored);
+    entries.set(audioKey, { entry: stored.entry, expiresAt: now() + ttlMs });
     return stored.entry;
   }
 
