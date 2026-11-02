@@ -30,7 +30,7 @@ const BUBBLES = {
 };
 const NEW_BEST_BUBBLE = "NEW BEST!! ✦";
 
-const COUNT_UP_MS = 900;
+const COUNT_UP_MS = 1400;
 const TOP_ROWS = 5;
 // The offset slider's range and step (SettingsPanel.jsx).
 const OFFSET_MIN = -300;
@@ -59,26 +59,52 @@ function gradeKey(grade) {
   return ["S", "A", "B", "C"].includes(grade) ? grade : "D";
 }
 
-// The shown score climbs to its final value; with motion off it is there from the first paint.
-function useCountUp(target, animate) {
+// The screen fills in one thing at a time and ends on the grade; ms after it opens.
+const REVEAL = { score: 300, accuracy: 1700, combo: 2300, fevers: 2900, offset: 3300, judges: 3700, timing: 4700, side: 5000, grade: 5400, verdict: 5900 };
+const STAT_COUNT_MS = 650;
+const JUDGE_COUNT_MS = 420;
+const JUDGE_STEP_MS = 180;
+
+// How far the screen has got, in REVEAL's terms. With motion off everything is there from the first paint.
+function useRevealClock(animate) {
+  const [reached, setReached] = useState(animate ? -1 : Infinity);
+  useEffect(() => {
+    if (!animate) {
+      setReached(Infinity);
+      return undefined;
+    }
+    const timers = Object.values(REVEAL).map((ms) => window.setTimeout(() => setReached((now) => Math.max(now, ms)), ms));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [animate]);
+  return reached;
+}
+
+// A number holds at zero until its turn, then climbs to its final value.
+function useCountUp(target, started, animate, duration, delay = 0) {
   const [value, setValue] = useState(animate ? 0 : target);
   useEffect(() => {
     if (!animate) {
       setValue(target);
       return undefined;
     }
-    const start = performance.now();
+    if (!started) return undefined;
+    const start = performance.now() + delay;
     let raf = 0;
     const step = (now) => {
       // A frame timestamp can predate performance.now() taken in the effect: never a negative first score.
-      const k = Math.max(0, Math.min(1, (now - start) / COUNT_UP_MS));
-      setValue(Math.round(target * (1 - (1 - k) ** 3)));
+      const k = Math.max(0, Math.min(1, (now - start) / duration));
+      setValue(target * (1 - (1 - k) ** 3));
       if (k < 1) raf = window.requestAnimationFrame(step);
     };
     raf = window.requestAnimationFrame(step);
     return () => window.cancelAnimationFrame(raf);
-  }, [target, animate]);
+  }, [target, started, animate, duration, delay]);
   return value;
+}
+
+function CountUp({ value, started, animate, duration = STAT_COUNT_MS, delay = 0, format = Math.round }) {
+  const current = useCountUp(value ?? 0, started, animate, duration, delay);
+  return format(value == null ? value : current); // no accuracy to climb to reads "--"
 }
 
 // Mean head-hit error and the offset that would centre it. The error is positive when late in heard time, so
@@ -126,7 +152,7 @@ function CalibrationResult({ timing, savedOffset, onApplyOffset }) {
   }
   const applied = timing.offsetMs === savedOffset;
   return (
-    <div className="mb-res-card mb-res-calib mb-res-in" style={{ "--d": "380ms" }} role="status">
+    <div className="mb-res-card mb-res-calib mb-res-in" role="status">
       <p className="mb-res-note">
         Your {timing.taps} taps suggest <b>{formatOffset(timing.offsetMs)}</b> (spread ±{timing.spreadMs} ms). Saved: {formatOffset(savedOffset)}.
       </p>
@@ -266,7 +292,12 @@ export default function Results({
   const submit = summary.submit ?? { status: "skipped" };
   const result = submit.status === "ok" ? submit.result : null;
   const newBest = Boolean(result?.newBest);
-  const shownScore = useCountUp(summary.score, effects !== "off" && !prefersReduced);
+  // A click anywhere skips to the end of the reveal.
+  const [skipped, setSkipped] = useState(false);
+  const animate = effects !== "off" && !prefersReduced && !skipped;
+  const reached = useRevealClock(animate);
+  const shown = (step) => reached >= REVEAL[step];
+  const verdict = shown("verdict");
   const shownTiming = useMemo(() => timingOf(summary), [summary]);
   const bins = useMemo(() => histogramOf(summary.hitErrors ?? []), [summary]);
   const peak = Math.max(1, ...bins);
@@ -313,7 +344,7 @@ export default function Results({
   const adjusted = shownTiming?.target === savedOffset;
 
   return (
-    <section className={`mb-res${showSide ? " mb-res-has-side" : ""}`} aria-label="Run results">
+    <section className={`mb-res${showSide ? " mb-res-has-side" : ""}`} aria-label="Run results" onClick={verdict ? undefined : () => setSkipped(true)}>
       {/* The cover, blurred far behind everything; the shade keeps the text readable. */}
       {cover ? <div className="mb-res-backdrop" aria-hidden="true"><img src={cover} alt="" draggable="false" /></div> : null}
       <div className="mb-res-main">
@@ -324,34 +355,38 @@ export default function Results({
             <h2>{summary.title ?? "Run complete"}</h2>
             {summary.artist ? <small>{summary.artist}</small> : null}
           </div>
-          <div className="mb-res-ranked"><RankLine submit={submit} summary={summary} /></div>
+          <div className="mb-res-ranked">{verdict ? <RankLine submit={submit} summary={summary} /> : null}</div>
         </div>
 
         <div className="mb-res-body">
           <div className="mb-res-cards">
             <div className="mb-res-card mb-res-mine mb-res-in" style={{ "--d": "80ms" }}>
-              <div className={`mb-grade mb-grade-${grade} mb-res-grade`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
+              <div className={`mb-grade mb-grade-${grade} mb-res-grade${shown("grade") ? "" : " mb-res-wait"}`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
               <div className="mb-res-numbers">
                 <div className="mb-res-scoreline">
-                  <b aria-label={`${formatScore(summary.score)} points`}>{formatScore(shownScore)}</b>
-                  {newBest ? <span className="mb-res-newbest">NEW BEST</span> : null}
-                  {previous ? <span className="mb-res-label">Best {formatScore(previous.score)}</span> : null}
+                  <b aria-label={`${formatScore(summary.score)} points`}>
+                    <CountUp value={summary.score} started={shown("score")} animate={animate} duration={COUNT_UP_MS} format={(value) => formatScore(Math.round(value))} />
+                  </b>
+                  {newBest && verdict ? <span className="mb-res-newbest">NEW BEST</span> : null}
+                  {previous && shown("accuracy") ? <span className="mb-res-label mb-res-in">Best {formatScore(previous.score)}</span> : null}
                 </div>
                 <dl className="mb-res-stats">
-                  <div><dt className="mb-res-label">Accuracy</dt><dd>{formatAccuracy(summary.accuracy)}</dd></div>
-                  <div><dt className="mb-res-label">Max combo</dt><dd>{summary.maxCombo}</dd></div>
-                  <div><dt className="mb-res-label">Fevers</dt><dd>{summary.fevers}</dd></div>
-                  <div><dt className="mb-res-label">Avg offset</dt><dd>{shownTiming ? formatOffset(shownTiming.mean) : "--"}</dd></div>
+                  <div><dt className="mb-res-label">Accuracy</dt><dd aria-label={formatAccuracy(summary.accuracy)}><CountUp value={summary.accuracy} started={shown("accuracy")} animate={animate} format={formatAccuracy} /></dd></div>
+                  <div><dt className="mb-res-label">Max combo</dt><dd aria-label={String(summary.maxCombo)}><CountUp value={summary.maxCombo} started={shown("combo")} animate={animate} /></dd></div>
+                  <div><dt className="mb-res-label">Fevers</dt><dd aria-label={String(summary.fevers)}><CountUp value={summary.fevers} started={shown("fevers")} animate={animate} duration={300} /></dd></div>
+                  <div><dt className="mb-res-label">Avg offset</dt><dd className={shown("offset") ? "mb-res-in" : "mb-res-wait"}>{shownTiming ? formatOffset(shownTiming.mean) : "--"}</dd></div>
                 </dl>
                 <ul className="mb-res-judges">
                   {JUDGEMENTS.map(([key, label], index) => (
-                    <li key={key} className={`mb-j-${key}`} style={{ "--i": index }}><span>{label}</span>{summary.counts[key]}</li>
+                    <li key={key} className={`mb-j-${key}${shown("judges") ? "" : " mb-res-wait"}`} style={{ "--i": index }} aria-label={`${label} ${summary.counts[key]}`}>
+                      <span>{label}</span><CountUp value={summary.counts[key]} started={shown("judges")} animate={animate} duration={JUDGE_COUNT_MS} delay={index * JUDGE_STEP_MS} />
+                    </li>
                   ))}
                 </ul>
               </div>
             </div>
 
-            <div className="mb-res-card mb-res-timing mb-res-in" style={{ "--d": "320ms" }}>
+            <div className={`mb-res-card mb-res-timing ${shown("timing") ? "mb-res-in" : "mb-res-wait"}`}>
               <div className="mb-res-histwrap">
                 <span className="mb-res-label">Hit timing</span>
                 <div className="mb-res-hist" role="img" aria-label={shownTiming ? `Hit timing, average ${formatOffset(shownTiming.mean)}` : "Hit timing"}>
@@ -378,19 +413,20 @@ export default function Results({
               </div>
             </div>
 
-            {summary.calibration ? <CalibrationResult timing={timing} savedOffset={savedOffset} onApplyOffset={onApplyOffset} /> : null}
+            {summary.calibration && shown("timing") ? <CalibrationResult timing={timing} savedOffset={savedOffset} onApplyOffset={onApplyOffset} /> : null}
           </div>
 
           <div className="mb-res-stage">
             <div className="mb-res-spot" aria-hidden="true" />
             <div className="mb-res-mew">
-              <Mewbit pose={resultPose(summary.grade, newBest)} effects={effects} />
-              <div className="mb-res-bubble" aria-hidden="true">{newBest ? NEW_BEST_BUBBLE : BUBBLES[grade]}</div>
+              {/* Mewbit waits with everyone else and reacts only once the grade is out. */}
+              <Mewbit pose={verdict ? resultPose(summary.grade, newBest) : "hype"} effects={effects} />
+              {verdict ? <div className="mb-res-bubble" aria-hidden="true">{newBest ? NEW_BEST_BUBBLE : BUBBLES[grade]}</div> : null}
             </div>
           </div>
         </div>
 
-        <div className="mb-res-footer mb-res-in" style={{ "--d": "420ms" }}>
+        <div className="mb-res-footer mb-res-in" style={{ "--d": "200ms" }}>
           {note ? <p className="mb-res-note" role="status">{note}</p> : null}
           {mode !== "solo" && upNext?.title ? (
             <p className="mb-res-next">Up next: <b>{upNext.title}</b>{upNext.ready ? " · chart ready" : ""}</p>
@@ -422,8 +458,8 @@ export default function Results({
 
       {showSide ? (
         <aside className="mb-res-side">
-          {standings?.length ? <Standings rows={standings} /> : null}
-          {topList.length || boardEmpty ? <ServerBest entries={topList} meId={meId} difficulty={summary.difficulty} /> : null}
+          {standings?.length && shown("side") ? <Standings rows={standings} /> : null}
+          {(topList.length || boardEmpty) && shown("side") ? <ServerBest entries={topList} meId={meId} difficulty={summary.difficulty} /> : null}
         </aside>
       ) : null}
     </section>

@@ -1,7 +1,7 @@
 // Pure logic of the room screens: which view a room snapshot maps to, how server-clock times map onto the
 // local clock, the countdown digit and the Mewbit pose. Nothing here touches the DOM, so it is unit tested.
 
-export const PEEK_WINDOW_MS = 15_000; // Mewbit peeks in the last 15 s of the intermission
+export const PEEK_WINDOW_MS = 15_000; // Mewbit peeks in the last 15 s before a round
 export const GO_WINDOW_MS = 800; // how long "GO!" stays on screen after the start
 
 export function memberOf(room, userId) {
@@ -21,7 +21,7 @@ export function roundActive(room) {
 //   none       not in a room
 //   lobby      lobby / intermission (also the end-of-round state, with Results on top)
 //   loading    a player waiting for audio + chart before the countdown
-//   countdown  the 5-4-3-2-1-GO overlay (only for someone who is loaded and charted)
+//   countdown  the quiet moment before the first note (only for someone who is loaded and charted)
 //   playing    the game screen
 //   watching   a spectator, or a player who missed the start: lobby with "Round in progress" + live board
 // `prepared` says this client has the audio decoded and the chart accepted for the current round; the
@@ -76,10 +76,10 @@ export function formatClock(ms) {
 }
 
 // Mewbit's pose on the lobby stage. "idle" lets the caller cycle its idle poses.
-export function lobbyPose({ phase, remainingMs: left = null, digit = null } = {}) {
+export function lobbyPose({ remainingMs: left = null, digit = null } = {}) {
   if (digit === 0) return "go";
   if (digit != null && digit >= 1 && digit <= 5) return "hype";
-  if (phase === "intermission" && left != null && left <= PEEK_WINDOW_MS) return "peek";
+  if (left != null && left <= PEEK_WINDOW_MS) return "peek";
   return "idle";
 }
 

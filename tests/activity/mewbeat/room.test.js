@@ -97,6 +97,8 @@ test("lobbyPose follows the mockup rules", () => {
   assert.equal(lobbyPose({ phase: "intermission", remainingMs: 15_000 }), "peek");
   assert.equal(lobbyPose({ phase: "intermission", remainingMs: 40_000 }), "idle");
   assert.equal(lobbyPose({ phase: "lobby", remainingMs: null }), "idle");
+  assert.equal(lobbyPose({ phase: "lobby", remainingMs: 5000 }), "peek");
+  assert.equal(lobbyPose({ phase: "lobby", remainingMs: 60_000 }), "idle");
 });
 
 test("timelineOf: current first, own adds flagged, remove for host or adder", () => {

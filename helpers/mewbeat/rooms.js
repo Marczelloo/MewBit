@@ -9,7 +9,12 @@ const MAX_QUEUE_PER_USER = 5;
 const LOADING_MS = 20_000;
 // A song nobody has yet may still be in analysis: with no player loaded the round waits this much longer.
 const LOADING_LATE_MS = 120_000;
-const COUNTDOWN_MS = 5_000;
+// The quiet stretch between the last player loading and the first note.
+const ROUND_LEAD_MS = 3_000;
+// The first Ready opens this long a wait for the others...
+const READY_WINDOW_MS = 60_000;
+// ...and everyone being ready cuts it down to this.
+const FINAL_COUNTDOWN_MS = 5_000;
 // A round that nobody finishes ends this long after the song would have; the
 // slack also covers a slow client or a long server-side recompute.
 const RESULTS_GRACE_MS = 10_000;
@@ -70,6 +75,7 @@ function createRooms({
       endedAt: room.endedAt,
       startAt: room.startAt,
       nextAt: room.nextAt,
+      finalCountdown: room.finalAt != null,
       results: room.results.map((entry) => ({ ...entry })),
       serverNow: now(),
     };
@@ -118,21 +124,42 @@ function createRooms({
     }
   }
 
-  // A waiting room whose players are all ready starts at once, if a song is queued.
-  function maybeStart(room) {
-    if (!IDLE_PHASES.includes(room.phase) || !room.queue.length) return;
+  function stopCountdown(room) {
+    if (room.timers.next !== undefined) clearTimer(room.timers.next);
+    delete room.timers.next;
+    room.windowAt = null;
+    room.finalAt = null;
+    room.nextAt = null;
+  }
+
+  // Brings the clock of a waiting room in line with who is ready. The long wait
+  // (`windowAt`) keeps running through every change; the final seconds (`finalAt`)
+  // only last while everyone is ready and never go past the end of the long wait.
+  function syncCountdown(room) {
+    if (!IDLE_PHASES.includes(room.phase)) return;
     const players = playersOf(room);
-    if (!players.length || !players.every((member) => member.ready)) return;
-    startRound(room);
+    const readyCount = players.filter((member) => member.ready).length;
+    const between = room.phase === "intermission"; // runs without anyone pressing Ready
+    if (!room.queue.length || !players.length || (!between && !readyCount)) {
+      stopCountdown(room);
+      room.phase = "lobby";
+      return;
+    }
+    room.windowAt ??= now() + READY_WINDOW_MS;
+    if (readyCount === players.length) room.finalAt ??= Math.min(room.windowAt, now() + FINAL_COUNTDOWN_MS);
+    else room.finalAt = null;
+    const nextAt = room.finalAt ?? room.windowAt;
+    if (nextAt === room.nextAt) return;
+    room.nextAt = nextAt;
+    after(room, "next", nextAt - now(), IDLE_PHASES, () => startRound(room));
   }
 
   // Someone came, left or switched to watching in a waiting phase: free seats
-  // fill, an intermission with nobody to play falls back, an all-ready room starts.
+  // fill and the clock follows the new roster.
   function rosterChanged(room) {
     if (!IDLE_PHASES.includes(room.phase)) return;
     promoteSpectators(room);
-    if (room.phase === "intermission" && !playersOf(room).length) settle(room);
-    maybeStart(room);
+    syncCountdown(room);
   }
 
   function sortedResults(room) {
@@ -145,20 +172,20 @@ function createRooms({
       : b.score - a.score || b.accuracy - a.accuracy));
   }
 
-  // Back to a waiting phase: the next song is queued -> intermission with an
-  // auto-start timer, else the lobby. `current` and `results` stay for the
+  // Back to a waiting phase: the next song is queued -> intermission with a
+  // shorter wait that starts by itself, else the lobby. `current` and `results` stay for the
   // results screen until the next round starts.
   function settle(room, { auto = true } = {}) {
     clearTimers(room);
+    stopCountdown(room);
     room.startAt = null;
     promoteSpectators(room);
     if (auto && room.queue.length && playersOf(room).length) {
       room.phase = "intermission";
-      room.nextAt = now() + INTERMISSION_MS;
-      after(room, "intermission", INTERMISSION_MS, ["intermission"], () => startRound(room));
+      room.windowAt = now() + INTERMISSION_MS;
+      syncCountdown(room);
     } else {
       room.phase = "lobby";
-      room.nextAt = null;
     }
   }
 
@@ -189,7 +216,7 @@ function createRooms({
     room.phase = "loading";
     room.loadingLate = false;
     room.startAt = null;
-    room.nextAt = null;
+    stopCountdown(room);
     room.endedAt = null;
     room.results = [];
     room.roundResults.clear();
@@ -234,13 +261,13 @@ function createRooms({
     if (!playersOf(room).some((member) => member.loaded)) return abortRound(room);
     clearTimers(room);
     room.phase = "countdown";
-    room.startAt = now() + COUNTDOWN_MS;
+    room.startAt = now() + ROUND_LEAD_MS;
     const durationMs = Math.max(0, Number(room.current?.durationMs) || 0);
-    after(room, "play", COUNTDOWN_MS, ["countdown"], () => {
+    after(room, "play", ROUND_LEAD_MS, ["countdown"], () => {
       room.phase = "playing";
       checkFinished(room);
     });
-    after(room, "end", COUNTDOWN_MS + durationMs + RESULTS_GRACE_MS, ["countdown", "playing"], () => endRound(room));
+    after(room, "end", ROUND_LEAD_MS + durationMs + RESULTS_GRACE_MS, ["countdown", "playing"], () => endRound(room));
   }
 
   // Everyone who loaded the song is expected to play it; players whose audio
@@ -280,6 +307,8 @@ function createRooms({
         pending: new Map(), // userId -> queue adds in flight
         startAt: null,
         nextAt: null,
+        windowAt: null, // when the wait for the next round runs out
+        finalAt: null, // when the final seconds run out, once everyone is ready
         results: [],
         roundResults: new Map(), // userId -> result of the round in progress
         timers: {},
@@ -308,6 +337,7 @@ function createRooms({
         submitted: false,
       });
     }
+    rosterChanged(room);
     push(room);
     return ok();
   }
@@ -374,8 +404,8 @@ function createRooms({
       source: track.source ?? source ?? "",
       addedBy: userId,
     });
-    // A lobby that was waiting only for a song starts now.
-    maybeStart(room);
+    // A lobby that was waiting only for a song starts its clock now.
+    syncCountdown(room);
     push(room);
     return ok();
   }
@@ -388,8 +418,8 @@ function createRooms({
     if (room.hostId !== userId && room.queue[index].addedBy !== userId) return fail("forbidden");
 
     room.queue.splice(index, 1);
-    // An intermission with nothing left to start becomes the lobby.
-    if (room.phase === "intermission" && !room.queue.length) settle(room);
+    // A wait with nothing left to start ends.
+    syncCountdown(room);
     push(room);
     return ok();
   }
@@ -490,6 +520,8 @@ module.exports = {
   MAX_MEMBERS,
   RESULTS_GRACE_MS,
   LOADING_MS,
-  COUNTDOWN_MS,
+  ROUND_LEAD_MS,
+  READY_WINDOW_MS,
+  FINAL_COUNTDOWN_MS,
   INTERMISSION_MS,
 };

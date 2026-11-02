@@ -159,7 +159,7 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "7" })).reason, "empty_queue");
   });
 
-  it("passes spectate through, validates it, and starts the round when the last Ready comes in", async () => {
+  it("passes spectate through, validates it, and runs the final seconds when the last Ready comes in", async () => {
     const { send, lastRoom } = setup();
     await send(ANN, { type: "mewbeat_room_join", id: "1" });
     await send(BO, { type: "mewbeat_room_join", id: "2" });
@@ -177,10 +177,12 @@ describe("mewbeat channel rooms", () => {
 
     await send(ANN, { type: "mewbeat_room_queue_add", id: "6", uri: "abc", source: "youtube" });
     await send(ANN, { type: "mewbeat_room_ready", id: "7", ready: true });
+    assert.strictEqual(lastRoom().finalCountdown, true);
+    await send(ANN, { type: "mewbeat_room_start", id: "8" });
     assert.strictEqual(lastRoom().phase, "loading");
     assert.deepStrictEqual(
-      await send(ANN, { type: "mewbeat_room_ready", id: "8", spectate: true }),
-      { type: "mewbeat_room_ready", id: "8", status: "error", reason: "in_round" },
+      await send(ANN, { type: "mewbeat_room_ready", id: "9", spectate: true }),
+      { type: "mewbeat_room_ready", id: "9", status: "error", reason: "in_round" },
     );
   });
 

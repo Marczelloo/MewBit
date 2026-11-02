@@ -15,7 +15,7 @@ import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
 import { createSoloAudio, musicGain } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
-import Lobby, { CountdownOverlay, LeaveConfirm } from "./Lobby.jsx";
+import Lobby, { CountdownStage, LeaveConfirm } from "./Lobby.jsx";
 import LiveBoard from "./LiveBoard.jsx";
 import Results from "./Results.jsx";
 import SongSelect from "./SongSelect.jsx";
@@ -583,11 +583,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       board={liveBoard}
       standings={standingsOf(room, userId)}
       effects={effectsLevel}
+      showMewbit={settings?.showMewbit !== false}
       keys={keys}
       offsetMs={savedOffset}
       notice={roomLinkState?.error ?? actionNotice}
       onAddSongs={() => setAddOpen(true)}
-      onLeave={() => leaveRoom(fallbackMode)}
       onCalibrate={() => { setSettingsFromMenu(false); setSettingsOpen(true); }}
     />
   ) : null;
@@ -698,6 +698,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         </div>
         <div className="mb-header-actions">
           {solo && botPlaying ? <span className="mb-hint">Lower MewBit in Discord to hear the song</span> : null}
+          {roomMode && room ? (
+            <button type="button" className="mb-btn" onClick={() => requestLeave(fallbackMode)}>
+              <SignOut size={16} weight="bold" aria-hidden="true" /> Leave room
+            </button>
+          ) : null}
           {menuShown ? null : (
             <button type="button" className="mb-btn" ref={menuButtonRef} aria-haspopup="dialog" onClick={openMenu}>
               {running ? <Pause size={16} weight="bold" aria-hidden="true" /> : <List size={16} weight="bold" aria-hidden="true" />}
@@ -733,7 +738,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               </div>
               <div className="mb-fevertime" style={feverTimeStyle} aria-hidden="true" />
               {running ? <HighwayReadout hud={readoutHud} /> : null}
-              {soloStage === "countin" ? (
+              {soloStage === "countin" && !soloState.opening ? (
                 <div className="mb-countin" role="status" aria-live="assertive">
                   <b key={soloState.count}>{soloState.count}</b>
                 </div>
@@ -784,8 +789,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         <LeaveConfirm onStay={() => { setLeaveConfirm(null); backToGame(); }} onLeave={() => leaveRoom(leaveConfirm.target)} />
       ) : null}
 
-      {roomMode && (view === "countdown" || view === "playing" || watchingLive) && Number.isFinite(roomLinkState?.startPerf) ? (
-        <CountdownOverlay startPerf={roomLinkState.startPerf} title={room?.current?.title} effects={effectsLevel} />
+      {soloStage === "countin" && soloState.opening ? (
+        <CountdownStage className="mb-countdown-solo" digit={soloState.count} title={soloState.track?.title} effects={effectsLevel} showAvatar={settings?.showMewbit !== false} />
       ) : null}
 
       {menuShown ? (

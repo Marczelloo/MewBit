@@ -415,7 +415,7 @@
 .mb-grade-D, .mb-grade-none { color: var(--mb-danger); }
 
 /* right column */
-/* The left padding leaves room for the FEVER bar, which sits in the gap beside the highway (see .mb-fever). */
+/* The left padding leaves room for the FEVER bar, which sits in the gap beside the highway (see .mb-fever-meter). */
 .mb-side { display: flex; flex-direction: column; gap: 12px; justify-self: end; width: min(100%, 288px); min-height: 0; padding: 18px 14px 18px 22px; }
 .mb-side > .mb-track, .mb-side > .mb-hud, .mb-side > .mb-spectate { flex: none; }
 .mb-card {
@@ -466,7 +466,7 @@
 
 /* FEVER meter: a column in the gap right of the highway, outside the canvas so the highway keeps its size.
    Quiet while the vibe fills, glowing once it is full (Space starts FEVER), then draining over the FEVER time. */
-.mb-fever {
+.mb-fever-meter {
   position: absolute;
   top: 18px;
   bottom: 0;
@@ -523,7 +523,7 @@
   .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) auto; gap: 12px; height: auto; min-height: 100%; padding: 12px 16px 16px; }
   .mb-char, .mb-spot { display: none; }
   .mb-highway-slot { justify-self: center; width: min(100%, 460px); min-height: 260px; padding-top: 0; }
-  .mb-fever { top: 0; }
+  .mb-fever-meter { top: 0; }
   .mb-highway { border-radius: 18px; }
   .mb-side { align-self: start; justify-self: center; width: min(100%, 460px); padding: 0; }
   .mb-header { flex-wrap: wrap; padding: 8px 16px; }
@@ -919,6 +919,9 @@
 .mb-fx-reduced .mb-res-standings li { animation: mb-res-fade 240ms ease-out backwards; }
 .mb-fx-reduced .mb-res-grade::before,
 .mb-fx-reduced .mb-res-newbest::after { animation: none; }
+/* not this one's turn yet: it holds its place, and its entrance plays once the class goes */
+.mb-res .mb-res-wait { visibility: hidden; animation: none; }
+.mb-res .mb-res-wait::before { animation: none; }
 .mb-res-label { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
 .mb-res-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 18px 22px; overflow-y: auto; }
 
@@ -939,21 +942,21 @@
 .mb-res-cards { display: flex; flex-direction: column; gap: 16px; justify-content: center; min-width: 0; }
 .mb-res-card { background: var(--mb-surface); border: 1px solid var(--mb-line); border-radius: 18px; }
 .mb-res-mine { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; padding: 18px 20px; border-color: rgb(103 227 244 / 0.45); border-radius: 20px; }
-.mb-res-grade { position: relative; isolation: isolate; width: 76px; font-size: 84px; line-height: 0.85; letter-spacing: -0.06em; text-align: center; animation: mb-res-grade-in 600ms cubic-bezier(0.3, 1.6, 0.5, 1) 160ms both; }
+.mb-res-grade { position: relative; isolation: isolate; width: 76px; font-size: 84px; line-height: 0.85; letter-spacing: -0.06em; text-align: center; animation: mb-res-grade-in 600ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
 @keyframes mb-res-grade-in { from { transform: scale(2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 /* One soft pulse in the grade's own colour once the pop has landed. */
-.mb-res-grade::before { content: ""; position: absolute; inset: -30% -50%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, currentColor 55%, transparent), transparent); opacity: 0; pointer-events: none; animation: mb-res-glow 1100ms ease-out 700ms both; }
+.mb-res-grade::before { content: ""; position: absolute; inset: -30% -50%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, currentColor 55%, transparent), transparent); opacity: 0; pointer-events: none; animation: mb-res-glow 1100ms ease-out 350ms both; }
 @keyframes mb-res-glow { 0% { opacity: 0; transform: scale(0.6); } 35% { opacity: 0.55; } 100% { opacity: 0; transform: scale(1.35); } }
 .mb-res-scoreline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
 .mb-res-scoreline b { font: 700 38px "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
 .mb-res-newbest { position: relative; overflow: hidden; padding: 3px 6px; border-radius: 5px; background: var(--mb-gold); color: var(--mb-bg); font: 700 10px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
 /* A single shine across the chip, once the score has finished counting. */
-.mb-res-newbest::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.65) 50%, transparent 65%); transform: translateX(-120%); pointer-events: none; animation: mb-res-shine 900ms ease-in-out 1000ms both; }
+.mb-res-newbest::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.65) 50%, transparent 65%); transform: translateX(-120%); pointer-events: none; animation: mb-res-shine 900ms ease-in-out 300ms both; }
 @keyframes mb-res-shine { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
 .mb-res-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 10px; margin: 12px 0 0; }
 .mb-res-stats dd { margin: 0; font: 700 16px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .mb-res-judges { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
-.mb-res-judges li { padding: 5px 8px; border-radius: 8px; background: #161920; font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; animation: mb-res-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(200ms + var(--i, 0) * 40ms); }
+.mb-res-judges li { padding: 5px 8px; border-radius: 8px; background: #161920; font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; animation: mb-res-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(var(--i, 0) * 180ms); }
 .mb-res-judges li span { margin-right: 6px; color: var(--mb-faint); font-weight: 500; text-transform: uppercase; }
 
 .mb-res-timing { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; padding: 14px 18px; }
@@ -995,7 +998,7 @@
 /* Rises in with a small overshoot. */
 @keyframes mb-res-mew-in { 0% { opacity: 0; transform: translateY(26px) scale(0.94); } 60% { opacity: 1; transform: translateY(-6px) scale(1.01); } 100% { opacity: 1; transform: none; } }
 /* Up in the corner, off Mewbit's face; it pops in once Mewbit has landed. */
-.mb-res-bubble { position: absolute; top: 0; right: 0; max-width: 150px; padding: 7px 10px; border-radius: 12px 12px 12px 3px; background: var(--mb-text); color: var(--mb-bg); font-weight: 800; font-size: 12.5px; line-height: 1.25; transform-origin: 0 100%; animation: mb-res-bubble-in 320ms cubic-bezier(0.3, 1.5, 0.5, 1) 700ms backwards; }
+.mb-res-bubble { position: absolute; top: 0; right: 0; max-width: 150px; padding: 7px 10px; border-radius: 12px 12px 12px 3px; background: var(--mb-text); color: var(--mb-bg); font-weight: 800; font-size: 12.5px; line-height: 1.25; transform-origin: 0 100%; animation: mb-res-bubble-in 320ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards; }
 @keyframes mb-res-bubble-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 
 .mb-res-footer { display: flex; flex-direction: column; gap: 10px; }
@@ -1081,7 +1084,8 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(300px, 380px);
+  grid-template-columns: minmax(0, 1fr) clamp(270px, 32%, 380px);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   background:
     radial-gradient(90% 60% at 100% 0%, rgb(167 139 250 / 0.1), transparent 60%),
@@ -1090,51 +1094,52 @@
   animation: mb-fade-in 240ms ease-out both;
 }
 .mb-lobby-lbl { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
-.mb-lobby-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 18px 22px; overflow-y: auto; }
-.mb-lobby-top { display: flex; align-items: center; gap: 10px; }
-.mb-lobby-top .mb-btn { min-height: 34px; padding: 0 14px; font-size: 13px; }
-.mb-lobby-crumb { color: var(--mb-faint); font-size: 13px; }
-.mb-lobby-badge { margin-left: auto; padding: 4px 10px; border: 1px solid rgb(255 110 199 / 0.5); border-radius: 999px; color: var(--mb-pink); font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+/* nothing here scrolls: the stage gives way when the window is short */
+.mb-lobby-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; padding: 14px 20px; overflow: hidden; }
 
-.mb-lobby-hero { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 16px; align-items: end; }
-.mb-lobby-cover { width: 112px; aspect-ratio: 1; border-radius: 18px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
+/* the next song and the clock, on one line */
+.mb-lobby-next { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; gap: 14px; align-items: center; flex: none; }
+.mb-lobby-cover { width: 88px; aspect-ratio: 1; border-radius: 14px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
 .mb-lobby-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
 .mb-lobby-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.mb-lobby-hero h2 { margin: 6px 0 2px; font-size: clamp(22px, 2.6vw, 30px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; overflow-wrap: anywhere; }
-.mb-lobby-artist { color: var(--mb-muted); font-size: 14px; overflow-wrap: anywhere; }
-.mb-lobby-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.mb-lobby-chip { padding: 5px 8px; border-radius: 8px; outline: 1px solid var(--mb-line); background: var(--mb-raised); color: var(--mb-muted); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-lobby-next h2 { display: -webkit-box; margin: 2px 0 0; overflow: hidden; font-size: clamp(18px, 2.2vw, 26px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.mb-lobby-artist { overflow: hidden; color: var(--mb-muted); font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+.mb-lobby-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.mb-lobby-chip { padding: 3px 7px; border-radius: 7px; outline: 1px solid var(--mb-line); background: var(--mb-raised); color: var(--mb-muted); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
 
-/* the clock (or the live board for someone watching) beside Mewbit on the stage */
+.mb-lobby-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; padding-left: 16px; border-left: 1px solid var(--mb-line); }
+.mb-lobby-time { font: 700 clamp(40px, 5.6vw, 60px) "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.06em; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.mb-lobby-start { min-height: 30px; padding: 0 12px; font-size: 13px; }
+
+/* what the clock is waiting for, beside Mewbit; a spectator gets the live board here instead */
 .mb-lobby-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(190px, 38%, 300px);
-  column-gap: 18px;
-  align-items: end;
-  padding: 6px 0 14px;
+  flex: 1 1 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  column-gap: 14px;
+  align-items: center;
+  min-height: 0;
+  padding: 6px 0;
+  overflow: hidden;
   border-top: 1px solid var(--mb-line);
   border-bottom: 1px solid var(--mb-line);
 }
-.mb-lobby-clock, .mb-lobby-watch { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; align-self: center; min-width: 0; }
-.mb-lobby-count { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
-.mb-lobby-time { font: 700 clamp(56px, 8vw, 96px) "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.06em; line-height: 0.9; font-variant-numeric: tabular-nums; }
-.mb-lobby-count-text { margin: 0; max-width: 280px; color: var(--mb-muted); font-size: 14px; line-height: 1.45; }
+.mb-lobby-stage-watch { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+.mb-lobby-watch { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.mb-lobby-watch > :last-child { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.mb-lobby-count-text { margin: 0; max-width: 320px; color: var(--mb-muted); font-size: 14px; line-height: 1.45; }
 .mb-lobby-count-text strong { color: var(--mb-text); }
-.mb-lobby-start { min-width: 150px; }
-.mb-lobby-watch { align-items: stretch; width: 100%; }
 
-.mb-lobby-mew { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 8px; }
-.mb-lobby-mew::before { content: ""; position: absolute; left: 6%; right: 6%; bottom: 4px; height: 24px; border-radius: 50%; background: radial-gradient(closest-side, rgb(255 110 199 / 0.28), transparent); }
+.mb-lobby-mew { display: flex; align-items: center; justify-content: flex-end; gap: 10px; height: 100%; min-width: 0; }
 .mb-lobby-spot { position: absolute; top: 0; left: 50%; width: 120%; height: 100%; transform: translateX(-50%); pointer-events: none; background: linear-gradient(180deg, rgb(167 139 250 / 0.14), transparent 75%); clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%); }
-.mb-lobby-mewbox { position: relative; width: 100%; max-width: 260px; }
+.mb-lobby-mewbox { position: relative; flex: none; height: 100%; aspect-ratio: 1; }
+.mb-lobby-mewbox .mb-mewbit { position: absolute; inset: 0; width: 100%; height: 100%; }
 .mb-lobby-bubble {
-  position: absolute;
-  top: 2%;
-  right: -2%;
-  z-index: 2;
-  max-width: 150px;
+  flex: 0 1 auto;
+  max-width: 130px;
   padding: 7px 10px;
-  border-radius: 12px 12px 12px 3px;
+  border-radius: 12px 12px 3px 12px;
   background: var(--mb-text);
   color: var(--mb-bg);
   font-weight: 800;
@@ -1142,12 +1147,11 @@
   line-height: 1.25;
   animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
-.mb-lobby-mew-small .mb-lobby-mewbox { max-width: 220px; }
 
 /* queue timeline: one segment per song, wider for longer songs */
-.mb-lobby-queue { display: flex; flex-direction: column; gap: 10px; }
+.mb-lobby-queue { display: flex; flex: none; flex-direction: column; gap: 6px; }
 .mb-lobby-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.mb-lobby-add { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; font-size: 12.5px; }
+.mb-lobby-add { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; font-size: 12.5px; }
 .mb-lobby-note { margin: 0; color: var(--mb-faint); font-size: 12.5px; }
 .mb-tl { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
 .mb-tl-seg { position: relative; display: flex; flex-direction: column; gap: 9px; flex-basis: 0; min-width: 124px; padding-bottom: 4px; }
@@ -1166,12 +1170,13 @@
 .mb-tl-x:disabled { opacity: 0.4; cursor: default; }
 
 /* my difficulty and the informational ready toggle */
-.mb-lobby-mine { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
-.mb-lobby-role, .mb-lobby-watching { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.mb-lobby-pick { min-width: 0; }
+.mb-lobby-mine { display: grid; flex: none; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
+.mb-lobby-role { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.mb-lobby-watching { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mb-lobby-pick { grid-column: 1 / -1; min-width: 0; }
 /* Player / Spectator segmented control */
 .mb-lobby-mode { display: inline-flex; align-self: flex-start; padding: 3px; gap: 3px; border-radius: 11px; outline: 1px solid var(--mb-line); background: var(--mb-surface); }
-.mb-lobby-mode-btn { padding: 7px 16px; border: 0; border-radius: 8px; background: transparent; color: var(--mb-muted); font: 800 13px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
+.mb-lobby-mode-btn { padding: 6px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--mb-muted); font: 800 13px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
 .mb-lobby-mode-btn:hover:not(:disabled):not(.mb-lobby-mode-on) { color: var(--mb-text); }
 .mb-lobby-mode-btn:disabled { opacity: 0.55; cursor: default; }
 .mb-lobby-mode-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
@@ -1183,8 +1188,8 @@
 .mb-lobby-last-pos { color: var(--mb-faint); font: 700 11px "JetBrains Mono", ui-monospace, monospace; }
 .mb-lobby-last-score { font: 700 12px "JetBrains Mono", ui-monospace, monospace; }
 .mb-lobby-last-me { outline: 1px solid rgb(103 227 244 / 0.45); }
-.mb-lobby-diffs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-.mb-lobby-diff { padding: 11px 12px; border: 0; border-radius: 12px; outline: 1px solid var(--mb-line); background: var(--mb-surface); color: var(--mb-text); font: 800 14px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; text-align: left; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
+.mb-lobby-diffs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.mb-lobby-diff { padding: 8px 10px; border: 0; border-radius: 12px; outline: 1px solid var(--mb-line); background: var(--mb-surface); color: var(--mb-text); font: 800 14px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; text-align: left; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
 .mb-lobby-diff:hover:not(:disabled) { background: var(--mb-raised); }
 .mb-lobby-diff:active:not(:disabled) { transform: scale(0.97); }
 .mb-lobby-diff:disabled { opacity: 0.55; cursor: default; }
@@ -1194,31 +1199,32 @@
 .mb-lobby-diff-pink { --c: var(--mb-pink); }
 .mb-lobby-diff-hell { --c: var(--mb-danger); }
 /* numbers under the name: stars, notes, best score; they sit in a fixed block so the card does not jump when stats arrive */
-.mb-lobby-diff { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mb-lobby-diff { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .mb-lobby-diff small { color: var(--mb-faint); font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace; overflow-wrap: anywhere; }
 .mb-lobby-diff-stars { color: var(--c) !important; }
-.mb-lobby-diff-best { margin-top: 2px; color: var(--mb-muted) !important; }
+.mb-lobby-diff-best { margin-top: 2px; color: var(--mb-muted) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mb-lobby-diff-best b { font-weight: 800; }
 .mb-lobby-diff-on { outline: 2px solid var(--c); background: var(--mb-raised); }
-.mb-lobby-ready { min-width: 150px; padding: 15px 22px; border: 0; border-radius: 14px; background: var(--mb-text); color: var(--mb-bg); font: 900 15px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
+.mb-lobby-ready { min-width: 130px; padding: 10px 20px; border: 0; border-radius: 14px; background: var(--mb-text); color: var(--mb-bg); font: 900 15px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
 .mb-lobby-ready:active:not(:disabled) { transform: scale(0.97); }
 .mb-lobby-ready:disabled { opacity: 0.55; cursor: default; }
 .mb-lobby-ready:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
 .mb-lobby-ready-on { background: var(--mb-cyan); }
 
 /* players, invite, keys */
-.mb-lobby-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 18px; overflow-y: auto; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
+.mb-lobby-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; padding: 16px 14px; overflow-y: auto; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
 .mb-lobby-side h3 { display: flex; align-items: baseline; justify-content: space-between; margin: 0; font-size: 15px; font-weight: 900; }
-.mb-lobby-side h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-lobby-side h3 small { color: var(--mb-muted); font: 700 13px "JetBrains Mono", ui-monospace, monospace; }
 .mb-lobby-players { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.mb-lobby-pl { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
+.mb-lobby-pl { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
 .mb-lobby-pl-me { border-color: rgb(103 227 244 / 0.55); background: linear-gradient(90deg, rgb(103 227 244 / 0.12), rgb(103 227 244 / 0.03) 60%), var(--mb-raised); }
-.mb-lobby-av { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.mb-lobby-av { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
 .mb-lobby-av-text { background: var(--mb-violet); color: var(--mb-bg); font-size: 12px; font-weight: 900; }
 .mb-lobby-who { min-width: 0; }
-.mb-lobby-who b { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 800; overflow-wrap: anywhere; }
+.mb-lobby-who b { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 800; }
+.mb-lobby-who b > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mb-lobby-who small { display: block; margin-top: 3px; color: var(--mb-faint); font-size: 12px; }
-.mb-lobby-you { padding: 2px 5px; border-radius: 5px; background: var(--mb-cyan); color: var(--mb-bg); font: 700 9.5px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
+.mb-lobby-you { flex: none; padding: 2px 5px; border-radius: 5px; background: var(--mb-cyan); color: var(--mb-bg); font: 700 9.5px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
 .mb-lobby-state { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
 .mb-lobby-pill { padding: 4px 8px; border-radius: 7px; background: var(--mb-high-bg, #161920); font: 700 11px "JetBrains Mono", ui-monospace, monospace; }
 .mb-lobby-pill-cyan { color: var(--mb-cyan); }
@@ -1230,7 +1236,7 @@
 .mb-lobby-st-ok { color: var(--mb-cyan); }
 .mb-lobby-st-wait { color: var(--mb-faint); }
 
-.mb-lobby-invite { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding: 16px; border: 1px solid var(--mb-line); border-radius: 16px; background: var(--mb-surface); }
+.mb-lobby-invite { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding: 12px; border: 1px solid var(--mb-line); border-radius: 16px; background: var(--mb-surface); }
 .mb-lobby-invite p { margin: 0; color: var(--mb-muted); font-size: 12.5px; line-height: 1.45; }
 .mb-lobby-invite .mb-btn { min-height: 38px; }
 .mb-lobby-invite p.mb-lobby-invite-ok { color: var(--mb-cyan); font-weight: 700; }
@@ -1248,12 +1254,20 @@
 .mb-lobby-join .mb-btn { margin-top: 4px; }
 
 /* the full-screen 5-4-3-2-1-GO */
-.mb-countdown { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: rgb(5 6 8 / 0.86); pointer-events: none; }
-.mb-countdown-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.mb-countdown-label { min-height: 16px; color: var(--mb-muted); font: 500 12px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
+.mb-countdown { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: rgb(5 6 8 / 0.86); }
+.mb-countdown-lobby { animation: mb-fade-in 160ms ease-out both; }
+.mb-countdown-solo { grid-area: 2 / 1; background: rgb(5 6 8 / 0.72); pointer-events: none; }
+.mb-countdown-inner { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; padding: 0 20px; }
+.mb-countdown-label { min-height: 16px; color: var(--mb-muted); font: 500 12px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-align: center; text-transform: uppercase; }
 .mb-countdown-label b { color: var(--mb-text); }
-.mb-countdown-num { font: 900 clamp(96px, 24vh, 160px) "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: -0.06em; line-height: 1; animation: mb-countdown-tick 900ms ease-out both; }
+/* the place for Mewbit's animation, beside the number */
+.mb-countdown-row { display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3vw, 40px); }
+.mb-countdown-avatar { position: relative; flex: none; width: clamp(150px, 42vh, 320px); aspect-ratio: 1; }
+.mb-countdown-avatar .mb-mewbit { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mb-countdown-num { min-width: 1.1ch; font: 900 clamp(96px, 28vh, 180px) "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: -0.06em; line-height: 1; text-align: center; animation: mb-countdown-tick 900ms ease-out both; }
 .mb-countdown-go { color: var(--mb-cyan); animation-name: mb-countdown-go; }
+.mb-countdown-solo .mb-countdown-num { color: var(--mb-cyan); text-shadow: 0 0 40px rgb(103 227 244 / 0.45); animation: mb-countin-pop 420ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+.mb-countdown-cancel { min-height: 36px; padding: 0 16px; }
 @keyframes mb-countdown-tick {
   0% { transform: scale(1.5); opacity: 0; }
   25% { opacity: 1; }
@@ -1266,16 +1280,23 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mb-lobby, .mb-lobby-toast, .mb-lobby-bubble, .mb-countdown-num { animation: none; }
+  .mb-lobby, .mb-lobby-toast, .mb-lobby-bubble, .mb-countdown-lobby, .mb-countdown-num, .mb-countdown-solo .mb-countdown-num { animation: none; }
   .mb-tl-bar i, .mb-lobby-diff, .mb-lobby-ready { transition: none; }
+}
+/* A short window: the cards give their height to the stage, where Mewbit stands. */
+@media (max-height: 640px) {
+  .mb-lobby-diffs { gap: 6px; margin-top: 2px; }
+  .mb-lobby-diff { padding: 5px 8px; font-size: 13px; }
+  .mb-lobby-diff small { font-size: 10px; line-height: 1.25; }
+  .mb-lobby-diff-best { margin-top: 0; }
 }
 @media (max-width: 760px) {
   .mb-lobby { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
   .mb-lobby-main { overflow: visible; padding: 14px 16px; }
-  .mb-lobby-hero { grid-template-columns: 84px minmax(0, 1fr); }
-  .mb-lobby-cover { width: 84px; }
-  .mb-lobby-stage { grid-template-columns: minmax(0, 1fr); }
-  .mb-lobby-mewbox { max-width: 180px; }
+  .mb-lobby-next { grid-template-columns: 72px minmax(0, 1fr); }
+  .mb-lobby-cover { width: 72px; }
+  .mb-lobby-clock { grid-column: 1 / -1; flex-direction: row; align-items: center; flex-wrap: wrap; padding-left: 0; border-left: 0; }
+  .mb-lobby-stage { flex: none; height: 140px; }
   .mb-lobby-mine { grid-template-columns: minmax(0, 1fr); }
   .mb-lobby-diffs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mb-lobby-side { overflow: visible; border-top: 1px solid var(--mb-line); border-left: 0; }

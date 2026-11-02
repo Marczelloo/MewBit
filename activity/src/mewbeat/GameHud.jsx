@@ -132,7 +132,7 @@ export function FeverBar({ hud }) {
     ? { transform: "scaleY(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
     : { transform: `scaleY(${hud.vibe})`, transition: "transform 200ms ease-out" };
   return (
-    <div className={`mb-fever${ready ? " mb-fever-ready" : ""}${hud.feverActive ? " mb-fever-on" : ""}`}>
+    <div className={`mb-fever-meter${ready ? " mb-fever-ready" : ""}${hud.feverActive ? " mb-fever-on" : ""}`}>
       <span className="mb-fever-top" aria-hidden="true">{hud.feverActive ? `${seconds.toFixed(1)}s` : ready ? "SPACE" : ""}</span>
       <div className="mb-fever-bar">
         <div

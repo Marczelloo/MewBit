@@ -163,16 +163,17 @@ export function createSoloLink({
   function chartAccepted(chart) {
     if (state.stage !== "ready") return;
     if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
-    countIn(0);
+    countIn(0, true);
   }
 
   // ---- count-in, pause, resume ----
-  function countIn(fromMs) {
+  // `opening` marks the count before a run, which has room for Mewbit; the one after a pause leaves the notes in view.
+  function countIn(fromMs, opening = false) {
     cancelCountIn();
     const mine = token;
     const seq = countSeq;
     let count = COUNT_IN_STEPS;
-    setState({ stage: "countin", count, error: null });
+    setState({ stage: "countin", count, opening, error: null });
     const step = () => {
       countTimer = null;
       if (mine !== token || seq !== countSeq || state.stage !== "countin") return;
