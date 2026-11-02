@@ -462,6 +462,6 @@ test("mashing every lane non-stop misses most notes instead of clearing the char
 
 test("an early miss on a hold counts its tail as a miss too", () => {
   const run = createRun({ chart: { notes: [{ t: 2000, lane: 0, len: 800 }] }, startSongMs: 0 });
-  assert.deepEqual(run.press(0, 1870), { kind: "miss", lane: 0, index: 0, part: "head" });
+  assert.deepEqual(run.press(0, 1870), { kind: "miss", lane: 0, index: 0, part: "head", tailMissed: true });
   assert.equal(run.snapshot(1870).counts.miss, 2);
 });

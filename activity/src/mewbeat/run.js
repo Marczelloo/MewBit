@@ -52,7 +52,10 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   function applyOutcome(result, heardMs) {
     const lane = notes[result.index].lane;
     score = applyJudgement(score, result.judgement, heardMs);
-    if (result.judgement === "miss") return { kind: "miss", lane, index: result.index, part: result.part };
+    if (result.judgement === "miss") {
+      // tailMissed: the press settled the hold's tail as a miss too (the event log needs both).
+      return { kind: "miss", lane, index: result.index, part: result.part, ...(result.tailMissed ? { tailMissed: true } : {}) };
+    }
     if (result.part === "head") hits.push({ index: result.index, errorMs: result.errorMs });
     return { kind: "hit", lane, ...result };
   }
