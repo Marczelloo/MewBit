@@ -49,7 +49,7 @@ describe("mewbeat channel rooms", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ unlocked = true } = {}) {
+  function setup({ unlocked = true, postInvite } = {}) {
     let time = 1_000_000;
     let nextTimer = 1;
     const timers = new Map();
@@ -66,6 +66,7 @@ describe("mewbeat channel rooms", () => {
       resolveTrack: async (_guildId, { uri }) => (uri === "missing" ? null : { track: fakeTrack(uri), node: "n" }),
       scoreStore: createScoreStore({ file: path.join(dir, "scores.json"), now: () => time }),
       historyStore: createHistoryStore({ file: path.join(dir, "history.json"), now: () => time }),
+      postInvite,
       broadcast: (guildId, userIds, payload) => pushes.push({ guildId, userIds, payload }),
       setTimer: (run, ms) => { const id = nextTimer++; timers.set(id, { at: time + ms, run }); return id; },
       clearTimer: (id) => timers.delete(id),
@@ -142,12 +143,61 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "7" })).reason, "empty_queue");
   });
 
-  it("leaves invites for later", async () => {
-    const { send } = setup();
-    assert.deepStrictEqual(
-      await send(ANN, { type: "mewbeat_room_invite", id: "1" }),
-      { type: "mewbeat_room_invite", id: "1", status: "error", reason: "not_implemented" },
-    );
+  describe("invites", () => {
+    const invite = (send, profile, id) => send(profile, { type: "mewbeat_room_invite", id });
+
+    it("posts one invite for a member and rate-limits it per guild", async () => {
+      const posts = [];
+      const { send, advance } = setup({ postInvite: async (args) => { posts.push(args); return { ok: true }; } });
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      await send(BO, { type: "mewbeat_room_join", id: "2" });
+      assert.deepStrictEqual(await invite(send, BO, "3"), { type: "mewbeat_room_invite", id: "3", status: "ok" });
+      assert.deepStrictEqual(posts, [{ guildId: "g1", userId: "bo", username: "Bo" }]);
+
+      advance(20_000);
+      assert.deepStrictEqual(
+        await invite(send, ANN, "4"),
+        { type: "mewbeat_room_invite", id: "4", status: "error", reason: "cooldown", retryInMs: 40_000 },
+      );
+      assert.strictEqual(posts.length, 1);
+
+      advance(40_000);
+      assert.strictEqual((await invite(send, ANN, "5")).status, "ok");
+      assert.strictEqual(posts.length, 2);
+    });
+
+    it("refuses non-members and locked users without posting", async () => {
+      const posts = [];
+      const postInvite = async (args) => { posts.push(args); return { ok: true }; };
+      const { send } = setup({ postInvite });
+      assert.deepStrictEqual(
+        await invite(send, ANN, "1"),
+        { type: "mewbeat_room_invite", id: "1", status: "error", reason: "not_in_room" },
+      );
+      const locked = setup({ unlocked: false, postInvite });
+      assert.strictEqual((await invite(locked.send, ANN, "2")).reason, "locked");
+      assert.deepStrictEqual(posts, []);
+    });
+
+    it("reports a missing voice channel or a failed post and does not start the cooldown", async () => {
+      let result = { ok: false, reason: "no_voice_channel" };
+      const { send } = setup({ postInvite: async () => result });
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      assert.deepStrictEqual(
+        await invite(send, ANN, "2"),
+        { type: "mewbeat_room_invite", id: "2", status: "error", reason: "no_voice_channel" },
+      );
+      result = { ok: false, reason: "send_failed" };
+      assert.strictEqual((await invite(send, ANN, "3")).reason, "send_failed");
+      result = { ok: true };
+      assert.strictEqual((await invite(send, ANN, "4")).status, "ok");
+    });
+
+    it("treats a throwing poster as a failed send", async () => {
+      const { send } = setup({ postInvite: async () => { throw new Error("boom"); } });
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      assert.strictEqual((await invite(send, ANN, "2")).reason, "send_failed");
+    });
   });
 
   it("plays a room round and takes the room submit as the player's result", async () => {

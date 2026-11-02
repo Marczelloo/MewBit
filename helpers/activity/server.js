@@ -61,6 +61,8 @@ const { createMewbeatChannel } = require("../mewbeat/activityChannel");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { createAudioStore } = require("../mewbeat/audioStore");
 const { chartStore } = require("../mewbeat/chartStore");
+const { getClient } = require("../clientRegistry");
+const { createInvitePoster } = require("../mewbeat/invites");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
 const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore } = require("../mewbeat/stores");
 const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
@@ -752,6 +754,7 @@ const mewbeatChannel = createMewbeatChannel({
   soloTracks,
   scoreStore: mewbeatScoreStore,
   historyStore: mewbeatHistoryStore,
+  postInvite: createInvitePoster({ getClient }),
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
   // A pending room phase must not keep the process alive.

@@ -14,6 +14,7 @@ const { handleProposalInteraction } = require("../helpers/dj/interactions");
 const djStore = require("../helpers/dj/store");
 const { createPoru, lavalinkSetVolume } = require("../helpers/lavalink/index");
 const Log = require("../helpers/logs/log");
+const { JOIN_CUSTOM_ID, handleJoinButton: handleMewbeatJoin } = require("../helpers/mewbeat/invites");
 const health = require("../helpers/monitoring/health");
 
 // Bot logs helper
@@ -206,6 +207,11 @@ module.exports = {
           embeds: [embed],
           components,
         });
+        return;
+      }
+
+      if (interaction.customId === JOIN_CUSTOM_ID) {
+        await handleMewbeatJoin(interaction);
         return;
       }
 

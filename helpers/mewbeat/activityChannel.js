@@ -19,6 +19,7 @@ const MIN_JUDGED_SHARE = 0.5;
 const SERVER_TOP = 5;
 const BOARD_LIMIT = 50;
 const PLAYED_LIMIT = 100;
+const INVITE_COOLDOWN_MS = 60_000;
 
 function errorReply(message) {
   return { type: "error", error: message };
@@ -37,7 +38,9 @@ function errorReply(message) {
 // replaces the import of the client's scoring module in tests. The rooms push
 // their state with broadcast(guildId, userIds, payload) and run their phases
 // on setTimer/clearTimer, so tests can drive them with a fake clock; the live
-// board pushes and expires its entries the same way.
+// board pushes and expires its entries the same way. postInvite({ guildId,
+// userId, username }) -> { ok } | { ok: false, reason } posts the lobby invite
+// in the inviter's voice channel chat; the channel only rate-limits it.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
@@ -47,6 +50,7 @@ function createMewbeatChannel({
   resolveTrack,
   soloTracks = createSoloTracks(),
   scoreStore, historyStore, loadScoring,
+  postInvite,
   // eslint-disable-next-line no-unused-vars
   broadcast = () => {}, sendToUser,
   setTimer = setTimeout, clearTimer = clearTimeout,
@@ -176,6 +180,33 @@ function createMewbeatChannel({
     return null;
   }
 
+  const inviteCooldownUntil = new Map();
+
+  // One invite per guild per minute. The slot is taken before the post so two
+  // quick requests can't both go out, and given back when nothing was posted.
+  async function invite(guildId, userId, type, id, profile) {
+    const fail = (reason, extra) => ({ type, id, status: "error", reason, ...extra });
+    if (!rooms.snapshot(guildId)?.members.some((member) => member.userId === userId)) return fail("not_in_room");
+    if (typeof postInvite !== "function") return fail("send_failed");
+
+    const until = inviteCooldownUntil.get(guildId) ?? 0;
+    if (now() < until) return fail("cooldown", { retryInMs: until - now() });
+    inviteCooldownUntil.set(guildId, now() + INVITE_COOLDOWN_MS);
+
+    let result;
+    try {
+      result = await postInvite({ guildId, userId, username: profile?.username });
+    } catch (error) {
+      log.warning("mewbeat invite failed", error?.message);
+      result = { ok: false, reason: "send_failed" };
+    }
+    if (!result?.ok) {
+      inviteCooldownUntil.delete(guildId);
+      return fail(result?.reason === "no_voice_channel" ? "no_voice_channel" : "send_failed");
+    }
+    return { type, id, status: "ok" };
+  }
+
   // Room requests answer the sender with { type, id, status, reason }; the
   // room itself reaches every member as a mewbeat_room push.
   async function roomRequest(guildId, userId, message, profile) {
@@ -209,7 +240,7 @@ function createMewbeatChannel({
       case "mewbeat_room_loaded":
         if (typeof message.audioKey !== "string") return reply({ ok: false, reason: "bad_request" });
         return reply(rooms.loaded(guildId, userId, message.audioKey));
-      case "mewbeat_room_invite": return reply({ ok: false, reason: "not_implemented" });
+      case "mewbeat_room_invite": return invite(guildId, userId, type, id, profile);
       default: return errorReply("Unknown mewbeat message.");
     }
   }
