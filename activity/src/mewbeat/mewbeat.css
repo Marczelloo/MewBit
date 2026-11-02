@@ -489,7 +489,6 @@
 }
 
 /* ---------- settings panel ---------- */
-.mb-header-actions .mb-gear { gap: 0; padding: 0 11px; }
 .mb-settings-scrim {
   position: absolute;
   inset: 0;
@@ -862,6 +861,10 @@
 .mb-pause-title { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; text-align: center; }
 .mb-pause-actions { display: flex; flex-direction: column; gap: 8px; }
 .mb-pause-actions .mb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.mb-pause-note { margin: -6px 0 0; color: var(--mb-muted); font-size: 13px; text-align: center; }
+.mb-pause-modes { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; border-top: 1px solid var(--mb-line); }
+.mb-pause-label { font: 500 10px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
+.mb-pause-exit { justify-content: center; }
 @media (prefers-reduced-motion: reduce) {
   .mb-pause-scrim, .mb-countin b { animation: none; }
   .mb-mode, .mb-ss-row, .mb-ss-diff { transition: none; }

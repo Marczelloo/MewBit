@@ -169,7 +169,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     return () => { cancelled = true; };
   }, [request, scope, reload]);
 
-  // Search across every source, debounced; streams can't be charted so they are left out.
+  // Search across every source but Deezer, debounced. Streams can't be charted, so they are left out too.
   useEffect(() => {
     if (!searching) {
       setFound({ status: "idle", rows: [] });
@@ -180,7 +180,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     const timer = window.setTimeout(async () => {
       try {
         const response = await searchActivity({ ...context, query: text, signal: controller.signal });
-        const rows = (response.tracks || []).filter((track) => track.uri && !track.isStream).slice(0, SEARCH_LIMIT).map(searchRow);
+        const rows = (response.tracks || []).filter((track) => track.uri && !track.isStream && track.source !== "deezer").slice(0, SEARCH_LIMIT).map(searchRow);
         setFound({ status: rows.length ? "ready" : "empty", rows });
       } catch {
         if (!controller.signal.aborted) setFound({ status: "error", rows: [] });

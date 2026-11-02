@@ -1,4 +1,4 @@
-import { GearSix } from "@phosphor-icons/react";
+import { GearSix, List, Pause } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchMewbeatAudio } from "../api.js";
 import GameHud, { HighwayReadout, TrackCard } from "./GameHud.jsx";
@@ -98,13 +98,15 @@ function useRoomStore(store) {
   return view;
 }
 
-// Resume / Restart / Song select / Exit over a paused solo run. Esc resumes from anywhere (MewbeatSession
-// captures it, so it works whatever has focus); Enter does too, unless it is on another button.
-function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
+// The game's one menu, opened with the header button or Esc. A solo run is paused under it; Live and rooms
+// can't stop the song, so the game only ignores its keys while it is up. Esc resumes from anywhere
+// (MewbeatSession captures it, so it works whatever has focus); Enter does too, unless it is on another button.
+function GameMenu({ title, note, error, focusSettings, modes, autoplay, onAutoplay, onResume, onRestart, onPick, onSettings, onExit }) {
   const resumeRef = useRef(null);
+  const settingsRef = useRef(null);
   useEffect(() => {
-    resumeRef.current?.focus();
-  }, []);
+    (focusSettings ? settingsRef : resumeRef).current?.focus();
+  }, [focusSettings]);
   const onKeyDown = (event) => {
     const onButton = event.target instanceof HTMLElement && event.target.tagName === "BUTTON";
     if (event.key === "Enter" && !onButton) {
@@ -115,17 +117,44 @@ function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
   };
   return (
     <div className="mb-pause-scrim" onKeyDown={onKeyDown}>
-      <div className="mb-pause" role="dialog" aria-modal="true" aria-label="Paused">
-        <b className="mb-pause-title">Paused</b>
+      <div className="mb-pause" role="dialog" aria-modal="true" aria-label={title}>
+        <b className="mb-pause-title">{title}</b>
+        {note ? <p className="mb-pause-note">{note}</p> : null}
         {error ? <p className="mb-field-error" role="alert">{error}</p> : null}
         <div className="mb-pause-actions">
           <button type="button" className="mb-btn mb-btn-primary" ref={resumeRef} onClick={onResume}>
             Resume <kbd className="mb-kbd">Esc</kbd>
           </button>
-          <button type="button" className="mb-btn" onClick={onRestart}>Restart</button>
-          <button type="button" className="mb-btn" onClick={onPick}>Song select</button>
-          <button type="button" className="mb-btn" onClick={onExit}>Exit</button>
+          {onRestart ? <button type="button" className="mb-btn" onClick={onRestart}>Restart</button> : null}
+          {onPick ? <button type="button" className="mb-btn" onClick={onPick}>Song select</button> : null}
+          <button type="button" className="mb-btn" ref={settingsRef} onClick={onSettings}>
+            <GearSix size={16} weight="bold" aria-hidden="true" /> Settings
+          </button>
+          {onAutoplay ? (
+            <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => onAutoplay(!autoplay)}>
+              Autoplay
+            </button>
+          ) : null}
         </div>
+        <div className="mb-pause-modes">
+          <span className="mb-pause-label">Mode</span>
+          <div className="mb-modes" role="group" aria-label="Mode">
+            {modes.map(({ id, label, active, disabled, hint, onSelect }) => (
+              <button
+                key={id}
+                type="button"
+                className={`mb-mode${active ? " mb-mode-on" : ""}`}
+                aria-pressed={active}
+                disabled={disabled}
+                title={disabled ? hint : undefined}
+                onClick={active ? undefined : onSelect}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button type="button" className="mb-btn mb-pause-exit" onClick={onExit}>Exit</button>
       </div>
     </div>
   );
@@ -156,18 +185,20 @@ export default function MewbeatGame(props) {
   // fed by the session's message handler.
   const socketRef = props.mewbeatSocketRef;
   const [requests] = useState(() => createMewbeatRequests((payload) => socketRef?.current?.send?.(payload) ?? false));
-  return <MewbeatSession key={mode} {...props} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} requests={requests} />;
+  return <MewbeatSession key={mode} {...props} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} musicVolumeRef={musicVolumeRef} previewMusic={previewMusic} requests={requests} />;
 }
 
-function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
+function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
   const solo = mode === "solo";
   const roomMode = mode === "room" && !MOCK_PREVIEW;
   const userId = context?.user?.id ?? null;
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
   const dialogRef = useRef(null);
-  const gearRef = useRef(null);
+  const menuButtonRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false); // the menu over Live, a room, or solo outside a run
+  const [settingsFromMenu, setSettingsFromMenu] = useState(false);
   const [link] = useState(() => createLink(mode, mewbeatSocketRef, audio, () => userIdRef.current));
   const [liveBoard] = useState(createLiveBoardStore);
   // A room's snapshots go to the store, which hands them on to the link (it loads and times the round).
@@ -184,6 +215,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const [actionNotice, setActionNotice] = useState(null);
   const soloStage = soloState?.stage ?? null;
   const pauseOpen = solo && soloStage === "paused";
+  // Settings opens from the menu and covers it; closing it brings the menu back.
+  const menuShown = (pauseOpen || menuOpen) && !settingsOpen;
   // Song select is up with no song, while a pick is being resolved, and after a pick the server refused
   // (which has no audioKey yet; an audio load failure has one and shows its message on the stage).
   const pickerOpen = solo && (soloStage === "idle" || soloStage === "preparing" || (soloStage === "error" && !soloState.audioKey));
@@ -254,7 +287,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     settings: gameSettings,
     effects: settings?.effects,
     trackInfo,
-    inputPaused: settingsOpen || pauseOpen || pickerOpen || addOpen || Boolean(leaveConfirm) || lobbyScreen,
+    inputPaused: settingsOpen || pauseOpen || menuOpen || pickerOpen || addOpen || Boolean(leaveConfirm) || lobbyScreen,
     liveSession: liveSessionOf,
     submitExtra,
     onExit: () => exitRef.current(),
@@ -274,14 +307,27 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     if (inRound) setLeaveConfirm({ target });
     else leaveRoom(target);
   };
-  exitRef.current = () => {
-    if (roomMode) {
-      if (inRound) setLeaveConfirm({ target: fallbackMode });
-      return;
+  // The menu pauses a solo run; anywhere else it just goes up over the game.
+  const soloRunning = solo && (soloStage === "playing" || soloStage === "countin") && phase !== "ended";
+  const openMenu = () => {
+    if (soloRunning) link.pause();
+    else setMenuOpen(true);
+  };
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setSettingsFromMenu(false);
+  };
+  // A solo song that starts under the menu (it was opened while loading) is paused right away.
+  useEffect(() => {
+    if (menuOpen && soloRunning) {
+      link.pause();
+      setMenuOpen(false);
     }
-    if (!solo || soloStage === "idle") onClose();
-    else if ((soloStage === "playing" || soloStage === "countin") && phase !== "ended") link.pause();
-    else link.leave();
+  }, [menuOpen, soloRunning, link]);
+  // Esc opens the menu, except over a solo song that failed to load, where it goes back to song select.
+  exitRef.current = () => {
+    if (solo && soloStage === "error") link.leave();
+    else openMenu();
   };
 
   // Song select's Play. The chosen difficulty becomes the live difficulty the game charts with. Rejects with
@@ -306,20 +352,26 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     if (reply?.status !== "ok") throw new Error(roomErrorText(reply));
   }, [store]);
 
-  // Esc resumes a paused run wherever the focus is (a click on the scrim's blank part leaves it outside the
-  // overlay). The settings panel, when open over the pause, takes Esc first.
+  const resumeFromMenu = () => {
+    if (pauseOpen) link.resume();
+    closeMenu();
+    backToGame();
+  };
+  const resumeRef = useRef(resumeFromMenu);
+  resumeRef.current = resumeFromMenu;
+  // Esc closes the menu (and resumes a paused run) wherever the focus is (a click on the scrim's blank part
+  // leaves it outside the menu). The settings panel, when open, takes Esc first.
   useEffect(() => {
-    if (!pauseOpen || settingsOpen) return undefined;
+    if (!menuShown) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
-      link.resume();
-      backToGame();
+      resumeRef.current();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [pauseOpen, settingsOpen, link]);
+  }, [menuShown]);
 
   // Esc in the "Leave round?" confirmation keeps playing, wherever the focus is.
   useEffect(() => {
@@ -351,12 +403,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     onAction?.("mewbeat_settings", { settings: { offsetMs: timing.offsetMs } });
   }, [autoOffset, timing, savedOffset, onAction]);
 
-  // The panel returns focus to the gear button it was opened from.
+  // Closing the panel goes back to the menu it was opened from (which focuses its Settings button); otherwise
+  // focus goes to the menu button.
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
     audio.setVolume(musicVolumeRef.current / 100); // drop any slider preview that was never saved
-    window.requestAnimationFrame(() => gearRef.current?.focus());
-  }, [audio]);
+    if (!settingsFromMenu) window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+  }, [audio, musicVolumeRef, settingsFromMenu]);
 
   // The bot sends an anchor on its own schedule; a pause, track change or seek in the state is a reason to ask now.
   const paused = Boolean(player?.paused);
@@ -457,44 +510,14 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           {hud.unranked && running ? <span className="mb-chip">unranked</span> : null}
           {calibrating && running ? <span className="mb-chip">calibration · tap any key on each click · {timing.taps}/{MIN_TAPS}</span> : null}
         </div>
-        <div className="mb-modes" role="group" aria-label="Mode">
-          {MODES.map(({ id, label }) => {
-            const active = id === mode;
-            const disabled = !active && ((id === "live" && !liveAvailable) || ((id === "solo" || id === "room") && MOCK_PREVIEW));
-            const hint = id === "live" ? "The bot isn't playing anything" : "Not available in the mock preview";
-            return (
-              <button
-                key={id}
-                type="button"
-                className={`mb-mode${active ? " mb-mode-on" : ""}`}
-                aria-pressed={active}
-                disabled={disabled}
-                title={disabled ? hint : undefined}
-                onClick={() => {
-                  if (active) return;
-                  if (roomMode) requestLeave(id);
-                  else onModeChange(id);
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
         <div className="mb-header-actions">
           {solo && botPlaying ? <span className="mb-hint">Lower MewBit in Discord to hear the song</span> : null}
-          {solo && !pickerOpen ? <button type="button" className="mb-btn" onClick={() => link.leave()}>Song select</button> : null}
-          {roomMode ? null : (
-            <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>
-              Autoplay
+          {menuShown ? null : (
+            <button type="button" className="mb-btn" ref={menuButtonRef} aria-haspopup="dialog" onClick={openMenu}>
+              {running ? <Pause size={16} weight="bold" aria-hidden="true" /> : <List size={16} weight="bold" aria-hidden="true" />}
+              {running ? "Pause" : "Menu"} <kbd className="mb-kbd">Esc</kbd>
             </button>
           )}
-          <button type="button" className="mb-btn mb-gear" ref={gearRef} aria-label="Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>
-            <GearSix size={18} weight="bold" aria-hidden="true" />
-          </button>
-          <button type="button" className="mb-btn" onClick={roomMode ? () => requestLeave("close") : onClose}>
-            Exit {roomMode ? null : <kbd className="mb-kbd">Esc</kbd>}
-          </button>
         </div>
       </header>
 
@@ -561,7 +584,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           notice={roomLinkState?.error ?? actionNotice}
           onAddSongs={() => setAddOpen(true)}
           onLeave={() => leaveRoom(fallbackMode)}
-          onCalibrate={() => setSettingsOpen(true)}
+          onCalibrate={() => { setSettingsFromMenu(false); setSettingsOpen(true); }}
         />
       ) : null}
 
@@ -586,7 +609,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           mode={mode}
           phase={phase}
           effects={effectsLevel}
-          active={!settingsOpen && !leaveConfirm && !addOpen}
+          active={!settingsOpen && !menuShown && !leaveConfirm && !addOpen}
           queued={Boolean(track?.queued)}
           upNext={roomMode ? upNextOf(room) : !solo && player?.queue?.[0]?.title ? { title: player.queue[0].title, ready: false } : null}
           standings={roomMode ? standingsOf(room, userId) : null}
@@ -628,13 +651,38 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         <CountdownOverlay startPerf={roomLinkState.startPerf} title={room?.current?.title} effects={effectsLevel} />
       ) : null}
 
-      {pauseOpen ? (
-        <PauseOverlay
-          error={soloState.error}
-          onResume={() => { link.resume(); backToGame(); }}
-          onRestart={() => { link.restart(); backToGame(); }}
-          onPick={() => { link.leave(); backToGame(); }}
-          onExit={onClose}
+      {menuShown ? (
+        <GameMenu
+          title={pauseOpen ? "Paused" : "Menu"}
+          note={running && !solo ? (roomMode ? "The round keeps going." : "The song keeps playing in voice.") : null}
+          error={pauseOpen ? soloState.error : null}
+          focusSettings={settingsFromMenu}
+          modes={MODES.map(({ id, label }) => {
+            const active = id === mode;
+            return {
+              id,
+              label,
+              active,
+              disabled: !active && ((id === "live" && !liveAvailable) || ((id === "solo" || id === "room") && MOCK_PREVIEW)),
+              hint: id === "live" ? "The bot isn't playing anything" : "Not available in the mock preview",
+              onSelect: () => {
+                closeMenu();
+                if (roomMode) requestLeave(id);
+                else onModeChange(id);
+              },
+            };
+          })}
+          autoplay={autoplay}
+          onAutoplay={roomMode ? undefined : setAutoplay}
+          onResume={resumeFromMenu}
+          onRestart={pauseOpen ? () => { link.restart(); closeMenu(); backToGame(); } : undefined}
+          onPick={solo && !pickerOpen ? () => { link.leave(); closeMenu(); backToGame(); } : undefined}
+          onSettings={() => { setSettingsFromMenu(true); setSettingsOpen(true); }}
+          onExit={() => {
+            closeMenu();
+            if (roomMode) requestLeave("close");
+            else onClose();
+          }}
         />
       ) : null}
       {settingsOpen ? <SettingsPanel
