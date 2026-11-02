@@ -439,8 +439,8 @@ module.exports = {
         `No command matching ${interaction.commandName} was found.`,
         null,
         `Command name: ${interaction.commandName}`,
-        interaction.guild.id,
-        interaction.guild.name
+        interaction.guild?.id,
+        interaction.guild?.name
       );
       return;
     }
@@ -458,8 +458,8 @@ module.exports = {
         `Error executing ${interaction.commandName}`,
         error,
         `Command name: ${interaction.commandName}`,
-        interaction.guild.id,
-        interaction.guild.name
+        interaction.guild?.id,
+        interaction.guild?.name
       );
     }
   },
