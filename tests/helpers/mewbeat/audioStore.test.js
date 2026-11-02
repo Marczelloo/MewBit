@@ -15,6 +15,15 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+// The store does file work between fetches, so wait for a condition rather than a fixed time.
+async function waitFor(condition, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe("mewbeat audio store", () => {
   let dir;
   beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "mewbeat-audio-")); });
@@ -72,11 +81,12 @@ describe("mewbeat audio store", () => {
     });
     const first = store.get("ka", "a", "n");
     const second = store.get("kb", "b", "n");
+    await waitFor(() => started.length > 0);
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.deepStrictEqual(started, ["a"]);
     gates.a.resolve();
     await first;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => started.length > 1);
     assert.deepStrictEqual(started, ["a", "b"]);
     gates.b.resolve();
     await second;
