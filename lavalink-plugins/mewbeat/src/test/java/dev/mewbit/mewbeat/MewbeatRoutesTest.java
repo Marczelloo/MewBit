@@ -9,7 +9,7 @@ class MewbeatRoutesTest {
 
     @Test
     void versionEndpointReportsTheFeaturesVersionOfThePayload() {
-        MewbeatRoutes.VersionResponse response = new MewbeatRoutes(null, false).version();
+        MewbeatRoutes.VersionResponse response = new MewbeatRoutes(null, null, false).version();
 
         assertEquals(Features.VERSION, response.featuresVersion());
         assertEquals("mewbeat", response.plugin());

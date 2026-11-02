@@ -15,6 +15,11 @@ public interface TrackDecoder {
         void accept(short[] interleaved, int frames);
     }
 
+    /** Receives encoded audio: one Opus packet (20 ms, 48 kHz stereo) per call. */
+    interface OpusSink {
+        void accept(byte[] packet);
+    }
+
     /** The track could not be decoded, or its source failed while it was being decoded. */
     class DecodeException extends Exception {
         public DecodeException(String message) {
@@ -42,4 +47,14 @@ public interface TrackDecoder {
      * Interrupting the calling thread cancels the decode.
      */
     void decode(String encodedTrack, PcmSink sink) throws DecodeException, InterruptedException;
+
+    /**
+     * Decodes the whole track and re-encodes it as 48 kHz stereo Opus, pushing each
+     * packet to {@code sink} on the calling thread. The first packet starts at
+     * track time 0; the source's own Opus packets are never passed through.
+     * Interrupting the calling thread cancels the job.
+     */
+    default void decodeOpus(String encodedTrack, OpusSink sink) throws DecodeException, InterruptedException {
+        throw new DecodeException("opus output is not supported by this decoder");
+    }
 }

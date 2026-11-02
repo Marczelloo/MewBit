@@ -25,11 +25,15 @@ public class MewbeatRoutes {
 
     private final String version;
     private final AnalysisWorker worker;
+    private final AudioEncodeWorker audioWorker;
     private final boolean debugRoutes;
 
     public MewbeatRoutes(
-            AnalysisWorker worker, @Value("${plugins.mewbeat.debugRoutes:false}") boolean debugRoutes) {
+            AnalysisWorker worker,
+            AudioEncodeWorker audioWorker,
+            @Value("${plugins.mewbeat.debugRoutes:false}") boolean debugRoutes) {
         this.worker = worker;
+        this.audioWorker = audioWorker;
         this.debugRoutes = debugRoutes;
         Properties properties = new Properties();
         try (InputStream in = MewbeatRoutes.class.getResourceAsStream("/mewbeat.properties")) {
@@ -65,6 +69,21 @@ public class MewbeatRoutes {
             return;
         }
         respond(response, worker.analyze(request.encodedTrack()));
+    }
+
+    /** The whole track as Ogg Opus (48 kHz stereo) for solo play in the Activity. */
+    @PostMapping(value = "/v4/mewbeat/audio", consumes = "application/json")
+    public void audio(@RequestBody AnalyzeRequest request, HttpServletResponse response) throws IOException {
+        if (request == null || request.encodedTrack() == null || request.encodedTrack().isBlank()) {
+            respond(
+                    response,
+                    new AnalysisWorker.Outcome(
+                            400,
+                            AnalysisWorker.JSON,
+                            "{\"error\":\"encodedTrack is required\"}".getBytes(StandardCharsets.UTF_8)));
+            return;
+        }
+        respond(response, audioWorker.encode(request.encodedTrack()));
     }
 
     /** Answers 404 unless {@code plugins.mewbeat.debugRoutes} is true. */

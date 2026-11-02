@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -45,6 +46,10 @@ public final class LavaplayerTrackDecoder implements TrackDecoder {
     /** Decoder-side buffer: the decode thread runs at most this far ahead of the analysis thread. */
     private static final int BUFFER_MS = 5_000;
     private static final long POLL_MS = 500;
+    /** 48 kHz stereo Opus, 960 samples (20 ms) per packet. */
+    private static final AudioDataFormat OPUS_FORMAT = StandardAudioDataFormats.DISCORD_OPUS;
+    /** Opus encoder effort 0-10; 5 keeps a Raspberry Pi well ahead of real time. */
+    private static final int OPUS_QUALITY = 5;
 
     private final AudioPlayerManager playerManager;
 
@@ -65,17 +70,41 @@ public final class LavaplayerTrackDecoder implements TrackDecoder {
 
     @Override
     public void decode(String encodedTrack, PcmSink sink) throws DecodeException, InterruptedException {
+        AudioConfiguration configuration = playerManager.getConfiguration().copy();
+        configuration.setOutputFormat(PCM_FORMAT);
+        // The analysis downsamples to 24 kHz anyway; the cheapest resampler is accurate enough.
+        configuration.setResamplingQuality(AudioConfiguration.ResamplingQuality.LOW);
+        run(encodedTrack, configuration, new AudioPlayerOptions(), executor -> drain(executor, sink));
+    }
+
+    @Override
+    public void decodeOpus(String encodedTrack, OpusSink sink) throws DecodeException, InterruptedException {
+        AudioConfiguration configuration = playerManager.getConfiguration().copy();
+        configuration.setOutputFormat(OPUS_FORMAT);
+        configuration.setOpusEncodingQuality(OPUS_QUALITY);
+        AudioPlayerOptions options = new AudioPlayerOptions();
+        // When the source is Opus too, lavaplayer forwards its packets untouched unless
+        // processing is required (AudioPipelineFactory.isProcessingRequired: a non-100
+        // volume or any filter factory). Passed-through packets would carry the source's
+        // own timeline and pre-skip, so force the PCM path with a factory that adds no
+        // filters. Unlike volume 99 this leaves the samples bit-for-bit unscaled.
+        options.filterFactory.set((track, format, output) -> Collections.emptyList());
+        run(encodedTrack, configuration, options, executor -> drainOpus(executor, sink));
+    }
+
+    private interface Drain {
+        void run(LocalAudioTrackExecutor executor) throws InterruptedException;
+    }
+
+    private void run(String encodedTrack, AudioConfiguration configuration, AudioPlayerOptions options, Drain drain)
+            throws DecodeException, InterruptedException {
         AudioTrack decoded = decodeTrack(encodedTrack);
         if (!(decoded instanceof InternalAudioTrack track)) {
             throw new DecodeException("track type is not decodable: " + decoded.getClass().getName());
         }
 
-        AudioConfiguration configuration = playerManager.getConfiguration().copy();
-        configuration.setOutputFormat(PCM_FORMAT);
-        // The analysis downsamples to 24 kHz anyway; the cheapest resampler is accurate enough.
-        configuration.setResamplingQuality(AudioConfiguration.ResamplingQuality.LOW);
         LocalAudioTrackExecutor executor =
-                new LocalAudioTrackExecutor(track, configuration, new AudioPlayerOptions(), false, BUFFER_MS);
+                new LocalAudioTrackExecutor(track, configuration, options, false, BUFFER_MS);
         track.assignExecutor(executor, true);
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -106,7 +135,7 @@ public final class LavaplayerTrackDecoder implements TrackDecoder {
         decodeThread.start();
 
         try {
-            drain(executor, sink);
+            drain.run(executor);
         } finally {
             executor.stop();
             decodeThread.interrupt();
@@ -114,6 +143,29 @@ public final class LavaplayerTrackDecoder implements TrackDecoder {
         Throwable cause = failure.get();
         if (cause != null) {
             throw new DecodeException(messageOf(cause), cause);
+        }
+    }
+
+    private static void drainOpus(LocalAudioTrackExecutor executor, OpusSink sink) throws InterruptedException {
+        MutableAudioFrame frame = new MutableAudioFrame();
+        frame.setBuffer(ByteBuffer.allocate(OPUS_FORMAT.maximumChunkSize()));
+        while (true) {
+            boolean provided;
+            try {
+                provided = executor.provide(frame, POLL_MS, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                continue; // the source is slow; the caller's watchdog bounds the total time
+            }
+            if (!provided || frame.isTerminator()) {
+                return;
+            }
+            int length = frame.getDataLength();
+            if (length <= 0) {
+                continue;
+            }
+            byte[] packet = new byte[length];
+            frame.getData(packet, 0);
+            sink.accept(packet);
         }
     }
 
