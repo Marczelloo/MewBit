@@ -214,4 +214,15 @@ class OggOpusWriterTest {
         assertEquals(3, pages.size());
         assertEquals(0x04, pages.get(2).flags());
     }
+
+    @Test
+    void writesAnAllZeroBufferAsOneSilent20msFrame() {
+        OggOpusWriter writer = new OggOpusWriter(SERIAL);
+        writer.addPacket(new byte[1568]);
+        List<Page> pages = parse(writer.finish());
+
+        Page audio = pages.get(2);
+        assertArrayEquals(OggOpusWriter.OPUS_SILENCE, audio.data());
+        assertEquals(960, audio.granule());
+    }
 }

@@ -61,11 +61,30 @@ public final class OggOpusWriter {
         out.write(tagsPage, 0, tagsPage.length);
     }
 
+    /** One 20 ms CELT fullband frame of silence (TOC 0xfc), as lavaplayer's own silence frames. */
+    static final byte[] OPUS_SILENCE = {(byte) 0xfc, (byte) 0xff, (byte) 0xfe};
+
+    /**
+     * The first few frames of a lavaplayer re-encode come out as an all-zero buffer,
+     * which no decoder accepts (and whose TOC would count 10 ms). Each still stands
+     * for 20 ms of the song, so it becomes a silent frame rather than being dropped:
+     * the file's timeline stays the chart's.
+     */
+    static byte[] playable(byte[] packet) {
+        for (byte b : packet) {
+            if (b != 0) {
+                return packet;
+            }
+        }
+        return OPUS_SILENCE.clone();
+    }
+
     /** Adds one Opus packet (one 20 ms frame from lavaplayer). */
     public void addPacket(byte[] packet) {
         if (finished) {
             throw new IllegalStateException("writer is finished");
         }
+        packet = playable(packet);
         int segments = packet.length / 255 + 1;
         if (segments > MAX_SEGMENTS) {
             throw new IllegalArgumentException("opus packet too large: " + packet.length);
