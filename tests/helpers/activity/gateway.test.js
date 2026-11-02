@@ -400,4 +400,13 @@ test("Activity routes mewbeat_ messages to the mewbeat channel", async (t) => {
 
   socket.send(JSON.stringify({ type: "mewbeat_chart", audioKey: "youtube:abc:1", difficulty: "easy" }));
   assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
+
+  // A finished run on a dense chart is one big message: it reaches the channel rather than closing the socket.
+  const events = Array.from({ length: 2000 }, (_, n) => ({ n, part: "head", j: "great", t: 123456.78901234567, d: -12.345678901234567 }));
+  const body = JSON.stringify({ type: "mewbeat_submit", id: "big-run", events });
+  assert.ok(body.length > 64 * 1024);
+  socket.send(body);
+  const big = await nextMessage(["mewbeat_submit"]);
+  assert.equal(big.id, "big-run");
+  assert.equal(big.reason, "locked");
 });

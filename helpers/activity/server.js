@@ -90,6 +90,8 @@ const MAX_ARTWORK_SIZE = 8 * 1024 * 1024;
 const CLIENT_CACHE_TTL = 5 * 60 * 1000;
 const MAX_IDENTITY_CACHE_ENTRIES = 1_000;
 const MAX_ACTIVITY_SOCKETS = 200;
+// A finished mewbeat run is one message: its event log (up to 20000 judgements) passes 64 KB from about 900 notes.
+const MAX_SOCKET_MESSAGE_SIZE = 2 * 1024 * 1024;
 const QUEUE_UNDO_TTL_MS = 15_000;
 // Lavalink's send queue (bufferDurationMs 400) plus Discord voice transport.
 const MEWBEAT_AUDIO_LATENCY_MS = process.env.MEWBEAT_AUDIO_LATENCY_MS && Number.isFinite(Number(process.env.MEWBEAT_AUDIO_LATENCY_MS))
@@ -1667,7 +1669,7 @@ function createActivityServer(client) {
     webSocketServer.handleUpgrade(request, socket, head, (webSocket) => webSocketServer.emit("connection", webSocket, request));
   }
 
-  const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: MAX_SOCKET_MESSAGE_SIZE });
   webSocketServer.on("connection", (socket) => {
     if (sockets.size >= MAX_ACTIVITY_SOCKETS) return socket.close(1013, "Activity is busy. Try again shortly.");
     socket.authorized = false;
@@ -1737,7 +1739,10 @@ function createActivityServer(client) {
       releaseSession({ sockets, socket, guildId, identity, disconnect: mewbeatChannel.disconnect });
     };
     socket.on("close", release);
-    socket.on("error", release);
+    socket.on("error", (error) => {
+      Log.warning("Activity socket dropped", error.message);
+      release();
+    });
   });
 
   return {
