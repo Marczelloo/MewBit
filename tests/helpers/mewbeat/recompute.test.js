@@ -107,6 +107,18 @@ describe("recomputeRun", () => {
     assert.strictEqual(result.score, plain.score);
   });
 
+  it("keeps each judgement near its own note, so one FEVER cannot cover the whole run", async () => {
+    const chart = { notes: Array.from({ length: 200 }, (_, i) => ({ t: 1000 + i * 500, lane: i % 4 })) };
+    const honest = chart.notes.map((note, n) => ({ n, part: "head", j: "perfect", t: note.t, d: 0 }));
+    const feverAt = honest[59].t;
+    const { score } = await recomputeRun({ chart, events: honest, fevers: [feverAt] });
+    // The same judgements, all claimed inside the FEVER window and shuffled.
+    const moved = honest.map((event) => ({ ...event, t: feverAt + 1 })).reverse();
+    const cheated = await recomputeRun({ chart, events: moved, fevers: [feverAt] });
+    // At most the note or two the timing slack lets slip into the window's edges.
+    assert.ok(cheated.score - score <= score * 0.01, `${cheated.score} vs ${score}`);
+  });
+
   it("rejects more events than the chart has judgements", async () => {
     const chart = { notes: [{ t: 1000, lane: 0 }, { t: 1500, lane: 1, len: 300 }] };
     assert.strictEqual(judgeablePartsOf(chart), 3);

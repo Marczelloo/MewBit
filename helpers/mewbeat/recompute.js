@@ -3,6 +3,11 @@ const { pathToFileURL } = require("node:url");
 
 const JUDGEMENTS = new Set(["perfect", "great", "good", "miss"]);
 const MAX_ABS_TIME_MS = 1e9;
+// How far from its note a judgement can honestly land: the early-miss window before the note
+// (scoring.js EARLY_MISS_MS 150), the hold tail's good window after its end (110 * 1.5), plus a
+// frame or two of tick lag and a mid-run offset change.
+const EARLY_SLACK_MS = 150 + 250;
+const LATE_SLACK_MS = 165 + 250;
 
 let scoringModule = null;
 
@@ -59,10 +64,21 @@ async function recomputeRun({ chart, events, fevers = [], loadScoring = loadClie
     seen.add(key);
   }
 
+  // The time of a judgement decides which FEVER covers it, so it is pinned near its own note and the
+  // events are replayed in time order: a client cannot move every hit into one FEVER window.
+  // Stable sort: a hold's head stays before a tail judged at the same instant.
+  const replay = events
+    .map((event) => {
+      const note = notes[event.n];
+      const end = event.part === "tail" ? note.t + note.len : note.t;
+      return { j: event.j, t: Math.min(Math.max(event.t, note.t - EARLY_SLACK_MS), end + LATE_SLACK_MS) };
+    })
+    .sort((a, b) => a.t - b.t);
+
   const { createScore, applyJudgement, startFever, accuracyOf, gradeOf } = await loadScoring();
   let state = createScore();
   let nextFever = 0;
-  for (const event of events) {
+  for (const event of replay) {
     while (nextFever < feverTimes.length && feverTimes[nextFever] <= event.t) {
       state = startFever(state, feverTimes[nextFever]);
       nextFever += 1;
