@@ -61,6 +61,7 @@ const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = re
 const { createAudioStore } = require("../mewbeat/audioStore");
 const { chartStore } = require("../mewbeat/chartStore");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
+const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore } = require("../mewbeat/stores");
 const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
@@ -748,6 +749,8 @@ const mewbeatChannel = createMewbeatChannel({
   audioLatencyMs: MEWBEAT_AUDIO_LATENCY_MS,
   resolveTrack: resolveMewbeatTrack,
   soloTracks,
+  scoreStore: mewbeatScoreStore,
+  historyStore: mewbeatHistoryStore,
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
 });

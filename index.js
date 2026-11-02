@@ -18,6 +18,7 @@ const Log = require("./helpers/logs/log.js");
 const health = require("./helpers/monitoring/health.js");
 const statsStore = require("./helpers/stats/store.js");
 const userPrefs = require("./helpers/users/preferences.js");
+const { flushMewbeatStores } = require("./helpers/mewbeat/stores");
 
 if (!token) {
   Log.error("DISCORD_TOKEN is not set in the environment variables.");
@@ -429,7 +430,7 @@ async function shutdown(signal) {
   Log.info(`Received ${signal}; shutting down cleanly.`);
   activityServer.stop();
   health.stopMonitoring?.();
-  await Promise.allSettled([statsStore.flush?.(), userPrefs.flush?.()]);
+  await Promise.allSettled([statsStore.flush?.(), userPrefs.flush?.(), flushMewbeatStores()]);
   client.destroy();
   process.exit(0);
 }
