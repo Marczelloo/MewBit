@@ -84,10 +84,14 @@ function validateSettingsPatch(patch, current) {
   return settings;
 }
 
+/* An unlock counts only for the current generation. Raising it locks mewbeat again for everyone, as if they
+   had never found it (so everyone gets the first unlock reveal again); their settings are kept. */
+const UNLOCK_GENERATION = 2;
+
 function getMewbeatRecord(userId) {
   const raw = userPreferences.getUserPreferences(userId)?.mewbeat;
   const stored = raw && typeof raw === "object" ? raw : {};
-  const unlocked = stored.unlocked === true;
+  const unlocked = stored.unlocked === true && stored.generation === UNLOCK_GENERATION;
   return {
     unlocked,
     unlockedAt: unlocked && Number.isFinite(stored.unlockedAt) ? stored.unlockedAt : null,
@@ -96,7 +100,7 @@ function getMewbeatRecord(userId) {
 }
 
 function writeRecord(userId, record) {
-  userPreferences.setUserPreference(userId, "mewbeat", record);
+  userPreferences.setUserPreference(userId, "mewbeat", record.unlocked ? { ...record, generation: UNLOCK_GENERATION } : record);
   return record;
 }
 
@@ -115,6 +119,7 @@ function updateMewbeatSettings(userId, patch) {
 module.exports = {
   DEFAULT_SETTINGS,
   LIMITS,
+  UNLOCK_GENERATION,
   RESERVED_CODES,
   normalizeSettings,
   validateSettingsPatch,

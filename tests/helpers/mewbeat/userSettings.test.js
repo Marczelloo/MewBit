@@ -5,6 +5,7 @@ const {
   DEFAULT_SETTINGS,
   normalizeSettings,
   validateSettingsPatch,
+  UNLOCK_GENERATION,
   getMewbeatRecord,
   unlockMewbeat,
   updateMewbeatSettings,
@@ -108,6 +109,29 @@ describe("mewbeat per-account record", () => {
     assert.strictEqual(unlockMewbeat("u1", 1000).unlockedAt, 1000);
     assert.strictEqual(unlockMewbeat("u1", 2000).unlockedAt, 1000);
     assert.strictEqual(getMewbeatRecord("u1").unlockedAt, 1000);
+  });
+
+  it("locks an unlock from an earlier generation again, keeping its settings", () => {
+    const settings = { ...DEFAULT_SETTINGS, keys: [...DEFAULT_SETTINGS.keys], offsetMs: 40 };
+    fake.store.set("u1", { mewbeat: { unlocked: true, unlockedAt: 1000, settings } });
+    fake.store.set("u2", { mewbeat: { unlocked: true, unlockedAt: 1000, settings, generation: UNLOCK_GENERATION - 1 } });
+    for (const userId of ["u1", "u2"]) {
+      assert.deepStrictEqual(getMewbeatRecord(userId), { unlocked: false, unlockedAt: null, settings });
+      assert.throws(() => updateMewbeatSettings(userId, { offsetMs: 50 }), { statusCode: 403 });
+    }
+    const record = unlockMewbeat("u1", 5000);
+    assert.strictEqual(record.unlocked, true);
+    assert.strictEqual(record.unlockedAt, 5000);
+    assert.strictEqual(record.settings.offsetMs, 40);
+    assert.strictEqual(fake.store.get("u1").mewbeat.generation, UNLOCK_GENERATION);
+    assert.strictEqual(getMewbeatRecord("u1").unlocked, true);
+  });
+
+  it("keeps the current generation through a settings change", () => {
+    unlockMewbeat("u1", 1000);
+    updateMewbeatSettings("u1", { offsetMs: 40 });
+    assert.strictEqual(fake.store.get("u1").mewbeat.generation, UNLOCK_GENERATION);
+    assert.strictEqual(getMewbeatRecord("u1").unlocked, true);
   });
 
   it("refuses a settings change before the unlock", () => {
