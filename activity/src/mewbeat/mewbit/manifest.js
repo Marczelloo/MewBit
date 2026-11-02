@@ -30,6 +30,8 @@ export const MEWBIT_POSES = {
   milestone: pose("milestone", "game", run(10), TWOS, { hold: true }),
   fever: pose("fever", "game", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 11, 12, 13, 14, 15], TWOS, { bubble: "FEVER!!! ✦" }),
   charting: pose("charting", "game", run(13, 2), TWOS, { bubble: "charting…" }),
+  // Climbs out of the unlock glitch; its last frame is the first of reveal.
+  emerge: pose("emerge", "unlock", run(19), TWOS, { hold: true }),
   reveal: pose("reveal", "unlock", run(13), TWOS, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
   // Lobby and results poses from the design spec: no screen renders <Mewbit> with them yet.
   stretch: pose("stretch", "lobby", [1, 2, 3, 2, 4], 2.5),

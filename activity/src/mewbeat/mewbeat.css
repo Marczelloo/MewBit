@@ -44,51 +44,51 @@
   z-index: var(--z-modal, 40);
   display: grid;
   place-items: center;
-  background: rgb(5 6 8 / 0.9);
+  background: rgb(5 6 8 / var(--mb-dim, 0.9));
   color: var(--mb-text);
   font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
   overflow: hidden;
 }
 
-.mb-glitch { position: absolute; inset: 0; animation: mb-glitch-flicker var(--mb-glitch-ms, 600ms) steps(2, end) both; }
-.mb-glitch-slice {
+/* The real app tears: the page filter comes from GlitchFilters and is driven by glitch.js. */
+.mb-glitching .activity-content > *,
+.mb-glitching .mb-game {
+  filter: url(#mb-glitch-page);
+  transform: translateY(var(--mb-slip, 0px));
+}
+.mb-glitch-defs { position: absolute; width: 0; height: 0; }
+.mb-reveal-running { --mb-dim: 0; cursor: default; }
+.mb-reveal:focus { outline: none; }
+.mb-noise { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+.mb-scan {
   position: absolute;
-  left: -10%;
-  width: 120%;
-  opacity: 0;
-  animation: mb-slice-tear var(--mb-glitch-ms, 600ms) cubic-bezier(0.2, 0.8, 0.2, 1) var(--mb-delay, 0ms) both;
+  inset: 0;
+  opacity: var(--mb-scan, 0);
+  background: repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.5) 0 1px, transparent 1px 3px);
+  pointer-events: none;
 }
-.mb-tint-cyan { background: var(--mb-cyan); }
-.mb-tint-pink { background: var(--mb-pink); }
-.mb-tint-violet { background: var(--mb-violet); }
-/* Chromatic split: two full-height bars offset either side of centre. */
-.mb-glitch-split { position: absolute; top: 0; bottom: 0; width: 30%; left: 35%; mix-blend-mode: screen; opacity: 0; }
-.mb-glitch-split-a { background: var(--mb-cyan); animation: mb-split-a var(--mb-glitch-ms, 600ms) steps(6, end) both; }
-.mb-glitch-split-b { background: var(--mb-pink); animation: mb-split-b var(--mb-glitch-ms, 600ms) steps(6, end) both; }
+.mb-cut {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal, 40) + 1);
+  background: rgb(5 6 8 / var(--mb-dim, 0));
+  overflow: hidden;
+}
 
-@keyframes mb-glitch-flicker {
-  0% { opacity: 0; }
-  10% { opacity: 1; }
-  45% { opacity: 0.6; }
-  60% { opacity: 1; }
-  100% { opacity: 0; }
+/* The rift Mewbit climbs out of. Its outline is one polygon, so the rims are copies of it nudged sideways. */
+.mb-rift {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 112%; /* RIFT_BOX_HEIGHT in glitch.js */
+  filter: drop-shadow(0 0 9px rgb(167 139 250 / 0.35));
 }
-@keyframes mb-slice-tear {
-  0% { opacity: 0; transform: translateX(calc(var(--mb-dir) * -18%)); }
-  25% { opacity: 0.85; transform: translateX(calc(var(--mb-dir) * 12%)); }
-  60% { opacity: 0.5; transform: translateX(calc(var(--mb-dir) * -6%)); }
-  100% { opacity: 0; transform: translateX(0); }
-}
-@keyframes mb-split-a {
-  0%, 100% { opacity: 0; transform: translateX(0); }
-  30% { opacity: 0.35; transform: translateX(-14vw); }
-  70% { opacity: 0.25; transform: translateX(-4vw); }
-}
-@keyframes mb-split-b {
-  0%, 100% { opacity: 0; transform: translateX(0); }
-  30% { opacity: 0.35; transform: translateX(14vw); }
-  70% { opacity: 0.25; transform: translateX(4vw); }
-}
+.mb-rift > span { position: absolute; inset: 0; clip-path: var(--mb-rift-clip, none); }
+.mb-rift-rim-a { background: var(--mb-cyan); transform: translateX(calc(-1 * var(--mb-rift-split, 3px))); }
+.mb-rift-rim-b { background: var(--mb-pink); transform: translateX(var(--mb-rift-split, 3px)); }
+.mb-rift-void { background: radial-gradient(ellipse at 50% 40%, #241344 0%, #0b0618 55%, #030207 100%); }
+.mb-rift-void canvas { width: 100%; height: 100%; image-rendering: pixelated; opacity: 0.55; }
 
 .mb-reveal-card {
   position: relative;
@@ -99,7 +99,16 @@
   padding: 8px 24px 28px;
   animation: mb-card-in 360ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
-.mb-reveal-card .mb-mewbit { width: min(60vw, 280px); }
+.mb-reveal-figure { position: relative; width: min(64vw, 46vh, 360px); aspect-ratio: 1; }
+.mb-reveal-figure-fx { filter: url(#mb-glitch-sprite); }
+.mb-reveal-sprite { position: relative; clip-path: var(--mb-sprite-clip, none); }
+.mb-reveal-text { display: grid; justify-items: center; gap: 10px; visibility: hidden; }
+.mb-reveal-text.is-in { visibility: visible; animation: mb-card-in 360ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+/* After the glitch she is already on screen, so the card stays still and only its text comes in. */
+.mb-reveal-card-cut { animation: none; }
+.mb-reveal-card-cut .mb-motion-reveal { animation: none; }
+.mb-reveal-card-cut .is-in .mb-reveal-title { animation: mb-title-split 420ms steps(6, end) both; }
+.mb-reveal-card-calm .mb-reveal-text.is-in { animation: none; }
 .mb-reveal-title {
   margin: 0;
   font-size: clamp(28px, 6vw, 40px);
@@ -118,6 +127,10 @@
   to { opacity: 1; transform: none; }
 }
 @keyframes mb-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mb-title-split {
+  from { text-shadow: -10px 0 var(--mb-pink), 10px 0 var(--mb-violet); }
+  to { text-shadow: 0 0 transparent, 0 0 transparent; }
+}
 
 /* ---------- game screen ---------- */
 /* Registered so the stage can fade --mb-vibe and animate --mb-pulse without per-frame React state. */
@@ -603,10 +616,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mb-glitch,
-  .mb-glitch-slice,
-  .mb-glitch-split,
   .mb-reveal-card,
+  .mb-reveal-text.is-in,
+  .mb-reveal-card-cut .is-in .mb-reveal-title,
   .mb-mewbit-body,
   .mb-mewbit-bubble,
   .mb-mult,

@@ -43,7 +43,7 @@ function useFrame(frames, fps, animate, hold) {
 const preloaded = new Map();
 
 // Loads every frame of a screen's poses up front, so a pose never blinks while its images download.
-function preloadGroup(group) {
+export function preloadMewbitGroup(group) {
   if (!group || preloaded.has(group)) return;
   const urls = Object.values(MEWBIT_POSES).filter((entry) => entry.group === group).flatMap((entry) => entry.frames);
   preloaded.set(group, [...new Set(urls)].map((url) => {
@@ -62,7 +62,7 @@ export default function Mewbit({ pose = "neutral", effects = "full", className =
   const src = entry.kind === "frames" ? entry.frames?.[frameIndex] ?? placeholderUrl : placeholderUrl;
   const motion = animated && entry.motion ? entry.motion : "";
 
-  useEffect(() => preloadGroup(entry.group), [entry.group]);
+  useEffect(() => preloadMewbitGroup(entry.group), [entry.group]);
 
   return (
     <div className={`mb-mewbit mb-mewbit-${level} ${className}`.trim()} data-pose={pose}>
