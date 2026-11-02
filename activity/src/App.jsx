@@ -2801,7 +2801,12 @@ function App() {
               finishHydration();
             }
           },
-          onReady: () => { if (alive) setConnection({ status: "live", message: "Realtime gateway connected" }); },
+          onReady: () => {
+            if (!alive) return;
+            setConnection({ status: "live", message: "Realtime gateway connected" });
+            // mewbeat re-joins its room here: the server drops a member when its socket closes.
+            mewbeatHandlerRef.current?.({ type: "mewbeat_socket_ready" });
+          },
           onMewbeat: (payload) => { if (alive) mewbeatHandlerRef.current?.(payload); },
           onConnection: (nextConnection) => { if (alive && nextContext.mode === "discord") setConnection(nextConnection); },
           onError: (error) => { if (alive && nextContext.mode === "discord") setConnection({ status: "reconnecting", message: error.message }); },

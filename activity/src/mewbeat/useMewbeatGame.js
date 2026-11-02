@@ -66,7 +66,7 @@ export function poseFor({ phase, feverActive, now, missUntil, crushed, milestone
 // waiting for events it may have missed.
 // liveSession(audioKey) names the live leaderboard session a run reports to ("live:<audioKey>" in Live, "room"
 // in a room); null, or a function answering null, means the run reports nothing (solo, room spectators).
-export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, liveSession = null, onExit }) {
+export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, liveSession = null, submitExtra = null, onExit }) {
   const cfg = settingsOf(settings);
   const prefersReduced = usePrefersReducedMotion();
   const effectsLevel = effectiveEffects(effects, prefersReduced);
@@ -118,6 +118,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   requestsRef.current = requests;
   const liveSessionFnRef = useRef(liveSession);
   liveSessionFnRef.current = liveSession;
+  // Fields merged into the mewbeat_submit body (a room run adds the round it belongs to).
+  const submitExtraRef = useRef(submitExtra);
+  submitExtraRef.current = submitExtra;
   const liveRef = useRef(null); // the live leaderboard sender of the run in progress
   const [runSession, setRunSession] = useState(null); // its session, while the run is on stage
   const redrawRef = useRef(false); // a resize wipes the canvas, which a paused game must repaint once
@@ -286,7 +289,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         const { events, fevers } = run.log();
         const id = ++summaryIdRef.current;
         const flags = { autoplay: runAutoplayRef.current, calibration: runCalibrationRef.current, difficultyChanged: run.flags.difficultyChanged };
-        const status = submitRun(id, { mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, flags });
+        const status = submitRun(id, { ...(submitExtraRef.current ?? {}), mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, flags });
         setEndSummary({
           ...rest,
           id,

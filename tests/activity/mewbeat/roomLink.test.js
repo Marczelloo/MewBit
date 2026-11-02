@@ -1,0 +1,245 @@
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const test = require("node:test");
+const { pathToFileURL } = require("node:url");
+
+let createRoomLink;
+
+test.before(async () => {
+  ({ createRoomLink } = await import(
+    pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/roomLink.js")).href
+  ));
+});
+
+function createScheduler() {
+  let time = 0;
+  let nextId = 1;
+  const timers = new Map();
+  return {
+    setTimer(fn, ms) {
+      const id = nextId++;
+      timers.set(id, { fn, at: time + ms });
+      return id;
+    },
+    clearTimer(id) {
+      timers.delete(id);
+    },
+    advance(ms) {
+      const end = time + ms;
+      for (;;) {
+        let next = null;
+        for (const [id, timer] of timers) {
+          if (timer.at <= end && (!next || timer.at < next.timer.at)) next = { id, timer };
+        }
+        if (!next) break;
+        timers.delete(next.id);
+        time = next.timer.at;
+        next.timer.fn();
+      }
+      time = end;
+    },
+    now: () => time,
+  };
+}
+
+function setup({ loadFails = false } = {}) {
+  const scheduler = createScheduler();
+  const sent = [];
+  const plays = [];
+  const calls = [];
+  const anchors = [];
+  const audio = {
+    unlock: () => Promise.resolve(),
+    stop: () => calls.push("stop"),
+    pause: () => 0,
+    load: async (key) => {
+      calls.push(`load:${key}`);
+      if (loadFails) throw new Error("nope");
+      return { durationMs: 200_000 };
+    },
+    play: (fromMs, whenPerfMs) => {
+      calls.push(`play:${fromMs}:${whenPerfMs ?? "-"}`);
+      return new Promise((resolve, reject) => plays.push({ fromMs, whenPerfMs, resolve, reject }));
+    },
+    durationMs: () => 200_000,
+    songTimeAt: () => 0,
+    onEnded: () => () => {},
+  };
+  const link = createRoomLink({
+    send: (payload) => {
+      sent.push(payload);
+      return true;
+    },
+    audio,
+    getUserId: () => "me",
+    now: scheduler.now,
+    setTimer: scheduler.setTimer,
+    clearTimer: scheduler.clearTimer,
+  });
+  link.onAnchor((result) => anchors.push(result));
+  link.start();
+  return { link, scheduler, sent, plays, calls, anchors };
+}
+
+const member = (userId, extra = {}) => ({ userId, username: userId, avatarUrl: null, difficulty: "normal", ready: false, loaded: false, spectator: false, submitted: false, ...extra });
+const current = { audioKey: "song", title: "Song", artist: "A", durationMs: 200_000, addedBy: "host" };
+const snapshot = (extra = {}) => ({
+  hostId: "host", phase: "loading", round: 1, endedAt: null, members: [member("host"), member("me")], queue: [], current,
+  startAt: null, nextAt: null, results: [], serverNow: 1000, ...extra,
+});
+const loadedMe = [member("host", { loaded: true }), member("me", { loaded: true })];
+
+async function loaded(env, extra = {}) {
+  env.link.setRoom(snapshot(extra), env.scheduler.now());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(env.link.state().stage, "ready");
+}
+
+test("a loading snapshot loads the song, anchors a paused clock and reports loaded only after the chart is taken", async () => {
+  const env = setup();
+  await loaded(env);
+  assert.deepEqual(env.anchors, ["init"]);
+  assert.equal(env.link.songClock.audioKey(), "song");
+  assert.equal(env.link.songClock.paused(), true);
+  assert.equal(env.sent.some((m) => m.type === "mewbeat_room_loaded"), false);
+  env.link.chartAccepted();
+  assert.deepEqual(env.sent.filter((m) => m.type === "mewbeat_room_loaded"), [{ type: "mewbeat_room_loaded", id: "rl1", audioKey: "song" }]);
+  assert.equal(env.link.state().stage, "waiting");
+  assert.equal(env.link.state().prepared, true);
+});
+
+test("further loading snapshots of the same round do not reload", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.setRoom(snapshot({ members: [member("host", { loaded: true }), member("me")] }), 0);
+  assert.equal(env.calls.filter((c) => c.startsWith("load:")).length, 1);
+  assert.deepEqual(env.anchors, ["init"]);
+});
+
+test("spectators never load a round", async () => {
+  const env = setup();
+  env.link.setRoom(snapshot({ members: [member("host"), member("me", { spectator: true })] }), 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(env.calls.some((c) => c.startsWith("load:")), false);
+  assert.equal(env.link.state().stage, "idle");
+});
+
+test("countdown: the audio is scheduled at startAt on the audio clock and the run resumes just before", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  // serverNow 1000 at t=0, startAt 6000 -> 5000 ms on the local clock.
+  env.link.setRoom(snapshot({ phase: "countdown", members: loadedMe, startAt: 6000, serverNow: 1000 }), 0);
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("play:")), ["play:0:5000"]);
+  assert.equal(env.link.state().stage, "countdown");
+  assert.equal(env.link.state().startPerf, 5000);
+  assert.equal(env.link.state().playedRound, 1);
+  env.scheduler.advance(4900);
+  assert.deepEqual(env.anchors, ["init"]);
+  env.scheduler.advance(100);
+  assert.deepEqual(env.anchors, ["init", "resume"]);
+  assert.equal(env.link.songClock.paused(), false);
+  assert.equal(env.link.state().stage, "playing");
+});
+
+test("countdown is not scheduled twice by repeated snapshots", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  const room = snapshot({ phase: "countdown", members: loadedMe, startAt: 6000 });
+  env.link.setRoom(room, 0);
+  env.link.setRoom({ ...room }, 10);
+  assert.equal(env.calls.filter((c) => c.startsWith("play:")).length, 1);
+});
+
+test("a player the server did not count as loaded does not start the audio", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "countdown", members: [member("host", { loaded: true }), member("me")], startAt: 6000 }), 0);
+  assert.equal(env.calls.some((c) => c.startsWith("play:")), false);
+});
+
+test("a chart accepted after the loading phase is not reported", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.setRoom(snapshot({ phase: "countdown", members: [member("host", { loaded: true }), member("me")], startAt: 6000 }), 0);
+  env.link.chartAccepted();
+  assert.equal(env.sent.some((m) => m.type === "mewbeat_room_loaded"), false);
+  assert.equal(env.link.state().prepared, false);
+});
+
+test("a start already in the past plays from where the song is now", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  env.scheduler.advance(7000);
+  env.link.setRoom(snapshot({ phase: "playing", members: loadedMe, startAt: 6000, serverNow: 7000 }), 7000);
+  const play = env.calls.find((c) => c.startsWith("play:"));
+  assert.equal(play, "play:1060:-");
+  assert.equal(env.anchors.at(-1), "resume");
+});
+
+test("the round ending drops the run: audio stops and the game gets a clear", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "countdown", members: loadedMe, startAt: 6000 }), 0);
+  env.link.setRoom(snapshot({ phase: "intermission", round: 1, endedAt: 9000, members: loadedMe, nextAt: 99_000 }), 100);
+  assert.equal(env.anchors.at(-1), "clear");
+  assert.equal(env.link.songClock.audioKey(), null);
+  assert.equal(env.link.state().stage, "idle");
+  assert.equal(env.link.state().playedRound, 1, "the round that was played is remembered for the standings");
+  // the pending resume timer is gone
+  env.scheduler.advance(10_000);
+  assert.equal(env.anchors.includes("resume"), false);
+});
+
+test("a new round after a finished one loads again from a clean anchor", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "intermission", endedAt: 9000, members: loadedMe }), 0);
+  env.link.setRoom(snapshot({ phase: "loading", round: 2, endedAt: null }), 100);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(env.anchors, ["init", "clear", "init"]);
+  assert.equal(env.link.state().round, 2);
+});
+
+test("a failed load is reported nowhere and not retried on every snapshot", async () => {
+  const env = setup({ loadFails: true });
+  env.link.setRoom(snapshot(), 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(env.link.state().error, /load the song/);
+  env.link.setRoom(snapshot({ members: [member("host", { loaded: true }), member("me")] }), 10);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(env.calls.filter((c) => c.startsWith("load:")).length, 1);
+  assert.equal(env.sent.some((m) => m.type === "mewbeat_room_loaded"), false);
+});
+
+test("an audio start that fails drops the round with a message", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "countdown", members: loadedMe, startAt: 6000 }), 0);
+  env.plays[0].reject(new Error("blocked"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(env.link.state().error, /audio/);
+  assert.equal(env.anchors.at(-1), "clear");
+});
+
+test("leaving the room (null snapshot) drops the run", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.setRoom(null);
+  assert.equal(env.anchors.at(-1), "clear");
+  assert.equal(env.link.state().stage, "idle");
+});
+
+test("leaveRound drops the run and ignores the stale snapshot", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.leaveRound();
+  assert.equal(env.anchors.at(-1), "clear");
+  assert.equal(env.link.songClock.audioKey(), null);
+});

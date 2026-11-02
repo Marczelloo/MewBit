@@ -8,7 +8,7 @@ const COUNT_IN_STEP_MS = 500;
 // Song clock of a solo run. Same surface as createSongClock, but the time comes from the Activity's own
 // audio instead of a server anchor. While the audio is not playing (waiting for the chart, count-in,
 // pause) it holds positionMs, so the game can build its run on a real, non-null clock.
-function createSoloClock(audio) {
+export function createSoloClock(audio) {
   let key = null;
   let paused = true;
   let positionMs = 0;
