@@ -43,6 +43,8 @@ const MODES = [
   { id: "room", label: "Room" },
 ];
 
+const RESULTS_HOLD_MS = 5000;
+
 const PHASE_COPY = {
   connecting: { title: "Connecting…" },
   offline: { title: "Reconnecting…" },
@@ -447,6 +449,31 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [leaveConfirm, settingsOpen]);
+  // The game's keys are paused on the room's own screens, Esc among them, so it opens the menu from here.
+  useEffect(() => {
+    if (!lobbyScreen || menuShown || settingsOpen || pickerOpen || addOpen || leaveConfirm) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape" || event.repeat) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setMenuOpen(true);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [lobbyScreen, menuShown, settingsOpen, pickerOpen, addOpen, leaveConfirm]);
+  // Esc closes the "add songs" window wherever the focus is. The settings panel, when open, takes Esc first.
+  useEffect(() => {
+    if (!addOpen || settingsOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAddOpen(false);
+      backToGame();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [addOpen, settingsOpen]);
   // An error shown in the lobby goes away once the lobby is left.
   useEffect(() => {
     if (view !== "lobby") setActionNotice(null);
@@ -510,9 +537,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const [pulse, setPulse] = useState({ id: 0, count: 0 });
   if (judgement && judgement.kind !== "miss" && judgement.id !== pulse.id) setPulse({ id: judgement.id, count: pulse.count + 1 });
   const pulseClass = pulse.count > 0 && effectsLevel !== "off" ? ` mb-pulse-${pulse.count % 2 ? "a" : "b"}` : "";
-  const sad = mewbitPose === "crushed";
-  // FEVER pushes the vibe look past full, a crushed Mewbit drains it.
-  const stageVibe = hud.feverActive ? 1.4 : sad ? 0 : Math.min(1, Math.max(0, hud.vibe));
+  // FEVER pushes the vibe look past full.
+  const stageVibe = hud.feverActive ? 1.4 : Math.min(1, Math.max(0, hud.vibe));
   const feverTimeStyle = hud.feverActive
     ? { opacity: 1, transform: "scaleX(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
     : { opacity: 0, transform: "scaleX(1)", transition: "none" };
@@ -531,7 +557,17 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // last summary around until the next run starts, so it only shows while the run it belongs to is on stage.
   const [dismissedId, setDismissedId] = useState(null);
   const cardPlace = roomMode ? view === "playing" || view === "lobby" : !solo || soloStage === "playing" || soloStage === "ended";
-  const showCard = Boolean(endSummary) && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  // A song played to its end stays on stage for a moment before its results. Live has the next track to get to.
+  const [heldId, setHeldId] = useState(null); // the summary whose moment is over
+  const holdingCard = Boolean(endSummary?.finished) && (solo || roomMode) && !endSummary.calibration && heldId !== endSummary.id;
+  const heldSummaryId = holdingCard ? endSummary.id : null;
+  useEffect(() => {
+    if (heldSummaryId == null) return undefined;
+    const id = window.setTimeout(() => setHeldId(heldSummaryId), RESULTS_HOLD_MS);
+    return () => window.clearTimeout(id);
+  }, [heldSummaryId]);
+  const endBanner = holdingCard ? (endSummary.counts?.miss === 0 && !endSummary.autoplay ? "FULL COMBO!" : "SONG COMPLETE") : null;
+  const showCard = Boolean(endSummary) && !holdingCard && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
   useEffect(() => {
@@ -549,7 +585,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [audio, clipSummary]);
   let stateCopy;
   if (roomMode) {
-    if (showCard) stateCopy = null;
+    if (showCard || holdingCard) stateCopy = null;
     else if (view === "loading") {
       const { loaded, total } = loadedCount(room);
       if (roomLinkState?.prepared) stateCopy = { title: "Waiting for the others…", detail: `${loaded} of ${total} loaded` };
@@ -558,7 +594,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     } else if (view === "playing" && phase === "ended") stateCopy = { title: "Song finished", detail: "Waiting for the others…" };
     else stateCopy = null;
   } else if (solo) {
-    if (pickerOpen || showCard) stateCopy = null;
+    if (pickerOpen || showCard || holdingCard) stateCopy = null;
     else if (soloStage === "preparing" || soloStage === "loading") stateCopy = SOLO_STAGE_COPY[soloStage];
     else if (soloStage === "error") stateCopy = { title: soloState.error, detail: "Press Esc to pick another song." };
     // "paused" is the pause overlay or the count-in, which have their own copy.
@@ -572,7 +608,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // (effects off and reduced motion skip that). The scene they cover stays laid out under them while one fades in or out.
   const reducedMotion = usePrefersReducedMotion();
   const screenOutMs = effectsLevel === "off" || reducedMotion ? 0 : SCREEN_OUT_MS;
-  const lobbyEl = roomMode && room && (view === "lobby" || view === "watching") && !watchingLive ? (
+  const lobbyEl = roomMode && room && (view === "lobby" || view === "watching") && !watchingLive && !holdingCard ? (
     <Lobby
       room={room}
       userId={userId}
@@ -713,11 +749,15 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       </header>
 
       <div
-        className={`mb-stage${stageUnder ? " mb-stage-under" : ""}${sad ? " mb-sad" : ""}${hud.feverActive ? " mb-fever" : ""}${pulseClass}`}
+        className={`mb-stage${stageUnder ? " mb-stage-under" : ""}${hud.feverActive ? " mb-fever" : ""}${pulseClass}`}
         style={{ "--mb-vibe": stageVibe }}
       >
         <Stage />
         {hud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
+        {endBanner ? <div className="mb-feverbanner mb-endbanner" role="status">{endBanner}</div> : null}
+        {readoutHud.judgement?.kind === "miss" && effectsLevel !== "off" ? (
+          <div key={readoutHud.judgement.id} className={`mb-missflash${mewbitPose === "crushed" ? " mb-missflash-crushed" : ""}`} aria-hidden="true" />
+        ) : null}
         <div className="mb-scene">
           <div className="mb-char">
             {settings?.showMewbit === false ? null : (

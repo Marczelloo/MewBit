@@ -389,7 +389,7 @@ describe("mewbeat channel rooms", () => {
     await submit(ANN, "10");
     await submit(BO, "11");
     assert.strictEqual(lastRoom().phase, "intermission");
-    advance(15_000);
+    advance(20_000);
     assert.strictEqual(lastRoom().round, 2);
     await send(ANN, { type: "mewbeat_room_loaded", id: "12", audioKey: KEY });
     await send(BO, { type: "mewbeat_room_loaded", id: "13", audioKey: KEY });

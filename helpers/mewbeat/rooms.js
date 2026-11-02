@@ -18,7 +18,7 @@ const FINAL_COUNTDOWN_MS = 5_000;
 // A round that nobody finishes ends this long after the song would have; the
 // slack also covers a slow client or a long server-side recompute.
 const RESULTS_GRACE_MS = 10_000;
-const INTERMISSION_MS = 15_000;
+const INTERMISSION_MS = 20_000;
 // Between rounds, spectators can take free player seats.
 const IDLE_PHASES = ["lobby", "intermission"];
 const ROUND_PHASES = ["loading", "countdown", "playing"];

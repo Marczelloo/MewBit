@@ -335,11 +335,11 @@ describe("mewbeat rooms rounds", () => {
 
     room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "intermission");
-    assert.strictEqual(room.nextAt, clock.now() + 15_000);
+    assert.strictEqual(room.nextAt, clock.now() + 20_000);
     assert.deepStrictEqual(room.results.map((entry) => [entry.userId, entry.username, entry.score]), [["bo", "BO", 1200], ["ann", "ANN", 900]]);
     assert.strictEqual(room.current.audioKey, KEY_A);
 
-    clock.advance(14_999);
+    clock.advance(19_999);
     assert.strictEqual(phaseOf(rooms), "intermission");
     clock.advance(1);
     room = rooms.snapshot(G);
@@ -380,7 +380,7 @@ describe("mewbeat rooms rounds", () => {
     assert.deepStrictEqual(rooms.start(G, "bo"), { ok: false, reason: "not_host" });
     assert.deepStrictEqual(rooms.start(G, "ann"), { ok: true });
     assert.strictEqual(rooms.snapshot(G).current.audioKey, KEY_B);
-    clock.advance(15_000); // the old auto-start timer must not restart the round
+    clock.advance(20_000); // the old auto-start timer must not restart the round
     assert.strictEqual(rooms.snapshot(G).current.audioKey, KEY_B);
     assert.strictEqual(phaseOf(rooms), "loading");
   });
@@ -623,7 +623,7 @@ describe("mewbeat rooms review fixes", () => {
     assert.strictEqual(room.phase, "intermission");
     assert.strictEqual(room.endedAt, clock.now());
 
-    clock.advance(15_000);
+    clock.advance(20_000);
     room = rooms.snapshot(G);
     assert.strictEqual(room.round, 2);
     assert.strictEqual(room.endedAt, null);
@@ -930,7 +930,7 @@ describe("mewbeat rooms ready and spectating", () => {
     rooms.submitted(G, "bo", result(2, 0.5));
     assert.strictEqual(phaseOf(rooms), "intermission");
     const end = rooms.snapshot(G).nextAt;
-    assert.strictEqual(end, clock.now() + 15_000);
+    assert.strictEqual(end, clock.now() + 20_000);
     rooms.ready(G, "ann", { ready: true });
     assert.strictEqual(rooms.snapshot(G).nextAt, end); // one Ready doesn't stretch it to 60 s
     rooms.ready(G, "bo", { ready: true });

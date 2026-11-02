@@ -6,7 +6,6 @@ import { gradeClass, resolveArtworkUrl } from "./SongSelect.jsx";
 import { keyLabel } from "./input.js";
 import Mewbit from "./mewbit/Mewbit.jsx";
 import {
-  GO_WINDOW_MS,
   countdownDigit,
   formatClock,
   inviteMessage,
@@ -54,13 +53,17 @@ function Avatar({ name, url }) {
   return <span className="mb-lobby-av mb-lobby-av-text" aria-hidden="true">{String(name ?? "?").slice(0, 2).toUpperCase()}</span>;
 }
 
-// Mewbit on the stage with a speech bubble. The "go" pose carries its own bubble.
-export function StageMewbit({ pose, text, effects, className = "" }) {
+// Mewbit on the stage with a speech bubble. The "go" pose carries its own bubble. Every new `tick` (the clock's
+// second) sends a ring out from Mewbit, and in the final seconds it bumps too: swapping between two identical
+// animations restarts the bump, and the ring restarts by remounting.
+function StageMewbit({ pose, text, effects, tick = null, final = false }) {
+  const beat = final ? ` mb-lobby-beat-${tick % 2 ? "a" : "b"}` : "";
   return (
-    <div className={`mb-lobby-mew ${className}`.trim()}>
+    <div className="mb-lobby-mew">
       {text ? <div className="mb-lobby-bubble" key={text}>{text}</div> : null}
-      <div className="mb-lobby-mewbox">
+      <div className={`mb-lobby-mewbox${beat}`}>
         <div className="mb-lobby-spot" aria-hidden="true" />
+        {tick != null ? <span key={tick} className={`mb-lobby-ring${final ? " mb-lobby-ring-final" : ""}`} aria-hidden="true" /> : null}
         <Mewbit pose={pose} effects={effects} />
       </div>
     </div>
@@ -68,7 +71,7 @@ export function StageMewbit({ pose, text, effects, className = "" }) {
 }
 
 // The numbers before a run, with a place for Mewbit's animation beside them. Digit 0 is "GO!".
-export function CountdownStage({ digit, title, effects, showAvatar = true, className = "", children = null }) {
+export function CountdownStage({ digit, title, effects, showAvatar = true, className = "" }) {
   const go = digit === 0;
   return (
     <div className={`mb-countdown ${className}`.trim()} role="status" aria-live="assertive">
@@ -83,29 +86,9 @@ export function CountdownStage({ digit, title, effects, showAvatar = true, class
           ) : null}
           <b key={digit} className={`mb-countdown-num${go ? " mb-countdown-go" : ""}`}>{go ? "GO!" : digit}</b>
         </div>
-        {children}
       </div>
     </div>
   );
-}
-
-// The final seconds in the room's lobby. It reads the start time mapped onto the local clock, so it stays in
-// step with the server, and goes away by itself once GO has been on screen.
-function FinalCountdown({ startPerf, children, ...stage }) {
-  const [digit, setDigit] = useState(() => countdownDigit(startPerf, performance.now()));
-  useEffect(() => {
-    if (!Number.isFinite(startPerf)) return undefined;
-    let frame = 0;
-    const loop = () => {
-      const now = performance.now();
-      setDigit(countdownDigit(startPerf, now));
-      if (startPerf - now > -GO_WINDOW_MS) frame = window.requestAnimationFrame(loop);
-    };
-    loop();
-    return () => window.cancelAnimationFrame(frame);
-  }, [startPerf]);
-  if (digit == null) return null;
-  return <CountdownStage digit={digit} className="mb-countdown-lobby" {...stage}>{children}</CountdownStage>;
 }
 
 export function LeaveConfirm({ onStay, onLeave }) {
@@ -168,7 +151,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   const host = isHost(room, userId);
   const active = roundActive(room);
   const watching = view === "watching";
-  const nowPerf = useTick(250);
+  const nowPerf = useTick(room.nextAt != null ? 100 : 250);
   const mounted = useRef(true);
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
@@ -223,11 +206,15 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   }, [heroKey, active, room.round, store]);
   const stats = songStats.key === heroKey ? songStats.stats : null;
 
-  // Mewbit: peek when the round is close, otherwise the idle poses in turn.
-  const pose = lobbyPose({ phase: room.phase, remainingMs: left });
+  // The clock's whole second and, in the final seconds, its digit (0 is "GO!"). It reads the start time mapped
+  // onto the local clock, so it stays in step with the server.
+  const second = left != null ? Math.max(0, Math.ceil(left / 1000)) : null;
+  const digit = !watching && left != null ? countdownDigit(serverToPerf(room.nextAt, mapping), nowPerf) : null;
+  // Mewbit: hyped in the final seconds, peeking when the round is close, otherwise the idle poses in turn.
+  const pose = lobbyPose({ remainingMs: left, digit });
   const beat = IDLE_BEATS[Math.floor(nowPerf / IDLE_BEAT_MS) % IDLE_BEATS.length];
-  const stagePose = pose === "peek" ? "peek" : beat.pose;
-  const stageText = pose === "peek" ? "it's almost our turn!" : beat.text;
+  const stagePose = pose === "idle" ? beat.pose : pose;
+  const stageText = pose === "idle" ? beat.text : { hype: "get ready~", peek: "it's almost our turn!" }[pose] ?? null;
 
   const canChange = Boolean(me) && !active;
   const spectating = Boolean(me?.watching); // chose to watch; a member who only joined mid-round is a plain spectator
@@ -263,36 +250,38 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
       <div className="mb-lobby-main">
         {notice ? <p className="mb-field-error" role="alert">{notice}</p> : null}
 
-        <div className="mb-lobby-next">
-          {heroTrack && resolveArtworkUrl(heroTrack.artworkUrl)
-            ? <img className="mb-lobby-cover" src={resolveArtworkUrl(heroTrack.artworkUrl)} alt="" draggable="false" />
-            : <div className="mb-lobby-cover mb-lobby-cover-empty" aria-hidden="true" />}
-          <div className="mb-lobby-hero-text">
-            <span className="mb-lobby-lbl">{heroTrack ? (active || watching ? `Now playing · queued by ${nameOf(heroTrack.addedBy)}` : `Next up · queued by ${nameOf(heroTrack.addedBy)}`) : "Nothing queued"}</span>
-            <h2 title={heroTrack?.title}>{heroTrack?.title ?? "Pick the first song"}</h2>
-            <span className="mb-lobby-artist">{heroTrack?.artist || (heroTrack ? "" : "Add songs and everyone plays them together.")}</span>
-            {heroTrack ? (
-              <div className="mb-lobby-chips">
-                {heroTrack.durationMs > 0 ? <span className="mb-lobby-chip">{formatClock(heroTrack.durationMs)}</span> : null}
-                {heroTrack.source ? <span className="mb-lobby-chip">{heroTrack.source}</span> : null}
+        <div className={`mb-lobby-hero${watching ? " mb-lobby-hero-watch" : showMewbit ? "" : " mb-lobby-hero-solo"}`}>
+          <div className="mb-lobby-hero-left">
+            <div className="mb-lobby-next">
+              {heroTrack && resolveArtworkUrl(heroTrack.artworkUrl)
+                ? <img className="mb-lobby-cover" src={resolveArtworkUrl(heroTrack.artworkUrl)} alt="" draggable="false" />
+                : <div className="mb-lobby-cover mb-lobby-cover-empty" aria-hidden="true" />}
+              <div className="mb-lobby-hero-text">
+                <span className="mb-lobby-lbl">{heroTrack ? (active || watching ? `Now playing · queued by ${nameOf(heroTrack.addedBy)}` : `Next up · queued by ${nameOf(heroTrack.addedBy)}`) : "Nothing queued"}</span>
+                <h2 title={heroTrack?.title}>{heroTrack?.title ?? "Pick the first song"}</h2>
+                <span className="mb-lobby-artist">{heroTrack?.artist || (heroTrack ? "" : "Add songs and everyone plays them together.")}</span>
+                {heroTrack ? (
+                  <div className="mb-lobby-chips">
+                    {heroTrack.durationMs > 0 ? <span className="mb-lobby-chip">{formatClock(heroTrack.durationMs)}</span> : null}
+                    {heroTrack.source ? <span className="mb-lobby-chip">{heroTrack.source}</span> : null}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-          {watching ? null : (
-            <div className="mb-lobby-clock">
-              <span className="mb-lobby-lbl">{clockLabel}</span>
-              <b className="mb-lobby-time">{clock}</b>
-              {host ? (
-                <button type="button" className="mb-btn mb-lobby-start" disabled={!canStart || busy === "start"} onClick={() => run("start", () => store.start())}>
-                  {busy === "start" ? "Starting…" : left != null ? "Start now" : "Start round"}
-                </button>
-              ) : null}
+              {watching ? null : (
+                <div className="mb-lobby-clock">
+                  <span className="mb-lobby-lbl">{clockLabel}</span>
+                  <b key={second ?? "idle"} className={`mb-lobby-time${digit != null ? " mb-lobby-time-final" : second != null ? " mb-lobby-time-tick" : ""}`}>{digit === 0 ? "GO!" : clock}</b>
+                  {host ? (
+                    <button type="button" className="mb-btn mb-lobby-start" disabled={!canStart || busy === "start"} onClick={() => run("start", () => store.start())}>
+                      {busy === "start" ? "Starting…" : left != null ? "Start now" : "Start round"}
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {watching ? (
-          <div className="mb-lobby-stage mb-lobby-stage-watch">
+            {watching ? null : <p className="mb-lobby-count-text">{clockText}</p>}
+          </div>
+          {watching ? (
             <div className="mb-lobby-watch">
               <span className="mb-lobby-lbl">Round in progress</span>
               <p className="mb-lobby-count-text">
@@ -300,21 +289,13 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               </p>
               <LiveBoard store={board} session="room" meId={userId} label="Round" />
             </div>
-          </div>
-        ) : (
-          <div className="mb-lobby-stage">
-            <p className="mb-lobby-count-text">{clockText}</p>
-            {showMewbit ? <StageMewbit pose={stagePose} text={stageText} effects={effects} /> : null}
-          </div>
-        )}
+          ) : showMewbit ? (
+            <StageMewbit pose={stagePose} text={stageText} effects={effects} tick={second} final={digit != null} />
+          ) : null}
+        </div>
 
         <div className="mb-lobby-queue">
-          <div className="mb-lobby-queue-head">
-            <span className="mb-lobby-lbl">Queue</span>
-            <button type="button" className="mb-btn mb-lobby-add" onClick={onAddSongs}>
-              <Plus size={14} weight="bold" aria-hidden="true" /> Add songs
-            </button>
-          </div>
+          <span className="mb-lobby-lbl">Queue</span>
           <Timeline
             room={room}
             userId={userId}
@@ -343,6 +324,22 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               ))}
             </div>
           </div>
+          <div className="mb-lobby-actions">
+            <button type="button" className="mb-btn mb-lobby-add" onClick={onAddSongs}>
+              <Plus size={15} weight="bold" aria-hidden="true" /> Add songs
+            </button>
+            {spectating ? null : (
+              <button
+                type="button"
+                className={`mb-lobby-ready${me?.ready ? " mb-lobby-ready-on" : ""}`}
+                aria-pressed={Boolean(me?.ready)}
+                disabled={!canChange || busy === "ready"}
+                onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}
+              >
+                {me?.ready ? "Ready ✓" : "Ready"}
+              </button>
+            )}
+          </div>
           {spectating ? (
             <div className="mb-lobby-watching">
               <p className="mb-lobby-count-text">You're watching. Pick Player to join the next round.</p>
@@ -360,46 +357,35 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               ) : null}
             </div>
           ) : (
-            <>
-              <button
-                type="button"
-                className={`mb-lobby-ready${me?.ready ? " mb-lobby-ready-on" : ""}`}
-                aria-pressed={Boolean(me?.ready)}
-                disabled={!canChange || busy === "ready"}
-                onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}
-              >
-                {me?.ready ? "Ready ✓" : "Ready"}
-              </button>
-              <div className="mb-lobby-pick">
-                <span className="mb-lobby-lbl">Your difficulty</span>
-                <div className="mb-lobby-diffs" role="group" aria-label="Your difficulty">
-                  {DIFFICULTIES.map(({ id, label, tone }) => {
-                    const stat = stats?.[id];
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        className={`mb-lobby-diff mb-lobby-diff-${tone}${me?.difficulty === id ? " mb-lobby-diff-on" : ""}`}
-                        aria-pressed={me?.difficulty === id}
-                        disabled={!canChange || busy === "difficulty"}
-                        onClick={() => me?.difficulty !== id && run("difficulty", () => store.ready({ difficulty: id }))}
-                      >
-                        <b>{label}</b>
-                        {stat ? (
-                          <>
-                            <small className="mb-lobby-diff-stars">{Number.isFinite(stat.stars) ? `★ ${stat.stars.toFixed(1)}` : "★ –"}</small>
-                            <small>{Number.isFinite(stat.notes) ? `${stat.notes.toLocaleString("en-US")} notes` : ""}</small>
-                            <small className="mb-lobby-diff-best">
-                              {stat.best ? <>best {formatScore(stat.best.score)} · <b className={gradeClass(stat.best.grade)}>{stat.best.grade}</b></> : "no score yet"}
-                            </small>
-                          </>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="mb-lobby-pick">
+              <span className="mb-lobby-lbl">Your difficulty</span>
+              <div className="mb-lobby-diffs" role="group" aria-label="Your difficulty">
+                {DIFFICULTIES.map(({ id, label, tone }) => {
+                  const stat = stats?.[id];
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`mb-lobby-diff mb-lobby-diff-${tone}${me?.difficulty === id ? " mb-lobby-diff-on" : ""}`}
+                      aria-pressed={me?.difficulty === id}
+                      disabled={!canChange || busy === "difficulty"}
+                      onClick={() => me?.difficulty !== id && run("difficulty", () => store.ready({ difficulty: id }))}
+                    >
+                      <b>{label}</b>
+                      {stat ? (
+                        <>
+                          <small className="mb-lobby-diff-stars">{Number.isFinite(stat.stars) ? `★ ${stat.stars.toFixed(1)}` : "★ –"}</small>
+                          <small>{Number.isFinite(stat.notes) ? `${stat.notes.toLocaleString("en-US")} notes` : ""}</small>
+                          <small className="mb-lobby-diff-best">
+                            {stat.best ? <>best {formatScore(stat.best.score)} · <b className={gradeClass(stat.best.grade)}>{stat.best.grade}</b></> : "no score yet"}
+                          </small>
+                        </>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -453,16 +439,6 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
           <button type="button" className="mb-lobby-link" onClick={onCalibrate}>Calibrate</button>
         </div>
       </aside>
-
-      {room.finalCountdown && !watching ? (
-        <FinalCountdown startPerf={serverToPerf(room.nextAt, mapping)} title={queue[0]?.title} effects={effects} showAvatar={showMewbit}>
-          {me?.ready ? (
-            <button type="button" className="mb-btn mb-countdown-cancel" disabled={busy === "ready"} onClick={() => run("ready", () => store.ready({ ready: false }))}>
-              Not ready
-            </button>
-          ) : null}
-        </FinalCountdown>
-      ) : null}
 
       {toast ? <div className={`mb-lobby-toast${toast.error ? " mb-lobby-toast-error" : ""}`} role="status">{toast.text}</div> : null}
     </section>

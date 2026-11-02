@@ -286,8 +286,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       return "submitting";
     }
 
-    // Drops the current run. A run that judged at least one note leaves its results.
-    function endRun() {
+    // Drops the current run. A run that judged at least one note leaves its results. `finished`: it reached
+    // the song's end, rather than being cut off.
+    function endRun(finished = false) {
       const run = runRef.current;
       if (!run) return;
       runRef.current = null;
@@ -308,6 +309,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         setEndSummary({
           ...rest,
           id,
+          finished,
           skipped,
           calibration: flags.calibration,
           autoplay: flags.autoplay,
@@ -429,6 +431,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           crushedRef.current = comboRef.current >= CRUSH_COMBO;
           missUntilRef.current = performance.now() + (crushedRef.current ? CRUSHED_POSE_MS : MISS_POSE_MS);
           comboRef.current = 0;
+          flashesRef.current.push({ lane: event.lane, judgement: "miss", at: heardMs });
           judgementRef.current = { text: "MISS", kind: "miss", id: ++judgementIdRef.current };
         } else if (event.kind === "end") {
           ended = true;
@@ -688,7 +691,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         const events = run.tick(songMs);
         const ended = events.length ? handleEvents(events, heardMs) : false;
         if (ended) {
-          endRun();
+          endRun(true);
           setPhase("ended");
           return;
         }
