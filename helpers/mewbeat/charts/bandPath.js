@@ -89,13 +89,14 @@ function isNear(sorted, t) {
 
 // --- density -----------------------------------------------------------------
 
-// Mean of energy^exponent over the hops of a window; silent hops count as 0.
+// Mean of energy^exponent, times the section's intensity (intensity.js) where the lookup has one, over the hops of a
+// window; silent hops count as 0.
 function windowPower(windowIndex, energy) {
   let sum = 0;
   let n = 0;
   for (let t = windowIndex * DENSITY_WINDOW_MS; t < (windowIndex + 1) * DENSITY_WINDOW_MS; t += energy.hopMs) {
     const e = energy.at(t);
-    sum += e >= SILENCE_ENERGY ? Math.pow(e, ENERGY_EXPONENT) : 0;
+    sum += e >= SILENCE_ENERGY ? Math.pow(e, ENERGY_EXPONENT) * (energy.intensity?.(t) ?? 1) : 0;
     n++;
   }
   return n === 0 ? 0 : sum / n;

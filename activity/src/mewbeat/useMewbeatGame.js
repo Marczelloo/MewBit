@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { effectiveEffects } from "./effects.js";
-import { approachMsFor, createHighwayRenderer, scrollTrack, tempoScrollFactor } from "./highway.js";
+import { approachMsFor, createHighwayRenderer, tempoScrollFactor } from "./highway.js";
 import { createHitSounds } from "./hitSounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
@@ -441,7 +441,6 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
     let raf = 0;
     let lastPercent = -1;
     const emptyFrame = { heardMs: 0, notes: [], lanesDown: [], flashes: [], feverActive: false };
-    let trackOf = { chart: null, follow: null, track: scrollTrack(null) };
     function frame() {
       raf = window.requestAnimationFrame(frame);
       const now = performance.now();
@@ -460,14 +459,8 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
       const run = runRef.current;
       const current = phaseRef.current;
       const renderer = rendererRef.current;
-      // "By music": the song's tempo sets the base fall speed and its sections (chart.scroll) vary it; "Fixed": neither.
-      const follow = cfgRef.current.tempoScroll !== false;
-      const tempo = follow ? tempoScrollFactor(chartRef.current?.bpm) : 1;
+      const tempo = cfgRef.current.tempoScroll === false ? 1 : tempoScrollFactor(chartRef.current?.bpm);
       const approachMs = Math.floor(approachMsFor(cfgRef.current.scrollSpeed) / tempo);
-      if (trackOf.chart !== chartRef.current || trackOf.follow !== follow) {
-        trackOf = { chart: chartRef.current, follow, track: scrollTrack(follow ? chartRef.current?.scroll : null) };
-      }
-      const { track } = trackOf;
 
       function drawRun(heardMs) {
         const flashes = flashesRef.current;
@@ -475,8 +468,7 @@ export function useMewbeatGame({ link, settings, effects = "full", trackInfo = n
         renderer?.render({
           heardMs,
           approachMs,
-          track,
-          notes: runCalibrationRef.current ? [] : run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs / track.minX),
+          notes: runCalibrationRef.current ? [] : run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs),
           lanesDown: lanesDownRef.current,
           flashes,
           feverActive: feverActiveRef.current,

@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 16;
+const GENERATOR_VERSION = 17;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -52,7 +52,6 @@ const DIFFICULTIES = {
     maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
     fillRestBeats: 3, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
-    scroll: null, // scroll-velocity bounds for the sections (scroll.js; null = one speed, as osu!mania's Easy)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
@@ -80,7 +79,6 @@ const DIFFICULTIES = {
     maxJack: 2,
     maxLevel: 1,
     fillRestBeats: 2.5,
-    scroll: { min: 0.9, max: 1.05 },
     quarterMinEnergy: 0.6,
     holdMinBeats: 1, // a half-beat hold reads as noise
     pulseNotesPerBeat: 1,
@@ -106,7 +104,6 @@ const DIFFICULTIES = {
     maxJack: 3,
     maxLevel: 2,
     fillRestBeats: null, // Hard's rests are filled with the drums (seams.js fillGaps)
-    scroll: { min: 0.8, max: 1.1 },
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 2,
@@ -137,7 +134,6 @@ const DIFFICULTIES = {
     maxJack: 4,
     maxLevel: 2,
     fillRestBeats: null,
-    scroll: { min: 0.7, max: 1.1 },
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 4,

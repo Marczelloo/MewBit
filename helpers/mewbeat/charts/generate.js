@@ -8,8 +8,8 @@ const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
+const { withIntensity } = require("./intensity");
 const { fillRests } = require("./rests");
-const { scrollMap } = require("./scroll");
 const { fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -32,7 +32,7 @@ function analyse(raw) {
     features,
     durationMs,
     timing,
-    energy: energyLookup(features),
+    energy: withIntensity(energyLookup(features), features, phrases), // with each section's intensity (intensity.js)
     busy: busyFactor(features),
     phrases,
     leaders,
@@ -186,7 +186,6 @@ const notesFor = (ctx, difficulty) => {
 
 function chartFrom(ctx, difficulty, audioKey) {
   const notes = notesFor(ctx, difficulty);
-  const scroll = scrollMap(notes, ctx, diffOf(ctx, difficulty));
   if (notes.length < MIN_NOTES) return null;
   const { features, durationMs } = ctx;
   return {
@@ -200,7 +199,6 @@ function chartFrom(ctx, difficulty, audioKey) {
       ? features.highlightMs
       : null,
     notes,
-    ...(scroll ? { scroll } : {}), // section scroll velocity, [{ t, x }] (scroll.js); absent = one speed
   };
 }
 

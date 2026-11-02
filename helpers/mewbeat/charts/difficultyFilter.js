@@ -149,30 +149,33 @@ function fits(candidate, accepted, diff, energy, powerFloor = 0) {
   return densityHolds(candidate, accepted, diff, energy, powerFloor);
 }
 
-// Mean of energy^ENERGY_EXPONENT over a window; silent hops count as 0.
+// Mean of energy^ENERGY_EXPONENT, times the section's intensity (intensity.js) where the lookup has one, over a
+// window; silent hops count as 0.
 function windowPower(fromMs, energy) {
   let sum = 0;
   let n = 0;
   for (let t = fromMs; t < fromMs + DENSITY_WINDOW_MS; t += energy.hopMs) {
     const e = energy.at(t);
-    sum += e >= SILENCE_ENERGY ? Math.pow(e, ENERGY_EXPONENT) : 0;
+    sum += e >= SILENCE_ENERGY ? Math.pow(e, ENERGY_EXPONENT) * (energy.intensity?.(t) ?? 1) : 0;
     n++;
   }
   return n === 0 ? 0 : sum / n;
 }
 
-// Any DENSITY_WINDOW_MS window holds at most maxNps * 2 s notes, scaled down by
-// the window's energy^ENERGY_EXPONENT (plus one note of slack, like the v3 carry). `powerFloor` is the
-// least power a window gets: a phrase with a steady pulse is never thinner than that, however quiet.
+// Any DENSITY_WINDOW_MS window holds at most maxNps * 2 s notes, scaled by the window's power (energy^ENERGY_EXPONENT
+// times the section's intensity, plus one note of slack, like the v3 carry); an intense section may go past maxNps
+// by its intensity. `powerFloor` is the least power a window gets: a phrase with a steady pulse is never thinner
+// than that, however quiet.
 function densityHolds(candidate, accepted, diff, energy, powerFloor = 0) {
   const seconds = DENSITY_WINDOW_MS / 1000;
-  const hardCap = Math.floor(diff.maxNps * seconds + EPS);
   const starts = new Set([candidate.t]);
   for (const n of accepted) if (n.t > candidate.t - DENSITY_WINDOW_MS && n.t < candidate.t) starts.add(n.t);
   for (const from of starts) {
     let count = 1;
     for (const n of accepted) if (n.t >= from && n.t < from + DENSITY_WINDOW_MS) count++;
-    const cap = Math.min(hardCap, Math.floor(diff.maxNps * seconds * Math.max(powerFloor, windowPower(from, energy)) + 1 + EPS));
+    const power = windowPower(from, energy);
+    const hardCap = Math.floor(diff.maxNps * seconds * Math.max(1, power) + EPS);
+    const cap = Math.min(hardCap, Math.floor(diff.maxNps * seconds * Math.max(powerFloor, power) + 1 + EPS));
     if (count > cap) return false;
   }
   return true;

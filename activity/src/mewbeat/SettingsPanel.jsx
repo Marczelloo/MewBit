@@ -32,7 +32,7 @@ const HIT_SOUNDS = [
 ];
 const AUTO_OFFSET = HIT_SOUNDS;
 const TEMPO_SCROLL = [
-  { value: true, label: "By music" },
+  { value: true, label: "By tempo" },
   { value: false, label: "Fixed" },
 ];
 const SHOW_MEWBIT = [
@@ -320,7 +320,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
             onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
           />
           <Segmented label="Scroll speed mode" options={TEMPO_SCROLL} value={valueOf("tempoScroll") !== false} onChange={(value) => send({ tempoScroll: value })} />
-          <p className="mb-field-help">By music: faster songs fall a little faster, and intense sections a little faster than calm ones.</p>
+          <p className="mb-field-help">By tempo: faster songs fall a little faster, slower ones a little slower.</p>
         </section>
 
         <section className="mb-field">
