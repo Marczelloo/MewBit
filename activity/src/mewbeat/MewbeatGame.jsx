@@ -131,6 +131,9 @@ export default function MewbeatGame(props) {
   useEffect(() => {
     audio.setVolume(musicVolume / 100);
   }, [audio, musicVolume]);
+  const musicVolumeRef = useRef(musicVolume);
+  musicVolumeRef.current = musicVolume;
+  const previewMusic = useCallback((value) => audio.setVolume(value / 100), [audio]);
   useEffect(() => () => audio.close(), [audio]);
   // Request/reply over the socket (played lists now; results and rooms later), shared by every session and
   // fed by the session's message handler.
@@ -196,7 +199,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     liveSession: liveSessionOf,
     onExit: () => exitRef.current(),
   });
-  const { phase, hud, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
+  const { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, timing, resetTiming, calibrating } = game;
   exitRef.current = () => {
     if (!solo || soloStage === "idle") onClose();
     else if ((soloStage === "playing" || soloStage === "countin") && phase !== "ended") link.pause();
@@ -245,8 +248,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // The panel returns focus to the gear button it was opened from.
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
+    audio.setVolume(musicVolumeRef.current / 100); // drop any slider preview that was never saved
     window.requestAnimationFrame(() => gearRef.current?.focus());
-  }, []);
+  }, [audio]);
 
   // The bot sends an anchor on its own schedule; a pause, track change or seek in the state is a reason to ask now.
   const paused = Boolean(player?.paused);
@@ -295,8 +299,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     : { opacity: 0, transform: "scaleX(1)", transition: "none" };
 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
-  const difficulty = settings?.liveDifficulty ?? "normal";
   const running = phase === "playing" || phase === "paused";
+  // The card shows the difficulty of the chart on stage (it can differ from the saved default after a live change).
+  const difficulty = runDifficulty ?? settings?.liveDifficulty ?? "normal";
   // Back (Live) hides the results of that run; the next run's summary has a new id and shows again. Solo keeps the
   // last summary around until the next run starts, so it only shows while the run it belongs to is on stage.
   const [dismissedId, setDismissedId] = useState(null);
@@ -409,7 +414,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           </div>
 
           <aside className="mb-side">
-            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} mode={mode} />
+            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} mode={mode} disabled={!running || calibrating} swap={swap} onDifficulty={changeDifficulty} />
             <GameHud hud={hud} />
             {mode === "live" && running ? <LiveBoard store={liveBoard} session={runSession} meId={context?.user?.id ?? null} /> : null}
           </aside>
@@ -462,6 +467,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           onAutoOffset={setAutoOffset}
           onResetTiming={resetTiming}
           onPreviewHit={previewHit}
+          onPreviewMusic={previewMusic}
         /> : null}
     </div>
   );

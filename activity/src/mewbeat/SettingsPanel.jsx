@@ -64,7 +64,7 @@ function Segmented({ label, options, value, onChange }) {
 
 // The settings drawer. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewMusic }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -207,6 +207,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   const scrollSpeed = valueOf("scrollSpeed");
   const hitSounds = Boolean(valueOf("hitSounds"));
   const hitVolume = valueOf("hitVolume");
+  const musicVolume = valueOf("musicVolume");
 
   return (
     <div className="mb-settings-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -218,153 +219,178 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
           </button>
         </div>
 
-        <section className="mb-field">
-          <div className="mb-field-head"><span className="mb-label">Keys</span></div>
-          <div className="mb-keycaps">
-            {keys.map((code, lane) => (
-              <button
-                key={lane}
-                ref={(node) => { keyButtonsRef.current[lane] = node; }}
-                type="button"
-                className={`mb-btn mb-keycap ${capture === lane ? "mb-toggle-on" : ""}`.trim()}
-                aria-label={`Lane ${lane + 1} key`}
-                onClick={() => {
-                  setKeyError(null);
-                  setCapture(capture === lane ? null : lane);
-                }}
-              >
-                {capture === lane ? "Press a key…" : keyLabel(code)}
-              </button>
-            ))}
-          </div>
-          {keyError ? <p className="mb-field-error" role="alert">{keyError}</p> : <p className="mb-field-help">Click a key, then press the one you want. Space is FEVER.</p>}
-        </section>
-
-        <section className="mb-field">
-          <div className="mb-field-head">
-            <label className="mb-label" htmlFor="mb-offset">Audio offset</label>
-            <output className="mb-field-value" htmlFor="mb-offset">{formatOffset(offsetMs)}</output>
-          </div>
-          <div className="mb-offset-row">
-            <button type="button" className="mb-btn mb-step" aria-label="Offset minus 5 ms" disabled={offsetMs <= OFFSET_MIN} onClick={() => nudgeOffset(-OFFSET_STEP)}>−5</button>
+        <section className="mb-group" aria-labelledby="mb-group-gameplay">
+          <h3 className="mb-group-title" id="mb-group-gameplay">Gameplay</h3>
+          <section className="mb-field">
+            <div className="mb-field-head"><span className="mb-label">Keys</span></div>
+            <div className="mb-keycaps">
+              {keys.map((code, lane) => (
+                <button
+                  key={lane}
+                  ref={(node) => { keyButtonsRef.current[lane] = node; }}
+                  type="button"
+                  className={`mb-btn mb-keycap ${capture === lane ? "mb-toggle-on" : ""}`.trim()}
+                  aria-label={`Lane ${lane + 1} key`}
+                  onClick={() => {
+                    setKeyError(null);
+                    setCapture(capture === lane ? null : lane);
+                  }}
+                >
+                  {capture === lane ? "Press a key…" : keyLabel(code)}
+                </button>
+              ))}
+            </div>
+            {keyError ? <p className="mb-field-error" role="alert">{keyError}</p> : <p className="mb-field-help">Click a key, then press the one you want. Space is FEVER.</p>}
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head">
+              <label className="mb-label" htmlFor="mb-speed">Scroll speed</label>
+              <output className="mb-field-value" htmlFor="mb-speed">{scrollSpeed}</output>
+            </div>
             <input
-              id="mb-offset"
-              ref={sliderRef}
+              id="mb-speed"
               className="mb-range"
               type="range"
-              min={OFFSET_MIN}
-              max={OFFSET_MAX}
-              step={OFFSET_STEP}
-              value={offsetMs}
-              aria-valuetext={formatOffset(offsetMs)}
-              onChange={(event) => changeDebounced("offsetMs", Number(event.target.value), { immediate: false })}
+              min={SPEED_MIN}
+              max={SPEED_MAX}
+              step={1}
+              value={scrollSpeed}
+              onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
             />
-            <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => nudgeOffset(OFFSET_STEP)}>+5</button>
-          </div>
-          <p className="mb-field-help">Raise it if notes reach the line before you hear the beat.</p>
+            <Segmented label="Scroll speed mode" options={TEMPO_SCROLL} value={valueOf("tempoScroll") !== false} onChange={(value) => send({ tempoScroll: value })} />
+            <p className="mb-field-help">By tempo: faster songs fall a little faster, slower ones a little slower.</p>
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head"><span className="mb-label">Default difficulty</span></div>
+            <Segmented label="Default difficulty" options={DIFFICULTIES} value={valueOf("liveDifficulty")} onChange={(value) => send({ liveDifficulty: value })} />
+            <p className="mb-field-help">Used when a track starts. Change it mid-song from the track card.</p>
+          </section>
         </section>
 
-        <section className="mb-field">
-          <div className="mb-field-head">
-            <span className="mb-label">Calibrate from taps</span>
-            {timing?.offsetMs !== null && timing?.offsetMs !== undefined ? (
-              <output className="mb-field-value">{formatOffset(timing.offsetMs)}</output>
-            ) : null}
-          </div>
-          <Segmented label="Auto offset" options={AUTO_OFFSET} value={autoOffset} onChange={(value) => onAutoOffset?.(value)} />
-          <p className="mb-field-help" role="status">
-            {timing?.offsetMs === null || !timing
-              ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
-              : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
-          </p>
-          <p className="mb-field-help">Calibration clicks: the bot plays a metronome in voice. Close settings and press any lane key on each click as you hear it. The notes stay hidden, so only your ears count.</p>
-          <div className="mb-calib-row">
-            <button
-              type="button"
-              className="mb-btn"
-              disabled={clicksPending}
-              onClick={() => {
-                setClicksPending(true);
-                Promise.resolve(onActionRef.current?.("mewbeat_calibrate")).finally(() => setClicksPending(false));
+        <section className="mb-group" aria-labelledby="mb-group-audio">
+          <h3 className="mb-group-title" id="mb-group-audio">Audio &amp; sync</h3>
+          <section className="mb-field">
+            <div className="mb-field-head">
+              <label className="mb-label" htmlFor="mb-offset">Audio offset</label>
+              <output className="mb-field-value" htmlFor="mb-offset">{formatOffset(offsetMs)}</output>
+            </div>
+            <div className="mb-offset-row">
+              <button type="button" className="mb-btn mb-step" aria-label="Offset minus 5 ms" disabled={offsetMs <= OFFSET_MIN} onClick={() => nudgeOffset(-OFFSET_STEP)}>−5</button>
+              <input
+                id="mb-offset"
+                ref={sliderRef}
+                className="mb-range"
+                type="range"
+                min={OFFSET_MIN}
+                max={OFFSET_MAX}
+                step={OFFSET_STEP}
+                value={offsetMs}
+                aria-valuetext={formatOffset(offsetMs)}
+                onChange={(event) => changeDebounced("offsetMs", Number(event.target.value), { immediate: false })}
+              />
+              <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => nudgeOffset(OFFSET_STEP)}>+5</button>
+            </div>
+            <p className="mb-field-help">Raise it if notes reach the line before you hear the beat.</p>
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head">
+              <span className="mb-label">Calibrate from taps</span>
+              {timing?.offsetMs !== null && timing?.offsetMs !== undefined ? (
+                <output className="mb-field-value">{formatOffset(timing.offsetMs)}</output>
+              ) : null}
+            </div>
+            <Segmented label="Auto offset" options={AUTO_OFFSET} value={autoOffset} onChange={(value) => onAutoOffset?.(value)} />
+            <p className="mb-field-help" role="status">
+              {timing?.offsetMs === null || !timing
+                ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
+                : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
+            </p>
+            <p className="mb-field-help">Calibration clicks: the bot plays a metronome in voice. Close settings and press any lane key on each click as you hear it. The notes stay hidden, so only your ears count.</p>
+            <div className="mb-calib-row">
+              <button
+                type="button"
+                className="mb-btn"
+                disabled={clicksPending}
+                onClick={() => {
+                  setClicksPending(true);
+                  Promise.resolve(onActionRef.current?.("mewbeat_calibrate")).finally(() => setClicksPending(false));
+                }}
+              >
+                Play calibration clicks
+              </button>
+              <button
+                type="button"
+                className="mb-btn"
+                disabled={timing?.offsetMs === null || !timing || timing.offsetMs === offsetMs}
+                onClick={() => changeDebounced("offsetMs", timing.offsetMs, { immediate: true })}
+              >
+                Apply suggestion
+              </button>
+              <button type="button" className="mb-btn" disabled={!timing?.taps} onClick={() => onResetTiming?.()}>
+                Reset taps
+              </button>
+            </div>
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head"><span className="mb-label">Hit sounds</span></div>
+            <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head">
+              <label className="mb-label" htmlFor="mb-hit-volume">Hit sound volume</label>
+              <output className="mb-field-value" htmlFor="mb-hit-volume">{hitVolume}%</output>
+            </div>
+            <input
+              id="mb-hit-volume"
+              className="mb-range"
+              type="range"
+              min={VOLUME_MIN}
+              max={VOLUME_MAX}
+              step={VOLUME_STEP}
+              value={hitVolume}
+              disabled={!hitSounds}
+              aria-valuetext={`${hitVolume}%`}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                changeDebounced("hitVolume", value, { immediate: false });
+                onPreviewHit?.(value);
               }}
-            >
-              Play calibration clicks
-            </button>
-            <button
-              type="button"
-              className="mb-btn"
-              disabled={timing?.offsetMs === null || !timing || timing.offsetMs === offsetMs}
-              onClick={() => changeDebounced("offsetMs", timing.offsetMs, { immediate: true })}
-            >
-              Apply suggestion
-            </button>
-            <button type="button" className="mb-btn" disabled={!timing?.taps} onClick={() => onResetTiming?.()}>
-              Reset taps
-            </button>
-          </div>
+            />
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head">
+              <label className="mb-label" htmlFor="mb-music-volume">Music volume</label>
+              <output className="mb-field-value" htmlFor="mb-music-volume">{musicVolume}%</output>
+            </div>
+            <input
+              id="mb-music-volume"
+              className="mb-range"
+              type="range"
+              min={VOLUME_MIN}
+              max={VOLUME_MAX}
+              step={VOLUME_STEP}
+              value={musicVolume}
+              aria-valuetext={`${musicVolume}%`}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                changeDebounced("musicVolume", value, { immediate: false });
+                onPreviewMusic?.(value);
+              }}
+            />
+            <p className="mb-field-help">Solo and rooms only. In Live the bot plays the music, so use Discord's volume.</p>
+          </section>
         </section>
 
-        <section className="mb-field">
-          <div className="mb-field-head">
-            <label className="mb-label" htmlFor="mb-speed">Scroll speed</label>
-            <output className="mb-field-value" htmlFor="mb-speed">{scrollSpeed}</output>
-          </div>
-          <input
-            id="mb-speed"
-            className="mb-range"
-            type="range"
-            min={SPEED_MIN}
-            max={SPEED_MAX}
-            step={1}
-            value={scrollSpeed}
-            onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
-          />
-          <Segmented label="Scroll speed mode" options={TEMPO_SCROLL} value={valueOf("tempoScroll") !== false} onChange={(value) => send({ tempoScroll: value })} />
-          <p className="mb-field-help">By tempo: faster songs fall a little faster, slower ones a little slower.</p>
-        </section>
-
-        <section className="mb-field">
-          <div className="mb-field-head"><span className="mb-label">Live difficulty</span></div>
-          <Segmented label="Live difficulty" options={DIFFICULTIES} value={valueOf("liveDifficulty")} onChange={(value) => send({ liveDifficulty: value })} />
-          <p className="mb-field-help">Applies from the next track.</p>
-        </section>
-
-        <section className="mb-field">
-          <div className="mb-field-head"><span className="mb-label">Effects</span></div>
-          <Segmented label="Effects" options={EFFECTS} value={valueOf("effects")} onChange={(value) => send({ effects: value })} />
-        </section>
-
-        <section className="mb-field">
-          <div className="mb-field-head"><span className="mb-label">Mewbit</span></div>
-          <Segmented label="Mewbit" options={SHOW_MEWBIT} value={valueOf("showMewbit") !== false} onChange={(value) => send({ showMewbit: value })} />
-        </section>
-
-        <section className="mb-field">
-          <div className="mb-field-head"><span className="mb-label">Hit sounds</span></div>
-          <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
-        </section>
-
-        <section className="mb-field">
-          <div className="mb-field-head">
-            <label className="mb-label" htmlFor="mb-hit-volume">Hit sound volume</label>
-            <output className="mb-field-value" htmlFor="mb-hit-volume">{hitVolume}%</output>
-          </div>
-          <input
-            id="mb-hit-volume"
-            className="mb-range"
-            type="range"
-            min={VOLUME_MIN}
-            max={VOLUME_MAX}
-            step={VOLUME_STEP}
-            value={hitVolume}
-            disabled={!hitSounds}
-            aria-valuetext={`${hitVolume}%`}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              changeDebounced("hitVolume", value, { immediate: false });
-              onPreviewHit?.(value);
-            }}
-          />
+        <section className="mb-group" aria-labelledby="mb-group-visual">
+          <h3 className="mb-group-title" id="mb-group-visual">Visual</h3>
+          <section className="mb-field">
+            <div className="mb-field-head"><span className="mb-label">Effects</span></div>
+            <Segmented label="Effects" options={EFFECTS} value={valueOf("effects")} onChange={(value) => send({ effects: value })} />
+          </section>
+          <section className="mb-field">
+            <div className="mb-field-head"><span className="mb-label">Show Mewbit</span></div>
+            <Segmented label="Show Mewbit" options={SHOW_MEWBIT} value={valueOf("showMewbit") !== false} onChange={(value) => send({ showMewbit: value })} />
+          </section>
         </section>
       </div>
     </div>
