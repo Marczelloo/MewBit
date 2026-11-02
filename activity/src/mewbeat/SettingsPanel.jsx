@@ -459,6 +459,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                     onPreviewSfx?.(value);
                   }}
                 />
+                <p className="mb-row-help">Sounds from osu! by ppy Pty Ltd (github.com/ppy/osu-resources), CC BY-NC 4.0.</p>
               </section>
               <section className="mb-row mb-row-stack">
                 <div className="mb-row-head">

@@ -22,7 +22,7 @@ import SongSelect from "./SongSelect.jsx";
 import SpectateCard from "./SpectateCard.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { multiplierFor } from "./scoring.js";
-import { loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf } from "./room.js";
+import { countdownSounds, loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf } from "./room.js";
 import { useCountdownSounds } from "./useCountdownSounds.js";
 import { useMewbeatGame } from "./useMewbeatGame.js";
 import { useScreenExit } from "./useScreenExit.js";
@@ -582,8 +582,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   useEffect(() => {
     const counting = lastSoloCount.current != null;
     lastSoloCount.current = soloCount;
-    if (soloCount != null) playSfx("tick");
-    else if (counting && soloStage === "playing" && soloState?.opening) playSfx("go");
+    const second = soloCount ?? (counting && soloStage === "playing" && soloState?.opening ? 0 : null);
+    if (second == null) return;
+    for (const { name, level } of countdownSounds(second)) playSfx(name, { level });
   }, [soloCount, soloStage, soloState?.opening, playSfx]);
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { countdownSound, nextCountdownSecond } from "./room.js";
+import { countdownSounds, nextCountdownSecond } from "./room.js";
 
 // Sounds a room countdown on timers of its own rather than on the screen's repaint, where a tick could land
 // 100 ms off. startPerf: the start on the local clock, null when nothing counts down. started: the round is on.
@@ -21,8 +21,9 @@ export function useCountdownSounds({ startPerf, started, calm, play }) {
         // A clock sample can move the start across a second that has just sounded.
         if (step.second !== lastSecond.current) {
           lastSecond.current = step.second;
-          const { name, level } = countdownSound(step.second);
-          if (level === 1 || !calmRef.current) play(name, { level });
+          for (const { name, level } of countdownSounds(step.second)) {
+            if (level === 1 || !calmRef.current) play(name, { level });
+          }
         }
         arm();
       }, step.inMs);

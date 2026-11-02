@@ -3,10 +3,10 @@ const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
-let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSound, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator;
+let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator;
 
 test.before(async () => {
-  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSound, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator } = await import(
+  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/room.js")).href
   ));
 });
@@ -192,13 +192,16 @@ test("nextCountdownSecond lands on the moment the digit changes, down to GO and 
   }
 });
 
-test("countdownSound: GO at zero, full ticks for the last five seconds, quiet ones before", () => {
-  assert.deepEqual(countdownSound(0), { name: "go", level: 1 });
-  assert.deepEqual(countdownSound(1), { name: "tick", level: 1 });
-  assert.deepEqual(countdownSound(5), { name: "tick", level: 1 });
-  const quiet = countdownSound(6);
+test("countdownSounds: GO at zero, a warning for the last three, full ticks for the last five, quiet ones before", () => {
+  const tick = { name: "tick", level: 1 };
+  assert.deepEqual(countdownSounds(0), [tick, { name: "go", level: 1 }]);
+  assert.deepEqual(countdownSounds(3), [tick, { name: "warn", level: 1 }]);
+  assert.deepEqual(countdownSounds(4), [tick]);
+  assert.deepEqual(countdownSounds(5), [tick]);
+  const [quiet, ...rest] = countdownSounds(6);
   assert.equal(quiet.name, "tick");
   assert.ok(quiet.level > 0 && quiet.level < 1);
+  assert.deepEqual(rest, []);
 });
 
 test("memberStatus follows the phase", () => {

@@ -11,8 +11,8 @@ import { createLiveSender } from "./liveSender.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
 export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
-const MISS_SOUND_GAP_MS = 150; // a chord of misses is one sound, not a pile of them
-const MISS_SOUND_LEVEL = 0.8;
+const COMBO_BREAK_OVER = 20; // as in osu!: losing a short combo makes no sound
+const COMBO_BREAK_LEVEL = 0.8;
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -149,7 +149,6 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const inputPausedRef = useRef(inputPaused);
   inputPausedRef.current = inputPaused;
   const soundsRef = useRef(null);
-  const lastMissSoundRef = useRef(-Infinity);
   const releaseHeldRef = useRef(() => {}); // set by the link effect: releases every held lane into the run
   const beginChartingRef = useRef(() => {}); // set by the link effect: (re)requests the chart for the current song
 
@@ -177,7 +176,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const previewSfx = useCallback((volume) => soundsRef.current?.play("tick", volume), []);
   // Everything but the hit sound: countdowns, the end of a song, the results.
   const playSfx = useCallback((name, options) => {
-    if (cfgRef.current.sfx !== false) soundsRef.current?.play(name, cfgRef.current.sfxVolume, options);
+    return cfgRef.current.sfx !== false ? soundsRef.current?.play(name, cfgRef.current.sfxVolume, options) : null;
   }, []);
 
   // A key held when the panel opens never sends its keyup to the game: release it ourselves,
@@ -439,11 +438,10 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         } else if (event.kind === "miss") {
           crushedRef.current = comboRef.current >= CRUSH_COMBO;
           missUntilRef.current = performance.now() + (crushedRef.current ? CRUSHED_POSE_MS : MISS_POSE_MS);
-          comboRef.current = 0;
-          if (cfgRef.current.sfx !== false && !runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && performance.now() - lastMissSoundRef.current >= MISS_SOUND_GAP_MS) {
-            lastMissSoundRef.current = performance.now();
-            soundsRef.current?.play("miss", cfgRef.current.sfxVolume, { level: MISS_SOUND_LEVEL });
+          if (comboRef.current > COMBO_BREAK_OVER && cfgRef.current.sfx !== false && !runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current) {
+            soundsRef.current?.play("combobreak", cfgRef.current.sfxVolume, { level: COMBO_BREAK_LEVEL });
           }
+          comboRef.current = 0;
           flashesRef.current.push({ lane: event.lane, judgement: "miss", at: heardMs });
           judgementRef.current = { text: "MISS", kind: "miss", id: ++judgementIdRef.current };
         } else if (event.kind === "end") {

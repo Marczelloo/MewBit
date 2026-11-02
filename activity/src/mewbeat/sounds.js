@@ -61,12 +61,12 @@ export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
     load(audio);
   }
 
-  // level scales this one sound (0-1); rate changes its speed and pitch.
+  // level scales this one sound (0-1); rate changes its speed and pitch. Returns what cuts it short, if it plays.
   function play(name, volume = DEFAULT_VOLUME, { level = 1, rate = 1 } = {}) {
     const gainValue = gainOf(volume) * level;
     const audio = ctx; // only a gesture brings one up (see unlock)
     const buffer = buffers.get(name);
-    if (gainValue <= 0 || !audio || !buffer) return;
+    if (gainValue <= 0 || !audio || !buffer) return null;
     if (audio.state === "suspended") audio.resume?.()?.catch?.(() => {});
     const source = audio.createBufferSource();
     const gain = audio.createGain();
@@ -76,6 +76,11 @@ export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
     source.connect(gain);
     gain.connect(audio.destination);
     source.start();
+    return () => {
+      try {
+        source.stop();
+      } catch {}
+    };
   }
 
   function close() {

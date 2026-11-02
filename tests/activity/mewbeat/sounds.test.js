@@ -33,7 +33,7 @@ function fakeAudio({ failDecode = [] } = {}) {
       return Promise.resolve({ decodedFrom: data.url });
     }
     createBufferSource() {
-      const source = { buffer: null, playbackRate: { value: 1 }, started: 0, connect() {}, start() { source.started += 1; } };
+      const source = { buffer: null, playbackRate: { value: 1 }, started: 0, stopped: 0, connect() {}, start() { source.started += 1; }, stop() { source.stopped += 1; } };
       this.sources.push(source);
       return source;
     }
@@ -168,6 +168,19 @@ test("level scales one sound and rate sets its speed", async () => {
   assert.equal(audio.sources.length, 1, "level 0 plays nothing");
   assert.equal(audio.gains[0].gain.value, gainOf(100) * 0.5);
   assert.equal(audio.sources[0].playbackRate.value, 1.5);
+});
+
+test("play hands back what stops that sound, and nothing when it stays silent", async () => {
+  const { sounds, audio } = await loaded();
+  const stop = sounds.play("hit");
+  assert.equal(audio.sources[0].stopped, 0);
+  stop();
+  assert.equal(audio.sources[0].stopped, 1);
+  audio.sources[0].stop = () => {
+    throw new Error("already gone");
+  };
+  assert.doesNotThrow(stop);
+  assert.equal(sounds.play("nope"), null);
 });
 
 test("a missing AudioContext makes everything a no-op", () => {
