@@ -15,6 +15,18 @@ export function musicGain(percent) {
   return MUSIC_MAX_GAIN * share * share;
 }
 
+// Clips (the song select preview, the results highlight) loop a stretch of a song, under the music volume.
+export const CLIP_WINDOW_S = 30;
+const CLIP_FADE_IN_S = 0.6;
+const CLIP_FADE_OUT_S = 1.5;
+const CLIP_SWAP_FADE_S = 0.25;
+const PREVIEW_LEVEL = 0.7;
+const HIGHLIGHT_LEVEL = 0.55;
+// A song with no known highlight is previewed from here (a share of its length): usually past the intro.
+const CLIP_DEFAULT_SHARE = 0.4;
+// Downloaded songs kept as bytes, so going back to a song or pressing Play after its preview doesn't fetch it again.
+const BYTES_CACHE_SIZE = 4;
+
 export function createSoloAudio({
   fetchAudio,
   createContext = () => new (globalThis.AudioContext ?? globalThis.webkitAudioContext)(),
@@ -37,6 +49,11 @@ export function createSoloAudio({
   let started = false; // a play() succeeded since the last stop()
   let playSeq = 0; // bumps on every play/pause/stop, so a play() that awaited resume() can tell it was overridden
   const endedListeners = new Set();
+  // Clips play beside the game's source and never touch the song clock or the ended listeners.
+  let clip = null; // { node, gain } while a clip plays
+  let clipSeq = 0; // bumps on every clip request or stop, so an older preview still loading drops out
+  const bytes = new Map(); // audioKey -> ArrayBuffer, oldest first
+  let previewFetch = null; // { key, promise, controller }
 
   function context() {
     if (ctx) return ctx;
@@ -59,6 +76,25 @@ export function createSoloAudio({
     return buffer ? Math.round(buffer.duration * 1000) : 0;
   }
 
+  function rememberBytes(audioKey, data) {
+    bytes.delete(audioKey);
+    bytes.set(audioKey, data);
+    if (bytes.size > BYTES_CACHE_SIZE) bytes.delete(bytes.keys().next().value);
+    return data;
+  }
+
+  async function songBytes(audioKey, signal) {
+    if (bytes.has(audioKey)) return bytes.get(audioKey);
+    if (previewFetch?.key === audioKey) {
+      try {
+        return await previewFetch.promise;
+      } catch {
+        // The preview's download failed: this one tries for itself.
+      }
+    }
+    return rememberBytes(audioKey, await fetchAudio(audioKey, signal));
+  }
+
   async function load(audioKey) {
     if (buffer && loadedKey === audioKey) return { durationMs: durationMs() };
     if (loading && loading.key === audioKey) return loading.promise;
@@ -67,12 +103,14 @@ export function createSoloAudio({
     loadAbort = controller;
     const seq = ++loadSeq;
     const promise = (async () => {
-      const data = await fetchAudio(audioKey, controller.signal);
+      const data = await songBytes(audioKey, controller.signal);
       // A newer load() or a close() came meanwhile: this result is not wanted, and must not create a context.
       if (seq !== loadSeq) throw new Error("Song load superseded.");
-      const decoded = await context().decodeAudioData(data);
+      // Decoding detaches its input, and the bytes stay cached.
+      const decoded = await context().decodeAudioData(data.slice(0));
       if (seq !== loadSeq) throw new Error("Song load superseded.");
       stop();
+      stopClip({ fadeMs: 0 });
       buffer = decoded;
       loadedKey = audioKey;
       return { durationMs: durationMs() };
@@ -116,6 +154,7 @@ export function createSoloAudio({
   async function play(fromMs = 0, whenPerfMs = null) {
     if (!buffer) throw new Error("No song loaded.");
     const c = context();
+    stopClip({ fadeMs: 0 });
     dropSource();
     const seq = ++playSeq;
     if (c.state !== "running") {
@@ -178,9 +217,142 @@ export function createSoloAudio({
     startOffsetMs = 0;
   }
 
+  function dropClip(fadeS = 0) {
+    if (!clip) return;
+    const { node, gain: clipGain } = clip;
+    clip = null;
+    const release = () => {
+      try { node.disconnect(); } catch { /* already disconnected */ }
+      try { clipGain.disconnect(); } catch { /* already disconnected */ }
+    };
+    node.onended = release;
+    try {
+      if (fadeS > 0) {
+        const at = ctx.currentTime;
+        const level = clipGain.gain.value;
+        clipGain.gain.cancelScheduledValues(at);
+        clipGain.gain.setValueAtTime(level, at);
+        clipGain.gain.linearRampToValueAtTime(0, at + fadeS);
+        node.stop(at + fadeS);
+      } else {
+        node.stop();
+        release();
+      }
+    } catch {
+      release();
+    }
+  }
+
+  // Plays a stretch of clipBuffer from fromS with fades, looping until something stops it.
+  function startClip(clipBuffer, fromS, level) {
+    dropClip(CLIP_SWAP_FADE_S);
+    const c = ctx;
+    const lengthS = Math.min(CLIP_WINDOW_S, clipBuffer.duration - fromS);
+    if (!(lengthS > 0)) return;
+    const clipGain = c.createGain();
+    clipGain.connect(gain);
+    const node = c.createBufferSource();
+    node.buffer = clipBuffer;
+    node.connect(clipGain);
+    const at = c.currentTime + START_LEAD_S;
+    const param = clipGain.gain;
+    param.value = 0;
+    param.setValueAtTime(0, at);
+    param.linearRampToValueAtTime(level, at + Math.min(CLIP_FADE_IN_S, lengthS / 2));
+    param.setValueAtTime(level, at + lengthS - Math.min(CLIP_FADE_OUT_S, lengthS / 2));
+    param.linearRampToValueAtTime(0, at + lengthS);
+    const current = { node, gain: clipGain };
+    node.onended = () => {
+      if (clip !== current) return;
+      clip = null;
+      try { node.disconnect(); } catch { /* already disconnected */ }
+      try { clipGain.disconnect(); } catch { /* already disconnected */ }
+      startClip(clipBuffer, fromS, level);
+    };
+    node.start(at, fromS, lengthS);
+    clip = current;
+  }
+
+  function clipStartS(fromMs, durationS) {
+    const wanted = Number.isFinite(fromMs) && fromMs >= 0 ? fromMs / 1000 : durationS * CLIP_DEFAULT_SHARE;
+    // A highlight near the end starts early enough to fill the window.
+    return Math.max(0, Math.min(wanted, durationS - CLIP_WINDOW_S));
+  }
+
+  // Previews wait in line: a job the server started can't be recalled, and a burst of them would leave no room in
+  // its queue for the song the player then picks. A finished download stays cached, so going back to it is instant.
+  async function previewBytes(audioKey, seq) {
+    for (;;) {
+      if (seq !== clipSeq) return null;
+      if (bytes.has(audioKey)) return bytes.get(audioKey);
+      if (!previewFetch) {
+        const controller = new AbortController();
+        const entry = { key: audioKey, controller };
+        entry.promise = Promise.resolve()
+          .then(() => fetchAudio(audioKey, controller.signal))
+          .then((data) => rememberBytes(audioKey, data))
+          .finally(() => { if (previewFetch === entry) previewFetch = null; });
+        previewFetch = entry;
+      }
+      const waitingFor = previewFetch;
+      try {
+        await waitingFor.promise;
+      } catch (error) {
+        if (waitingFor.key === audioKey) throw error;
+      }
+    }
+  }
+
+  // Previews a song without loading it for play: the game's buffer stays as it is, and only the stretch that plays
+  // is kept. Resolves true once it plays, false when it was replaced, stopped or failed (a preview never reports).
+  async function preview(audioKey, { fromMs = null, level = PREVIEW_LEVEL } = {}) {
+    const seq = ++clipSeq;
+    if (ctx) dropClip(CLIP_SWAP_FADE_S);
+    try {
+      const data = await previewBytes(audioKey, seq);
+      if (seq !== clipSeq) return false;
+      const c = context();
+      const decoded = await c.decodeAudioData(data.slice(0));
+      if (seq !== clipSeq) return false;
+      if (c.state !== "running") {
+        await c.resume();
+        if (seq !== clipSeq || c.state !== "running") return false;
+      }
+      const fromS = clipStartS(fromMs, decoded.duration);
+      const start = Math.floor(fromS * decoded.sampleRate);
+      const length = Math.min(Math.ceil(CLIP_WINDOW_S * decoded.sampleRate), decoded.length - start);
+      const stretch = c.createBuffer(decoded.numberOfChannels, length, decoded.sampleRate);
+      for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
+        stretch.copyToChannel(decoded.getChannelData(channel).subarray(start, start + length), channel);
+      }
+      startClip(stretch, 0, level);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Plays a stretch of the loaded song from fromMs (no highlight known: from CLIP_DEFAULT_SHARE of it).
+  function highlight(fromMs, { level = HIGHLIGHT_LEVEL } = {}) {
+    if (!buffer || !ctx) return false;
+    clipSeq += 1;
+    if (ctx.state !== "running") Promise.resolve(ctx.resume()).catch(() => {});
+    startClip(buffer, clipStartS(fromMs, buffer.duration), level);
+    return true;
+  }
+
+  function stopClip({ fadeMs = 400 } = {}) {
+    clipSeq += 1;
+    dropClip(fadeMs / 1000);
+  }
+
   // Releases the context and the decoded song (the Activity's mewbeat screen closed).
   function close() {
     stop();
+    stopClip({ fadeMs: 0 });
+    previewFetch?.controller.abort();
+    previewFetch = null;
+    bytes.clear();
     endedListeners.clear();
     buffer = null;
     loadedKey = null;
@@ -207,6 +379,9 @@ export function createSoloAudio({
     unlock,
     close,
     setVolume,
+    preview,
+    highlight,
+    stopClip,
     songTimeAt,
     positionMs,
     playing: () => started && pausedAtMs === null,

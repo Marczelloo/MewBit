@@ -1,4 +1,4 @@
-import { MagnifyingGlass, Play, Plus } from "@phosphor-icons/react";
+import { MagnifyingGlass, Play, Plus, SpeakerHigh } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
 
@@ -19,6 +19,7 @@ const SEARCH_LIMIT = 20;
 const MIN_QUERY = 2;
 const SEARCH_DEBOUNCE_MS = 300;
 const STARS_FULL_BAR = 8; // the stars value where a difficulty bar is full
+const PREVIEW_DEBOUNCE_MS = 700; // browsing with the arrows doesn't start a preview per row
 
 // Server reasons from mewbeat_solo_prepare, as short copy. Anything else (timeouts, no socket) is already text.
 const PREPARE_ERRORS = {
@@ -89,6 +90,7 @@ function playedRow(track) {
     plays: track.plays ?? null,
     stars: track.stars ?? null,
     bests: track.bests ?? {},
+    highlightMs: track.highlightMs ?? null,
   };
 }
 
@@ -104,6 +106,7 @@ function searchRow(track) {
     plays: null,
     stars: null,
     bests: {},
+    highlightMs: null,
   };
 }
 
@@ -129,8 +132,9 @@ function MiniDifficulties({ row }) {
 // then a song's difficulties and Play. onPlay(row, difficulty) returns a promise that rejects with the reason
 // the song can't be played; onAddToRoom(row, difficulty), when given, adds an "Add to room queue" button.
 // Without onPlay (picking songs for a room) adding is the main action: Enter and a double click add, the
-// picker stays open for more, and a rejection's message is shown.
-export default function SongSelect({ context, request, defaultDifficulty = "normal", onPlay, onAddToRoom, onClose }) {
+// picker stays open for more, and a rejection's message is shown. onPreview(row), when given, previews the song
+// the player picked and resolves whether it plays; onPreview(null) stops it.
+export default function SongSelect({ context, request, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose }) {
   const [scope, setScope] = useState("server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
@@ -141,6 +145,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   const [preparing, setPreparing] = useState(null); // the row key being prepared
   const [playError, setPlayError] = useState(null);
   const [addedNote, setAddedNote] = useState(null); // confirmation after a song went into the room queue
+  const [previewing, setPreviewing] = useState(null); // { key, playing } of the song being previewed
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const mountedRef = useRef(true);
@@ -201,6 +206,30 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
   }, [selected?.key]);
+
+  // Only a song the player picked, not the first row a list opens on: a preview makes the server render the song.
+  const pickedRow = rows.find((row) => row.key === selectedKey) ?? null;
+  const previewRow = onPlay && preparing !== null ? null : pickedRow;
+  const previewRowRef = useRef(previewRow);
+  previewRowRef.current = previewRow;
+  const previewKey = previewRow?.key ?? null;
+  useEffect(() => {
+    if (!onPreview || previewKey === null) return undefined;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setPreviewing({ key: previewKey, playing: false });
+      Promise.resolve()
+        .then(() => onPreview(previewRowRef.current))
+        .then((playing) => { if (!cancelled) setPreviewing(playing ? { key: previewKey, playing: true } : null); })
+        .catch(() => { if (!cancelled) setPreviewing(null); });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      setPreviewing(null);
+      onPreview(null);
+    };
+  }, [previewKey, onPreview]);
 
   const select = useCallback((row) => {
     setSelectedKey(row.key);
@@ -291,6 +320,12 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
                 <div className="mb-ss-chips">
                   {selected.durationMs ? <span className="mb-ss-chip">{formatLength(selected.durationMs)}</span> : null}
                   {selected.source ? <span className="mb-ss-chip">{selected.source}</span> : null}
+                  {previewing?.key === selected.key ? (
+                    <span className={`mb-ss-chip mb-ss-chip-preview${previewing.playing ? " mb-ss-chip-preview-on" : ""}`} role="status">
+                      <SpeakerHigh size={12} weight="fill" aria-hidden="true" />
+                      {previewing.playing ? "Preview" : "Loading preview…"}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>

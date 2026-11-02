@@ -241,7 +241,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       runAutoplayRef.current = autoplayRef.current;
       runTrackRef.current = trackRef.current;
       runCalibrationRef.current = Boolean(chartRef.current?.calibration);
-      runMetaRef.current = { audioKey: songClock.audioKey(), difficulty: cfgRef.current.liveDifficulty, chartVersion: chart.version ?? null };
+      runMetaRef.current = { audioKey: songClock.audioKey(), difficulty: cfgRef.current.liveDifficulty, chartVersion: chart.version ?? null, highlightMs: chart.highlightMs ?? null };
       clearSwap();
       setRunDifficulty(cfgRef.current.liveDifficulty);
       setCalibrating(runCalibrationRef.current);
@@ -306,6 +306,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           title: runTrackRef.current?.title ?? null,
           artist: runTrackRef.current?.artist ?? null,
           artworkUrl: runTrackRef.current?.artworkUrl ?? null,
+          highlightMs: meta.highlightMs ?? null,
           submit: { status },
           feverActive: false,
           feverLeftMs: 0,

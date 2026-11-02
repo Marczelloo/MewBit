@@ -15,8 +15,8 @@ test.before(async () => {
 
 // A fake AudioContext driven by a manual perf clock: currentTime advances with perf time, no output latency
 // unless asked for, and getOutputTimestamp pairs the context time with the matching perf time.
-function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0 } = {}) {
-  const env = { perf: 1000, sources: [], resumeCalls: 0 };
+function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio } = {}) {
+  const env = { perf: 1000, sources: [], gains: [], resumeCalls: 0, fetches: [] };
   const ctx = {
     state,
     outputLatency,
@@ -25,7 +25,29 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
     get currentTime() {
       return (env.perf - 1000) / 1000;
     },
-    createGain: () => ({ gain: { value: 1 }, connect() {} }),
+    createGain: () => {
+      const ramps = [];
+      const node = {
+        ramps,
+        gain: {
+          value: 1,
+          cancelScheduledValues() {},
+          setValueAtTime(value, at) { ramps.push({ value, at }); },
+          linearRampToValueAtTime(value, at) { ramps.push({ value, at }); },
+        },
+        connect() {},
+        disconnect() {},
+      };
+      env.gains.push(node);
+      return node;
+    },
+    createBuffer: (channels, length, sampleRate) => ({
+      numberOfChannels: channels,
+      length,
+      sampleRate,
+      duration: length / sampleRate,
+      copyToChannel() {},
+    }),
     createBufferSource: () => {
       const node = {
         buffer: null,
@@ -33,8 +55,8 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
         stopped: false,
         connect() {},
         disconnect() {},
-        start(when, offset) {
-          node.started = { when, offset };
+        start(when, offset, length) {
+          node.started = { when, offset, length };
         },
         stop() {
           node.stopped = true;
@@ -43,7 +65,13 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
       env.sources.push(node);
       return node;
     },
-    decodeAudioData: async () => ({ duration: durationSec }),
+    decodeAudioData: async () => ({
+      duration: durationSec,
+      sampleRate: 100,
+      length: durationSec * 100,
+      numberOfChannels: 2,
+      getChannelData: () => new Float32Array(durationSec * 100),
+    }),
     resume: async () => {
       env.resumeCalls += 1;
       ctx.state = "running";
@@ -54,7 +82,10 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
     ctx.getOutputTimestamp = () => ({ contextTime: ctx.currentTime, performanceTime: env.perf });
   }
   const audio = createSoloAudio({
-    fetchAudio: async () => new ArrayBuffer(8),
+    fetchAudio: fetchAudio ?? (async (key) => {
+      env.fetches.push(key);
+      return new ArrayBuffer(8);
+    }),
     createContext: () => ctx,
     now: () => env.perf,
   });
@@ -221,6 +252,116 @@ test("close() and a newer load abort the download in flight", async () => {
   assert.equal(signals[1].aborted, false);
   audio.close();
   assert.equal(signals[1].aborted, true);
+});
+
+const turn = () => new Promise((resolve) => { setImmediate(resolve); });
+
+test("a preview plays a stretch beside the game and leaves its song and clock alone", async () => {
+  const { env, audio } = harness();
+  assert.equal(await audio.preview("k1", { fromMs: 50_000 }), true);
+  assert.equal(audio.loadedKey(), null);
+  assert.equal(audio.songTimeAt(env.perf), null);
+  assert.equal(audio.playing(), false);
+  const node = env.sources.at(-1);
+  // The stretch is its own short buffer, and it fades in from silence.
+  assert.equal(node.buffer.duration, 30);
+  assert.equal(node.started.offset, 0);
+  assert.equal(node.started.length, 30);
+  assert.equal(env.gains.at(-1).ramps[0].value, 0);
+});
+
+test("a preview with no known highlight starts 40% into the song", async () => {
+  const { ctx, audio } = harness();
+  const copies = [];
+  const create = ctx.createBuffer;
+  ctx.createBuffer = (...args) => ({ ...create(...args), copyToChannel: (data) => copies.push(data) });
+  const channel = new Float32Array(20_000).map((_, index) => index);
+  const decode = ctx.decodeAudioData;
+  ctx.decodeAudioData = async (data) => ({ ...(await decode(data)), getChannelData: () => channel });
+  await audio.preview("k1");
+  assert.equal(copies[0][0], 8000);
+});
+
+test("a newer preview replaces an older one still downloading, and only one download runs at a time", async () => {
+  const releases = {};
+  const asked = [];
+  const { env, audio } = harness({
+    fetchAudio: (key) => {
+      asked.push(key);
+      return new Promise((resolve) => { releases[key] = () => resolve(new ArrayBuffer(8)); });
+    },
+  });
+  const first = audio.preview("a");
+  const second = audio.preview("b");
+  await turn();
+  assert.deepEqual(asked, ["a"]);
+  releases.a();
+  assert.equal(await first, false);
+  await turn();
+  assert.deepEqual(asked, ["a", "b"]);
+  releases.b();
+  assert.equal(await second, true);
+  assert.equal(env.sources.length, 1);
+});
+
+test("a stopped preview never starts, and a failed one resolves false", async () => {
+  let release;
+  const held = harness({ fetchAudio: () => new Promise((resolve) => { release = () => resolve(new ArrayBuffer(8)); }) });
+  const pending = held.audio.preview("a");
+  await turn();
+  held.audio.stopClip();
+  release();
+  assert.equal(await pending, false);
+  assert.equal(held.env.sources.length, 0);
+
+  const failing = harness({ fetchAudio: async () => { throw new Error("nope"); } });
+  assert.equal(await failing.audio.preview("a"), false);
+});
+
+test("a previewed song isn't fetched again by Play or a second preview", async () => {
+  const { env, audio } = harness();
+  await audio.preview("k1");
+  await audio.load("k1");
+  await audio.preview("k1");
+  assert.deepEqual(env.fetches, ["k1"]);
+});
+
+test("the game loading its song silences a clip at once", async () => {
+  const { env, audio } = harness();
+  await audio.preview("k1");
+  const clip = env.sources.at(-1);
+  await audio.load("k1");
+  assert.equal(clip.stopped, true);
+  assert.equal(audio.durationMs(), 200_000);
+});
+
+test("highlight plays the loaded song from fromMs and loops, without touching the clock", async () => {
+  const { env, audio } = harness();
+  assert.equal(audio.highlight(60_000), false, "nothing loaded yet");
+  await audio.load("k1");
+  assert.equal(audio.highlight(60_000), true);
+  const node = env.sources.at(-1);
+  assert.equal(node.started.offset, 60);
+  assert.equal(node.started.length, 30);
+  assert.equal(audio.songTimeAt(env.perf), null);
+  node.onended();
+  const next = env.sources.at(-1);
+  assert.notEqual(next, node);
+  assert.equal(next.started.offset, 60);
+  // A stopped clip fades out and stays stopped when its end arrives.
+  audio.stopClip();
+  assert.equal(next.stopped, true);
+  next.onended();
+  assert.equal(env.sources.at(-1), next);
+});
+
+test("a highlight near the end starts early enough to fill the window, and none known falls back", async () => {
+  const { env, audio } = harness({ durationSec: 100 });
+  await audio.load("k1");
+  audio.highlight(95_000);
+  assert.equal(env.sources.at(-1).started.offset, 70);
+  audio.highlight(null);
+  assert.equal(env.sources.at(-1).started.offset, 40);
 });
 
 test("the music volume maps on a square curve under the ceiling", () => {

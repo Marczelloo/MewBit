@@ -164,7 +164,7 @@ describe("mewbeat activity channel", () => {
     const SOLO_KEY = "spotify:xyz:180000";
     const soloTrack = { track: "encoded", info: { sourceName: "spotify", identifier: "xyz", length: 180000, title: "Song", author: "Band", uri: "https://open.spotify.com/track/xyz", artworkUrl: "https://img/a.jpg" } };
 
-    function soloSetup({ unlocked = true, resolved = { track: soloTrack, node: "node-2" }, playback } = {}) {
+    function soloSetup({ unlocked = true, resolved = { track: soloTrack, node: "node-2" }, playback, peekCharts } = {}) {
       const soloTracks = createSoloTracks();
       const resolveCalls = [];
       const chartCalls = [];
@@ -177,6 +177,7 @@ describe("mewbeat activity channel", () => {
             chartCalls.push({ track, node });
             return { status: "ready", charts: { easy: { id: "e" }, normal: { id: "n" }, hard: { id: "h" }, hell: { id: "x" } } };
           },
+          peekCharts,
         },
         isUnlocked: () => unlocked,
         resolveTrack: async (guildId, query) => { resolveCalls.push({ guildId, ...query }); return resolved; },
@@ -185,6 +186,21 @@ describe("mewbeat activity channel", () => {
       });
       return { channel, soloTracks, resolveCalls, chartCalls };
     }
+
+    it("a preview registers the song without charting it", async () => {
+      const { channel, soloTracks, chartCalls } = soloSetup();
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "https://open.spotify.com/track/xyz", source: "spotify", preview: true });
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(soloTracks.get(SOLO_KEY).node, "node-2");
+      assert.deepStrictEqual(chartCalls, []);
+    });
+
+    it("prepare replies with the highlight of charts that already exist", async () => {
+      const charts = { easy: { highlightMs: 42000 }, normal: { highlightMs: 42000 }, hard: { highlightMs: 42000 }, hell: { highlightMs: 42000 } };
+      const { channel } = soloSetup({ peekCharts: () => ({ status: "ready", charts }) });
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "https://open.spotify.com/track/xyz", source: "spotify", preview: true });
+      assert.strictEqual(reply.highlightMs, 42000);
+    });
 
     it("resolves the song, registers it and starts charting", async () => {
       const { channel, soloTracks, resolveCalls, chartCalls } = soloSetup();
@@ -195,6 +211,7 @@ describe("mewbeat activity channel", () => {
         status: "ok",
         audioKey: SOLO_KEY,
         track: { title: "Song", artist: "Band", durationMs: 180000, artworkUrl: "https://img/a.jpg", uri: "https://open.spotify.com/track/xyz", source: "spotify" },
+        highlightMs: null,
       });
       assert.deepStrictEqual(resolveCalls, [{ guildId: "g", uri: "https://open.spotify.com/track/xyz", source: "spotify" }]);
       assert.strictEqual(soloTracks.get(SOLO_KEY).node, "node-2");

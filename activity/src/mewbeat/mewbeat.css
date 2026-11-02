@@ -1173,3 +1173,7 @@
 @media (prefers-reduced-motion: reduce) {
   .mb-add-scrim, .mb-add-window { animation: none; }
 }
+
+/* Song select: the preview note beside the song's chips. */
+.mb-ss-chip-preview { display: inline-flex; align-items: center; gap: 5px; color: var(--mb-faint); }
+.mb-ss-chip-preview-on { color: var(--mb-violet); }

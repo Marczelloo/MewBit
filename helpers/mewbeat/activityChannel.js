@@ -113,9 +113,10 @@ function createMewbeatChannel({
     };
   }
 
-  // Resolves a song, registers it by audioKey and starts its charts. Throws an
-  // error with `reason` when the song can't be used.
-  async function prepareSong(guildId, { uri, source }) {
+  // Resolves a song, registers it by audioKey and starts its charts (unless
+  // only a preview was asked for). Throws an error with `reason` when the song
+  // can't be used.
+  async function prepareSong(guildId, { uri, source }, { chart = true } = {}) {
     const refuse = (reason) => Object.assign(new Error(reason), { reason });
     if (typeof uri !== "string" || !uri.trim() || uri.length > MAX_URI_LENGTH) throw refuse("bad_uri");
     if (source != null && (typeof source !== "string" || source.length > MAX_SOURCE_LENGTH)) throw refuse("bad_source");
@@ -134,21 +135,27 @@ function createMewbeatChannel({
 
     const info = resolved.info ?? trackInfoOf(resolved.track);
     soloTracks.put(audioKey, { track: resolved.track, node: resolved.node, info });
-    // Charting starts now so it is usually done by the time Play is pressed.
-    Promise.resolve(chartStore.getCharts(resolved.track, resolved.node))
-      .catch((error) => log.warning("mewbeat solo chart failed", error?.message));
+    // Charting starts now so it is usually done by the time Play is pressed. A
+    // song-select preview doesn't chart: browsing would analyse every row.
+    if (chart) {
+      Promise.resolve(chartStore.getCharts(resolved.track, resolved.node))
+        .catch((error) => log.warning("mewbeat solo chart failed", error?.message));
+    }
     return { audioKey, track: info };
   }
 
   async function soloPrepare(guildId, userId, message) {
     const { id, uri, source } = message;
+    const preview = message.preview === true;
     const fail = (reason) => ({ type: "mewbeat_solo_prepare", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat prepare.");
     if (!isUnlocked(userId)) return fail("locked");
 
     try {
-      const { audioKey, track } = await prepareSong(guildId, { uri, source });
-      return { type: "mewbeat_solo_prepare", id, status: "ok", audioKey, track };
+      const { audioKey, track } = await prepareSong(guildId, { uri, source }, { chart: !preview });
+      // The song's highlight, when its charts already exist (song select previews start there).
+      const highlightMs = highlightOf(peekChartsOf(soloTracks.get(audioKey)?.track));
+      return { type: "mewbeat_solo_prepare", id, status: "ok", audioKey, track, highlightMs };
     } catch (error) {
       if (!error.reason) throw error;
       return fail(error.reason);
@@ -282,6 +289,16 @@ function createMewbeatChannel({
         length: Number(audioKey.slice(last + 1)),
       },
     };
+  }
+
+  // The highlight is the same for every difficulty; any charted one has it.
+  function highlightOf(charts) {
+    if (!charts) return null;
+    for (const difficulty of DIFFICULTIES) {
+      const value = charts[difficulty]?.highlightMs;
+      if (Number.isFinite(value)) return value;
+    }
+    return null;
   }
 
   // The stored charts of a song, or null while none are known. Never generates.
@@ -450,7 +467,7 @@ function createMewbeatChannel({
         const best = chartKey && scoreStore.bestOf(chartKey, userId);
         if (best) bests[difficulty] = { score: best.score, grade: best.grade };
       }
-      return { ...track, stars, bests };
+      return { ...track, stars, bests, highlightMs: highlightOf(charts) };
     });
     return { type: "mewbeat_played", id, tracks };
   }

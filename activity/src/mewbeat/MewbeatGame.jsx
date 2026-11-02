@@ -165,6 +165,10 @@ export default function MewbeatGame(props) {
   return <MewbeatSession key={mode} {...props} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} musicVolumeRef={musicVolumeRef} previewMusic={previewMusic} requests={requests} />;
 }
 
+// A preview resolves the song on the bot first, which can take a while for a search result.
+const PREVIEW_PREPARE_TIMEOUT_MS = 30_000;
+const HIGHLIGHT_WAIT_MS = 250;
+
 function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
   const solo = mode === "solo";
   const roomMode = mode === "room" && !MOCK_PREVIEW;
@@ -317,6 +321,19 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     const { audioKey, track: prepared } = await link.prepare({ uri: picked.uri, source: picked.source });
     link.begin(audioKey, prepared);
   }, [link, onAction, savedDifficulty]);
+  // Song select's preview. The song is resolved without charting it, so browsing costs no analysis.
+  const previewTokenRef = useRef(0);
+  const previewSong = useCallback(async (row) => {
+    const token = ++previewTokenRef.current;
+    if (!row) {
+      audio.stopClip();
+      return false;
+    }
+    if (audio.playing()) return false; // a room round is on: its music stays alone
+    const reply = await requests.request("mewbeat_solo_prepare", { uri: row.uri, source: row.source, preview: true }, PREVIEW_PREPARE_TIMEOUT_MS);
+    if (token !== previewTokenRef.current || reply?.status !== "ok") return false;
+    return audio.preview(reply.audioKey, { fromMs: reply.highlightMs ?? row.highlightMs });
+  }, [audio, requests]);
   const backToGame = () => window.requestAnimationFrame(() => dialogRef.current?.focus());
   const startNext = async () => {
     if (endSummary) setDismissedId(endSummary.id);
@@ -443,6 +460,21 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const [dismissedId, setDismissedId] = useState(null);
   const cardPlace = roomMode ? view === "playing" || view === "lobby" : !solo || soloStage === "playing" || soloStage === "ended";
   const showCard = Boolean(endSummary) && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
+  const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
+  useEffect(() => {
+    if (!clipSummary || audio.loadedKey() !== clipSummary.audioKey) return undefined;
+    // An outro can still be playing under the card; it ends by itself or when the room moves on to its lobby.
+    const waiting = window.setInterval(() => {
+      if (audio.playing()) return;
+      window.clearInterval(waiting);
+      audio.highlight(clipSummary.highlightMs);
+    }, HIGHLIGHT_WAIT_MS);
+    return () => {
+      window.clearInterval(waiting);
+      audio.stopClip();
+    };
+  }, [audio, clipSummary]);
   let stateCopy;
   if (roomMode) {
     if (showCard) stateCopy = null;
@@ -625,6 +657,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           request={requests.request}
           defaultDifficulty={savedDifficulty}
           onPlay={pickSong}
+          onPreview={previewSong}
           onClose={onClose}
         />
       ) : null}
@@ -638,6 +671,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               request={requests.request}
               defaultDifficulty={savedDifficulty}
               onAddToRoom={addToRoom}
+              onPreview={previewSong}
               onClose={() => { setAddOpen(false); backToGame(); }}
             />
           </div>
