@@ -9,11 +9,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   effects: "full",
   hitSounds: false,
   hitVolume: 40,
+  musicVolume: 80, // solo and room audio (the Activity's own playback); the bot's live audio is not touched
   showMewbit: true,
   tempoScroll: true, // the song's tempo nudges the fall speed (activity highway.js tempoScrollFactor)
 });
 
-const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100] });
+const LIMITS = Object.freeze({ offsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100], musicVolume: [0, 100] });
 // Space is FEVER; Escape leaves the game.
 const RESERVED_CODES = Object.freeze(["Space", "Escape"]);
 
@@ -47,6 +48,7 @@ const FIELD_CHECKS = {
   effects: (value) => (EFFECT_LEVELS.includes(value) ? null : "Effects must be full, reduced or off."),
   hitSounds: (value) => (typeof value === "boolean" ? null : "Hit sounds must be on or off."),
   hitVolume: (value) => (isIntegerIn(value, LIMITS.hitVolume) ? null : `Hit sound volume must be a whole number from ${LIMITS.hitVolume[0]} to ${LIMITS.hitVolume[1]}.`),
+  musicVolume: (value) => (isIntegerIn(value, LIMITS.musicVolume) ? null : `Music volume must be a whole number from ${LIMITS.musicVolume[0]} to ${LIMITS.musicVolume[1]}.`),
   showMewbit: (value) => (typeof value === "boolean" ? null : "Show Mewbit must be on or off."),
   tempoScroll: (value) => (typeof value === "boolean" ? null : "Speed by tempo must be on or off."),
 };

@@ -38,6 +38,15 @@ describe("mewbeat settings validation", () => {
     assert.strictEqual(merged.showMewbit, false);
   });
 
+  it("defaults the music volume to 80 and accepts 0 to 100", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.musicVolume, 80);
+    assert.strictEqual(validateSettingsPatch({ musicVolume: 0 }, DEFAULT_SETTINGS).musicVolume, 0);
+    assert.strictEqual(validateSettingsPatch({ musicVolume: 100 }, DEFAULT_SETTINGS).musicVolume, 100);
+    assert.strictEqual(normalizeSettings({ musicVolume: 35 }).musicVolume, 35);
+    assert.strictEqual(normalizeSettings({ musicVolume: 140 }).musicVolume, 80);
+    assert.strictEqual(normalizeSettings({}).musicVolume, 80);
+  });
+
   it("follows the tempo by default and accepts a fixed speed", () => {
     assert.strictEqual(DEFAULT_SETTINGS.tempoScroll, true);
     assert.strictEqual(validateSettingsPatch({ tempoScroll: false }, DEFAULT_SETTINGS).tempoScroll, false);
@@ -67,6 +76,9 @@ describe("mewbeat settings validation", () => {
     "hit volume above 100": { hitVolume: 101 },
     "a negative hit volume": { hitVolume: -5 },
     "a fractional hit volume": { hitVolume: 12.5 },
+    "music volume above 100": { musicVolume: 101 },
+    "a negative music volume": { musicVolume: -1 },
+    "a fractional music volume": { musicVolume: 50.5 },
     "a non-boolean show Mewbit": { showMewbit: 1 },
     "an unknown field": { colour: 1 },
   };
