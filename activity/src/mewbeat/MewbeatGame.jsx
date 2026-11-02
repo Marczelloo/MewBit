@@ -10,9 +10,10 @@ import { createServerClock, createSongClock } from "./clock.js";
 import { keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
 import { createMockLink } from "./mockLink.js";
+import { createMewbeatRequests } from "./requests.js";
 import { createSoloAudio } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
-import SoloPicker from "./SoloPicker.jsx";
+import SongSelect from "./SongSelect.jsx";
 import Mewbit from "./mewbit/Mewbit.jsx";
 import { useMewbeatGame } from "./useMewbeatGame.js";
 import "./mewbeat.css";
@@ -76,7 +77,7 @@ function useSoloState(link) {
   return soloState;
 }
 
-// Resume / Restart / Pick another song / Exit over a paused solo run. Esc resumes, as does Enter anywhere
+// Resume / Restart / Song select / Exit over a paused solo run. Esc resumes, as does Enter anywhere
 // but on another button.
 function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
   const resumeRef = useRef(null);
@@ -101,7 +102,7 @@ function PauseOverlay({ error, onResume, onRestart, onPick, onExit }) {
             Resume <kbd className="mb-kbd">Esc</kbd>
           </button>
           <button type="button" className="mb-btn" onClick={onRestart}>Restart</button>
-          <button type="button" className="mb-btn" onClick={onPick}>Pick another song</button>
+          <button type="button" className="mb-btn" onClick={onPick}>Song select</button>
           <button type="button" className="mb-btn" onClick={onExit}>Exit</button>
         </div>
       </div>
@@ -127,10 +128,14 @@ export default function MewbeatGame(props) {
     audio.setVolume(musicVolume / 100);
   }, [audio, musicVolume]);
   useEffect(() => () => audio.close(), [audio]);
-  return <MewbeatSession key={mode} {...props} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} />;
+  // Request/reply over the socket (played lists now; results and rooms later), shared by every session and
+  // fed by the session's message handler.
+  const socketRef = props.mewbeatSocketRef;
+  const [requests] = useState(() => createMewbeatRequests((payload) => socketRef?.current?.send?.(payload) ?? false));
+  return <MewbeatSession key={mode} {...props} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} requests={requests} />;
 }
 
-function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
+function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose }) {
   const solo = mode === "solo";
   const dialogRef = useRef(null);
   const gearRef = useRef(null);
@@ -139,17 +144,21 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const soloState = useSoloState(link);
   const soloStage = soloState?.stage ?? null;
   const pauseOpen = solo && soloStage === "paused";
-  const pickerOpen = solo && soloStage === "idle";
+  // Song select is up with no song, while a pick is being resolved, and after a pick the server refused
+  // (which has no audioKey yet; an audio load failure has one and shows its message on the stage).
+  const pickerOpen = solo && (soloStage === "idle" || soloStage === "preparing" || (soloStage === "error" && !soloState.audioKey));
 
   // The link has to be live before useMewbeatGame mounts its effects, so this effect stays above the hook.
   useEffect(() => {
-    if (mewbeatHandlerRef) mewbeatHandlerRef.current = link.handle;
+    // Replies to request() are consumed first; everything else is the link's.
+    const handler = (message) => requests.handle(message) || link.handle(message);
+    if (mewbeatHandlerRef) mewbeatHandlerRef.current = handler;
     link.start();
     return () => {
       link.stop();
-      if (mewbeatHandlerRef && mewbeatHandlerRef.current === link.handle) mewbeatHandlerRef.current = null;
+      if (mewbeatHandlerRef && mewbeatHandlerRef.current === handler) mewbeatHandlerRef.current = null;
     };
-  }, [link, mewbeatHandlerRef]);
+  }, [link, requests, mewbeatHandlerRef]);
 
   const player = state?.player;
   const current = player?.currentTrack ?? null;
@@ -184,12 +193,16 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     else link.leave();
   };
 
-  const pickSong = useCallback((picked) => {
-    // prepare() reports its own failure through the link's error stage.
-    link.prepare({ uri: picked.uri, source: picked.source })
-      .then(({ audioKey, track: prepared }) => link.begin(audioKey, prepared))
-      .catch(() => {});
-  }, [link]);
+  // Song select's Play. The chosen difficulty becomes the live difficulty the game charts with. Rejects with
+  // the server's reason when the song can't be prepared; begin() reports its own failures on the stage.
+  const savedDifficulty = settings?.liveDifficulty ?? "normal";
+  const pickSong = useCallback(async (picked, pickedDifficulty) => {
+    if (pickedDifficulty && pickedDifficulty !== savedDifficulty) {
+      onAction?.("mewbeat_settings", { settings: { liveDifficulty: pickedDifficulty } });
+    }
+    const { audioKey, track: prepared } = await link.prepare({ uri: picked.uri, source: picked.source });
+    link.begin(audioKey, prepared);
+  }, [link, onAction, savedDifficulty]);
   const backToGame = () => window.requestAnimationFrame(() => dialogRef.current?.focus());
 
   // Auto offset (this session only): every AUTO_OFFSET_EVERY new taps, a suggestion that differs
@@ -314,7 +327,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         </div>
         <div className="mb-header-actions">
           {solo && botPlaying ? <span className="mb-hint">Lower MewBit in Discord to hear the song</span> : null}
-          {solo && !pickerOpen ? <button type="button" className="mb-btn" onClick={() => link.leave()}>Pick song</button> : null}
+          {solo && !pickerOpen ? <button type="button" className="mb-btn" onClick={() => link.leave()}>Song select</button> : null}
           <button type="button" className={`mb-btn mb-toggle ${autoplay ? "mb-toggle-on" : ""}`.trim()} aria-pressed={autoplay} onClick={() => setAutoplay(!autoplay)}>
             Autoplay
           </button>
@@ -353,7 +366,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               </div>
               <div className="mb-fevertime" style={feverTimeStyle} aria-hidden="true" />
               {running ? <HighwayReadout hud={hud} /> : null}
-              {pickerOpen ? <SoloPicker context={context} onPick={pickSong} onCancel={onClose} /> : null}
               {soloStage === "countin" ? (
                 <div className="mb-countin" role="status" aria-live="assertive">
                   <b key={soloState.count}>{soloState.count}</b>
@@ -384,6 +396,16 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           </aside>
         </div>
       </div>
+
+      {pickerOpen ? (
+        <SongSelect
+          context={context}
+          request={requests.request}
+          defaultDifficulty={savedDifficulty}
+          onPlay={pickSong}
+          onClose={onClose}
+        />
+      ) : null}
 
       {pauseOpen ? (
         <PauseOverlay

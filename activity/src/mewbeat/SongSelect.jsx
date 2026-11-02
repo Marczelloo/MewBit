@@ -1,0 +1,386 @@
+import { MagnifyingGlass, Play, Plus } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { searchActivity } from "../api.js";
+
+export const DIFFICULTIES = [
+  { id: "easy", label: "Easy" },
+  { id: "normal", label: "Normal" },
+  { id: "hard", label: "Hard" },
+  { id: "hell", label: "Hell" },
+];
+
+const SCOPES = [
+  { id: "server", label: "Played on this server" },
+  { id: "global", label: "Played anywhere" },
+];
+
+const PLAYED_LIMIT = 50;
+const SEARCH_LIMIT = 20;
+const MIN_QUERY = 2;
+const SEARCH_DEBOUNCE_MS = 300;
+const STARS_FULL_BAR = 8; // the stars value where a difficulty bar is full
+
+// Server reasons from mewbeat_solo_prepare, as short copy. Anything else (timeouts, no socket) is already text.
+const PREPARE_ERRORS = {
+  bad_uri: "That song link isn't valid.",
+  bad_source: "That source isn't supported.",
+  resolve_failed: "Couldn't load that song. Try another one.",
+  not_found: "Couldn't find that song.",
+  unsupported: "Live streams can't be played.",
+};
+
+export function describePrepareError(error) {
+  const reason = typeof error === "string" ? error : error?.message;
+  return PREPARE_ERRORS[reason] ?? (reason || "That song can't be played here.");
+}
+
+export function formatLength(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function starsOf(row, difficulty) {
+  const value = row?.stars?.[difficulty];
+  return Number.isFinite(value) ? value : null;
+}
+
+function gradeClass(grade) {
+  return `mb-ss-grade-${["S", "A", "B", "C"].includes(grade) ? grade : "D"}`;
+}
+
+// Artwork goes through the gateway's artwork proxy like the music panel's (Discord's CSP blocks other origins).
+function resolveArtworkUrl(artworkUrl) {
+  if (!artworkUrl) return null;
+  try {
+    const parsed = new URL(artworkUrl, window.location.origin);
+    if (["data:", "blob:"].includes(parsed.protocol) || parsed.origin === window.location.origin) return parsed.toString();
+    return `/api/activity/artwork?url=${encodeURIComponent(parsed.toString())}`;
+  } catch {
+    return null;
+  }
+}
+
+function hueOf(text) {
+  let hash = 0;
+  for (const char of String(text ?? "")) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  return hash;
+}
+
+function Cover({ row, className }) {
+  const src = resolveArtworkUrl(row.artworkUrl);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (src && !failed) return <img className={className} src={src} alt="" draggable={false} onError={() => setFailed(true)} />;
+  const hue = hueOf(row.title);
+  return <span className={className} style={{ background: `linear-gradient(135deg, hsl(${hue} 80% 55%), hsl(${(hue + 60) % 360} 70% 22%))` }} aria-hidden="true" />;
+}
+
+// Played-list entries and search results as one row shape.
+function playedRow(track) {
+  return {
+    key: track.audioKey ?? track.uri,
+    uri: track.uri,
+    source: track.source,
+    title: track.title ?? "Unknown title",
+    artist: track.artist ?? "",
+    artworkUrl: track.artworkUrl ?? null,
+    durationMs: track.durationMs ?? 0,
+    plays: track.plays ?? null,
+    stars: track.stars ?? null,
+    bests: track.bests ?? {},
+  };
+}
+
+function searchRow(track) {
+  return {
+    key: track.uri,
+    uri: track.uri,
+    source: track.source,
+    title: track.title ?? "Unknown title",
+    artist: track.author ?? "",
+    artworkUrl: track.artworkUrl ?? null,
+    durationMs: track.durationMs ?? 0,
+    plays: null,
+    stars: null,
+    bests: {},
+  };
+}
+
+function MiniDifficulties({ row }) {
+  return (
+    <span className="mb-ss-mini">
+      {DIFFICULTIES.map(({ id, label }) => {
+        const stars = starsOf(row, id);
+        const best = row.bests?.[id];
+        return (
+          <span key={id} className={`mb-ss-mini-cell mb-ss-d-${id}`} title={`${label}${best ? ` · best ${best.grade}` : ""}`}>
+            <i aria-hidden="true" />
+            <span>{stars === null ? "—" : stars.toFixed(1)}</span>
+            {best ? <b className={gradeClass(best.grade)}>{best.grade}</b> : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+// The song-select screen: what the server has played (this server or anywhere) or a search over every source,
+// then a song's difficulties and Play. onPlay(row, difficulty) returns a promise that rejects with the reason
+// the song can't be played; onAddToRoom(row, difficulty), when given, adds an "Add to room queue" button.
+export default function SongSelect({ context, request, defaultDifficulty = "normal", onPlay, onAddToRoom, onClose }) {
+  const [scope, setScope] = useState("server");
+  const [query, setQuery] = useState("");
+  const [played, setPlayed] = useState({ status: "loading", rows: [] });
+  const [found, setFound] = useState({ status: "idle", rows: [] });
+  const [reload, setReload] = useState(0);
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [difficulty, setDifficulty] = useState(DIFFICULTIES.some((d) => d.id === defaultDifficulty) ? defaultDifficulty : "normal");
+  const [preparing, setPreparing] = useState(null); // the row key being prepared
+  const [playError, setPlayError] = useState(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    inputRef.current?.focus();
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const text = query.trim();
+  const searching = text.length >= MIN_QUERY;
+
+  // The played list for the chosen scope.
+  useEffect(() => {
+    let cancelled = false;
+    setPlayed({ status: "loading", rows: [] });
+    Promise.resolve()
+      .then(() => request("mewbeat_played", { scope, limit: PLAYED_LIMIT }))
+      .then((reply) => {
+        if (cancelled) return;
+        if (reply.status === "error" || !Array.isArray(reply.tracks)) setPlayed({ status: "error", rows: [] });
+        else setPlayed({ status: "ready", rows: reply.tracks.filter((track) => track?.uri).map(playedRow) });
+      })
+      .catch(() => { if (!cancelled) setPlayed({ status: "error", rows: [] }); });
+    return () => { cancelled = true; };
+  }, [request, scope, reload]);
+
+  // Search across every source, debounced; streams can't be charted so they are left out.
+  useEffect(() => {
+    if (!searching) {
+      setFound({ status: "idle", rows: [] });
+      return undefined;
+    }
+    const controller = new AbortController();
+    setFound({ status: "searching", rows: [] });
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await searchActivity({ ...context, query: text, signal: controller.signal });
+        const rows = (response.tracks || []).filter((track) => track.uri && !track.isStream).slice(0, SEARCH_LIMIT).map(searchRow);
+        setFound({ status: rows.length ? "ready" : "empty", rows });
+      } catch {
+        if (!controller.signal.aborted) setFound({ status: "error", rows: [] });
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+    // The context object is rebuilt on every App render; only the credentials matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, searching, context?.guildId, context?.accessToken]);
+
+  const list = searching ? found : played;
+  const rows = list.rows;
+  const selected = useMemo(() => rows.find((row) => row.key === selectedKey) ?? rows[0] ?? null, [rows, selectedKey]);
+
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [selected?.key]);
+
+  const select = useCallback((row) => {
+    setSelectedKey(row.key);
+    setPlayError(null);
+  }, []);
+
+  const move = (step) => {
+    if (!rows.length) return;
+    const index = Math.max(0, rows.findIndex((row) => row.key === selected?.key));
+    select(rows[Math.min(rows.length - 1, Math.max(0, index + step))]);
+  };
+
+  const play = useCallback(async () => {
+    if (!selected || preparing) return;
+    setPreparing(selected.key);
+    setPlayError(null);
+    try {
+      await onPlay(selected, difficulty);
+    } catch (error) {
+      if (mountedRef.current) setPlayError(describePrepareError(error));
+    } finally {
+      if (mountedRef.current) setPreparing(null);
+    }
+  }, [selected, preparing, onPlay, difficulty]);
+
+  // The game's keys are paused while this screen is up, so typing reaches the search box.
+  const onKeyDown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose?.();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter" && !(event.target instanceof HTMLElement && event.target.tagName === "BUTTON")) {
+      event.preventDefault();
+      play();
+    }
+  };
+
+  const pickScope = (id) => {
+    setQuery("");
+    setScope(id);
+    setSelectedKey(null);
+  };
+
+  let emptyCopy = null;
+  if (list.status === "loading" || list.status === "searching" || (searching && list.status === "idle")) emptyCopy = searching ? "Searching…" : "Loading songs…";
+  else if (list.status === "empty") emptyCopy = "No songs found.";
+  else if (list.status === "error") emptyCopy = searching ? "Search failed." : "Couldn't load the played songs.";
+  else if (!rows.length) emptyCopy = scope === "server" ? "No songs played here yet — search for one" : "No songs played yet — search for one";
+
+  const selectedStars = starsOf(selected, difficulty);
+  const selectedBest = selected?.bests?.[difficulty] ?? null;
+  const busy = preparing !== null;
+
+  return (
+    <div className="mb-ss" role="group" aria-label="Song select" onKeyDown={onKeyDown}>
+      <section className="mb-ss-detail">
+        <div className="mb-ss-top">
+          {onClose ? <button type="button" className="mb-btn mb-ss-close" onClick={onClose}>Close <kbd className="mb-kbd">Esc</kbd></button> : null}
+        </div>
+        {selected ? (
+          <>
+            <div className="mb-ss-hero">
+              <Cover row={selected} className="mb-ss-cover" />
+              <div className="mb-ss-hero-text">
+                <span className="mb-ss-label">{selected.plays ? `played ${selected.plays}×` : searching ? "search result" : "song"}</span>
+                <h2>{selected.title}</h2>
+                <div className="mb-ss-artist">{selected.artist}</div>
+                <div className="mb-ss-chips">
+                  {selected.durationMs ? <span className="mb-ss-chip">{formatLength(selected.durationMs)}</span> : null}
+                  {selected.source ? <span className="mb-ss-chip">{selected.source}</span> : null}
+                </div>
+              </div>
+            </div>
+            <div className="mb-ss-diffs" role="radiogroup" aria-label="Difficulty">
+              {DIFFICULTIES.map(({ id, label }) => {
+                const stars = starsOf(selected, id);
+                const best = selected.bests?.[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={difficulty === id}
+                    className={`mb-ss-diff mb-ss-d-${id}${difficulty === id ? " mb-ss-diff-on" : ""}`}
+                    onClick={() => setDifficulty(id)}
+                  >
+                    <b>{label}</b>
+                    <small>{stars === null ? "—" : `★ ${stars.toFixed(1)}`}</small>
+                    <span className="mb-ss-bar" aria-hidden="true"><i style={{ width: `${stars === null ? 0 : Math.min(100, (stars / STARS_FULL_BAR) * 100)}%` }} /></span>
+                    <small className="mb-ss-best">{best ? <><b className={gradeClass(best.grade)}>{best.grade}</b> {best.score.toLocaleString("en-US")}</> : "no score yet"}</small>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mb-ss-note">
+              {selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
+            </p>
+          </>
+        ) : (
+          <div className="mb-ss-placeholder">
+            <b>Pick a song</b>
+            <span>Search above, or choose one that was played.</span>
+          </div>
+        )}
+      </section>
+
+      <aside className="mb-ss-list">
+        <div className="mb-ss-tabs" role="tablist" aria-label="Songs">
+          {SCOPES.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={!searching && scope === id}
+              className={`mb-ss-tab${!searching && scope === id ? " mb-ss-tab-on" : ""}`}
+              onClick={() => pickScope(id)}
+            >
+              {label}
+            </button>
+          ))}
+          {searching ? <span className="mb-ss-tab mb-ss-tab-on mb-ss-tab-static">Search results</span> : null}
+        </div>
+        <label className="mb-ss-search">
+          <MagnifyingGlass size={16} weight="bold" aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            placeholder="Search YouTube, Spotify, Deezer…"
+            aria-label="Search for a song"
+            autoComplete="off"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+
+        <div className="mb-ss-rows" ref={listRef} role="listbox" aria-label={searching ? "Search results" : "Played songs"}>
+          {emptyCopy ? (
+            <div className={`mb-ss-empty${list.status === "error" ? " mb-ss-empty-error" : ""}`} role={list.status === "error" ? "alert" : "status"}>
+              <span>{emptyCopy}</span>
+              {list.status === "error" && !searching ? <button type="button" className="mb-btn" onClick={() => setReload((n) => n + 1)}>Try again</button> : null}
+            </div>
+          ) : null}
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              role="option"
+              aria-selected={row.key === selected?.key}
+              className={`mb-ss-row${row.key === selected?.key ? " mb-ss-row-on" : ""}`}
+              onClick={() => select(row)}
+              onDoubleClick={() => { select(row); play(); }}
+            >
+              <Cover row={row} className="mb-ss-art" />
+              <span className="mb-ss-info">
+                <b>{row.title}</b>
+                <small>{row.artist}</small>
+                <MiniDifficulties row={row} />
+              </span>
+              <span className="mb-ss-side">
+                {preparing === row.key ? <span className="mb-ss-preparing">Preparing…</span> : null}
+                <span className="mb-ss-len">{formatLength(row.durationMs)}</span>
+                {row.plays ? <span className="mb-ss-plays">{row.plays}×</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-ss-actions">
+          {playError ? <p className="mb-ss-error" role="alert">{playError}</p> : null}
+          <button type="button" className="mb-btn mb-btn-primary mb-ss-play" disabled={!selected || busy} onClick={play}>
+            <Play size={16} weight="fill" aria-hidden="true" />
+            {busy ? "Preparing…" : <>Play{selected ? <small>{DIFFICULTIES.find((d) => d.id === difficulty)?.label}</small> : null}</>}
+          </button>
+          {onAddToRoom ? (
+            <button type="button" className="mb-btn mb-ss-add" disabled={!selected || busy} onClick={() => selected && onAddToRoom(selected, difficulty)}>
+              <Plus size={16} weight="bold" aria-hidden="true" />
+              Add to room queue
+            </button>
+          ) : null}
+        </div>
+      </aside>
+    </div>
+  );
+}
