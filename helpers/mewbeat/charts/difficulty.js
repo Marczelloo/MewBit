@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 18;
+const GENERATOR_VERSION = 19;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -82,8 +82,8 @@ const DIFFICULTIES = {
     sustainMinBeats: 1,
   },
   normal: {
-    maxNps: 3.5,
-    maxNpsCeiling: 4.5,
+    maxNps: 5,
+    maxNpsCeiling: 5.5,
     baseDiv: 2,
     energyDiv: 2,
     highEnergyFrom: 0.6,
@@ -102,22 +102,23 @@ const DIFFICULTIES = {
     holdOtherHand: "spaced",
     bandBias: [1, 1, 0.9, 0.8],
     beatBias: 0.2,
-    // Second note only on a strong downbeat in a loud part.
-    chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.6 },
+    // Second note on a beat with some weight, unless the part is quiet.
+    chord: { minStrength: 0.4, onDownbeat: false, minEnergy: 0.45 },
+    drumChords: true, // a drum hit under a lone note of the tune is that note's other hand
+    maxChordShare: 1 / 3, // chords may run up to this share of the moments, a downbeat may always be one
     alternation: null,
     // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
-    gapBeats: 1 / 2, // any-lane gap on the pattern path, in felt beats (a doubled grid counts as its real tempo)
-    tonalGapBeats: 1 / 4, // ...between two notes of the sung or bass line: the tune may run faster than the drums
+    gapBeats: 1 / 4, // any-lane gap on the pattern path, in felt beats (a doubled grid counts as its real tempo)
+    chordGapBeats: 1 / 2, // ...around a chord: it stays out of the fast runs
     maxFastRun: 3, // at most this many fast gaps in a row
-    maxQuarterShare: 0.27, // at most this share of a phrase's moments off the half-beat grid
+    maxQuarterShare: 0.1, // at most this share of a phrase's moments off the half-beat grid
     leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
     thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
-    secondaryOnBeats: true, // a drum hit backing a tonal leader only on a beat
     densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
     spreadLanes: true, // a same-lane repeat closer than laneGapBeats moves to a free lane
     balanceHands: true, // a phrase is mirrored when that evens out the hands
-    maxHoldShare: 0.3,
-    gapHoldShare: 0.15,
+    maxHoldShare: 0.35,
+    gapHoldShare: 0.25,
     sustainMinBeats: 1,
   },
   hard: {

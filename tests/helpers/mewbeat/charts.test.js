@@ -67,11 +67,10 @@ describe("mewbeat chart generator", () => {
     for (const chart of [easy, normal, hard]) {
       assert.ok([...countsByTime(chart.notes).values()].every((c) => c <= 2), `${chart.difficulty}: 3+ note chord`);
     }
-    const downbeats = new Set(features.tempo.downbeats);
-    for (const chart of [easy, normal]) {
+    for (const [chart, allowed] of [[easy, features.tempo.downbeats], [normal, features.tempo.beats]]) {
       const chords = [...countsByTime(chart.notes)].filter(([, c]) => c === 2);
       assert.ok(chords.length > 0, `${chart.difficulty} should have some chords`);
-      assert.ok(chords.every(([t]) => downbeats.has(t)), `${chart.difficulty}: a chord off the downbeat`);
+      assert.ok(chords.every(([t]) => allowed.includes(t)), `${chart.difficulty}: a chord where it has no place`);
     }
     assert.ok([...countsByTime(hard.notes).values()].some((c) => c === 2), "hard should have some chords");
   });

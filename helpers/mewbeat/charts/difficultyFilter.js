@@ -255,20 +255,26 @@ function selectByFloors(items, diff, energy, prevNotes, powerFloor = 0, timing =
 
 // --- chords that mean something (diff.thinChords) ---------------------------------------------
 
-// A moment stays a chord only on a strong downbeat of a loud enough phrase, with a note in each hand; otherwise its
-// best note plays alone.
+// A moment stays a chord only on a strong beat (diff.chord.onDownbeat: a downbeat) of a loud enough phrase, with a note
+// in each hand; otherwise its best note plays alone. Off the downbeats chords spend a budget that grows by
+// diff.maxChordShare per moment, so a part where every beat could be one doesn't become a wall of them.
 function thinChords(items, diff, timing, phraseEnergy, energy) {
-  const { minStrength, minEnergy } = diff.chord;
+  const { minStrength, minEnergy, onDownbeat } = diff.chord;
+  const share = diff.maxChordShare ?? 1;
   const out = [];
-  for (const moment of groupByTime(items)) {
+  let chords = 0;
+  for (const [i, moment] of groupByTime(items).entries()) {
     const [best, ...rest] = [...moment].sort(byPriority);
     out.push(best);
     if (rest.length === 0) continue;
-    const accent = isDownbeat(timing, best.t)
+    const accent = (onDownbeat ? isDownbeat(timing, best.t) : gridSlot(timing, best.t)?.beat === true)
       && Math.max(...moment.map((e) => e.s ?? 0)) >= minStrength
       && (phraseEnergy ?? energy.at(best.t)) >= minEnergy;
     const partner = accent && rest.find((e) => handOf(e.lane) !== handOf(best.lane));
-    if (partner) out.push(partner);
+    if (partner && (isDownbeat(timing, best.t) || chords < share * (i + 1))) {
+      out.push(partner);
+      chords++;
+    }
   }
   return out;
 }
@@ -302,12 +308,12 @@ function capQuarters(items, diff, timing) {
   return items.filter((e) => !dropped.has(e));
 }
 
-// A chord with a note closer than diff.gapBeats keeps only its best note: it would sit inside a run.
+// A chord with a note closer than diff.chordGapBeats (or diff.gapBeats) keeps only its best note: it would sit inside a run.
 function spaceChords(items, diff, timing) {
   const moments = groupByTime(items);
   return moments.flatMap((moment, i) => {
     if (moment.length < 2) return moment;
-    const clear = diff.gapBeats * feltBeatMs(timing, moment[0].t) * GRID_SLACK;
+    const clear = (diff.chordGapBeats ?? diff.gapBeats) * feltBeatMs(timing, moment[0].t) * GRID_SLACK;
     const crowded = [moments[i - 1], moments[i + 1]].some((o) => o && Math.abs(o[0].t - moment[0].t) < clear);
     return crowded ? [[...moment].sort(byPriority)[0]] : moment;
   });
@@ -342,18 +348,13 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
     .map(onGrid)
     .map((e) => (diff.longNotesOnBeats ? longNoteOnBeat(e, timing) : e))
     .sort(byTime)
-    .filter((e) => e.level <= diff.maxLevel || (diff.thinChords && e.accent))
+    .filter((e) => (e.level <= diff.maxLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords))
     .filter((e) => {
       // A sung or bass line is not "quiet phrase filler": its off-beat notes are the tune.
       if (!(diff.quarterMinEnergy > 0) || e.level !== 1 || TONAL_SOURCES.has(e.source)) return true;
       const slot = gridSlot(timing, e.t);
       const offHalf = slot !== null && !slot.beat && !slot.half;
       return !(offHalf && (phraseEnergy ?? energy.at(e.t)) < diff.quarterMinEnergy);
-    })
-    .filter((e) => {
-      if (!diff.secondaryOnBeats || e.source !== "secondary") return true;
-      const slot = gridSlot(timing, e.t);
-      return slot === null || slot.beat;
     })
     .filter((e) => e.t >= LEAD_IN_MS && energy.at(e.t) >= SILENCE_ENERGY)
     .map((e) => ({ ...e }));
@@ -435,4 +436,4 @@ function spreadLanes(notes, diff, timing, prevNotes = []) {
   return out.filter((n) => !dropped.has(n));
 }
 
-module.exports = { applyDifficulty, capMoments, enforceFloors, limitJacks, pulsePowerFloor, selectByFloors, spreadLanes };
+module.exports = { applyDifficulty, capMoments, enforceFloors, groupByTime, limitJacks, pulsePowerFloor, selectByFloors, spreadLanes };

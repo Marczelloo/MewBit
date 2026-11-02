@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { describe, it } = require("node:test");
 
+const { gridSlot } = require("../../../helpers/mewbeat/charts/grid");
 const { patternEvents } = require("../../../helpers/mewbeat/charts/patterns");
 const { buildPhrases, chooseLeaders, isVocalSong, supportLayers } = require("../../../helpers/mewbeat/charts/phrases");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
@@ -119,12 +120,30 @@ describe("dominant phrases", () => {
 
   for (const leader of Object.keys(GOLDEN)) {
     it(`${leader}: no supports gives exactly the single-layer events`, () => {
-      const events = [0, 1].flatMap((i) => patternEvents(phrases[i], leader, features, timing));
+      const events = [0, 1].flatMap((i) => patternEvents(phrases[i], leader, features, timing)).filter((e) => !e.chordOnly);
       assert.equal(events.length, GOLDEN[leader][1]);
       assert.equal(hash(events), GOLDEN[leader][0]);
       assert.deepEqual(patternEvents(phrases[0], leader, features, timing, []), patternEvents(phrases[0], leader, features, timing));
     });
   }
+
+  it("offers a drum hit under a lone tune note on a beat as its other hand", () => {
+    const events = patternEvents(phrases[0], "lead", features, timing);
+    const offered = events.filter((e) => e.chordOnly);
+    assert.ok(offered.length > 0);
+    for (const e of offered) {
+      const here = events.filter((other) => other.t === e.t);
+      assert.equal(here.length, 2, `${e.t}`);
+      assert.notEqual(hand(here[0]), hand(here[1]), `${e.t}`);
+      assert.equal(gridSlot(timing, e.t).beat, true, `${e.t}`);
+    }
+  });
+
+  it("offers no such hit under a drum leader or in a quiet phrase", () => {
+    assert.equal(patternEvents(phrases[0], "drums", features, timing).some((e) => e.chordOnly), false);
+    const quiet = { ...phrases[0], energy: 0.1 };
+    assert.equal(patternEvents(quiet, "lead", features, timing).some((e) => e.chordOnly), false);
+  });
 
   it("a lead-only leader with no supports has no hand-split fields", () => {
     for (const e of patternEvents(phrases[0], "lead", features, timing)) assert.ok(e.support === undefined && e.hand === undefined);

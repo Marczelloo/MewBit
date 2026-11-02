@@ -218,6 +218,8 @@ function assignLanes(notes, p, timing, energy) {
   let prevT = NEVER;
   let streamIndex = 0;
   let prevLane = -1;
+  let moments = 0;
+  let chords = 0;
   const out = [];
 
   for (const c of notes) {
@@ -246,7 +248,11 @@ function assignLanes(notes, p, timing, energy) {
     if (lane < 0) continue; // every lane is too recent or too repeated: skip the note
 
     prevLane = lane;
-    const second = chordLane(c, lane, p, allowed, energy);
+    moments++;
+    // Off the downbeats chords spend the same budget as on the pattern path (see thinChords).
+    const room = c.isDownbeat || chords < (p.maxChordShare ?? 1) * moments;
+    const second = room ? chordLane(c, lane, p, allowed, energy) : -1;
+    if (second >= 0) chords++;
     const used = second >= 0 ? [lane, second] : [lane];
     for (let l = 0; l < LANES; l++) runs[l] = used.includes(l) ? runs[l] + 1 : 0;
     for (const l of used) {

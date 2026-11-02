@@ -5,7 +5,7 @@
 //   0 strong (on a beat, or a main accent), 1 on the 1/2 or 1/4 grid (tonal notes on the 1/8 grid too), 2 fine (hats, 1/8 drum hits).
 const { BEAT_TOLERANCE_MS } = require("./difficulty");
 const { TONAL_MIN_CONF } = require("./phrases");
-const { capMoments } = require("./difficultyFilter");
+const { capMoments, groupByTime } = require("./difficultyFilter");
 const { isSupport } = require("./holds");
 const { gridSlot, nearestQuarter, snapToQuarterGrid } = require("./grid");
 const { median, nearestIndex } = require("./util");
@@ -313,6 +313,21 @@ function secondaryEvents(phrase, features, timing, leaderEvents, beatMs) {
     .map((h) => ({ t: h.t, lane: h.lane, level: secondaryLevel(h, timing), s: h.s, source: "secondary" }));
 }
 
+// A drum hit under a lone note of the tonal leader on a beat, as that note's other hand: where the tune and the drums
+// land together. Only for a difficulty that asks for it (diff.drumChords): the rest play the leader's note alone there.
+function drumChordEvents(phrase, features, timing, events, leader) {
+  const hits = hitsOf(phrase, features, timing);
+  const out = [];
+  for (const moment of groupByTime(events)) {
+    const [e] = moment;
+    if (moment.length !== 1 || e.source !== leader || gridSlot(timing, e.t)?.beat !== true) continue;
+    const here = hits.filter((h) => h.t === e.t);
+    if (here.length === 0) continue;
+    out.push({ t: e.t, lane: mirror(e.lane), level: SECONDARY_HIT_LEVEL, s: Math.max(...here.map((h) => h.s)), source: "secondary", chordOnly: true });
+  }
+  return out;
+}
+
 function isBarStart(timing, phrase, t) {
   if (Math.abs(t - phrase.startMs) <= BEAT_TOLERANCE_MS) return true;
   const downbeats = timing?.downbeats ?? [];
@@ -420,7 +435,9 @@ function patternEvents(phrase, leader, features, timing, supports = []) {
     }
     events.push(...held);
   }
-  return capMoments(withChords(events, phrase, timing), 2);
+  const capped = capMoments(withChords(events, phrase, timing), 2);
+  const backsTune = supports.length === 0 && leader !== "drums" && Number(phrase.energy) >= SECONDARY_MIN_ENERGY;
+  return backsTune ? [...capped, ...drumChordEvents(phrase, features, timing, capped, leader)] : capped;
 }
 
 module.exports = { patternEvents };

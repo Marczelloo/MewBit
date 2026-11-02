@@ -53,36 +53,65 @@ describe("the tempo gate", () => {
 });
 
 describe("gaps and fast runs", () => {
-  it("a drum pattern keeps half a beat between its notes on Easy and Normal", () => {
+  it("a drum pattern keeps half a beat between its notes on Easy", () => {
     const drums = every(2000, 8000, 125).map((t) => event(t, "drums"));
-    for (const diff of [easy, normal]) {
-      const times = [...new Set(chart(drums, diff).map((n) => n.t))];
-      assert.ok(times.length > 0);
-      for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= 225, `${times[i - 1]} to ${times[i]}`);
-    }
+    const times = [...new Set(chart(drums, easy).map((n) => n.t))];
+    assert.ok(times.length > 0);
+    for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= 225, `${times[i - 1]} to ${times[i]}`);
   });
 
-  it("Normal lets the tune run faster, but only maxFastRun gaps in a row and only maxQuarterShare off the half beat", () => {
-    const line = every(2000, 18000, 125).map((t) => event(t, "lead", { level: 1 }));
-    const times = [...new Set(chart(line, normal).map((n) => n.t))];
-    let run = 0;
-    for (let i = 1; i < times.length; i++) {
-      run = times[i] - times[i - 1] <= 150 ? run + 1 : 0;
-      assert.ok(run <= normal.maxFastRun, `run at ${times[i]}`);
-    }
-    const quarters = times.filter(offHalfGrid).length;
-    assert.ok(quarters <= Math.ceil(normal.maxQuarterShare * times.length), `${quarters} of ${times.length}`);
-  });
+  for (const source of ["lead", "drums"]) {
+    it(`Normal runs faster on ${source} only maxFastRun gaps in a row and only maxQuarterShare off the half beat`, () => {
+      const line = every(2000, 18000, 125).map((t) => event(t, source, { level: 1 }));
+      const times = [...new Set(chart(line, normal).map((n) => n.t))];
+      let run = 0;
+      for (let i = 1; i < times.length; i++) {
+        run = times[i] - times[i - 1] <= 150 ? run + 1 : 0;
+        assert.ok(run <= normal.maxFastRun, `run at ${times[i]}`);
+      }
+      const quarters = times.filter(offHalfGrid).length;
+      assert.ok(quarters <= Math.ceil(normal.maxQuarterShare * times.length), `${quarters} of ${times.length}`);
+    });
+  }
 });
 
 describe("chords", () => {
   const pair = (t) => [event(t, "drums", { s: 1 }), event(t, "lead", { lane: 2, s: 1 })];
 
-  it("Easy and Normal keep a chord only on a strong downbeat", () => {
-    for (const diff of [easy, normal]) {
-      const notes = chart([...pair(4000), ...pair(5000)], diff);
-      assert.deepEqual(notes.map((n) => n.t).sort((a, b) => a - b), [4000, 4000, 5000], diff === easy ? "easy" : "normal");
-    }
+  const times = (notes) => notes.map((n) => n.t).sort((a, b) => a - b);
+
+  it("Easy keeps a chord only on a strong downbeat", () => {
+    assert.deepEqual(times(chart([...pair(4000), ...pair(5000)], easy)), [4000, 4000, 5000]);
+  });
+
+  it("Normal keeps a chord on any strong beat, not between beats", () => {
+    const lead = [2000, 2500, 3000, 3500].map((t) => event(t));
+    assert.deepEqual(times(chart([...lead, ...pair(4000), ...pair(5000), ...pair(6250)], normal)), [2000, 2500, 3000, 3500, 4000, 4000, 5000, 5000, 6250]);
+  });
+
+  it("Normal doesn't turn a part where every beat could be a chord into a wall of them", () => {
+    const beats = every(2000, 18000, 500);
+    const notes = chart(beats.flatMap(pair), normal);
+    const moments = new Set(notes.map((n) => n.t)).size;
+    const chords = notes.length - moments;
+    assert.ok(chords > 0);
+    assert.ok(chords <= Math.ceil(normal.maxChordShare * moments), `${chords} of ${moments}`);
+    const downbeats = features.tempo.downbeats.filter((t) => t >= 2000 && t < 18000);
+    for (const t of downbeats) assert.equal(notes.filter((n) => n.t === t).length, 2, `${t}`);
+  });
+
+  it("the same goes for a song charted from its frequency bands", () => {
+    const { notes } = generateAll(makeFeatures({ durationMs: 60000, energy: LOUD }), "key").normal;
+    const moments = new Set(notes.map((n) => n.t)).size;
+    assert.ok(notes.length > moments);
+    assert.ok(notes.length - moments <= Math.ceil(normal.maxChordShare * moments), `${notes.length - moments} of ${moments}`);
+  });
+
+  it("a drum hit under a tune note is a chord on Normal only", () => {
+    const backed = [event(4000, "lead", { s: 1 }), event(4000, "secondary", { lane: 2, level: 1, s: 1, chordOnly: true })];
+    assert.equal(chart(backed, normal).length, 2);
+    assert.equal(chart(backed, hard).length, 1);
+    assert.equal(chart(backed, easy).length, 1);
   });
 
   it("a chord right next to another note is one note", () => {
