@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, GameController, SpeakerHigh } from "@phosphor-icons/react";
 import { MIN_TAPS } from "./calibration.js";
+import { HIT_SOUNDS as HIT_SOUND_OPTIONS } from "./hitSounds.js";
 import { keyLabel, keysProblem } from "./input.js";
 import { DEFAULT_SETTINGS } from "./useMewbeatGame.js";
 import "./settings.css";
@@ -407,6 +408,20 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                   <span className="mb-row-label">Hit sounds</span>
                 </div>
                 <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
+              </section>
+              <section className="mb-row">
+                <div className="mb-row-text">
+                  <span className="mb-row-label">Hit sound</span>
+                </div>
+                <Segmented
+                  label="Hit sound"
+                  options={HIT_SOUND_OPTIONS}
+                  value={valueOf("hitSound") ?? "kick"}
+                  onChange={(value) => {
+                    send({ hitSound: value });
+                    onPreviewHit?.(hitVolume, value);
+                  }}
+                />
               </section>
               <section className="mb-row mb-row-stack">
                 <div className="mb-row-head">

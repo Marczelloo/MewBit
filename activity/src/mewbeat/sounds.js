@@ -61,7 +61,7 @@ export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
     load(audio);
   }
 
-  // level scales this one sound (0-1); rate changes its speed and pitch. Returns what cuts it short, if it plays.
+  // level scales this one sound (1 as it is); rate changes its speed and pitch. Returns what cuts it short, if it plays.
   function play(name, volume = DEFAULT_VOLUME, { level = 1, rate = 1 } = {}) {
     const gainValue = gainOf(volume) * level;
     const audio = ctx; // only a gesture brings one up (see unlock)

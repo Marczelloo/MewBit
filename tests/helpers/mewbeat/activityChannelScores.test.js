@@ -158,6 +158,21 @@ describe("mewbeat channel scores", () => {
     assert.strictEqual(historyStore.recent("ann", 5).length, 2);
   });
 
+  it("sends the player's own best with the chart, once there is one", async () => {
+    const { channel } = setup();
+    const chartOf = (userId) => channel.handle("g1", userId, { type: "mewbeat_chart", audioKey: KEY, difficulty: "hard" }, ANN);
+    const first = await chartOf("ann");
+    assert.strictEqual(first.status, "ready");
+    assert.strictEqual("best" in first, false);
+    await submit(channel, submitMessage());
+    const again = await chartOf("ann");
+    assert.strictEqual(again.best.score, 1500);
+    assert.strictEqual(typeof again.best.grade, "string");
+    assert.deepStrictEqual(Object.keys(again.best).sort(), ["grade", "score"]);
+    assert.strictEqual("best" in (await chartOf("bob")), false);
+    assert.strictEqual("best" in again.chart, false);
+  });
+
   it("ranks players across servers", async () => {
     const { channel } = setup();
     await submit(channel, submitMessage(), { guildId: "g1" });

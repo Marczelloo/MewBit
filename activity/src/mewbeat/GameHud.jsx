@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DIFFICULTIES, resolveArtworkUrl } from "./SongSelect.jsx";
+import { DIFFICULTIES, gradeClass, resolveArtworkUrl } from "./SongSelect.jsx";
 
 const RING_LENGTH = 145; // circumference of the r=23 ring
 const JUDGEMENT_CLASS = { perfect: "mb-j-perfect", great: "mb-j-great", good: "mb-j-good", miss: "mb-j-miss" };
@@ -158,6 +158,7 @@ export default function GameHud({ hud }) {
       <div className="mb-card mb-hud-card">
         <span className="mb-label">Your score</span>
         <div className="mb-hud-score">{formatScore(hud.score)}</div>
+        {hud.best ? <div className="mb-hud-best">Best <b>{formatScore(hud.best.score)}</b> <b className={gradeClass(hud.best.grade)}>{hud.best.grade}</b></div> : null}
         <div className="mb-hud-stats">
           <div>
             Accuracy

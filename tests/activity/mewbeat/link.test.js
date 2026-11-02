@@ -167,7 +167,7 @@ test("a ready reply notifies listeners and releases the dedupe key", () => {
   link.requestChart("k", "normal");
   const chart = { notes: [] };
   link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "ready", chart });
-  assert.deepEqual(heard, [{ audioKey: "k", difficulty: "normal", status: "ready", reason: undefined, chart }]);
+  assert.deepEqual(heard, [{ audioKey: "k", difficulty: "normal", status: "ready", reason: undefined, chart, best: undefined }]);
   link.requestChart("k", "normal");
   assert.equal(charts(sent).length, 2);
   // A reply for a request not in flight is ignored.
@@ -400,4 +400,14 @@ test("mock link starts live on a 150 s track, serves its chart, and clears at th
   assert.deepEqual(anchors, ["init", "clear"]);
   assert.equal(link.songClock.audioKey(), null);
   assert.equal(link.track(), null);
+});
+
+test("a ready reply passes on the player's best with its chart", () => {
+  const { link } = setup();
+  const heard = [];
+  link.onChart((r) => heard.push(r));
+  link.start();
+  link.requestChart("k", "normal");
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "ready", chart: { notes: [] }, best: { score: 1500, grade: "A" } });
+  assert.deepEqual(heard[0].best, { score: 1500, grade: "A" });
 });

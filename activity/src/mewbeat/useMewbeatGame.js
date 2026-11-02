@@ -3,6 +3,7 @@ import { effectiveEffects } from "./effects.js";
 import { approachMsFor, createHighwayRenderer, tempoScrollFactor } from "./highway.js";
 import { SOUND_URLS } from "./sfx/index.js";
 import { createSounds } from "./sounds.js";
+import { hitSoundOf } from "./hitSounds.js";
 import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
@@ -10,9 +11,14 @@ import { createRun } from "./run.js";
 import { createLiveSender } from "./liveSender.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
 const COMBO_BREAK_OVER = 20; // as in osu!: losing a short combo makes no sound
 const COMBO_BREAK_LEVEL = 0.5;
+
+function playHit(sounds, volume, choice) {
+  const { name, level } = hitSoundOf(choice);
+  return sounds?.play(name, volume, { level });
+}
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;
@@ -31,6 +37,7 @@ function clockText(totalSeconds) {
 
 const EMPTY_COUNTS = { perfect: 0, great: 0, good: 0, miss: 0 };
 export const EMPTY_HUD = {
+  best: null,
   score: 0,
   combo: 0,
   maxCombo: 0,
@@ -109,6 +116,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const lanesDownRef = useRef([false, false, false, false]);
   const flashesRef = useRef([]);
   const judgementRef = useRef(null);
+  const bestRef = useRef(null); // the player's best on the chart being played, from the chart's reply
   const judgementIdRef = useRef(0);
   const comboRef = useRef(0);
   const multiplierRef = useRef(1);
@@ -171,8 +179,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     };
   }, []);
   const unlockAudio = useCallback(() => soundsRef.current?.unlock(), []);
-  // One hit at the given volume, so the settings slider can be heard while it moves.
-  const previewHit = useCallback((volume) => soundsRef.current?.play("hit", volume), []);
+  // One hit at the given volume, so the settings slider and the choice of sound can be heard as they change.
+  const previewHit = useCallback((volume, choice = cfgRef.current.hitSound) => playHit(soundsRef.current, volume, choice), []);
   const previewSfx = useCallback((volume) => soundsRef.current?.play("tick", volume), []);
   // Everything but the hit sound: countdowns, the end of a song, the results.
   const playSfx = useCallback((name, options) => {
@@ -222,7 +230,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
     function toHud(snap) {
       const { hits, ranked, skipped, ...rest } = snap;
-      return { ...rest, unranked: runAutoplayRef.current || skipped > 0 || snap.difficultyChanged, judgement: judgementRef.current };
+      return { ...rest, best: bestRef.current, unranked: runAutoplayRef.current || skipped > 0 || snap.difficultyChanged, judgement: judgementRef.current };
     }
 
     const liveSample = (snap) => ({ score: Math.round(snap.score), combo: snap.combo, accuracy: snap.accuracy ?? null });
@@ -418,6 +426,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       // Later code reads the chart as it plays now: old notes up to the cut, the new chart's after it.
       chartRef.current = { ...chart, notes: run.noteList() };
       runMetaRef.current = { ...runMetaRef.current, difficulty: wanted.difficulty };
+      bestRef.current = null; // the run stops counting for either chart
       liveRef.current?.setDifficulty(wanted.difficulty);
       setRunDifficulty(wanted.difficulty);
       dirtyRef.current = true;
@@ -432,7 +441,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           comboRef.current += 1;
           // The player's presses sound on the key (see onLane); autoplay has no keys, so its heads
           // sound here. A tail counts for combo and the popup, but it has no sound of its own.
-          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && event.part !== "tail") soundsRef.current?.play("hit", cfgRef.current.hitVolume);
+          if (cfgRef.current.hitSounds && runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current && event.part !== "tail") playHit(soundsRef.current, cfgRef.current.hitVolume, cfgRef.current.hitSound);
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
@@ -523,6 +532,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       if (event.audioKey !== songClock.audioKey() || event.difficulty !== cfgRef.current.liveDifficulty) return;
       if (event.status === "ready" && event.chart?.notes) {
         chartRef.current = event.chart;
+        bestRef.current = event.chart.calibration ? null : event.best ?? null;
         // The clicks measure the offset on their own: taps from earlier songs would blur it.
         if (event.chart.calibration) {
           tapTiming.reset();
@@ -590,7 +600,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         if (!run || phaseRef.current !== "playing") return;
         // Every press sounds, hit or not, as in osu!mania: the sound answers the key. Calibration runs stay
         // silent: players line the hit sound up instead of the beat, which skews the measured offset.
-        if (cfgRef.current.hitSounds && !runAutoplayRef.current && !runCalibrationRef.current) soundsRef.current?.play("hit", cfgRef.current.hitVolume);
+        if (cfgRef.current.hitSounds && !runAutoplayRef.current && !runCalibrationRef.current) playHit(soundsRef.current, cfgRef.current.hitVolume, cfgRef.current.hitSound);
         const songMs = songClock.songTimeAt(timeStamp);
         if (songMs === null) return;
         // Calibration hides the notes, so a tap is aimed by ear alone (a player watching the notes
@@ -789,7 +799,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       }
       const snap = restarted.snapshot(songMs);
       const { hits, ranked, skipped, ...rest } = snap;
-      setHud({ ...rest, unranked: effective || skipped > 0, judgement: null });
+      setHud({ ...rest, best: bestRef.current, unranked: effective || skipped > 0, judgement: null });
       judgementRef.current = null;
       flashesRef.current = [];
     }

@@ -99,7 +99,12 @@ function createMewbeatChannel({
     const result = await chartStore.getCharts(source.track, source.node);
     const reply = { type: "mewbeat_chart", audioKey, difficulty, status: result.status };
     if (result.reason !== undefined) reply.reason = result.reason;
-    if (result.status === "ready") reply.chart = result.charts[difficulty];
+    if (result.status === "ready") {
+      reply.chart = result.charts[difficulty];
+      const chartKey = scoreStore ? chartKeyFor(audioKey, difficulty) : null;
+      const best = chartKey ? scoreStore.bestOf(chartKey, userId) : null;
+      if (best) reply.best = { score: best.score, grade: best.grade };
+    }
     return reply;
   }
 

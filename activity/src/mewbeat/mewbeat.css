@@ -479,6 +479,9 @@
 .mb-track-time { display: block; margin-top: 6px; color: var(--mb-faint); font: 500 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
 .mb-hud-card { display: block; }
 .mb-hud-score { margin-top: 6px; font: 900 30px/1.2 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mb-hud-best { margin-top: 2px; color: var(--mb-muted); font-size: 12px; }
+.mb-hud-best b { font: 700 12px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-hud-best b:first-of-type { color: var(--mb-text); }
 .mb-hud-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--mb-line); color: var(--mb-muted); font-size: 12.5px; line-height: 1.4; }
 .mb-hud-stats b { display: block; margin-top: 2px; color: var(--mb-text); font: 700 14px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 @keyframes mb-blink { 50% { opacity: 0.45; } }

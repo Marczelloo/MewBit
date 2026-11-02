@@ -1,5 +1,6 @@
 import { ArrowCounterClockwise, ArrowLeft, ArrowRight, MusicNotesSimple } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
+import { COUNT_MS, JUDGE_COUNT_MS, JUDGE_STEP_MS, REVEAL, easeOut, resultSoundEvents } from "./resultTimeline.js";
 import { useResultSounds } from "./useResultSounds.js";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
@@ -31,7 +32,6 @@ const BUBBLES = {
 };
 const NEW_BEST_BUBBLE = "NEW BEST!! ✦";
 
-const COUNT_UP_MS = 1400;
 const TOP_ROWS = 5;
 // The offset slider's range and step (SettingsPanel.jsx).
 const OFFSET_MIN = -300;
@@ -60,30 +60,24 @@ function gradeKey(grade) {
   return ["S", "A", "B", "C"].includes(grade) ? grade : "D";
 }
 
-// The screen fills in one thing at a time and ends on the grade; ms after it opens.
-const REVEAL = { score: 300, accuracy: 1700, combo: 2300, fevers: 2900, offset: 3300, judges: 3700, timing: 4700, side: 5000, grade: 5400, verdict: 5900 };
-// The steps that sound as they appear, after the score's own run of ticks.
-const DINK_STEPS = ["accuracy", "combo", "fevers", "offset", "judges", "timing"];
-const STAT_COUNT_MS = 650;
-const JUDGE_COUNT_MS = 420;
-const JUDGE_STEP_MS = 180;
-
-// How far the screen has got, in REVEAL's terms. With motion off everything is there from the first paint.
+// How far the screen has got, in REVEAL's terms, and when it opened. With motion off everything is there from the
+// first paint.
 function useRevealClock(animate) {
+  const [openedAt] = useState(() => performance.now());
   const [reached, setReached] = useState(animate ? -1 : Infinity);
   useEffect(() => {
     if (!animate) {
       setReached(Infinity);
       return undefined;
     }
-    const timers = Object.values(REVEAL).map((ms) => window.setTimeout(() => setReached((now) => Math.max(now, ms)), ms));
+    const timers = Object.values(REVEAL).map((ms) => window.setTimeout(() => setReached((now) => Math.max(now, ms)), Math.max(0, openedAt + ms - performance.now())));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [animate]);
-  return reached;
+  }, [animate, openedAt]);
+  return { reached, openedAt };
 }
 
-// A number holds at zero until its turn, then climbs to its final value.
-function useCountUp(target, started, animate, duration, delay = 0) {
+// A number holds at zero until its turn, then climbs to its final value by the clock the sounds keep too.
+function useCountUp(target, started, startAt, animate, duration) {
   const [value, setValue] = useState(animate ? 0 : target);
   useEffect(() => {
     if (!animate) {
@@ -91,22 +85,20 @@ function useCountUp(target, started, animate, duration, delay = 0) {
       return undefined;
     }
     if (!started) return undefined;
-    const start = performance.now() + delay;
     let raf = 0;
     const step = (now) => {
-      // A frame timestamp can predate performance.now() taken in the effect: never a negative first score.
-      const k = Math.max(0, Math.min(1, (now - start) / duration));
-      setValue(target * (1 - (1 - k) ** 3));
+      const k = Math.max(0, Math.min(1, (now - startAt) / duration));
+      setValue(target * easeOut(k));
       if (k < 1) raf = window.requestAnimationFrame(step);
     };
     raf = window.requestAnimationFrame(step);
     return () => window.cancelAnimationFrame(raf);
-  }, [target, started, animate, duration, delay]);
+  }, [target, started, startAt, animate, duration]);
   return value;
 }
 
-function CountUp({ value, started, animate, duration = STAT_COUNT_MS, delay = 0, format = Math.round }) {
-  const current = useCountUp(value ?? 0, started, animate, duration, delay);
+function CountUp({ value, started, startAt, animate, duration, format = Math.round }) {
+  const current = useCountUp(value ?? 0, started, startAt, animate, duration);
   return format(value == null ? value : current); // no accuracy to climb to reads "--"
 }
 
@@ -299,8 +291,9 @@ export default function Results({
   // A click anywhere skips to the end of the reveal.
   const [skipped, setSkipped] = useState(false);
   const animate = effects !== "off" && !prefersReduced && !skipped;
-  const reached = useRevealClock(animate);
+  const { reached, openedAt } = useRevealClock(animate);
   const shown = (step) => reached >= REVEAL[step];
+  const countOf = (step, duration = COUNT_MS[step], delay = 0) => ({ started: shown(step), startAt: openedAt + REVEAL[step] + delay, animate, duration });
   const verdict = shown("verdict");
   const shownTiming = useMemo(() => timingOf(summary), [summary]);
   const bins = useMemo(() => histogramOf(summary.hitErrors ?? []), [summary]);
@@ -311,8 +304,8 @@ export default function Results({
   const boardEmpty = topList.length === 0 && Boolean(result) && !standings?.length && !summary.calibration;
   const showSide = Boolean(standings?.length) || topList.length > 0 || boardEmpty;
   const grade = gradeKey(summary.grade);
-  // A skip, or motion turned off, goes straight to the grade.
-  useResultSounds({ play: summary.calibration ? null : onSound, reached, reveal: REVEAL, dinks: DINK_STEPS, grade, accuracy: summary.accuracy });
+  const soundEvents = useMemo(() => resultSoundEvents({ grade, score: summary.score, accuracy: summary.accuracy, maxCombo: summary.maxCombo, fevers: summary.fevers }), [grade, summary]);
+  useResultSounds({ play: summary.calibration ? null : onSound, openedAt, events: soundEvents, animate });
   // Only Live follows what the bot plays; Solo and rooms move on by themselves.
   const note = mode === "live" ? PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null) : null;
   const cover = resolveArtworkUrl(summary.artworkUrl);
@@ -371,21 +364,21 @@ export default function Results({
               <div className="mb-res-numbers">
                 <div className="mb-res-scoreline">
                   <b aria-label={`${formatScore(summary.score)} points`}>
-                    <CountUp value={summary.score} started={shown("score")} animate={animate} duration={COUNT_UP_MS} format={(value) => formatScore(Math.round(value))} />
+                    <CountUp value={summary.score} {...countOf("score")} format={(value) => formatScore(Math.round(value))} />
                   </b>
                   {newBest && verdict ? <span className="mb-res-newbest">NEW BEST</span> : null}
                   {previous && shown("accuracy") ? <span className="mb-res-label mb-res-in">Best {formatScore(previous.score)}</span> : null}
                 </div>
                 <dl className="mb-res-stats">
-                  <div><dt className="mb-res-label">Accuracy</dt><dd aria-label={formatAccuracy(summary.accuracy)}><CountUp value={summary.accuracy} started={shown("accuracy")} animate={animate} format={formatAccuracy} /></dd></div>
-                  <div><dt className="mb-res-label">Max combo</dt><dd aria-label={String(summary.maxCombo)}><CountUp value={summary.maxCombo} started={shown("combo")} animate={animate} /></dd></div>
-                  <div><dt className="mb-res-label">Fevers</dt><dd aria-label={String(summary.fevers)}><CountUp value={summary.fevers} started={shown("fevers")} animate={animate} duration={300} /></dd></div>
+                  <div><dt className="mb-res-label">Accuracy</dt><dd aria-label={formatAccuracy(summary.accuracy)}><CountUp value={summary.accuracy} {...countOf("accuracy")} format={formatAccuracy} /></dd></div>
+                  <div><dt className="mb-res-label">Max combo</dt><dd aria-label={String(summary.maxCombo)}><CountUp value={summary.maxCombo} {...countOf("combo")} /></dd></div>
+                  <div><dt className="mb-res-label">Fevers</dt><dd aria-label={String(summary.fevers)}><CountUp value={summary.fevers} {...countOf("fevers")} /></dd></div>
                   <div><dt className="mb-res-label">Avg offset</dt><dd className={shown("offset") ? "mb-res-in" : "mb-res-wait"}>{shownTiming ? formatOffset(shownTiming.mean) : "--"}</dd></div>
                 </dl>
                 <ul className="mb-res-judges">
                   {JUDGEMENTS.map(([key, label], index) => (
                     <li key={key} className={`mb-j-${key}${shown("judges") ? "" : " mb-res-wait"}`} style={{ "--i": index }} aria-label={`${label} ${summary.counts[key]}`}>
-                      <span>{label}</span><CountUp value={summary.counts[key]} started={shown("judges")} animate={animate} duration={JUDGE_COUNT_MS} delay={index * JUDGE_STEP_MS} />
+                      <span>{label}</span><CountUp value={summary.counts[key]} {...countOf("judges", JUDGE_COUNT_MS, index * JUDGE_STEP_MS)} />
                     </li>
                   ))}
                 </ul>

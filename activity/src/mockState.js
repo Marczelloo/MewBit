@@ -8,7 +8,7 @@ const tracks = [
 ];
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-const MEWBEAT_DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, sfx: true, sfxVolume: 60, tempoScroll: true };
+const MEWBEAT_DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", sfx: true, sfxVolume: 60, tempoScroll: true };
 
 const SOURCE_LABELS = { youtube: "YouTube", soundcloud: "SoundCloud", spotify: "Spotify", deezer: "Deezer" };
 

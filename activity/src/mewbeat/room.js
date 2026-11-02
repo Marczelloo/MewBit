@@ -80,7 +80,7 @@ export function nextCountdownSecond(leftMs) {
 
 // What a countdown reaching a second plays: the long wait ticks quietly, the final seconds in full, and 0 is "GO!".
 export function countdownSounds(second) {
-  if (second === 0) return [{ name: "go", level: 1 }, { name: "hit", level: 1 }]; // the kick gives GO its weight
+  if (second === 0) return [{ name: "go", level: 1 }, { name: "hit-kick", level: 1 }]; // the kick gives GO its weight, whichever sound the keys make
   return [{ name: "tick", level: second > 5 ? QUIET_TICK_LEVEL : 1 }];
 }
 

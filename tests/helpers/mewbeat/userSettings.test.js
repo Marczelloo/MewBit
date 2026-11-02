@@ -92,6 +92,7 @@ describe("mewbeat settings validation", () => {
     "an unknown difficulty": { liveDifficulty: "expert" },
     "an unknown effects level": { effects: "neon" },
     "a non-boolean hit sounds": { hitSounds: "yes" },
+    "an unknown hit sound": { hitSound: "cowbell" },
     "hit volume above 100": { hitVolume: 101 },
     "a negative hit volume": { hitVolume: -5 },
     "a fractional hit volume": { hitVolume: 12.5 },

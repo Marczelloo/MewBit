@@ -1,54 +1,45 @@
 import { useEffect, useRef } from "react";
+import { IMPACT_DELAY_MS } from "./resultTimeline.js";
 
-// The results in the order osu! sounds them, with its levels: a swoosh up while the score ticks slower and
-// higher, a dink per stat, then the grade's impact.
-const SWOOSH_LEVEL = 0.4;
-const TICK_GAP_MS = [18, 300];
-const TICK_LEVEL = [0.6, 1];
-const DINK_RATE_STEP = 0.05;
-const IMPACTS = { S: "rank-impact-pass-ss", A: "rank-impact-pass", B: "rank-impact-fail", C: "rank-impact-fail", D: "rank-impact-fail-d" };
-
-const between = ([from, to], part) => from + (to - from) * part;
-
-// play: null keeps the screen silent. reached and reveal: how far the screen has got, and when each step shows.
-// dinks: the steps after the score, in order. accuracy: 0-100, how high the ticks climb.
-export function useResultSounds({ play, reached, reveal, dinks, grade, accuracy }) {
-  const progress = useRef({ started: false, dinks: 0, graded: false });
-  const tickTimer = useRef(null);
+// Plays the results' sounds (resultTimeline.js) on the screen's own clock. play: null keeps the screen silent.
+// openedAt: when the screen opened. A skip, or motion turned off, cuts what is sounding and goes straight to the
+// grade's impact, the last of the events.
+export function useResultSounds({ play, openedAt, events, animate }) {
+  const played = useRef(0); // how many events have sounded, so a re-run of the effect repeats none
   const stops = useRef([]);
 
   useEffect(() => () => {
-    window.clearTimeout(tickTimer.current);
     for (const stop of stops.current) stop?.();
   }, []);
 
   useEffect(() => {
-    const now = progress.current;
-    if (!play || now.graded) return;
-    if (reached >= reveal.grade) {
-      now.graded = true;
-      window.clearTimeout(tickTimer.current);
-      stops.current.push(play(IMPACTS[grade]));
-      return;
+    if (!play) return undefined;
+    let timer = 0;
+    const sound = ({ name, level, rate }) => {
+      stops.current.push(play(name, { level, rate }));
+    };
+
+    if (!animate) {
+      for (const stop of stops.current) stop?.();
+      stops.current = [];
+      if (played.current >= events.length) return undefined;
+      timer = window.setTimeout(() => {
+        played.current = events.length;
+        sound(events[events.length - 1]);
+      }, IMPACT_DELAY_MS);
+      return () => window.clearTimeout(timer);
     }
-    if (!now.started && reached >= reveal.score) {
-      now.started = true;
-      stops.current.push(play("swoosh", { level: SWOOSH_LEVEL }));
-      const begin = performance.now();
-      const length = reveal[dinks[0]] - reveal.score;
-      const tick = () => {
-        const elapsed = performance.now() - begin;
-        if (elapsed >= length) return;
-        const part = Math.sin((elapsed / length) * Math.PI / 2);
-        play("score-tick", { level: between(TICK_LEVEL, part), rate: 1 + (accuracy ?? 0) / 100 * part });
-        tickTimer.current = window.setTimeout(tick, between(TICK_GAP_MS, part));
-      };
-      tick();
-    }
-    if (now.dinks < dinks.length && reached >= reveal[dinks[now.dinks]]) {
-      const name = now.dinks === dinks.length - 1 ? "dink-max" : "dink";
-      play(name, { rate: 1 + now.dinks * DINK_RATE_STEP });
-      now.dinks += 1;
-    }
-  }, [play, reached, reveal, dinks, grade, accuracy]);
+
+    const next = () => {
+      const event = events[played.current];
+      if (!event) return;
+      timer = window.setTimeout(() => {
+        played.current += 1;
+        sound(event);
+        next();
+      }, Math.max(0, openedAt + event.at - performance.now()));
+    };
+    next();
+    return () => window.clearTimeout(timer);
+  }, [play, openedAt, events, animate]);
 }
