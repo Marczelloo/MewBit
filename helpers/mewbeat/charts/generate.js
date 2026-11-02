@@ -2,15 +2,15 @@ const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTE
 const { bandPathNotes } = require("./bandPath");
 const { repeatBarLanes } = require("./barRepeats");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
-const { applyDifficulty, enforceFloors, limitJacks } = require("./difficultyFilter");
-const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare } = require("./holds");
+const { applyDifficulty, enforceFloors, limitJacks, spreadLanes } = require("./difficultyFilter");
+const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime } = require("./holds");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { fillRests } = require("./rests");
-const { fillGaps, orientDrums } = require("./seams");
+const { balanceHands, fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { lowerBound } = require("./util");
@@ -36,6 +36,7 @@ function analyse(raw) {
     busy: busyFactor(features),
     phrases,
     leaders,
+    vocal,
     supports: phrases.map((phrase, i) => supportLayers(phrase, leaders[i], vocal)), // the layers charted beside the leader
     eventTimes: sortedEventTimes(features),
   };
@@ -75,18 +76,25 @@ function copiedRepeat(ctx, all, i, diff) {
   const sourceNotes = inWindow(all, from, to);
   if (sourceNotes.length === 0) return null;
   // A copy may end sooner than its source (or the song): its holds are clipped to fit.
-  const copied = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase)), Math.min(phrase.endMs, durationMs), diff, timing)
+  const copied = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing), Math.min(phrase.endMs, durationMs), diff, timing)
     .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
   return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? copied : null;
 }
 
-const steadyDrums = (ctx, i) => ctx.leaders[i] === "drums" && hasSteadyPulse(ctx.phrases[i]);
+// The layer each phrase of this difficulty follows (diff.vocalLeads puts the voice over drums and bass).
+function leadersOf(ctx, diff) {
+  if (!diff.vocalLeads || !ctx.vocal) return ctx.leaders;
+  const heard = (p) => p.confidence?.lead >= TONAL_MIN_CONF;
+  return ctx.leaders.map((leader, i) => (leader !== "bands" && heard(ctx.phrases[i]) ? "lead" : leader));
+}
 
 // One difficulty charted from the music, phrase by phrase: { notes, sustained }. Every difficulty is charted on its
 // own (its grid, gaps and density pick from the music's events), not thinned from a harder one, so an Easy pattern
 // is made for Easy. `sustained` holds the keys ("t:lane") of the real sustain holds, which the hold cap keeps longest.
 function chartNotes(ctx, diff) {
-  const { features, timing, energy, phrases, leaders, supports, durationMs } = ctx;
+  const { features, timing, energy, phrases, durationMs } = ctx;
+  const leaders = leadersOf(ctx, diff);
+  const supports = diff.oneLayer ? phrases.map(() => []) : ctx.supports;
   const all = []; // final notes so far, time-ordered
   const drumTimes = new Set(); // the moments of drum hits (a groove repeat keeps their lane roles)
   // Where a bass or lead line plays (or the features cannot tell), a phrase's resting hands hold through the rests;
@@ -119,6 +127,12 @@ function chartNotes(ctx, diff) {
     return fillRests([...all, ...fill, ...notes], ctx, diff, window).filter((n) => !before.has(n));
   };
 
+  // Where the phrase's notes join the chart. A repeat keeps its source's hands; only a jack at its seam may move.
+  const place = (notes, tail, copy = false) => {
+    const balanced = diff.balanceHands && !copy ? balanceHands(notes, all, tail) : notes;
+    all.push(...spreadLanes(balanced, diff, timing, tail));
+  };
+
   for (let i = 0; i < phrases.length; ) {
     const phrase = phrases[i];
     // The previous notes that still matter here: the last 2 s, and any hold still running.
@@ -127,7 +141,7 @@ function chartNotes(ctx, diff) {
     // A repeat plays like its source.
     const copied = copiedRepeat(ctx, all, i, diff);
     if (copied) {
-      all.push(...bridged(copied, i, true));
+      place(bridged(copied, i, true), tail, true);
       i++;
       continue;
     }
@@ -139,13 +153,13 @@ function chartNotes(ctx, diff) {
       while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
       const notes = grooved(bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs }), phrase.startMs, toMs);
-      all.push(...bridged(withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs), i, false, last));
+      place(bridged(withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs), i, false, last), tail);
       i = last + 1;
       continue;
     }
 
     const events = patternEvents(phrase, leaders[i], features, timing, supports[i]);
-    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steadyDrums(ctx, i));
+    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, leaders[i] === "drums" && hasSteadyPulse(phrase));
     // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
     for (const e of events) if (e.source === "drums") drumTimes.add(e.t);
     let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => drumTimes.has(n.t));
@@ -153,7 +167,7 @@ function chartNotes(ctx, diff) {
     // A drum hit moved out of a jack keeps its role (limitJacks tries the role partner first for a drums source).
     const asDrum = (n) => (drumTimes.has(n.t) ? { ...n, source: "drums" } : n);
     const repeated = limitJacks(patterned.map(asDrum), diff, tail, { strict: true, timing }).map(({ source, ...n }) => n);
-    all.push(...bridged(withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i));
+    place(bridged(withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i), tail);
     i++;
   }
   // Long bass/lead notes become holds wherever they were charted, drum-led phrases included. Those holds (and the
@@ -167,12 +181,13 @@ function chartNotes(ctx, diff) {
 // No hold runs past the end of the song, whatever produced it. The hold share is capped per phrase (a cap over the
 // whole song would demote holds unevenly and break the repeats); real sustains are kept before gap holds.
 function finish(ctx, { notes, sustained }, diff) {
-  const floored = enforceFloors(clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing), diff, ctx.timing);
+  const clipped = enforceFloors(clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing), diff, ctx.timing);
+  const floored = diff.oneHoldAtATime ? oneHoldAtATime(clipped) : clipped;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const last = ctx.phrases.length - 1;
   const inPhrase = (n, i) => (i === 0 || n.t >= ctx.phrases[i].startMs) && (i === last || n.t < ctx.phrases[i].endMs);
-  if (last < 0) return limitHoldShare(floored, Math.floor, isSustain);
-  return ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, isSustain)).sort(byTime);
+  if (last < 0) return limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare);
+  return ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, isSustain, diff.maxHoldShare)).sort(byTime);
 }
 
 const diffOf = (ctx, difficulty) => effectiveDifficulty(DIFFICULTIES[difficulty], ctx.busy);

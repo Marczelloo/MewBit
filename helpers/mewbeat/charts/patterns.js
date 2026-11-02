@@ -333,7 +333,7 @@ function withChords(events, phrase, timing) {
     if (here.length !== 1 || here[0].level !== 0 || backed.has(t) || !isBarStart(timing, phrase, t)) continue;
     const lane = mirror(here[0].lane);
     if (events.some((e) => e.t === t && e.lane === lane)) continue;
-    out.push({ t, lane, level: 1, s: here[0].s, source: here[0].source });
+    out.push({ t, lane, level: 1, s: here[0].s, source: here[0].source, accent: true });
   }
   return out;
 }

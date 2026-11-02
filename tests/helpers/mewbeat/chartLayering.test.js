@@ -115,7 +115,7 @@ describe("mixed patterns", () => {
 
 describe("dominant phrases", () => {
   const { features, timing, phrases } = setup();
-  const GOLDEN = { drums: ["afb71549d8a6", 58], bass: ["e6002c4bbf20", 45], lead: ["c103ad8ac312", 48] };
+  const GOLDEN = { drums: ["95febfbcc361", 58], bass: ["ea8ccc20f616", 45], lead: ["ba1dae1c6edc", 48] };
 
   for (const leader of Object.keys(GOLDEN)) {
     it(`${leader}: no supports gives exactly the single-layer events`, () => {

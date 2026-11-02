@@ -4,6 +4,7 @@ const { lowerBound, nearestIndex } = require("./util");
 
 const POSITION_TOLERANCE = 0.2; // a position within this many 1/8 beats of a grid step counts as on it
 const EIGHTHS_PER_BEAT = 8;
+const ON_STEP = 0.05; // a position this close to a 1/8 step (in 1/8 beats) is that step: only rounding sets them apart
 
 // Fractional beat index of t on timing.beats, or NaN without a usable grid.
 function beatPosition(timing, t) {
@@ -11,6 +12,17 @@ function beatPosition(timing, t) {
   if (!timing?.snapped || beats.length < 2) return Number.NaN;
   const i = Math.min(beats.length - 2, Math.max(0, lowerBound(beats, t + 0.5) - 1));
   return i + (t - beats[i]) / (beats[i + 1] - beats[i]);
+}
+
+// The time of a fractional beat index (the inverse of beatPosition). A position on a 1/8 step lands exactly on that
+// grid point, however the division rounded on the way in.
+function timeAtPosition(timing, pos) {
+  const beats = timing.beats;
+  const eighths = pos * EIGHTHS_PER_BEAT;
+  const step = Math.round(eighths);
+  const exact = Math.abs(eighths - step) <= ON_STEP ? step / EIGHTHS_PER_BEAT : pos;
+  const i = Math.min(beats.length - 2, Math.max(0, Math.floor(exact)));
+  return Math.round(beats[i] + (exact - i) * (beats[i + 1] - beats[i]));
 }
 
 // Where t sits on the grid: { beat, half, quarter, eighth } (exactly one is true),
@@ -55,4 +67,4 @@ function nearestQuarter(timing, t) {
   return g4.length === 0 ? Math.round(t) : g4[nearestIndex(g4, t)];
 }
 
-module.exports = { beatInBar, beatPosition, gridSlot, nearestQuarter, snapToQuarterGrid };
+module.exports = { beatInBar, beatPosition, gridSlot, nearestQuarter, snapToQuarterGrid, timeAtPosition };

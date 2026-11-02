@@ -110,6 +110,9 @@ const centre = (notes) => notes.reduce((sum, n) => sum + n.lane, 0) / notes.leng
 
 // How far `after` starts from where `before` left the hands: the lane-centre jump, plus a lane the first moment
 // repeats from the last one.
+const HAND_TOLERANCE = 0.03; // a chart this close to 50/50 between the hands is balanced
+const MAX_SEAM_WORSENING = 1;
+
 function seamCost(before, after) {
   const tail = [...before].sort((a, b) => a.t - b.t).slice(-SEAM_NOTES);
   const head = [...after].sort((a, b) => a.t - b.t).slice(0, SEAM_NOTES);
@@ -127,4 +130,19 @@ function orientDrums(notes, before) {
   return seamCost(before, mirrored) < seamCost(before, notes) ? mirrored : notes;
 }
 
-module.exports = { BRIDGE_MIN_BEATS, bridgeSeam, fillGaps, orientDrums };
+// balanceHands(notes, before, tail) -> notes
+// A phrase mirrored when the chart so far (`before`) plus this phrase leans to one hand and mirroring evens it out,
+// unless that makes the seam with `tail` clearly worse (more than a lane's jump).
+function balanceHands(notes, before, tail) {
+  if (notes.length === 0) return notes;
+  const left = (list) => list.filter((n) => n.lane < LANES / 2).length;
+  const total = before.length + notes.length;
+  const kept = (left(before) + left(notes)) / total - 0.5;
+  const flipped = (left(before) + notes.length - left(notes)) / total - 0.5;
+  if (Math.abs(kept) <= HAND_TOLERANCE || Math.abs(flipped) >= Math.abs(kept)) return notes;
+  const mirrored = notes.map((n) => ({ ...n, lane: LANES - 1 - n.lane }));
+  if (tail.length === 0) return mirrored;
+  return seamCost(tail, mirrored) > seamCost(tail, notes) + MAX_SEAM_WORSENING ? notes : mirrored;
+}
+
+module.exports = { BRIDGE_MIN_BEATS, balanceHands, bridgeSeam, fillGaps, orientDrums };

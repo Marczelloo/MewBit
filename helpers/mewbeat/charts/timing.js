@@ -18,6 +18,14 @@ const FOLD_MAX_BPM = 200;
 const HALF_TIME_BELOW_BPM = 95; // doubled this stays under FOLD_MAX_BPM
 const HALF_TIME_ONSETS_PER_BEAT = 8;
 const MAX_DOUBLING = 8; // a tempo needing more than 8x doubling is not a tempo at all
+// A tracker can doubt a tempo whose beats are plainly regular (fixtures: the same regularity sits at 0.45 and 0.50), and
+// a song left without a grid plays far worse than one on a slightly doubted grid. Below CONFIDENT_TEMPO, down to
+// DOUBTED_TEMPO, beats this regular are trusted all the same.
+const DOUBTED_TEMPO = 0.35;
+const REGULAR_MAX_CV = 0.08; // spread of the beat intervals, relative to their mean
+const REGULAR_WITHIN = 0.1; // ...and at least REGULAR_SHARE of them within this of the median
+const REGULAR_SHARE = 0.9;
+const MIN_REGULAR_BEATS = 16; // too few beats prove nothing
 
 // --- timing: beat grid, or none when the tempo is not trustworthy -----------
 
@@ -93,10 +101,23 @@ function halveBeats(beats, downbeats, factor) {
   return { beats: kept, downbeats: keptDownbeats };
 }
 
+function regularBeats(beats) {
+  const intervals = beats.slice(1).map((t, i) => t - beats[i]);
+  const mean = intervals.reduce((sum, x) => sum + x, 0) / intervals.length;
+  const spread = Math.sqrt(intervals.reduce((sum, x) => sum + (x - mean) ** 2, 0) / intervals.length);
+  const mid = median(intervals);
+  const close = intervals.filter((x) => Math.abs(x - mid) <= REGULAR_WITHIN * mid).length;
+  return spread <= REGULAR_MAX_CV * mean && close >= REGULAR_SHARE * intervals.length;
+}
+
+function trustedTempo(confidence, beats) {
+  return confidence >= CONFIDENT_TEMPO || (confidence >= DOUBTED_TEMPO && beats.length >= MIN_REGULAR_BEATS && regularBeats(beats));
+}
+
 function buildTiming(features, durationMs) {
   const tempo = features.tempo || {};
   const rawBeats = cleanTimes(tempo.beats);
-  if (!(Number(tempo.confidence) >= CONFIDENT_TEMPO) || rawBeats.length < 2) return NO_TIMING;
+  if (rawBeats.length < 2 || !trustedTempo(Number(tempo.confidence), rawBeats)) return NO_TIMING;
 
   const rawMedianMs = median(rawBeats.slice(1).map((t, i) => t - rawBeats[i]));
   // Below confidence (or with a nonsensical grid) the raw onset times are kept

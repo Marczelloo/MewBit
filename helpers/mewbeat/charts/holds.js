@@ -21,6 +21,7 @@ const GAP_HOLD_SHARE = 0.1; // gap holds are at most this share of the notes the
 
 // A support event backs the leader up: a backbone drum hit under a tonal leader ("secondary"), or an event of a
 // support layer in a mixed phrase (patterns.js mixedEvents).
+const SPACING_SLACK = 0.9; // a whole-beat spacing is met within this much: a bending grid stretches it
 const isSupport = (e) => e.source === "secondary" || e.support === true;
 
 // Does note `o` give way to hold candidate `c`: a support event of another layer, or a less important note of one?
@@ -55,7 +56,8 @@ function holdBlocks(h, n, diff) {
 function spacedBlocked(h, n, others, diff, halfBeatMs) {
   if (diff.holdOtherHand !== "spaced" || !(h.len > 0)) return false;
   if (hand(n.lane) === hand(h.lane) || n.t <= h.t || n.t >= h.t + h.len) return false;
-  return others.some((o) => o !== n && o !== h && hand(o.lane) !== hand(h.lane) && o.t > h.t && o.t <= n.t && n.t - o.t < halfBeatMs);
+  const spacing = diff.holdSpacingBeats > 0 ? 2 * halfBeatMs * diff.holdSpacingBeats * SPACING_SLACK : halfBeatMs;
+  return others.some((o) => o !== n && o !== h && hand(o.lane) !== hand(h.lane) && o.t > h.t && o.t <= n.t && n.t - o.t < spacing);
 }
 
 // The notes that `spaced` mode forbids inside hold h, simulated in time order (at one
@@ -96,15 +98,30 @@ function clipHolds(notes, limitMs, diff, timing) {
 // limitHoldShare(notes, round, preferred) -> notes: the shortest holds become taps until holds are at most
 // MAX_HOLD_SHARE of the notes (rounded down by default; a phrase on its own rounds to nearest, so a short one keeps
 // its one hold). Holds `preferred(note)` says are real sustains go last. A tap is always legal where its hold was (it
-// only frees the time the hold occupied).
-function limitHoldShare(notes, round = Math.floor, preferred = () => false) {
-  const allowed = round(MAX_HOLD_SHARE * notes.length);
+// only frees the time the hold occupied). `share` replaces the cap for a difficulty with its own (diff.maxHoldShare).
+function limitHoldShare(notes, round = Math.floor, preferred = () => false, share = MAX_HOLD_SHARE) {
+  const allowed = round(share * notes.length);
   const holds = notes.filter((n) => n.len > 0);
   if (holds.length <= allowed) return notes;
   const order = (a, b) => preferred(a) - preferred(b) || a.len - b.len || b.t - a.t;
   const demote = new Set([...holds].sort(order).slice(0, holds.length - allowed));
   return notes.map((n) => {
     if (!demote.has(n)) return n;
+    const tap = { ...n };
+    delete tap.len;
+    return tap;
+  });
+}
+
+// oneHoldAtATime(notes) -> notes: a hold that starts while an earlier one still runs becomes a tap (time-sorted notes).
+function oneHoldAtATime(notes) {
+  let heldUntil = -Infinity;
+  return notes.map((n) => {
+    if (!(n.len > 0)) return n;
+    if (n.t > heldUntil) {
+      heldUntil = n.t + n.len;
+      return n;
+    }
     const tap = { ...n };
     delete tap.len;
     return tap;
@@ -185,7 +202,7 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
 }
 
 // addSustainHolds(notes, features, diff, timing, limitMs) -> notes
-// Every long (>= SUSTAIN_MIN_BEATS), confident bass/lead note whose start has a tap within SUSTAIN_MATCH_MS turns
+// Every long (>= diff.sustainMinBeats, by default SUSTAIN_MIN_BEATS), confident bass/lead note whose start has a tap within SUSTAIN_MATCH_MS turns
 // that tap into a hold, whichever layer the phrase was charted from: drum-led phrases get their bass sustains too.
 //   len = min(sustain, MAX_HOLD_BEATS, next note of the lane - minLaneGapMs, limitMs - minLaneGapMs), rounded.
 // Notes the hold forbids are handled like planHolds: the hold is clipped to end before the first one if it stays at
@@ -199,7 +216,7 @@ function addSustainHolds(notes, features, diff, timing, limitMs = Infinity) {
   const sustains = [];
   for (const layer of HOLD_SOURCES) {
     for (const e of Array.isArray(features?.[layer]) ? features[layer] : []) {
-      if (Number.isFinite(e?.t) && Number(e.conf) >= SUSTAIN_MIN_CONF && Number(e.len) >= SUSTAIN_MIN_BEATS * beatMsOf(timing, e.t)) sustains.push(e);
+      if (Number.isFinite(e?.t) && Number(e.conf) >= SUSTAIN_MIN_CONF && Number(e.len) >= (diff.sustainMinBeats ?? SUSTAIN_MIN_BEATS) * beatMsOf(timing, e.t)) sustains.push(e);
     }
   }
   sustains.sort((a, b) => a.t - b.t || b.len - a.len);
@@ -261,7 +278,7 @@ function addGapHolds(notes, diff, timing, energy, limitMs = Infinity, fromMs = -
   const laneGap = diff.minLaneGapMs ?? 0;
   const out = [...notes].sort((a, b) => a.t - b.t || a.lane - b.lane).map((n) => ({ ...n }));
   const own = out.filter((n) => n.t >= fromMs);
-  let budget = Math.round(GAP_HOLD_SHARE * own.length) - own.filter((n) => n.len > 0).length;
+  let budget = Math.round((diff.gapHoldShare ?? GAP_HOLD_SHARE) * own.length) - own.filter((n) => n.len > 0).length;
   const loud = (t) => (typeof energy?.at === "function" ? energy.at(t) : 1) >= GAP_MIN_ENERGY;
   const candidates = [];
   for (let i = 0; i < out.length; i++) {
@@ -290,4 +307,4 @@ function addGapHolds(notes, diff, timing, energy, limitMs = Infinity, fromMs = -
   return out;
 }
 
-module.exports = { addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, planHolds, spacedBlocked };
+module.exports = { addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, spacedBlocked };

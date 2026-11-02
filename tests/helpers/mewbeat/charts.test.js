@@ -64,14 +64,15 @@ describe("mewbeat chart generator", () => {
   it("chordRules", () => {
     const features = fixture();
     const { easy, normal, hard } = chartsOf(features);
-    assert.strictEqual([...countsByTime(easy.notes).values()].filter((c) => c > 1).length, 0);
-    for (const chart of [normal, hard]) {
+    for (const chart of [easy, normal, hard]) {
       assert.ok([...countsByTime(chart.notes).values()].every((c) => c <= 2), `${chart.difficulty}: 3+ note chord`);
     }
     const downbeats = new Set(features.tempo.downbeats);
-    const normalChords = [...countsByTime(normal.notes)].filter(([, c]) => c === 2);
-    assert.ok(normalChords.length > 0, "normal should have some chords");
-    assert.ok(normalChords.every(([t]) => downbeats.has(t)));
+    for (const chart of [easy, normal]) {
+      const chords = [...countsByTime(chart.notes)].filter(([, c]) => c === 2);
+      assert.ok(chords.length > 0, `${chart.difficulty} should have some chords`);
+      assert.ok(chords.every(([t]) => downbeats.has(t)), `${chart.difficulty}: a chord off the downbeat`);
+    }
     assert.ok([...countsByTime(hard.notes).values()].some((c) => c === 2), "hard should have some chords");
   });
 
@@ -84,8 +85,10 @@ describe("mewbeat chart generator", () => {
   it("followsEnergy", () => {
     const all = chartsOf(fixture());
     for (const chart of Object.values(all)) {
+      // Rests are filled on Easy and Normal, so the beat is their floor where the music plays: less room to grow.
+      const factor = chart.difficulty === "easy" || chart.difficulty === "normal" ? 1.4 : 2;
       assert.ok(
-        rate(chart.notes, 60000, 120000) >= 2 * rate(chart.notes, 0, 60000),
+        rate(chart.notes, 60000, 120000) >= factor * rate(chart.notes, 0, 60000),
         `${chart.difficulty}: loud ${rate(chart.notes, 60000, 120000)} vs quiet ${rate(chart.notes, 0, 60000)}`,
       );
     }
@@ -186,7 +189,7 @@ describe("mewbeat chart generator", () => {
     }
   });
 
-  it("limits same-lane runs to 1 on easy, 2 on normal and 3 on hard, chords included", () => {
+  it("limits same-lane runs to 2 on easy and normal and 3 on hard, chords included", () => {
     const all = chartsOf(fixture({ energy: () => 1 }));
     const maxRun = (chart) => {
       // Longest streak of consecutive note moments (chords are one moment) that use the same lane.
@@ -201,7 +204,7 @@ describe("mewbeat chart generator", () => {
       return best;
     };
     assert.ok([...countsByTime(all.hard.notes).values()].some((c) => c === 2), "hard run test needs chords");
-    assert.ok(maxRun(all.easy) <= 1);
+    assert.ok(maxRun(all.easy) <= 2);
     assert.ok(maxRun(all.normal) <= 2);
     assert.ok(maxRun(all.hard) <= 3);
   });

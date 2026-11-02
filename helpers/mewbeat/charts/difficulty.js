@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 17;
+const GENERATOR_VERSION = 18;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -28,7 +28,7 @@ const CONFIDENT_TEMPO = 0.5; // snap to the beat grid at/above this confidence
 const FALLBACK_BEAT_MS = 500; // 120 BPM, used for gaps when tempo is not trusted
 const BEAT_TOLERANCE_MS = 35; // a note this close to a beat counts as "on" it
 const GAP_TOLERANCE_MS = 1; // rounding slack on the same-lane gap check
-const MAX_SNAP_DISTANCE_MS = 60; // an onset further than this from the grid stays at its raw time
+const MAX_SNAP_DISTANCE_MS = 35; // an onset further than this from the grid stays at its raw time (inside the perfect window)
 const BEAT_INTERVAL_TOLERANCE = 0.25; // local beat length must be within +-25% of the median
 const SNAPPED_FLOOR_SLACK = 0.98; // snapped notes may sit this much under the tempo-relative gap floor
 
@@ -49,37 +49,54 @@ const DIFFICULTIES = {
     minLaneGapMs: 350, // ...never below this, whatever the tempo
     minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
     minNoteGapMs: 200, // any-lane gap between distinct times, never below this (Normal 100, Hard 60)
-    maxJack: 1, // longest same-lane run of consecutive notes (1 = no jacks)
+    maxJack: 2, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
-    fillRestBeats: 3, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
+    fillRestBeats: 2, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
     quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
-    holdOtherHand: "blocked", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
+    holdOtherHand: "spaced", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
     // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
     // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
     // raw onset strength across all bands, so its note choice differs from Normal.
     bandBias: [1, 1, 0.85, 0.7],
     beatBias: 0.35,
-    chord: null,
+    // Second note only on a strong downbeat (Easy has no 1/8s or fills to accent a bar with).
+    chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.7 },
     alternation: null,
+    // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
+    gapBeats: 1 / 2, // any-lane gap on the pattern path, in felt beats (a doubled grid counts as its real tempo)
+    tonalGapBeats: 1 / 2, // ...between two notes of the sung or bass line
+    leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
+    thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
+    densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
+    spreadLanes: true, // a same-lane repeat closer than laneGapBeats moves to a free lane
+    balanceHands: true, // a phrase is mirrored when that evens out the hands
+    vocalLeads: true, // in a sung song the voice leads every phrase it is heard in: it is what a beginner follows
+    oneLayer: true, // the leading layer alone: a second layer in the other hand is a skill Easy does not ask for
+    longNotesOnBeats: true, // a long sung note off the half-beat grid starts on the nearest beat (its hold carries the voice)
+    holdSpacingBeats: 1, // while a hold runs, the other hand's notes stay this far apart
+    oneHoldAtATime: true, // a hold starting under another stays a tap: two held keys are a skill Easy does not ask for
+    maxHoldShare: 0.4,
+    gapHoldShare: 0.3,
+    sustainMinBeats: 1,
   },
   normal: {
-    maxNps: 4.5,
-    maxNpsCeiling: 6.5,
+    maxNps: 3.5,
+    maxNpsCeiling: 4.5,
     baseDiv: 2,
-    energyDiv: 4,
+    energyDiv: 2,
     highEnergyFrom: 0.6,
     fineDiv: null,
     fineMinStrength: 0.9,
-    laneGapBeats: 1 / 2,
+    laneGapBeats: 1,
     minLaneGapMs: 200,
     minGapBeats: 1 / 4,
     minNoteGapMs: 100,
     maxJack: 2,
     maxLevel: 1,
-    fillRestBeats: 2.5,
-    quarterMinEnergy: 0.6,
+    fillRestBeats: 2,
+    quarterMinEnergy: 0.75,
     holdMinBeats: 1, // a half-beat hold reads as noise
     pulseNotesPerBeat: 1,
     holdOtherHand: "spaced",
@@ -88,6 +105,20 @@ const DIFFICULTIES = {
     // Second note only on a strong downbeat in a loud part.
     chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.6 },
     alternation: null,
+    // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
+    gapBeats: 1 / 2, // any-lane gap on the pattern path, in felt beats (a doubled grid counts as its real tempo)
+    tonalGapBeats: 1 / 4, // ...between two notes of the sung or bass line: the tune may run faster than the drums
+    maxFastRun: 3, // at most this many fast gaps in a row
+    maxQuarterShare: 0.27, // at most this share of a phrase's moments off the half-beat grid
+    leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
+    thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
+    secondaryOnBeats: true, // a drum hit backing a tonal leader only on a beat
+    densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
+    spreadLanes: true, // a same-lane repeat closer than laneGapBeats moves to a free lane
+    balanceHands: true, // a phrase is mirrored when that evens out the hands
+    maxHoldShare: 0.3,
+    gapHoldShare: 0.15,
+    sustainMinBeats: 1,
   },
   hard: {
     maxNps: 9.0,
