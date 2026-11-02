@@ -73,7 +73,7 @@ async function playScripted(chart) {
     for (const action of actions.get(ms) ?? []) action();
     record(run.tick(ms), ms, false);
   }
-  return { snapshot: run.snapshot(end), events, fevers };
+  return { snapshot: run.snapshot(end), events, fevers, log: run.log() };
 }
 
 describe("recomputeRun", () => {
@@ -96,6 +96,25 @@ describe("recomputeRun", () => {
 
     const withoutFever = await recomputeRun({ chart, events, fevers: [] });
     assert.ok(withoutFever.score < snapshot.score, "the fever starts are what the bonus score rests on");
+  });
+
+  it("recomputes the run's own event log to the run's own snapshot", async () => {
+    const chart = makeChart();
+    const { snapshot, events, fevers, log } = await playScripted(chart);
+
+    // The log is what the Activity submits: it must carry what a consumer of the results would rebuild by hand
+    // (d aside: the log keeps the error of an early head miss, which a miss result does not carry).
+    const withoutD = (list) => list.map(({ d, ...rest }) => rest);
+    assert.deepStrictEqual(withoutD(log.events), withoutD(events));
+    assert.deepStrictEqual(log.fevers, fevers);
+
+    const result = await recomputeRun({ chart, events: log.events, fevers: log.fevers });
+    assert.strictEqual(result.score, snapshot.score);
+    assert.strictEqual(result.accuracy, snapshot.accuracy);
+    assert.strictEqual(result.grade, snapshot.grade);
+    assert.strictEqual(result.maxCombo, snapshot.maxCombo);
+    assert.deepStrictEqual(result.counts, snapshot.counts);
+    assert.strictEqual(result.fevers, snapshot.fevers);
   });
 
   it("ignores a fever start the replayed state does not allow", async () => {

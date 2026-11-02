@@ -465,3 +465,100 @@ test("an early miss on a hold counts its tail as a miss too", () => {
   assert.deepEqual(run.press(0, 1870), { kind: "miss", lane: 0, index: 0, part: "head", tailMissed: true });
   assert.equal(run.snapshot(1870).counts.miss, 2);
 });
+
+// ---- event log (what mewbeat_submit sends) ----
+
+test("log: taps are logged in the order they are judged, with heard time and error", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0, offsetMs: 100 });
+  run.press(0, 2100); // heard 2000, on time
+  run.press(1, 2380); // heard 2280, 30 ms late
+  assert.deepEqual(run.log(), {
+    events: [
+      { n: 0, part: "head", j: "perfect", t: 2000, d: 0 },
+      { n: 1, part: "head", j: "perfect", t: 2280, d: 30 },
+    ],
+    fevers: [],
+  });
+});
+
+test("log: the returned lists are copies", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.press(0, 2000);
+  const copy = run.log();
+  copy.events[0].j = "miss";
+  copy.events.push({});
+  copy.fevers.push(1);
+  assert.deepEqual(run.log(), { events: [{ n: 0, part: "head", j: "perfect", t: 2000, d: 0 }], fevers: [] });
+});
+
+test("log: a hold logs its head and its tail", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2010);
+  run.release(0, 3000);
+  assert.deepEqual(run.log().events, [
+    { n: 0, part: "head", j: "perfect", t: 2010, d: 10 },
+    { n: 0, part: "tail", j: "perfect", t: 3000, d: 0 },
+  ]);
+});
+
+test("log: a head miss that settles the tail logs the head, then the tail miss, once each", () => {
+  const run = createRun({ chart: { notes: [{ t: 2000, lane: 0, len: 800 }] }, startSongMs: 0 });
+  run.press(0, 1870);
+  tickAll(run, 1870, 5000);
+  assert.deepEqual(run.log().events, [
+    { n: 0, part: "head", j: "miss", t: 1870, d: -130 },
+    { n: 0, part: "tail", j: "miss", t: 1870, d: null },
+  ]);
+});
+
+test("log: a sweep logs head then tail misses with no error", () => {
+  const run = createRun({ chart: { notes: [{ t: 2000, lane: 0, len: 500 }, { t: 3000, lane: 1 }] }, startSongMs: 0 });
+  tickAll(run, 0, 5000);
+  const { events } = run.log();
+  assert.deepEqual(events.map((event) => [event.n, event.part, event.j, event.d]), [
+    [0, "head", "miss", null],
+    [0, "tail", "miss", null],
+    [1, "head", "miss", null],
+  ]);
+  assert.ok(events.every((event) => Number.isFinite(event.t)));
+});
+
+test("log: a hold held past its end is logged as a perfect tail", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2000);
+  tickAll(run, 2000, 3200);
+  const tail = run.log().events.find((event) => event.n === 0 && event.part === "tail");
+  assert.equal(tail.j, "perfect");
+  assert.equal(tail.d, 0);
+});
+
+test("log: parts skipped by a jump are never logged", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 0 });
+  run.press(0, 2000); // head hit, tail pending
+  run.jump(3200); // skips the tail and the tap at 2500
+  tickAll(run, 3200, 6000);
+  const keys = run.log().events.map((event) => `${event.n}${event.part}`);
+  assert.deepEqual(keys, ["0head", "2head"]);
+});
+
+test("log: a lead-in skip logs nothing, and no part is ever logged twice", () => {
+  const run = createRun({ chart: holdChart(), startSongMs: 1900 });
+  run.setOffset(-300, 2000);
+  tickAll(run, 2000, 6000);
+  const keys = run.log().events.map((event) => `${event.n}${event.part}`);
+  assert.equal(new Set(keys).size, keys.length);
+});
+
+test("log: FEVER starts are logged as heard times, only when they started", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0, offsetMs: 40, autoplay: true });
+  assert.equal(run.fever(2000), null);
+  assert.deepEqual(run.log().fevers, []);
+  let started = null;
+  for (let ms = 0; ms <= 15000 && started === null; ms += 16) {
+    run.tick(ms);
+    if (run.snapshot(ms).vibe >= 1 && run.fever(ms)) started = ms;
+  }
+  assert.notEqual(started, null);
+  assert.equal(run.fever(started), null);
+  assert.deepEqual(run.log().fevers, [started - 40]);
+});
