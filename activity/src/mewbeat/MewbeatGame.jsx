@@ -15,7 +15,7 @@ import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
 import { createSoloAudio, musicGain } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
-import Lobby, { CountdownStage, LeaveConfirm } from "./Lobby.jsx";
+import Lobby, { LeaveConfirm } from "./Lobby.jsx";
 import LiveBoard from "./LiveBoard.jsx";
 import Results from "./Results.jsx";
 import SongSelect from "./SongSelect.jsx";
@@ -32,6 +32,7 @@ import "./mewbeat.css";
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
 
 const SCREEN_IN_MS = 240; // same as mb-screen-in in mewbeat.css
+const SOLO_GO_MS = 900; // Mewbit's GO after a solo run's count
 const SCREEN_OUT_MS = 160; // same as mb-screen-out
 const POSITION_JUMP_MS = 1500;
 const AUTO_OFFSET_EVERY = 16; // new taps between auto offset updates
@@ -450,9 +451,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [leaveConfirm, settingsOpen]);
-  // The game's keys are paused on the room's own screens, Esc among them, so it opens the menu from here.
+  // The game's keys are paused on song select and the room's own screens, Esc among them, so it opens the menu from here.
+  const ownScreen = lobbyScreen || pickerOpen;
   useEffect(() => {
-    if (!lobbyScreen || menuShown || settingsOpen || pickerOpen || addOpen || leaveConfirm) return undefined;
+    if (!ownScreen || menuShown || settingsOpen || addOpen || leaveConfirm) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || event.repeat) return;
       event.preventDefault();
@@ -461,7 +463,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [lobbyScreen, menuShown, settingsOpen, pickerOpen, addOpen, leaveConfirm]);
+  }, [ownScreen, menuShown, settingsOpen, addOpen, leaveConfirm]);
   // Esc closes the "add songs" window wherever the focus is. The settings panel, when open, takes Esc first.
   useEffect(() => {
     if (!addOpen || settingsOpen) return undefined;
@@ -579,13 +581,23 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   useCountdownSounds({ startPerf: roomStartPerf, started: inRound, calm: showCard || holdingCard, play: playSfx });
   const soloCount = soloStage === "countin" ? soloState.count : null;
   const lastSoloCount = useRef(null);
+  const [soloWent, setSoloWent] = useState(false); // the moment after a run's count, when Mewbit calls GO
   useEffect(() => {
     const counting = lastSoloCount.current != null;
     lastSoloCount.current = soloCount;
     const second = soloCount ?? (counting && soloStage === "playing" && soloState?.opening ? 0 : null);
     if (second == null) return;
     for (const { name, level } of countdownSounds(second)) playSfx(name, { level });
+    if (second === 0) setSoloWent(true);
   }, [soloCount, soloStage, soloState?.opening, playSfx]);
+  useEffect(() => {
+    if (!soloWent) return undefined;
+    const timer = window.setTimeout(() => setSoloWent(false), SOLO_GO_MS);
+    return () => window.clearTimeout(timer);
+  }, [soloWent]);
+  // Mewbit on the board counts a solo run in, bumping and sending a ring out on every step, as in the room.
+  const boardTick = soloCount ?? (soloWent ? 0 : null);
+  const boardPose = soloCount != null ? "hype" : soloWent ? "go" : mewbitPose;
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
   useEffect(() => {
@@ -690,7 +702,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       defaultDifficulty={savedDifficulty}
       onPlay={pickSong}
       onPreview={previewSong}
-      onClose={onClose}
     />
   ) : null;
   const pickerFade = useScreenExit(pickerEl, screenOutMs);
@@ -783,7 +794,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
             {settings?.showMewbit === false ? null : (
               <div className="mb-char-box">
                 <div className="mb-aura" aria-hidden="true" />
-                <Mewbit pose={mewbitPose} effects={effectsLevel} />
+                <div className={`mb-lobby-mewbox${boardTick != null ? ` mb-lobby-beat-${boardTick % 2 ? "a" : "b"}` : ""}`}>
+                  {boardTick != null ? <span key={boardTick} className="mb-lobby-ring mb-lobby-ring-final" aria-hidden="true" /> : null}
+                  <Mewbit pose={boardPose} effects={effectsLevel} />
+                </div>
               </div>
             )}
           </div>
@@ -798,7 +812,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               </div>
               <div className="mb-fevertime" style={feverTimeStyle} aria-hidden="true" />
               {running ? <HighwayReadout hud={readoutHud} /> : null}
-              {soloStage === "countin" && !soloState.opening ? (
+              {soloStage === "countin" ? (
                 <div className="mb-countin" role="status" aria-live="assertive">
                   <b key={soloState.count}>{soloState.count}</b>
                 </div>
@@ -847,10 +861,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
 
       {leaveConfirm ? (
         <LeaveConfirm onStay={() => { setLeaveConfirm(null); backToGame(); }} onLeave={() => leaveRoom(leaveConfirm.target)} />
-      ) : null}
-
-      {soloStage === "countin" && soloState.opening ? (
-        <CountdownStage className="mb-countdown-solo" digit={soloState.count} title={soloState.track?.title} effects={effectsLevel} showAvatar={settings?.showMewbit !== false} />
       ) : null}
 
       {menuShown ? (

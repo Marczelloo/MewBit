@@ -306,9 +306,11 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   return (
     <div className="mb-ss" role="group" aria-label="Song select" onKeyDown={onKeyDown}>
       <section className="mb-ss-detail">
-        <div className="mb-ss-top">
-          {onClose ? <button type="button" className="mb-btn mb-ss-close" onClick={onClose}>Close <kbd className="mb-kbd">Esc</kbd></button> : null}
-        </div>
+        {onClose ? (
+          <div className="mb-ss-top">
+            <button type="button" className="mb-btn mb-ss-close" onClick={onClose}>Close <kbd className="mb-kbd">Esc</kbd></button>
+          </div>
+        ) : null}
         {selected ? (
           <>
             <div className="mb-ss-hero">

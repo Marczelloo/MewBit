@@ -12,7 +12,7 @@ import { createLiveSender } from "./liveSender.js";
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
 export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
 const COMBO_BREAK_OVER = 20; // as in osu!: losing a short combo makes no sound
-const COMBO_BREAK_LEVEL = 0.8;
+const COMBO_BREAK_LEVEL = 0.5;
 
 const MISS_POSE_MS = 600;
 const CRUSHED_POSE_MS = 1200;

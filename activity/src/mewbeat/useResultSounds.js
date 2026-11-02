@@ -1,13 +1,11 @@
 import { useEffect, useRef } from "react";
 
 // The results in the order osu! sounds them, with its levels: a swoosh up while the score ticks slower and
-// higher, a dink per stat, then the grade's impact and, a moment later, its crowd.
+// higher, a dink per stat, then the grade's impact.
 const SWOOSH_LEVEL = 0.4;
 const TICK_GAP_MS = [18, 300];
 const TICK_LEVEL = [0.6, 1];
 const DINK_RATE_STEP = 0.05;
-const APPLAUSE_DELAY_MS = 545;
-const APPLAUSE_LEVEL = 0.8;
 const IMPACTS = { S: "rank-impact-pass-ss", A: "rank-impact-pass", B: "rank-impact-fail", C: "rank-impact-fail", D: "rank-impact-fail-d" };
 
 const between = ([from, to], part) => from + (to - from) * part;
@@ -17,12 +15,10 @@ const between = ([from, to], part) => from + (to - from) * part;
 export function useResultSounds({ play, reached, reveal, dinks, grade, accuracy }) {
   const progress = useRef({ started: false, dinks: 0, graded: false });
   const tickTimer = useRef(null);
-  const applauseTimer = useRef(null);
   const stops = useRef([]);
 
   useEffect(() => () => {
     window.clearTimeout(tickTimer.current);
-    window.clearTimeout(applauseTimer.current);
     for (const stop of stops.current) stop?.();
   }, []);
 
@@ -33,9 +29,6 @@ export function useResultSounds({ play, reached, reveal, dinks, grade, accuracy 
       now.graded = true;
       window.clearTimeout(tickTimer.current);
       stops.current.push(play(IMPACTS[grade]));
-      applauseTimer.current = window.setTimeout(() => {
-        stops.current.push(play(`applause-${grade.toLowerCase()}`, { level: APPLAUSE_LEVEL }));
-      }, APPLAUSE_DELAY_MS);
       return;
     }
     if (!now.started && reached >= reveal.score) {

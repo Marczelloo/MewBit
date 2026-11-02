@@ -19,4 +19,3 @@ All samples come from [osu-resources](https://github.com/ppy/osu-resources) (com
 | `rank-impact-pass.wav` | Grade A | `Results/rank-impact-pass.wav` |
 | `rank-impact-fail.wav` | Grades B and C | `Results/rank-impact-fail.wav` |
 | `rank-impact-fail-d.wav` | Grade D | `Results/rank-impact-fail-d.wav` |
-| `applause-s.wav` to `applause-d.wav` | Just after the grade, one per grade | `Results/applause-s.wav` to `Results/applause-d.wav` |

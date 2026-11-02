@@ -70,27 +70,6 @@ function StageMewbit({ pose, text, effects, tick = null, final = false }) {
   );
 }
 
-// The numbers before a run, with a place for Mewbit's animation beside them. Digit 0 is "GO!".
-export function CountdownStage({ digit, title, effects, showAvatar = true, className = "" }) {
-  const go = digit === 0;
-  return (
-    <div className={`mb-countdown ${className}`.trim()} role="status" aria-live="assertive">
-      <div className="mb-countdown-inner">
-        <span className="mb-countdown-label">{go ? "" : "Get ready"}{!go && title ? <> · <b>{title}</b></> : null}</span>
-        <div className="mb-countdown-row">
-          {showAvatar ? (
-            <div className="mb-countdown-avatar">
-              <div className="mb-lobby-spot" aria-hidden="true" />
-              <Mewbit pose={go ? "go" : "hype"} effects={effects} />
-            </div>
-          ) : null}
-          <b key={digit} className={`mb-countdown-num${go ? " mb-countdown-go" : ""}`}>{go ? "GO!" : digit}</b>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function LeaveConfirm({ onStay, onLeave }) {
   const stayRef = useRef(null);
   useEffect(() => {

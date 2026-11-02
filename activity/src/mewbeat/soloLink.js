@@ -167,7 +167,7 @@ export function createSoloLink({
   }
 
   // ---- count-in, pause, resume ----
-  // `opening` marks the count before a run, which has room for Mewbit; the one after a pause leaves the notes in view.
+  // `opening` marks the count before a run, which ends on GO; the one after a pause does not.
   function countIn(fromMs, opening = false) {
     cancelCountIn();
     const mine = token;
