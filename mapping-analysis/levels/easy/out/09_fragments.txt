@@ -1,0 +1,67 @@
+ set_id                                  artist                                 title      genre  algo_on_human (precision)  human_on_algo (recall)
+1000722                             Ohara Yuiko            Zero Centimeters (TV Size)      anime                       0.77                    0.53
+1277503                        Umeboshi Chazuke Panic! Pop'n! Picnic! (2019 REMASTER) video game                       0.56                    0.36
+1329723                                saradisk                        083 - nekomimi    novelty                       0.85                    0.39
+1570640                                    Lime                          8bit Voyager electronic                       0.25                    0.34
+1697477                           cosMo@BousouP              Hatsune Miku no Gekishou video game                       0.89                    0.38
+1773164                                    TUYU      Itsuka Otona ni Nareru to Ii ne.        pop                       0.98                    0.58
+1784295                             Rokudenashi                      Tada Koe Hitotsu        pop                       0.90                    0.46
+1894317                            kessoku band             Seishun Complex (TV Size)      anime                       0.96                    0.35
+2200258                 Kashii Moimi feat. KAFU       Cat Loving (kageminori bootleg) electronic                       0.73                    0.31
+2224035                              JINGBURGER                         Konton Boogie        pop                       0.85                    0.30
+2270163 ANGUISH, vlad pivo, YARCHE SOLNCA & ily                            Krasavitsa electronic                       0.46                    0.33
+2314654                                    Laur             PRAGMATISM -RESURRECTION- electronic                       0.74                    0.49
+2515207                                     TAK  PPPP feat. Hatsune Miku, Kasane Teto        pop                       0.90                    0.51
+ 310607                              t+pazolite               Electric "Sister" Bitch video game                       0.59                    0.38
+ 363594                     THE ORAL CIGARETTES                    Kyouran Hey Kids!!      anime                       0.90                    0.52
+ 563569                     P*Light feat. mow*2                           OVERDRIVERS video game                       0.84                    0.62
+ 636959                          Kiyoshi Hikawa     Genkai Toppa x Survivor (TV Size)      anime                       0.76                    0.49
+ 808872                                 Kobaryo                       Perfect Neglect electronic                       0.90                    0.38
+ 859248                            Nanawo Akari         One Room Sugar Life (TV Size)      anime                       0.89                    0.61
+ 923488                                    HyuN                                  Grin electronic                       0.76                    0.67
+
+precision p10/p50/p90: [0.55 0.84 0.91]  recall: [0.32 0.43 0.61]
+
+== per song: the window with the lowest density ratio (loud windows only, rms >= song median) and the one with most notes inside holds
+310607: low ratio 00:42-00:48 h=19 a=9 kiai=1.0 db h/a 4/2; inside holds 00:01-00:06 n=3; most human 1/2 01:11-01:16 half=8 a=14/h=18
+363594: low ratio 00:35-00:38 h=16 a=6 kiai=0.0 db h/a 4/3; inside holds 00:26-00:29 n=4; most human 1/2 01:05-01:08 half=4 a=5/h=12
+563569: low ratio 01:34-01:39 h=25 a=11 kiai=1.0 db h/a 4/4; inside holds 00:42-00:48 n=5; most human 1/2 00:04-00:10 half=6 a=15/h=21
+636959: low ratio 01:10-01:15 h=27 a=11 kiai=1.0 db h/a 3/3; inside holds 00:45-00:50 n=3; most human 1/2 01:10-01:15 half=12 a=11/h=27
+808872: low ratio 00:16-00:20 h=17 a=5 kiai=0.0 db h/a 2/0; inside holds 00:11-00:16 n=4; most human 1/2 00:51-00:55 half=11 a=7/h=20
+859248: low ratio 01:00-01:06 h=24 a=10 kiai=1.0 db h/a 4/3; inside holds 00:23-00:28 n=4; most human 1/2 00:20-00:26 half=7 a=13/h=24
+923488: low ratio 00:49-00:56 h=28 a=14 kiai=1.0 db h/a 4/4; inside holds 00:42-00:49 n=8; most human 1/2 00:49-00:56 half=11 a=14/h=28
+1000722: low ratio 01:01-01:07 h=21 a=10 kiai=1.0 db h/a 4/3; inside holds 00:54-01:01 n=5; most human 1/2 00:02-00:15 half=13 a=24/h=38
+1277503: low ratio 02:00-02:05 h=25 a=8 kiai=1.0 db h/a 4/0; inside holds 00:01-00:06 n=4; most human 1/2 01:37-01:42 half=7 a=9/h=17
+1329723: low ratio 00:37-00:42 h=20 a=6 kiai=0.5 db h/a 4/0; inside holds 00:11-00:16 n=4; most human 1/2 00:30-00:35 half=7 a=10/h=23
+1570640: low ratio 01:18-01:23 h=11 a=8 kiai=1.0 db h/a 2/2; inside holds 00:28-00:33 n=4; most human 1/2 01:28-01:34 half=7 a=11/h=13
+1697477: low ratio 02:18-02:23 h=26 a=5 kiai=0.5 db h/a 4/2; inside holds 00:47-00:53 n=5; most human 1/2 00:30-00:35 half=6 a=7/h=17
+1773164: low ratio 01:47-01:53 h=26 a=8 kiai=0.0 db h/a 4/1; inside holds 00:44-00:50 n=4; most human 1/2 00:14-00:20 half=4 a=8/h=28
+1784295: low ratio 01:11-01:19 h=34 a=12 kiai=0.0 db h/a 4/2; inside holds 02:10-02:18 n=5; most human 1/2 02:21-02:29 half=14 a=18/h=35
+1894317: low ratio 00:54-00:59 h=21 a=5 kiai=1.0 db h/a 4/0; inside holds 00:44-00:49 n=5; most human 1/2 00:23-00:28 half=12 a=7/h=28
+2200258: low ratio 00:19-00:23 h=22 a=6 kiai=0.5 db h/a 4/0; inside holds 00:45-00:49 n=4; most human 1/2 00:51-00:56 half=9 a=10/h=24
+2224035: low ratio 01:41-01:46 h=22 a=3 kiai=1.0 db h/a 3/2; inside holds 00:46-00:51 n=4; most human 1/2 01:01-01:06 half=9 a=7/h=22
+2270163: low ratio 01:59-02:05 h=20 a=11 kiai=1.0 db h/a 4/1; inside holds 00:13-00:18 n=5; most human 1/2 00:10-00:16 half=6 a=12/h=22
+2314654: low ratio 01:38-01:43 h=25 a=8 kiai=1.0 db h/a 4/3; inside holds 00:48-00:54 n=3; most human 1/2 00:01-00:07 half=10 a=10/h=15
+2515207: low ratio 00:22-00:29 h=25 a=8 kiai=0.0 db h/a 4/2; inside holds 00:38-00:44 n=3; most human 1/2 00:19-00:25 half=8 a=3/h=27
+
+== kiai starts and section boundaries per song: human vs generator at the boundary downbeat
+1000722 kiai: 00:54 h2/a0
+1277503 kiai: 00:10 h1/a0, 00:12 h0/a0, 00:12 h1/a0, 00:14 h2/a0, 00:14 h2/a0, 00:25 h2/a0, 00:34 h2/a1, 00:45 h2/a0, 00:55 h2/a1, 01:03 h2/a1, 01:06 h1/a2, 01:18 h2/a1, 01:29 h2/a1, 01:44 h1/a0, 01:44 h0/a0, 01:44 h2/a0, 01:46 h2/a0, 01:59 h2/a0, 02:07 h2/a1, 02:08 h0/a0, 02:09 h2/a1, 02:11 h2/a1, 02:11 h2/a0
+1329723 kiai: 00:40 h2/a0, 00:49 h2/a0
+1570640 kiai: 01:17 h2/a1
+1697477 kiai: 01:25 h2/a0, 01:34 h1/a1, 01:45 h2/a1, 01:54 h2/a1, 02:21 h2/a0
+1773164 kiai: 00:06 h2/a1, 00:57 h2/a1, 02:09 h2/a1
+1784295 kiai: 00:34 h2/a0, 01:48 h2/a1
+1894317 kiai: 00:40 h2/a0, 00:50 h2/a0, 01:00 h2/a0, 01:10 h2/a0
+2200258 kiai: 00:21 h2/a0, 01:12 h2/a2
+2224035 kiai: 01:01 h2/a0, 01:41 h2/a1
+2270163 kiai: 00:36 h2/a1, 01:28 h2/a0, 01:54 h2/a1
+2314654 kiai: 00:36 h1/a2, 01:22 h1/a1, 01:34 h2/a0, 01:57 h1/a1
+2515207 kiai: 00:44 h2/a1, 01:59 h2/a1
+310607 kiai: 00:36 h2/a1, 01:28 h2/a0
+363594 kiai: 00:48 h2/a2, 01:15 h2/a2
+563569 kiai: 00:37 h2/a1, 01:31 h2/a1
+636959 kiai: 00:57 h1/a1, 01:08 h2/a1
+808872 kiai: 00:56 h1/a0, 01:30 h1/a0, 02:07 h1/a0
+859248 kiai: 00:51 h2/a1
+923488 kiai: 00:45 h1/a1, 02:14 h1/a1

@@ -1,0 +1,49 @@
+metryka,klucz,ludzie p10/p50/p90,algorytm p10/p50/p90,par,algo>ludzie,Wilcoxon p
+nuty/s,nps,2.72 / 3.64 / 4.40,1.43 / 1.87 / 2.41,20,1/20,3.814697265625e-06
+nuty/beat,notes_per_beat,0.86 / 1.19 / 1.42,0.45 / 0.68 / 0.82,20,1/20,3.814697265625e-06
+nuty/s okno 2 s p90,nps_window.p90,3.95 / 4.50 / 5.50,2.00 / 2.50 / 3.00,20,1/20,9.88221898651214e-05
+beaty z nutą,beat_mapped,0.68 / 0.86 / 0.92,0.32 / 0.44 / 0.66,20,0/20,1.9073486328125e-06
+półbeaty z nutą,half_mapped,0.11 / 0.19 / 0.32,0.00 / 0.06 / 0.19,20,2/20,0.000850677490234375
+downbeaty z nutą,downbeats_carried,0.77 / 0.95 / 1.00,0.05 / 0.35 / 0.71,20,0/20,1.9073486328125e-06
+chwile na beacie,on_beat_share,0.69 / 0.81 / 0.89,0.30 / 0.70 / 0.80,20,5/20,0.0019855499267578125
+odstępy 1/1,gap_share.1,0.47 / 0.61 / 0.77,0.01 / 0.41 / 0.64,20,8/20,0.029575347900390625
+odstępy 1/2,gap_share.1/2,0.04 / 0.28 / 0.38,0.00 / 0.00 / 0.09,20,0/20,0.0001318338889828333
+odstępy 2 beaty,gap_share.2,0.00 / 0.03 / 0.14,0.12 / 0.26 / 0.83,20,19/20,1.33514404296875e-05
+najdł. seria 1/2,run_1/2.max_notes,2.00 / 5.00 / 9.90,0.00 / 0.00 / 3.10,20,0/20,0.00011417124031836781
+min. odstęp ms,gap_ms.min,135 / 162 / 198,214 / 286 / 327,20,19/20,0.00012009357164141592
+"chwile poza siatką 1/8, 1/6",timing_off_share,0.00 / 0.00 / 0.00,0.07 / 0.22 / 0.37,20,20/20,1.9073486328125e-06
+błąd siatki ms p50,grid_error_ms.p50,0.00 / 0.47 / 0.51,2.76 / 4.22 / 7.03,20,20/20,1.9073486328125e-06
+akordy,chord_share,0.01 / 0.16 / 0.22,0.00 / 0.07 / 0.13,20,5/20,0.015755486091547432
+akordy w dwóch rękach,chord2_split_hands_share,0.23 / 0.49 / 0.67,0.88 / 1.00 / 1.00,16,16/16,3.0517578125e-05
+akordy na downbeacie,chord_position_share.downbeat,0.34 / 0.49 / 1.00,0.00 / 0.06 / 0.80,16,3/16,0.005157470703125
+holdy,hold_share,0.03 / 0.10 / 0.25,0.18 / 0.21 / 0.23,20,16/20,0.0003948211669921875
+dł. holda (beaty) p50,hold_len_beats.p50,1.00 / 1.00 / 2.00,1.98 / 2.00 / 3.98,18,16/18,3.814697265625e-05
+holdy z nutą w środku,holds_with_notes_inside_share,0.00 / 0.00 / 0.09,0.50 / 0.73 / 0.93,18,18/18,7.62939453125e-06
+nuty drugiej ręki na beat holda p50,other_hand_notes_per_beat_in_hold.p50,0.00 / 0.00 / 0.00,0.21 / 0.31 / 0.50,18,16/18,0.00043777719457466354
+puszczenia na beacie,release_snap_share.1,0.83 / 0.97 / 1.00,0.21 / 0.33 / 0.52,18,0/18,7.62939453125e-06
+tory 1+2 (środek),inner_share,0.48 / 0.51 / 0.56,0.48 / 0.63 / 0.78,20,17/20,0.0014324188232421875
+tryle,trill_share,0.04 / 0.08 / 0.18,0.11 / 0.23 / 0.31,20,17/20,0.000133514404296875
+ten sam tor (pojedyncze),single_step_share.0,0.00 / 0.03 / 0.11,0.04 / 0.11 / 0.25,20,17/20,0.0014324188232421875
+minijacki,minijack_share,0.01 / 0.05 / 0.12,0.05 / 0.12 / 0.33,20,18/20,0.0005855560302734375
+entropia wzorców 4,pattern4_entropy_bits,6.16 / 7.20 / 7.62,6.14 / 6.66 / 6.93,20,5/20,0.0072956085205078125
+pauzy ≥2 beaty /min,rests_ge_2b.per_min,0.00 / 3.01 / 14.68,6.60 / 15.03 / 26.24,20,17/20,0.000209808349609375
+"pauzy ≥2 beaty, udział czasu",rests_ge_2b.time_share,0.00 / 0.04 / 0.18,0.09 / 0.20 / 0.33,20,17/20,0.001689910888671875
+pauzy ≥8 beatów /min,rests_ge_8b.per_min,0.00 / 0.00 / 0.45,0.00 / 0.00 / 0.00,20,1/20,0.13801073756865956
+najdł. pauza (beaty),longest_rest_beats,1.45 / 3.00 / 11.00,3.01 / 4.30 / 7.10,20,13/20,0.6215133666992188
+CV nut na takt,bar_notes_cv,0.21 / 0.33 / 0.50,0.31 / 0.36 / 0.45,20,13/20,0.15364646911621094
+kontrast 4 taktów p90/p10,phrase4_notes_p90_over_p10,1.36 / 1.72 / 2.80,1.42 / 1.71 / 1.90,20,10/20,0.26109886169433594
+gęstość kiai / poza,kiai_density_ratio,1.06 / 1.23 / 1.57,0.85 / 0.98 / 1.19,20,4/20,0.000133514404296875
+korelacja nuty/takt z RMS,sections.bar_density_vs_rms_spearman,-0.05 / 0.36 / 0.55,-0.13 / 0.05 / 0.30,20,5/20,0.006389617919921875
+granice z nutą,sections.boundary_note_share,0.74 / 1.00 / 1.00,0.00 / 0.13 / 0.45,20,0/20,8.732637791829415e-05
+granice z akordem,sections.boundary_chord_share,0.11 / 0.40 / 0.72,0.00 / 0.00 / 0.00,20,0/20,0.00019540793740897315
+"gęstość po/przed, granice w dół",sections.boundary_falling_density_ratio_median,0.35 / 0.77 / 1.27,0.69 / 1.02 / 1.58,16,12/16,0.0155029296875
+rytm w powtórzeniach,repetition.repeat.rhythm,0.76 / 0.90 / 0.96,0.11 / 0.29 / 0.49,16,0/16,3.0517578125e-05
+rytm: powtórzenie − baza,rep_rhythm_gain,0.12 / 0.33 / 0.46,-0.01 / 0.14 / 0.30,16,4/16,0.013092041015625
+tory w powtórzeniach,repetition.repeat.lanes,0.06 / 0.27 / 0.40,0.26 / 0.52 / 0.70,16,12/16,0.001678466796875
+chwile bez dźwięku,alignment.no_sound_share,0.00 / 0.01 / 0.04,0.01 / 0.03 / 0.09,20,15/20,0.001695889903397192
+chwile na onsecie wokalu,alignment.stem_vocals.share,0.11 / 0.30 / 0.45,0.11 / 0.28 / 0.44,20,5/20,0.0072956085205078125
+chwile na onsecie perkusji (stem),alignment.stem_drums.share,0.51 / 0.67 / 0.85,0.54 / 0.69 / 0.81,20,14/20,0.4304332733154297
+recall silnych werbli,plugin_events.snare.recall_strong,0.36 / 0.58 / 0.73,0.20 / 0.28 / 0.45,20,1/20,3.814697265625e-06
+recall silnych stóp,plugin_events.kick.recall_strong,0.18 / 0.38 / 0.72,0.12 / 0.26 / 0.37,20,3/20,0.0003948211669921875
+recall leadu,plugin_events.lead.recall,0.15 / 0.28 / 0.44,0.07 / 0.22 / 0.33,20,6/20,0.013616561889648438
+pierwsza nuta (ms),first_ms,345 / 958 / 4924,1554 / 1768 / 2409,20,17/20,0.058258056640625

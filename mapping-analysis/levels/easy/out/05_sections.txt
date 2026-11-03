@@ -1,0 +1,70 @@
+
+== humans train: boundaries 529 in 77 maps, mappers 59
+  all   n= 529 maps= 77  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.91, chord 0.43, hold start 0.23; last beat before boundary mapped 0.75
+        per-map median after/before 0.88 / 1.01 / 1.22; last bar / 3 before 0.73 / 0.98 / 1.15
+  up    n=  92 maps= 51  bar notes / song median, bars -4..+3: -4:0.75 -3:0.67 -2:0.80 -1:0.67 +0:1.20 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.96, chord 0.53, hold start 0.22; last beat before boundary mapped 0.63
+        per-map median after/before 0.85 / 1.43 / 2.79; last bar / 3 before 0.46 / 0.92 / 1.62
+  flat  n= 346 maps= 74  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.91, chord 0.43, hold start 0.24; last beat before boundary mapped 0.79
+        per-map median after/before 0.87 / 1.04 / 1.20; last bar / 3 before 0.74 / 0.98 / 1.20
+  down  n=  91 maps= 47  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:0.80 +1:0.67 +2:0.60 +3:0.75
+        note on boundary downbeat 0.87, chord 0.36, hold start 0.18; last beat before boundary mapped 0.70
+        per-map median after/before 0.39 / 0.66 / 1.07; last bar / 3 before 0.43 / 0.94 / 1.40
+
+== humans test: boundaries 127 in 20 maps, mappers 20
+  all   n= 127 maps= 20  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:0.86 +2:1.00 +3:1.00
+        note on boundary downbeat 0.93, chord 0.38, hold start 0.20; last beat before boundary mapped 0.81
+        per-map median after/before 0.89 / 1.01 / 1.11; last bar / 3 before 0.53 / 0.92 / 1.04
+  up    n=  21 maps= 11  bar notes / song median, bars -4..+3: -4:0.80 -3:0.67 -2:0.75 -1:0.80 +0:1.20 +1:0.86 +2:1.00 +3:1.00
+        note on boundary downbeat 0.86, chord 0.33, hold start 0.29; last beat before boundary mapped 0.76
+        per-map median after/before 1.06 / 1.25 / 1.75; last bar / 3 before 0.67 / 1.07 / 1.36
+  flat  n=  85 maps= 18  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.94, chord 0.40, hold start 0.16; last beat before boundary mapped 0.82
+        per-map median after/before 0.87 / 0.97 / 1.30; last bar / 3 before 0.74 / 0.90 / 1.18
+  down  n=  21 maps= 12  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:0.60 +2:0.60 +3:0.50
+        note on boundary downbeat 0.95, chord 0.33, hold start 0.24; last beat before boundary mapped 0.81
+        per-map median after/before 0.34 / 0.80 / 1.37; last bar / 3 before 0.26 / 0.95 / 1.32
+
+== generator test: boundaries 125 in 20 maps, mappers 20
+  all   n= 125 maps= 20  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.44, chord 0.04, hold start 0.07; last beat before boundary mapped 0.41
+        per-map median after/before 0.82 / 1.01 / 1.23; last bar / 3 before 0.64 / 1.10 / 1.35
+  up    n=  21 maps= 11  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.33, chord 0.10, hold start 0.00; last beat before boundary mapped 0.38
+        per-map median after/before 0.90 / 1.08 / 1.47; last bar / 3 before 0.75 / 1.07 / 1.71
+  flat  n=  83 maps= 18  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.51, chord 0.04, hold start 0.07; last beat before boundary mapped 0.43
+        per-map median after/before 0.83 / 1.02 / 1.32; last bar / 3 before 0.65 / 0.96 / 1.30
+  down  n=  21 maps= 12  bar notes / song median, bars -4..+3: -4:1.00 -3:1.00 -2:1.00 -1:1.00 +0:1.00 +1:1.00 +2:1.00 +3:1.00
+        note on boundary downbeat 0.29, chord 0.00, hold start 0.14; last beat before boundary mapped 0.33
+        per-map median after/before 0.75 / 0.92 / 1.25; last bar / 3 before 0.35 / 0.79 / 1.64
+
+== section metrics (train | test | algo), p10/p50/p90
+  sections.bar_density_vs_rms_spearman: -0.00 / 0.32 / 0.69 | -0.05 / 0.36 / 0.55 | -0.13 / 0.05 / 0.30
+  sections.bar_density_vs_onset_rate_spearman: -0.18 / 0.14 / 0.47 | -0.29 / -0.06 / 0.27 | -0.05 / 0.06 / 0.20
+  sections.boundary_after_over_before_median: 0.92 / 1.00 / 1.15 | 0.84 / 1.00 / 1.06 | 0.89 / 1.00 / 1.16
+  sections.boundary_last_bar_over_prev3_median: 0.85 / 1.00 / 1.25 | 0.87 / 1.05 / 1.34 | 0.75 / 1.00 / 1.30
+  sections.boundary_note_share: 0.70 / 1.00 / 1.00 | 0.74 / 1.00 / 1.00 | 0.00 / 0.13 / 0.45
+  sections.boundary_chord_share: 0.12 / 0.43 / 0.79 | 0.11 / 0.40 / 0.72 | 0.00 / 0.00 / 0.00
+  sections.boundary_rising_density_ratio_median: 0.94 / 1.38 / 3.17 | 1.10 / 1.32 / 2.00 | 0.65 / 1.22 / 1.48
+  sections.boundary_falling_density_ratio_median: 0.40 / 0.71 / 1.01 | 0.35 / 0.77 / 1.27 | 0.69 / 1.02 / 1.58
+  kiai_density_ratio: 1.00 / 1.22 / 1.59 | 1.06 / 1.23 / 1.57 | 0.85 / 0.98 / 1.19
+  bar_notes_cv: 0.23 / 0.32 / 0.50 | 0.21 / 0.33 / 0.50 | 0.31 / 0.36 / 0.45
+  phrase4_notes_p90_over_p10: 1.31 / 1.76 / 3.82 | 1.36 / 1.72 / 2.80 | 1.42 / 1.71 / 1.90
+  empty_bar_share: 0.00 / 0.02 / 0.08 | 0.00 / 0.01 / 0.06 | 0.00 / 0.01 / 0.06
+  bar_notes.p10: 1.00 / 3.00 / 4.00 | 1.00 / 3.00 / 4.10 | 1.00 / 1.70 / 2.00
+  bar_notes.p50: 4.00 / 4.00 / 6.00 | 3.90 / 5.00 / 5.10 | 2.00 / 3.00 / 3.00
+  bar_notes.p90: 5.00 / 6.00 / 8.00 | 4.90 / 6.00 / 7.00 | 2.98 / 4.00 / 4.10
+
+== kiai starts, humans train: n=167 in 71 maps; note on first downbeat 0.96, chord 0.73, hold 0.14
+
+== kiai starts, humans test: n=61 in 20 maps; note on first downbeat 1.00, chord 0.72, hold 0.16
+
+== kiai starts, generator: n=61 in 20 maps; note on first downbeat 0.52, chord 0.08, hold 0.03
+
+== intro/outro (first/last 4 bars of the charted span, notes per bar / song median bar)
+  humans train: first4 0.37 / 0.88 / 1.19, last4 0.16 / 0.83 / 1.23, first note at 0.21 / 0.90 / 4.59 s
+  humans test: first4 0.58 / 1.01 / 1.27, last4 0.42 / 1.02 / 1.45, first note at 0.35 / 0.96 / 4.92 s
+  generator: first4 0.81 / 1.00 / 1.55, last4 0.83 / 1.08 / 1.34, first note at 1.55 / 1.77 / 2.41 s

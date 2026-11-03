@@ -1,0 +1,63 @@
+                               metric  train n     train p10/p50/p90      test p10/p50/p90      algo p10/p50/p90  paired n  algo>human (of pairs)  wilcoxon p
+                          inner_share       79    0.47 / 0.51 / 0.54    0.48 / 0.51 / 0.56    0.48 / 0.63 / 0.78        20                     17     0.00143
+                      left_hand_share       79    0.49 / 0.50 / 0.51    0.49 / 0.50 / 0.51    0.49 / 0.51 / 0.52        20                     16       0.024
+                  single_step_share.0       79    0.00 / 0.02 / 0.11    0.00 / 0.03 / 0.11    0.04 / 0.11 / 0.25        20                     17     0.00143
+                  single_step_share.1       79    0.36 / 0.47 / 0.57    0.39 / 0.47 / 0.55    0.44 / 0.55 / 0.62        20                     12      0.0362
+                  single_step_share.2       79    0.26 / 0.34 / 0.43    0.28 / 0.32 / 0.41    0.15 / 0.24 / 0.30        20                      3    2.67e-05
+                  single_step_share.3       79    0.11 / 0.16 / 0.22    0.12 / 0.15 / 0.19    0.05 / 0.10 / 0.17        20                      4      0.0107
+                    hand_switch_share       79    0.63 / 0.71 / 0.82    0.62 / 0.70 / 0.78    0.56 / 0.65 / 0.72        20                      4      0.0153
+                          trill_share       79    0.03 / 0.07 / 0.15    0.04 / 0.08 / 0.18    0.11 / 0.23 / 0.31        20                     17    0.000134
+                          stair_share       79    0.04 / 0.09 / 0.19    0.06 / 0.09 / 0.15    0.03 / 0.09 / 0.14        20                      7       0.231
+                pattern4_entropy_bits       79    6.18 / 6.95 / 7.42    6.16 / 7.20 / 7.62    6.14 / 6.66 / 6.93        20                      5      0.0073
+            pattern4_distinct_per_100       79 31.36 / 47.51 / 65.02 27.43 / 48.94 / 69.58 45.17 / 58.43 / 68.59        20                     12       0.133
+                       minijack_share       79    0.01 / 0.04 / 0.13    0.01 / 0.05 / 0.12    0.05 / 0.12 / 0.33        20                     18    0.000586
+               minijack_gap_beats.p50       75    1.00 / 1.00 / 2.00    1.00 / 1.00 / 2.00    1.02 / 2.00 / 2.02        19                     17    0.000267
+                       jack_max_notes       79    2.00 / 2.00 / 4.00    2.00 / 2.00 / 4.00    2.00 / 2.00 / 3.00        20                      3       0.191
+                     anchor_max_notes       79    3.00 / 4.00 / 7.20    3.00 / 4.00 / 6.10    4.00 / 5.50 / 8.20        20                     14     0.00955
+                          chord_share       79    0.03 / 0.10 / 0.28    0.01 / 0.16 / 0.22    0.00 / 0.07 / 0.13        20                      5      0.0158
+             chord2_split_hands_share       78    0.17 / 0.52 / 0.75    0.23 / 0.49 / 0.67    0.88 / 1.00 / 1.00        16                     16    3.05e-05
+        chord_position_share.downbeat       78    0.25 / 0.58 / 1.00    0.34 / 0.49 / 1.00    0.00 / 0.06 / 0.80        16                      3     0.00516
+            chord_position_share.beat       78    0.00 / 0.35 / 0.73    0.00 / 0.42 / 0.57    0.00 / 0.47 / 1.00        16                     10       0.348
+         chord_position_share.offbeat       78    0.00 / 0.00 / 0.19    0.00 / 0.02 / 0.14    0.00 / 0.29 / 0.64        16                     12     0.00216
+              repetition.repeat_pairs       79   0.00 / 4.00 / 26.00    1.00 / 3.00 / 8.30   0.00 / 3.50 / 10.20        20                      9       0.334
+             repetition.repeat.rhythm       64    0.75 / 0.91 / 1.00    0.76 / 0.90 / 0.96    0.11 / 0.29 / 0.49        16                      0    3.05e-05
+           repetition.baseline.rhythm       78    0.40 / 0.55 / 0.73    0.40 / 0.60 / 0.66    0.10 / 0.20 / 0.30        20                      0    1.91e-06
+                      rep_rhythm_gain       63    0.15 / 0.37 / 0.48    0.12 / 0.33 / 0.46   -0.01 / 0.14 / 0.30        16                      4      0.0131
+              repetition.repeat.lanes       64    0.15 / 0.29 / 0.44    0.06 / 0.27 / 0.40    0.26 / 0.52 / 0.70        16                     12     0.00168
+            repetition.baseline.lanes       78    0.16 / 0.20 / 0.24    0.17 / 0.18 / 0.26    0.15 / 0.22 / 0.27        20                      9       0.869
+                       rep_lanes_gain       63   -0.06 / 0.07 / 0.24   -0.10 / 0.03 / 0.21    0.06 / 0.30 / 0.54        16                     13     0.00101
+    repetition.repeat.lanes_or_mirror       64    0.27 / 0.41 / 0.84    0.27 / 0.45 / 0.62    0.39 / 0.65 / 0.87        16                     12     0.00919
+                      rep_mirror_gain       63   -0.02 / 0.12 / 0.57   -0.01 / 0.13 / 0.35    0.08 / 0.27 / 0.52        16                     11      0.0386
+repetition.sweep.0.85.identity.rhythm       53    0.83 / 0.98 / 1.00    0.83 / 0.96 / 1.00    0.21 / 0.35 / 0.64         8                      0     0.00781
+repetition.sweep.0.90.identity.rhythm       43    0.88 / 1.00 / 1.00    0.84 / 0.96 / 1.00    0.18 / 0.45 / 0.67         7                      0      0.0156
+
+== repetition, maps with >= 3 repeat pairs
+train: n=48, mappers=41, rhythm repeat 0.72 / 0.90 / 0.98, baseline 0.37 / 0.53 / 0.76, gain 0.14 / 0.35 / 0.51, share gain>0.15: 0.85
+      lanes repeat 0.15 / 0.30 / 0.42, lanes_or_mirror 0.29 / 0.42 / 0.83, lanes gain -0.02 / 0.09 / 0.22
+test: n=10, mappers=10, rhythm repeat 0.79 / 0.89 / 0.96, baseline 0.43 / 0.59 / 0.63, gain 0.25 / 0.33 / 0.37, share gain>0.15: 0.90
+      lanes repeat 0.12 / 0.24 / 0.46, lanes_or_mirror 0.25 / 0.45 / 0.62, lanes gain -0.09 / 0.01 / 0.28
+algo: n=13, mappers=13, rhythm repeat 0.14 / 0.31 / 0.47, baseline 0.09 / 0.18 / 0.25, gain 0.01 / 0.19 / 0.32, share gain>0.15: 0.54
+      lanes repeat 0.24 / 0.53 / 0.72, lanes_or_mirror 0.36 / 0.64 / 0.91, lanes gain 0.06 / 0.38 / 0.56
+
+== per test song: rhythm repeat/baseline, humans vs generator
+ set_id      genre  repetition.repeat_pairs_h  repetition.repeat.rhythm_h  repetition.baseline.rhythm_h  repetition.repeat.lanes_h  repetition.repeat_pairs_a  repetition.repeat.rhythm_a  repetition.baseline.rhythm_a  repetition.repeat.lanes_a
+1000722      anime                          0                         NaN                          0.50                        NaN                          0                         NaN                          0.16                        NaN
+1277503 video game                          6                        0.79                          0.44                       0.45                          8                        0.36                          0.18                       0.31
+1329723    novelty                          2                        0.97                          0.82                       0.36                          0                         NaN                          0.31                        NaN
+1570640 electronic                          6                        0.79                          0.34                       0.57                         10                        0.13                          0.09                       0.53
+1697477 video game                          4                        0.75                          0.60                       0.13                          3                        0.47                          0.14                       0.73
+1773164        pop                          2                        0.77                          0.81                       0.06                          2                        0.24                          0.22                       0.50
+1784295        pop                          1                        0.96                          0.62                       0.36                          3                        0.44                          0.24                       0.67
+1894317      anime                          2                        1.00                          0.64                       0.14                          0                         NaN                          0.20                        NaN
+2200258 electronic                          5                        0.83                          0.58                       0.20                         21                        0.40                          0.18                       0.35
+2224035        pop                         11                        0.90                          0.63                       0.30                         10                        0.10                          0.12                       0.20
+2270163 electronic                         21                        0.96                          0.63                       0.36                         12                        0.31                          0.04                       0.67
+2314654 electronic                          1                        0.90                          0.41                       0.11                          1                        0.10                          0.14                       0.50
+2515207        pop                          1                        0.86                          0.61                       0.37                          2                        0.50                          0.30                       0.62
+ 310607 video game                          2                        0.78                          0.35                       0.38                          3                        0.19                          0.10                       0.22
+ 363594      anime                          5                        0.95                          0.59                       0.04                          4                        0.27                          0.20                       0.65
+ 563569 video game                          4                        0.87                          0.60                       0.18                          7                        0.27                          0.25                       0.54
+ 636959      anime                          2                        0.92                          0.44                       0.33                          0                         NaN                          0.21                        NaN
+ 808872 electronic                          4                        0.90                          0.57                       0.22                          9                        0.47                          0.25                       0.41
+ 859248      anime                          2                        0.62                          0.62                       0.05                          4                        0.19                          0.19                       0.30
+ 923488 electronic                          8                        0.96                          0.62                       0.27                          8                        0.81                          0.41                       0.98

@@ -7,3 +7,6 @@
 __pycache__/
 # The root .gitignore drops every *.txt; the environment files are needed to reproduce the analysis.
 !requirements*.txt
+# ...and every *.sh: the per-level analyses ship their run scripts and text tables.
+!*.sh
+!*.txt

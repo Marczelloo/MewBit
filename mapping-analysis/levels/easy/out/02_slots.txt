@@ -1,0 +1,122 @@
+human slots 442434 algo slots 87918
+
+== mapped rate per snap class (per map p10/p50/p90), human train | human test | algo test
+1 [0.615 0.807 0.933] [0.68  0.861 0.916] [0.317 0.438 0.663]
+2 [0.07  0.186 0.433] [0.107 0.193 0.323] [0.002 0.055 0.187]
+4 [0.    0.001 0.02 ] [0.    0.001 0.011] [0.002 0.005 0.023]
+8 [0.    0.    0.002] [0. 0. 0.] [0.    0.007 0.067]
+3 [0.    0.    0.005] [0. 0. 0.] [0.    0.002 0.016]
+6 [0.    0.    0.003] [0. 0. 0.] [0.001 0.004 0.022]
+downbeat [0.753 0.904 0.991] [0.77  0.952 1.   ] [0.108 0.466 0.774]
+beat_not_downbeat [0.543 0.786 0.93 ] [0.612 0.824 0.9  ] [0.289 0.504 0.699]
+beat3 [0.56  0.803 0.961] [0.559 0.811 0.956] [0.054 0.429 0.769]
+beat2_4 [0.521 0.785 0.931] [0.608 0.817 0.947] [0.236 0.551 0.787]
+
+== recall (share of slots with the event that are mapped), per map p10/p50/p90; beats | half beats
+    pos           feature  tr_share_slots  tr_with_p10  tr_with  tr_with_p90  tr_without  tr_n  te_with  te_without  al_with  al_without
+   beat           ev_kick           0.201        0.478    0.741        0.952       0.810    78    0.879       0.827    0.532       0.446
+   beat          ev_snare           0.513        0.716    0.878        0.948       0.731    78    0.846       0.835    0.479       0.422
+   beat            ev_hat           0.005        0.225    0.768        0.877       0.806     4    0.786       0.861    0.357       0.438
+   beat           ev_perc           0.178        0.597    0.809        0.958       0.808    79    0.838       0.847    0.500       0.439
+   beat           ev_bass           0.120        0.488    0.833        0.984       0.804    75    0.870       0.851    0.551       0.424
+   beat           ev_lead           0.071        0.537    0.811        0.956       0.806    62    0.879       0.865    0.700       0.433
+   beat            ev_low           0.562        0.649    0.817        0.948       0.761    79    0.888       0.743    0.474       0.380
+   beat         ev_lowmid           0.861        0.719    0.842        0.948       0.439    79    0.889       0.402    0.454       0.265
+   beat        ev_highmid           0.883        0.689    0.848        0.958       0.406    79    0.883       0.444    0.474       0.218
+   beat           ev_high           0.826        0.699    0.863        0.963       0.518    79    0.886       0.509    0.470       0.258
+   beat        onset_full           0.619        0.761    0.909        0.979       0.616    79    0.920       0.656    0.580       0.321
+   beat        onset_perc           0.777        0.749    0.892        0.965       0.436    79    0.903       0.377    0.534       0.220
+   beat        onset_harm           0.147        0.704    0.872        0.998       0.797    64    0.865       0.869    0.601       0.414
+   beat         onset_low           0.288        0.685    0.889        0.979       0.774    78    0.923       0.807    0.547       0.375
+   beat      onset_lowmid           0.597        0.776    0.919        0.985       0.590    79    0.930       0.655    0.537       0.341
+   beat     onset_highmid           0.560        0.782    0.903        0.989       0.650    79    0.925       0.715    0.576       0.356
+   beat        onset_high           0.557        0.753    0.904        0.976       0.667    79    0.927       0.734    0.544       0.377
+   beat  onset_stem_drums           0.556        0.743    0.894        0.976       0.695    79    0.921       0.650    0.561       0.362
+   beat   onset_stem_bass           0.190        0.667    0.925        1.000       0.776    76    0.913       0.843    0.523       0.422
+   beat onset_stem_vocals           0.242        0.724    0.880        0.971       0.778    74    0.900       0.834    0.438       0.439
+   beat  onset_stem_other           0.309        0.760    0.911        1.000       0.766    76    0.925       0.831    0.553       0.408
+   beat         any_onset           0.861        0.732    0.867        0.957       0.331    79    0.896       0.280    0.492       0.179
+   beat            any_ev           0.986        0.637    0.817        0.944       0.000    79    0.866       0.000    0.443       0.000
+   half           ev_kick           0.245        0.039    0.188        0.526       0.185    78    0.218       0.192    0.042       0.056
+   half          ev_snare           0.379        0.062    0.229        0.472       0.154    79    0.236       0.197    0.045       0.042
+   half            ev_hat           0.013        0.000    0.061        0.422       0.194     8    0.200       0.194    0.000       0.055
+   half           ev_perc           0.207        0.045    0.205        0.512       0.179    79    0.216       0.183    0.050       0.040
+   half           ev_bass           0.234        0.031    0.218        0.571       0.188    79    0.198       0.199    0.062       0.051
+   half           ev_lead           0.069        0.031    0.244        0.689       0.189    65    0.184       0.195    0.083       0.030
+   half            ev_low           0.597        0.063    0.210        0.498       0.152    79    0.214       0.147    0.073       0.024
+   half         ev_lowmid           0.749        0.081    0.234        0.497       0.079    79    0.232       0.106    0.061       0.007
+   half        ev_highmid           0.779        0.078    0.219        0.509       0.067    79    0.224       0.068    0.060       0.011
+   half           ev_high           0.758        0.061    0.225        0.500       0.083    79    0.225       0.083    0.060       0.013
+   half        onset_full           0.460        0.094    0.324        0.669       0.093    78    0.406       0.105    0.080       0.016
+   half        onset_perc           0.622        0.088    0.279        0.578       0.061    79    0.280       0.088    0.068       0.012
+   half        onset_harm           0.144        0.049    0.358        0.806       0.178    62    0.211       0.186    0.132       0.024
+   half         onset_low           0.264        0.065    0.300        0.657       0.157    76    0.327       0.159    0.079       0.026
+   half      onset_lowmid           0.406        0.115    0.363        0.646       0.120    78    0.346       0.097    0.097       0.020
+   half     onset_highmid           0.387        0.092    0.325        0.671       0.112    78    0.375       0.128    0.089       0.018
+   half        onset_high           0.446        0.076    0.306        0.624       0.130    79    0.320       0.123    0.082       0.023
+   half  onset_stem_drums           0.453        0.071    0.289        0.630       0.121    79    0.332       0.119    0.068       0.027
+   half   onset_stem_bass           0.313        0.061    0.204        0.568       0.175    77    0.226       0.175    0.068       0.029
+   half onset_stem_vocals           0.192        0.084    0.287        0.550       0.164    72    0.246       0.177    0.061       0.041
+   half  onset_stem_other           0.338        0.066    0.278        0.679       0.149    75    0.250       0.177    0.081       0.038
+   half         any_onset           0.747        0.077    0.229        0.545       0.040    79    0.228       0.048    0.064       0.006
+   half            any_ev           0.971        0.073    0.192        0.442       0.000    79    0.196       0.000    0.057       0.000
+quarter           ev_kick           0.214        0.000    0.000        0.018       0.000    79    0.000       0.000    0.008       0.004
+quarter          ev_snare           0.172        0.000    0.000        0.042       0.000    78    0.000       0.000    0.010       0.004
+quarter            ev_hat           0.003        0.000    0.000        0.083       0.001     6    0.000       0.001    0.000       0.005
+quarter           ev_perc           0.147        0.000    0.000        0.028       0.001    76    0.000       0.000    0.006       0.005
+quarter           ev_bass           0.088        0.000    0.000        0.029       0.001    79    0.000       0.001    0.000       0.004
+quarter           ev_lead           0.033        0.000    0.000        0.025       0.001    63    0.000       0.001    0.036       0.003
+quarter            ev_low           0.419        0.000    0.000        0.024       0.000    79    0.000       0.000    0.006       0.003
+quarter         ev_lowmid           0.459        0.000    0.000        0.031       0.000    79    0.001       0.000    0.006       0.003
+quarter        ev_highmid           0.416        0.000    0.000        0.037       0.000    79    0.001       0.000    0.007       0.003
+quarter           ev_high           0.377        0.000    0.000        0.041       0.000    79    0.000       0.000    0.007       0.003
+quarter        onset_full           0.057        0.000    0.000        0.201       0.000    45    0.000       0.000    0.045       0.004
+quarter        onset_perc           0.097        0.000    0.013        0.187       0.000    72    0.008       0.000    0.061       0.003
+quarter        onset_harm           0.066        0.000    0.000        0.083       0.000    46    0.000       0.000    0.000       0.005
+quarter         onset_low           0.095        0.000    0.000        0.157       0.000    67    0.000       0.000    0.043       0.005
+quarter      onset_lowmid           0.072        0.000    0.025        0.182       0.000    51    0.000       0.000    0.057       0.005
+quarter     onset_highmid           0.063        0.000    0.000        0.157       0.000    48    0.000       0.000    0.028       0.004
+quarter        onset_high           0.060        0.000    0.000        0.172       0.000    65    0.000       0.000    0.026       0.004
+quarter  onset_stem_drums           0.044        0.000    0.000        0.180       0.000    50    0.000       0.000    0.000       0.005
+quarter   onset_stem_bass           0.111        0.000    0.000        0.053       0.000    67    0.000       0.000    0.004       0.005
+quarter onset_stem_vocals           0.100        0.000    0.000        0.059       0.000    76    0.000       0.000    0.010       0.004
+quarter  onset_stem_other           0.094        0.000    0.000        0.152       0.000    56    0.000       0.000    0.007       0.005
+quarter         any_onset           0.251        0.000    0.003        0.081       0.000    79    0.005       0.000    0.014       0.003
+quarter            any_ev           0.862        0.000    0.001        0.022       0.000    79    0.001       0.000    0.005       0.000
+
+== logistic regression, beat slots: n_train=29665 base rate=0.773; AUC train 0.867, test 0.823; same model on generator charts AUC 0.640
+   without position (downbeat, beat3, phrase bar): test AUC 0.799 (drop +0.024); this group alone: 0.588
+   without kiai+rms+bpm: test AUC 0.805 (drop +0.018); this group alone: 0.720
+   without librosa onsets/envelopes: test AUC 0.822 (drop +0.001); this group alone: 0.746
+   without stems: test AUC 0.817 (drop +0.006); this group alone: 0.771
+   without plugin events: test AUC 0.824 (drop -0.001); this group alone: 0.751
+   standardized coefficients (most negative / most positive):
+    env_perc -0.29, bpm_rel -0.22, env_stem_bass -0.22, env_harm -0.17, onset_full -0.09, env_high -0.07
+    env_highmid +0.18, beat3 +0.19, onset_lowmid +0.20, onset_perc +0.22, ev_high +0.23, kiai +0.26, downbeat +0.49, env_stem_other +0.50, rms +0.58, env_stem_drums +0.61
+
+== logistic regression, half slots: n_train=29564 base rate=0.213; AUC train 0.783, test 0.769; same model on generator charts AUC 0.725
+   without position (downbeat, beat3, phrase bar): test AUC 0.770 (drop -0.000); this group alone: 0.537
+   without kiai+rms+bpm: test AUC 0.760 (drop +0.009); this group alone: 0.654
+   without librosa onsets/envelopes: test AUC 0.765 (drop +0.004); this group alone: 0.734
+   without stems: test AUC 0.757 (drop +0.012); this group alone: 0.734
+   without plugin events: test AUC 0.764 (drop +0.006); this group alone: 0.718
+   standardized coefficients (most negative / most positive):
+    env_full -0.64, bpm_rel -0.36, env_harm -0.23, env_stem_bass -0.20, ev_bass -0.15, onset_stem_bass -0.11
+    ev_low +0.09, ev_highmid +0.10, onset_harm +0.10, env_high +0.12, onset_stem_vocals +0.15, onset_perc +0.18, env_lowmid +0.34, env_highmid +0.38, env_stem_drums +0.41, rms +0.50
+
+== under the mapped slots: share with a plugin drum event / tonal event / band onset only / nothing (per map p50)
+  human train  beat : drum 0.95, tonal 0.16, drum_or_tonal 0.96, band_only 0.04, nothing 0.00, drum_s 0.68
+  human train  half : drum 0.94, tonal 0.27, drum_or_tonal 0.95, band_only 0.05, nothing 0.00, drum_s 0.66
+  human test   beat : drum 0.97, tonal 0.20, drum_or_tonal 0.98, band_only 0.02, nothing 0.00, drum_s 0.71
+  human test   half : drum 0.97, tonal 0.25, drum_or_tonal 0.97, band_only 0.03, nothing 0.00, drum_s 0.68
+  generator    beat : drum 0.99, tonal 0.22, drum_or_tonal 0.99, band_only 0.00, nothing 0.00, drum_s 0.75
+  generator    half : drum 0.99, tonal 0.37, drum_or_tonal 1.00, band_only 0.00, nothing 0.00, drum_s 0.67
+
+== beats: mapped rate by drum-hit strength (above/below the map median) and by passage loudness (rms terciles), per map p50 [p10-p90]
+  human train : strong_hit 0.93 [0.78-1.00], weak_hit 0.75 [0.52-0.92], loud 0.94 [0.74-1.00], quiet 0.62 [0.31-0.85]; maps strong>weak 76/79, loud>quiet 74/79
+  human test  : strong_hit 0.94 [0.81-0.99], weak_hit 0.82 [0.57-0.93], loud 0.96 [0.81-0.99], quiet 0.70 [0.46-0.86]; maps strong>weak 18/20, loud>quiet 19/20
+  generator   : strong_hit 0.58 [0.42-0.83], weak_hit 0.43 [0.23-0.63], loud 0.55 [0.32-0.73], quiet 0.37 [0.22-0.60]; maps strong>weak 19/20, loud>quiet 18/20
+
+== sensitivity: models refit without the 5 flagged sets
+  beat: test AUC 0.821; top +: kiai +0.25, downbeat +0.47, env_stem_other +0.53, rms +0.58, env_stem_drums +0.61
+  half: test AUC 0.769; top +: onset_stem_vocals +0.17, env_lowmid +0.33, env_highmid +0.39, env_stem_drums +0.43, rms +0.51
