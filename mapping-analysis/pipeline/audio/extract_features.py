@@ -44,7 +44,7 @@ def extract(build: Path, audio: Path, out: Path, tier: str = "full") -> dict:
         subprocess.run(["java", "-Xmx1g", "-cp", str(build), "FeatureDump", str(raw), str(out), tier], check=True, env=env)
     with open(out, encoding="utf-8") as f:
         features = json.load(f)
-    if features.get("featuresVersion") != 2:
+    if features.get("featuresVersion") != 3:
         raise RuntimeError(f"unexpected featuresVersion {features.get('featuresVersion')}")
     return features
 

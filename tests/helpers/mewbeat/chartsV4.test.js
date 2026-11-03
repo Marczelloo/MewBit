@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 19", () => {
-    assert.equal(GENERATOR_VERSION, 19);
+  it("is version 20", () => {
+    assert.equal(GENERATOR_VERSION, 20);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -76,6 +76,11 @@ describe("generator v4", () => {
   it("tempo: every chart carries the song's BPM for the fall speed", () => {
     const charts = generateAll(makeLayeredFeatures(), KEY);
     for (const d of DIFFS) assert.equal(charts[d].bpm, 120, d);
+  });
+
+  it("tempo: a fast song reports its real BPM, not a folded one", () => {
+    const charts = generateAll(makeLayeredFeatures({ bpm: 224 }), KEY);
+    for (const d of DIFFS) assert.ok(Math.abs(charts[d].bpm - 224) <= 1, `${d}: ${charts[d].bpm}`);
   });
 
   it("noRandomness: the audioKey does not change the notes", () => {
@@ -191,7 +196,7 @@ describe("generator v4", () => {
     }
   });
 
-  it("floorsHoldAt220Bpm: Easy keeps its gaps, density and the folded grid", () => {
+  it("floorsHoldAt220Bpm: Easy keeps its gaps, density and the grid", () => {
     const features = makeLayeredFeatures({ bpm: 220 });
     const { easy } = chartsOf(features);
     const p = DIFFICULTIES.easy;
@@ -206,9 +211,9 @@ describe("generator v4", () => {
     assert.ok(peak <= p.maxNps, `peak ${peak} nps`);
 
     const timing = buildTiming(features, features.durationMs);
-    assert.equal(timing.foldFactor, 0.5);
+    assert.equal(timing.foldFactor, 1);
     const half = timing.gridPoints(2);
-    for (const n of easy.notes) assert.ok(half.some((g) => Math.abs(g - n.t) <= 2), `note ${n.t} is off the folded 1/2 grid`);
+    for (const n of easy.notes) assert.ok(half.some((g) => Math.abs(g - n.t) <= 2), `note ${n.t} is off the 1/2 grid`);
   });
 
   it("bandPathWhenNoLayers: v1 features still chart on every difficulty", () => {

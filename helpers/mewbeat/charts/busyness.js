@@ -7,8 +7,8 @@ const {
 } = require("./difficulty");
 
 // Strong onsets (all bands) per second of non-silent audio; 0 when there is no
-// audible audio to measure. One source of truth for the density factor and the
-// half-time tempo check.
+// audible audio to measure. The tracker's half-tempo check counts them the same
+// way (FeatureExtractor.strongOnsetsPerSecond).
 function strongOnsetRate(features) {
   const values = Array.isArray(features?.energy?.values) ? features.energy.values : [];
   const hopMs = features?.energy?.hopMs > 0 ? features.energy.hopMs : 500;

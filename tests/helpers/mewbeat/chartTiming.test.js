@@ -7,17 +7,16 @@ const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
 describe("foldTempo", () => {
-  it("folds a tempo outside 70-200 BPM by powers of two", () => {
-    assert.deepStrictEqual(foldTempo(220), { bpm: 110, factor: 0.5 });
+  it("folds a tempo outside 70-300 BPM by powers of two", () => {
+    assert.deepStrictEqual(foldTempo(320), { bpm: 160, factor: 0.5 });
     assert.deepStrictEqual(foldTempo(60), { bpm: 120, factor: 2 });
     assert.deepStrictEqual(foldTempo(120), { bpm: 120, factor: 1 });
     assert.deepStrictEqual(foldTempo(30), { bpm: 120, factor: 4 });
-    assert.deepStrictEqual(foldTempo(400), { bpm: 200, factor: 0.5 });
-    assert.deepStrictEqual(foldTempo(440), { bpm: 110, factor: 0.25 });
+    assert.deepStrictEqual(foldTempo(800), { bpm: 200, factor: 0.25 });
   });
 
-  it("keeps the whole 70-200 range as is", () => {
-    for (const bpm of [70, 100, 199, 200]) assert.strictEqual(foldTempo(bpm).factor, 1, String(bpm));
+  it("keeps the whole 70-300 range as is", () => {
+    for (const bpm of [70, 100, 200, 220, 299, 300]) assert.strictEqual(foldTempo(bpm).factor, 1, String(bpm));
   });
 
   it("leaves non-positive and non-finite tempos alone", () => {
@@ -29,54 +28,46 @@ describe("foldTempo", () => {
   });
 });
 
-describe("half-time tempos", () => {
-  it("foldTempo doubles a slow tempo only when the onsets per beat say the grid is half-time", () => {
-    assert.deepStrictEqual(foldTempo(87, 10), { bpm: 174, factor: 2 });
-    assert.deepStrictEqual(foldTempo(71, 10), { bpm: 142, factor: 2 });
-    assert.deepStrictEqual(foldTempo(87, 5), { bpm: 87, factor: 1 });
-    assert.deepStrictEqual(foldTempo(87), { bpm: 87, factor: 1 });
-    // At or above ~95 BPM a dense song is left alone, and a folded tempo is not doubled twice.
-    assert.strictEqual(foldTempo(100, 30).factor, 1);
-    assert.strictEqual(foldTempo(60, 30).factor, 2);
+describe("the tracker's tempo", () => {
+  // The tracker decides between a tempo and its double, so a busy slow song is no longer doubled here.
+  it("takes a busy 87 BPM grid as it is", () => {
+    const features = makeFeatures({ bpm: 87, durationMs: 60000, onsetEveryBeats: 0.25 });
+    features.bands = features.bands.map((b) => ({ ...b, onsets: b.onsets.map((o) => ({ ...o, s: 1 })) }));
+    const timing = buildTiming(features, 60000);
+    assert.strictEqual(timing.foldFactor, 1);
+    assert.ok(Math.abs(60000 / timing.medianMs - 87) <= 1);
   });
 
-  // Strong onsets only, so the song's busyness comes from how many onsets it has.
-  const strongSong = (onsetEveryBeats) => {
-    const features = makeFeatures({ bpm: 87, durationMs: 60000, onsetEveryBeats });
-    return { ...features, bands: features.bands.map((b) => ({ ...b, onsets: b.onsets.map((o) => ({ ...o, s: 1 })) })) };
-  };
+  it("keeps a 230 BPM grid at 230, so the chart reports the real tempo", () => {
+    const timing = buildTiming(makeFeatures({ bpm: 230, durationMs: 60000 }), 60000);
+    assert.strictEqual(timing.snapped, true);
+    assert.strictEqual(timing.foldFactor, 1);
+    assert.ok(Math.abs(60000 / timing.medianMs - 230) <= 1, String(timing.medianMs));
+  });
 
-  it("a busy 87 BPM song folds to 174 while a sparse one stays at 87", () => {
-    const busy = buildTiming(strongSong(0.25), 60000);
-    assert.strictEqual(busy.foldFactor, 2);
-    assert.ok(Math.abs(60000 / busy.medianMs - 174) <= 1, String(60000 / busy.medianMs));
+  it("trusts regular beats down to a confidence of 0.15, and only regular ones", () => {
+    const regular = makeFeatures({ bpm: 120, confidence: 0.2, durationMs: 60000 });
+    assert.strictEqual(buildTiming(regular, 60000).snapped, true);
 
-    const sparse = buildTiming(strongSong(2), 60000);
-    assert.strictEqual(sparse.foldFactor, 1);
-    assert.ok(Math.abs(60000 / sparse.medianMs - 87) <= 1);
+    const uneven = makeFeatures({ bpm: 120, confidence: 0.2, durationMs: 60000 });
+    uneven.tempo.beats = uneven.tempo.beats.map((t, i) => t + (i % 2 ? 120 : 0));
+    assert.strictEqual(buildTiming(uneven, 60000).snapped, false);
   });
 });
 
 describe("buildTiming folding", () => {
-  it("folds a 230 BPM grid to half the tempo", () => {
-    const timing = buildTiming(makeFeatures({ bpm: 230, durationMs: 60000 }), 60000);
-    assert.strictEqual(timing.snapped, true);
-    assert.strictEqual(timing.foldFactor, 0.5);
-    assert.ok(Math.abs(timing.medianMs - 521.7) <= 1, String(timing.medianMs));
-  });
-
   it("halving drops the beats between the kept ones and keeps downbeats on kept beats", () => {
-    const features = makeFeatures({ bpm: 240, durationMs: 60000 }); // 250 ms beats, downbeat every 4th
+    const features = makeFeatures({ bpm: 400, durationMs: 60000 }); // 150 ms beats, downbeat every 4th
     const timing = buildTiming(features, 60000);
     assert.strictEqual(timing.foldFactor, 0.5);
-    assert.ok(Math.abs(timing.medianMs - 500) <= 1);
+    assert.ok(Math.abs(timing.medianMs - 300) <= 1);
     assert.ok(timing.downbeats.length > 0);
     for (const d of timing.downbeats) assert.ok(timing.beats.includes(d), `downbeat ${d} is a beat`);
-    assert.deepStrictEqual(timing.downbeats.slice(0, 3), [0, 1000, 2000]);
+    assert.deepStrictEqual(timing.downbeats.slice(0, 3), [0, 600, 1200]);
   });
 
   it("falls back to every 4th kept beat when there is no downbeat to keep", () => {
-    const features = makeFeatures({ bpm: 240, durationMs: 60000 });
+    const features = makeFeatures({ bpm: 400, durationMs: 60000 });
     features.tempo.downbeats = [];
     const timing = buildTiming(features, 60000);
     assert.ok(timing.downbeats.length > 0);
@@ -86,12 +77,12 @@ describe("buildTiming folding", () => {
   });
 
   it("keeps the phase of the first downbeat when it sits on an odd beat", () => {
-    const features = makeFeatures({ bpm: 240, durationMs: 60000 }); // beats every 250 ms
-    features.tempo.downbeats = features.tempo.beats.filter((_, i) => i % 4 === 1); // 250, 1250, ...
+    const features = makeFeatures({ bpm: 400, durationMs: 60000 }); // beats every 150 ms
+    features.tempo.downbeats = features.tempo.beats.filter((_, i) => i % 4 === 1); // 150, 750, ...
     const timing = buildTiming(features, 60000);
-    assert.ok(timing.beats.includes(250), "the first downbeat survives");
+    assert.ok(timing.beats.includes(150), "the first downbeat survives");
     assert.ok(!timing.beats.includes(0), "the beat between is dropped");
-    assert.deepStrictEqual(timing.downbeats.slice(0, 3), [250, 1250, 2250]);
+    assert.deepStrictEqual(timing.downbeats.slice(0, 3), [150, 750, 1350]);
   });
 
   it("doubling inserts a midpoint between every pair of beats", () => {

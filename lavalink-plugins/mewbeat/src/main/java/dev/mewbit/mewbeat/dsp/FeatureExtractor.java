@@ -39,6 +39,9 @@ public final class FeatureExtractor {
     private static final double ONSET_WINDOW_SECONDS = 0.5;
     private static final double MIN_ONSET_GAP_SECONDS = 0.05;
     private static final double SNAP_TO_DOWNBEAT_CONFIDENCE = 0.5;
+    // The generator's strong onset and silence limits (busyness.js), which its density factor reads the same way.
+    private static final double STRONG_ONSET = 0.5;
+    private static final double AUDIBLE_ENERGY = 0.08;
     /** Loudness below this RMS (-60 dBFS) counts as silence when normalising energy. */
     private static final double MIN_REFERENCE_RMS = 0.001;
 
@@ -198,9 +201,10 @@ public final class FeatureExtractor {
             bands.add(new Features.Band(BAND_NAMES[b], onsets));
         }
 
+        double[] energy = normalisedEnergy();
         float[] combined = combinedFlux();
         TempoEstimator.Result tempo = TempoEstimator.estimate(
-                combined, flux[LOW], hops, HOP / (double) sampleRate);
+                combined, flux[LOW], hops, HOP / (double) sampleRate, strongOnsetsPerSecond(bands, energy));
         List<Integer> beats = new ArrayList<>();
         for (int hop : tempo.beatHops()) {
             beats.add(hopTimeMs(hop));
@@ -210,7 +214,6 @@ public final class FeatureExtractor {
             downbeats.add(beats.get(i));
         }
 
-        double[] energy = normalisedEnergy();
         List<Double> energyValues = new ArrayList<>(energy.length);
         for (double e : energy) {
             energyValues.add(e);
@@ -249,6 +252,27 @@ public final class FeatureExtractor {
                 lines.bass(),
                 lines.lead(),
                 new Features.Phrases(Repetition.BEATS_PER_PHRASE, phrases));
+    }
+
+    private static double strongOnsetsPerSecond(List<Features.Band> bands, double[] energy) {
+        int audibleHops = 0;
+        for (double e : energy) {
+            if (e >= AUDIBLE_ENERGY) {
+                audibleHops++;
+            }
+        }
+        if (audibleHops == 0) {
+            return 0;
+        }
+        int strong = 0;
+        for (Features.Band band : bands) {
+            for (Features.Onset onset : band.onsets()) {
+                if (onset.s() >= STRONG_ONSET) {
+                    strong++;
+                }
+            }
+        }
+        return strong / (audibleHops * Highlight.ENERGY_HOP_MS / 1000.0);
     }
 
     /** Milliseconds spent in {@code {HPSS and drums, pitch tracking, repetition and layer activity}} so far. */

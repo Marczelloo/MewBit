@@ -18,7 +18,7 @@ function makeTrack(info) {
 
 function featuresFor(track, extra = {}) {
   return {
-    featuresVersion: 2,
+    featuresVersion: 3,
     durationMs: track.info.length,
     audio: { sourceName: "youtube", identifier: track.info.identifier, length: track.info.length },
     ...extra,
@@ -289,7 +289,7 @@ describe("mewbeat analysis client", () => {
     const node = fakeNode(() => featuresFor(track, { tempo: 120 }));
     assert.strictEqual((await client.getFeatures(track, node)).tempo, 120);
     assert.strictEqual(node.calls.length, 1);
-    assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).featuresVersion, 2);
+    assert.strictEqual(JSON.parse(fs.readFileSync(cacheFileOf(track), "utf8")).featuresVersion, 3);
   });
 
   it("treats a response with another featuresVersion as a failure for 10 minutes", async () => {

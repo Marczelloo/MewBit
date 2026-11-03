@@ -187,13 +187,13 @@ class FeatureExtractorTest {
     }
 
     @Test
-    void serialisesToFeaturesJsonV2() throws Exception {
+    void serialisesToFeaturesJsonV3() throws Exception {
         float[] signal = Synth.silence(20);
         Synth.addThumps(signal, 0.25, 0.5, 19.5, 0.8);
 
         JsonNode json = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(extract(signal)));
 
-        assertEquals(2, json.get("featuresVersion").asInt());
+        assertEquals(3, json.get("featuresVersion").asInt());
         assertEquals("full", json.get("analysisTier").asText());
         assertEquals(20_000, json.get("durationMs").asInt());
         assertEquals(10.667, json.get("hopMs").asDouble(), 1e-9);

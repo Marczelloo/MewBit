@@ -22,3 +22,4 @@ Wyniki kontrolne na teście mogą więc wypadać nieco lepiej niż na utworach, 
 |---|---|---|---|---|---|
 | 1 | 2026-11-03 | 0 | v19 | Odtworzenie linii bazowej (`compare_baseline.py --split test`): 120/120 chartów identycznych; różni się tylko `alignment.no_sound_share`, bo przebieg jest bez stemów | Nie, tylko kontrola środowiska |
 | 2 | 2026-11-03 | 0 | v19 | Te same charty: sprawdzenie poprawionego `compare_baseline.py` (obejrzany tylko wynik: zgodność, 0 różnic) i zapis tabeli bez stemów do `synthesis/out/baseline_v19/test/` (nie oglądana) | Nie, tylko narzędzia i punkt odniesienia |
+| 3 | 2026-11-03 | 1 | v20 | Kontrola po etapie: metryki poziomów, siatka, zagnieżdżenie i odporność wobec v19, obejrzane tylko jako podsumowania, bez listy utworów | Nie, kod zamrożony przed kontrolą; rozjazdy trafiły do raportu etapu |

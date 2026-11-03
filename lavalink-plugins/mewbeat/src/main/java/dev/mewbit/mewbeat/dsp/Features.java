@@ -23,7 +23,7 @@ public record Features(
         List<Note> lead,
         Phrases phrases) {
 
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     /** Onsets of one frequency band: low, lowmid, highmid or high. */
     public record Band(String name, List<Onset> onsets) {}

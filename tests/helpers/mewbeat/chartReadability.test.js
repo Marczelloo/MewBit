@@ -49,7 +49,7 @@ describe("the tempo gate", () => {
     assert.equal(snapped({ confidence: 0.4 }, beats), false);
   });
   it("does not trust a doubted tempo with too few beats", () => assert.equal(snapped({ confidence: 0.4, durationMs: 6000 }), false));
-  it("does not trust a tempo the analysis barely believes", () => assert.equal(snapped({ confidence: 0.2 }), false));
+  it("does not trust a tempo the analysis barely believes", () => assert.equal(snapped({ confidence: 0.1 }), false));
 });
 
 describe("gaps and fast runs", () => {

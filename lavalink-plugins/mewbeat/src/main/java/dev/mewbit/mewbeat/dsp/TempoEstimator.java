@@ -4,12 +4,13 @@ import java.util.Arrays;
 
 /**
  * Tempo from the autocorrelation of the onset envelope (with a log-Gaussian
- * prior around 120 BPM) with a check against picking 1.5 beats, then dynamic-programming beat tracking (Ellis 2007).
+ * prior around 120 BPM) with checks against picking 1.5 beats, 2.5 beats or two beats, then dynamic-programming beat
+ * tracking (Ellis 2007).
  */
 final class TempoEstimator {
 
     private static final double MIN_BPM = 60;
-    private static final double MAX_BPM = 200;
+    private static final double MAX_BPM = 300;
     private static final double PRIOR_CENTRE_BPM = 120;
     private static final double PRIOR_SIGMA_OCTAVES = 1.4;
     private static final double TIGHTNESS = 100;
@@ -17,6 +18,19 @@ final class TempoEstimator {
     private static final int SNAP_HOPS = 2;
     /** How many multiples of a lag the 3:2 check compares. */
     private static final int COMB_MULTIPLES = 4;
+    /** Below this share of the lag's own ACF its half is no subdivision, so the lag is not a whole number of beats. */
+    private static final double WEAK_HALF_BEAT = 0.4;
+    /** The 2/3 or 2/5 lag that replaces such a lag must correlate at least this well against it. */
+    private static final double MIN_ODD_ALTERNATIVE = 0.7;
+    /**
+     * A lag is two beats when its half keeps the comb and a beat of it holds this many strong onsets. A faster tempo
+     * needs more of them, since doubling it leaves the range people chart in; above the last limit a tempo stays.
+     */
+    private static final double HALF_TEMPO_BELOW_BPM = 115;
+    private static final double HALF_TEMPO_ONSETS_PER_BEAT = 7.5;
+    private static final double FAST_HALF_TEMPO_BELOW_BPM = 125;
+    private static final double FAST_HALF_TEMPO_ONSETS_PER_BEAT = 12;
+    private static final double MIN_HALF_COMB = 0.8;
 
     /** {@code beatHops} are hop indices; {@code downbeatPhase} is 0..3, the beat index mod 4 that starts a bar. */
     record Result(double bpm, double confidence, int[] beatHops, int downbeatPhase) {}
@@ -30,8 +44,10 @@ final class TempoEstimator {
      * @param lowFlux per-hop low-band flux, used to find the downbeat
      * @param count number of valid hops
      * @param hopSeconds hop duration in seconds
+     * @param strongOnsetsPerSecond strong onsets over all bands per second of audible audio
      */
-    static Result estimate(float[] onsetFlux, float[] lowFlux, int count, double hopSeconds) {
+    static Result estimate(
+            float[] onsetFlux, float[] lowFlux, int count, double hopSeconds, double strongOnsetsPerSecond) {
         int lagLo = (int) Math.floor(60 / (MAX_BPM * hopSeconds));
         int lagHi = (int) Math.ceil(60 / (MIN_BPM * hopSeconds));
         if (count < 4 * lagHi) {
@@ -43,7 +59,7 @@ final class TempoEstimator {
         }
 
         double[] acf = new double[COMB_MULTIPLES * (lagHi + SNAP_HOPS + 1)];
-        for (int lag = Math.max(1, lagLo - SNAP_HOPS); lag < acf.length; lag++) {
+        for (int lag = Math.max(1, lagLo / 2 - SNAP_HOPS); lag < acf.length; lag++) {
             double sum = 0;
             for (int t = 0; t + lag < count; t++) {
                 sum += (double) envelope[t] * envelope[t + lag];
@@ -69,20 +85,14 @@ final class TempoEstimator {
             return NONE;
         }
         best = correctThreeTwo(acf, best, lagLo);
+        best = correctOddMultiple(acf, best, lagLo);
 
-        // Peaks are about one hop wide, so the integer lag is too coarse for a
-        // 1 BPM answer; the centroid of the lobe recovers the fractional lag.
-        double weighted = 0;
-        double weights = 0;
-        for (int lag = best - SNAP_HOPS; lag <= best + SNAP_HOPS; lag++) {
-            if (lag < 1 || lag >= acf.length) {
-                continue;
-            }
-            double w = Math.max(0, acf[lag] - 0.5 * acf[best]);
-            weighted += lag * w;
-            weights += w;
+        double period = lobeCentre(acf, best);
+        // Halving the slower lobe's centre keeps the finer resolution of its longer lag.
+        if (isHalfTempo(acf, best, 60 / (period * hopSeconds), strongOnsetsPerSecond)) {
+            best = strongestNear(acf, (int) Math.round(best / 2.0), 1);
+            period /= 2;
         }
-        double period = weighted / weights;
         double bpm = 60 / (period * hopSeconds);
         double ratio = acf[best] / meanAcf;
         double confidence = Math.max(0, Math.min(1, (ratio - 1) / 4));
@@ -108,6 +118,61 @@ final class TempoEstimator {
             }
         }
         return alternative >= 0 && comb(acf, alternative) > comb(acf, best) ? alternative : best;
+    }
+
+    /**
+     * A beat subdivided in two correlates at its half, and a lag of 1.5 or 2.5 beats does not, its half falling between
+     * eighths. Such a lag can have a weak comb too (a song at 220 BPM read as 88), so the check above misses it.
+     */
+    static int correctOddMultiple(double[] acf, int best, int lagLo) {
+        if (acf[strongestNear(acf, (int) Math.round(best / 2.0), 1)] >= WEAK_HALF_BEAT * acf[best]) {
+            return best;
+        }
+        int alternative = -1;
+        for (double share : new double[] {2.0 / 3, 2.0 / 5}) {
+            int lag = strongestNear(acf, (int) Math.round(best * share), lagLo);
+            if (lag >= 0 && (alternative < 0 || acf[lag] > acf[alternative])) {
+                alternative = lag;
+            }
+        }
+        return alternative >= 0 && acf[alternative] >= MIN_ODD_ALTERNATIVE * acf[best] ? alternative : best;
+    }
+
+    private static boolean isHalfTempo(double[] acf, int lag, double bpm, double strongOnsetsPerSecond) {
+        double onsetsPerBeat = strongOnsetsPerSecond * 60 / bpm;
+        boolean busy = (bpm < HALF_TEMPO_BELOW_BPM && onsetsPerBeat >= HALF_TEMPO_ONSETS_PER_BEAT)
+                || (bpm < FAST_HALF_TEMPO_BELOW_BPM && onsetsPerBeat >= FAST_HALF_TEMPO_ONSETS_PER_BEAT);
+        return busy && comb(acf, strongestNear(acf, (int) Math.round(lag / 2.0), 1)) >= MIN_HALF_COMB * comb(acf, lag);
+    }
+
+    /** The strongest lag within {@link #SNAP_HOPS} of {@code guess}, not below {@code floor}; -1 when none is left. */
+    private static int strongestNear(double[] acf, int guess, int floor) {
+        int to = Math.min(acf.length - 1, guess + SNAP_HOPS);
+        int strongest = -1;
+        for (int lag = Math.max(floor, guess - SNAP_HOPS); lag <= to; lag++) {
+            if (strongest < 0 || acf[lag] > acf[strongest]) {
+                strongest = lag;
+            }
+        }
+        return strongest;
+    }
+
+    /**
+     * Peaks are about one hop wide, so the integer lag is too coarse for a
+     * 1 BPM answer; the centroid of the lobe recovers the fractional lag.
+     */
+    private static double lobeCentre(double[] acf, int best) {
+        double weighted = 0;
+        double weights = 0;
+        for (int lag = best - SNAP_HOPS; lag <= best + SNAP_HOPS; lag++) {
+            if (lag < 1 || lag >= acf.length) {
+                continue;
+            }
+            double w = Math.max(0, acf[lag] - 0.5 * acf[best]);
+            weighted += lag * w;
+            weights += w;
+        }
+        return weighted / weights;
     }
 
     /** Mean ACF over the first multiples of {@code lag}, each the best within m - 1 hops of m * lag. */

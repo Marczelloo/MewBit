@@ -5,23 +5,17 @@ const {
   FALLBACK_BEAT_MS,
   GAP_TOLERANCE_MS,
 } = require("./difficulty");
-const { strongOnsetRate } = require("./busyness");
 const { cleanTimes, lowerBound, median, nearestIndex } = require("./util");
 
 const MIN_USABLE_BEAT_MS = 100; // a median beat length below this means garbage beats
 const FOLD_MIN_BPM = 70; // the beat grid is folded into this range
-const FOLD_MAX_BPM = 200;
-// A tracker that lands on half the real tempo (drum & bass at 87 instead of 174) puts
-// a slow beat under a dense onset stream. Below HALF_TIME_BELOW_BPM, a song with at
-// least this many strong onsets per detected beat is doubled back: its grid was the
-// half-time one. (Fixtures: the half-time songs sit at 9.6-10.4, a sparse ballad ~5.)
-const HALF_TIME_BELOW_BPM = 95; // doubled this stays under FOLD_MAX_BPM
-const HALF_TIME_ONSETS_PER_BEAT = 8;
+const FOLD_MAX_BPM = 300; // the tracker's own limit; it also picks between a tempo and its double (TempoEstimator)
 const MAX_DOUBLING = 8; // a tempo needing more than 8x doubling is not a tempo at all
 // A tracker can doubt a tempo whose beats are plainly regular (fixtures: the same regularity sits at 0.45 and 0.50), and
-// a song left without a grid plays far worse than one on a slightly doubted grid. Below CONFIDENT_TEMPO, down to
-// DOUBTED_TEMPO, beats this regular are trusted all the same.
-const DOUBTED_TEMPO = 0.35;
+// a song left without a grid plays far worse than one on a doubted grid, whose off-grid onsets keep their own times.
+// Below CONFIDENT_TEMPO, down to DOUBTED_TEMPO, beats this regular are trusted all the same. (On the analysis songs
+// the lowest confidence at a correct tempo is 0.19.)
+const DOUBTED_TEMPO = 0.15;
 const REGULAR_MAX_CV = 0.08; // spread of the beat intervals, relative to their mean
 const REGULAR_WITHIN = 0.1; // ...and at least REGULAR_SHARE of them within this of the median
 const REGULAR_SHARE = 0.9;
@@ -29,17 +23,14 @@ const MIN_REGULAR_BEATS = 16; // too few beats prove nothing
 
 // --- timing: beat grid, or none when the tempo is not trustworthy -----------
 
-// Halves/doubles a tempo until it lies in 70-200 BPM. `factor` is the power of
+// Halves/doubles a tempo until it lies in 70-300 BPM. `factor` is the power of
 // two the tempo was multiplied by (0.5 = every second beat is used). Anything
 // that is not a positive finite tempo is returned untouched.
-// `onsetsPerBeat` (strong onsets per detected beat, optional) lets a busy slow
-// tempo be doubled once more, see HALF_TIME_ONSETS_PER_BEAT.
-function foldTempo(bpm, onsetsPerBeat = 0) {
+function foldTempo(bpm) {
   if (!Number.isFinite(bpm) || !(bpm > 0)) return { bpm, factor: 1 };
   let factor = 1;
   while (bpm * factor > FOLD_MAX_BPM) factor /= 2;
   while (bpm * factor < FOLD_MIN_BPM) factor *= 2;
-  if (bpm * factor < HALF_TIME_BELOW_BPM && onsetsPerBeat >= HALF_TIME_ONSETS_PER_BEAT) factor *= 2;
   return { bpm: bpm * factor, factor };
 }
 
@@ -124,9 +115,8 @@ function buildTiming(features, durationMs) {
   // and the beat data is ignored entirely: no grid, no chords.
   if (!(rawMedianMs >= MIN_USABLE_BEAT_MS)) return NO_TIMING;
 
-  // Tempo folding: the grid is built at 70-200 BPM whatever the tracker reported.
-  const onsetsPerBeat = (strongOnsetRate(features) * rawMedianMs) / 1000;
-  const { factor } = foldTempo(60000 / rawMedianMs, onsetsPerBeat);
+  // Tempo folding: the grid is built at 70-300 BPM whatever the tracker reported.
+  const { factor } = foldTempo(60000 / rawMedianMs);
   if (factor > MAX_DOUBLING) return NO_TIMING;
   let beats = rawBeats;
   let downbeats = cleanTimes(tempo.downbeats);
