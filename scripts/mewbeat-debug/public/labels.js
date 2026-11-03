@@ -19,11 +19,14 @@ export const STAGES = {
   gapHolds: "holdy w pauzach",
   fillGaps: "wypełnienie perkusją",
   fillRests: "dźwięk w pauzie",
+  accents: "początek sekcji",
   hands: "balans rąk",
   spreadLanes: "rozkład na pasy",
   bandPath: "ścieżka po pasmach",
   sustainHolds: "holdy z długich dźwięków",
   clipHolds: "skracanie holdów",
+  accents: "początek sekcji",
+  settleHolds: "puszczanie holdów na następnej nucie",
   finalFloors: "końcowe odstępy",
   oneHold: "jeden hold naraz",
   holdShare: "limit udziału holdów",
@@ -43,7 +46,9 @@ export const KINDS = {
   bandPath: "ścieżka po pasmach",
   fillGaps: "wypełnienie perkusją pauzy",
   fillRests: "dźwięk w pauzie",
+  accents: "początek sekcji",
   gapHolds: "hold w pauzie",
+  accents: "nuta na początku sekcji",
   sustainHolds: "hold z długiego dźwięku",
 };
 
@@ -53,6 +58,7 @@ export const KIND_SHORT = {
   bandPath: "pasma",
   fillGaps: "perkusja w pauzie",
   fillRests: "dźwięk w pauzie",
+  accents: "początek sekcji",
 };
 
 export const SOURCES = { bass: "bas", drums: "perkusja", lead: "melodia (lead)", bands: "pasma" };

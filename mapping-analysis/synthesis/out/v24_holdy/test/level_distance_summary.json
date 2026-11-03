@@ -1,0 +1,73 @@
+{
+ "easy": {
+  "songs": 20,
+  "median_distance_iqr": 0.7907875737360777,
+  "mean_distance_iqr": 12.364639289033567,
+  "metrics_with_median_inside_band": 10,
+  "share_inside_band_mean": 0.5591684822076979,
+  "precision_p50": 0.803988850353716,
+  "recall_p50": 0.5674976395420253,
+  "precision_p10_p90": [
+   0.587392220731941,
+   0.8984885610378892
+  ],
+  "recall_p10_p90": [
+   0.4982675489641872,
+   0.6423524844720496
+  ],
+  "per_song_distance_iqr_p50": 0.8525677992137521
+ },
+ "normal": {
+  "songs": 20,
+  "median_distance_iqr": 0.5749080930399459,
+  "mean_distance_iqr": 1.7400306535074996,
+  "metrics_with_median_inside_band": 12,
+  "share_inside_band_mean": 0.6361111111111111,
+  "precision_p50": 0.7675162928311543,
+  "recall_p50": 0.7165324528005211,
+  "precision_p10_p90": [
+   0.6749855128452772,
+   0.8789031025384405
+  ],
+  "recall_p10_p90": [
+   0.6346871697096554,
+   0.841924929701694
+  ],
+  "per_song_distance_iqr_p50": 0.829983352863423
+ },
+ "hard": {
+  "songs": 20,
+  "median_distance_iqr": 0.765193241578662,
+  "mean_distance_iqr": 1.388542588215965,
+  "metrics_with_median_inside_band": 12,
+  "share_inside_band_mean": 0.6012345679012346,
+  "precision_p50": 0.7529724472170516,
+  "recall_p50": 0.7592864372469635,
+  "precision_p10_p90": [
+   0.6399736006741522,
+   0.8334069314704139
+  ],
+  "recall_p10_p90": [
+   0.6555202148713599,
+   0.8283302730044346
+  ],
+  "per_song_distance_iqr_p50": 0.9610510737990978
+ },
+ "paired": {
+  "hard_vs_normal": {
+   "songs": 20,
+   "hard_closer": 10,
+   "wilcoxon_p": 0.6476554870605469
+  },
+  "normal_vs_easy": {
+   "songs": 20,
+   "normal_closer": 11,
+   "wilcoxon_p": 0.7011814117431641
+  },
+  "hard_vs_easy": {
+   "songs": 20,
+   "hard_closer": 9,
+   "wilcoxon_p": 0.47490501403808594
+  }
+ }
+}

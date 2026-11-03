@@ -1,13 +1,13 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 23;
+const GENERATOR_VERSION = 24;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
 const BANDS = ["low", "lowmid", "highmid", "high"]; // band index === base lane
 
 const MERGE_WINDOW_MS = 30; // onsets this close across bands are one candidate
-const LEAD_IN_MS = 1500; // no notes before this
+const LEAD_IN_MS = 1000; // no notes before this
 const SILENCE_ENERGY = 0.08; // no notes where the energy curve is below this
 const MIN_NOTES = 20; // fewer notes than this means "not chartable"
 
@@ -54,7 +54,7 @@ const DIFFICULTIES = {
     fillRestBeats: 2, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
-    holdOtherHand: "spaced", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
+    holdOtherHand: "blocked", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
     // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
     // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
     // raw onset strength across all bands, so its note choice differs from Normal.
@@ -74,10 +74,10 @@ const DIFFICULTIES = {
     vocalLeads: true, // in a sung song the voice leads every phrase it is heard in: it is what a beginner follows
     oneLayer: true, // the leading layer alone: a second layer in the other hand is a skill Easy does not ask for
     longNotesOnBeats: true, // a long sung note off the half-beat grid starts on the nearest beat (its hold carries the voice)
-    holdSpacingBeats: 1, // while a hold runs, the other hand's notes stay this far apart
     oneHoldAtATime: true, // a hold starting under another stays a tap: two held keys are a skill Easy does not ask for
-    maxHoldShare: 0.4,
-    gapHoldShare: 0.3,
+    maxHoldShare: 0.2,
+    gapHoldShare: 0.13, // holds are brought up to this share where a bass or lead line plays
+    sectionChordRise: 1.1, // a section this much louder than the last one opens on a chord (sections.js)
     sustainMinBeats: 1,
   },
   normal: {
@@ -114,8 +114,9 @@ const DIFFICULTIES = {
     densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
     spreadLanes: true, // a same-lane repeat closer than laneGapBeats moves to a free lane
     balanceHands: true, // a phrase is mirrored when that evens out the hands
-    maxHoldShare: 0.35,
-    gapHoldShare: 0.25,
+    maxHoldShare: 0.15,
+    gapHoldShare: 0.1,
+    sectionChordRise: 0.9,
     sustainMinBeats: 1,
   },
   hard: {
@@ -137,6 +138,9 @@ const DIFFICULTIES = {
     pulseNotesPerBeat: 2,
     fastQuarterMs: 90, // above about 167 BPM the half beats come first (difficultyFilter.js fastQuarterLevel)
     holdOtherHand: "free",
+    restHoldBeats: 1 / 2, // the shortest hold a rest gets (the others: holdMinBeats)
+    gapHoldShare: 0.07,
+    sectionChordRise: 0.8,
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.95, onDownbeat: false, minEnergy: 0.5 },
@@ -166,6 +170,9 @@ const DIFFICULTIES = {
     holdMinBeats: 1,
     pulseNotesPerBeat: 4,
     holdOtherHand: "free",
+    restHoldBeats: 1 / 2,
+    gapHoldShare: 0.07,
+    sectionChordRise: 0.8,
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.8, onDownbeat: false, minEnergy: 0.4 },

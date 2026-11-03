@@ -3,13 +3,14 @@ const { bandPathNotes } = require("./bandPath");
 const { repeatBarLanes } = require("./barRepeats");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { applyDifficulty, enforceFloors, limitJacks, spreadLanes } = require("./difficultyFilter");
-const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime } = require("./holds");
+const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds } = require("./holds");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { fillRests } = require("./rests");
+const { accentSections, sectionStarts } = require("./sections");
 const { balanceHands, fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -29,11 +30,13 @@ function analyse(raw) {
   const phrases = buildPhrases(features, timing, durationMs);
   const leaders = chooseLeaders(phrases);
   const vocal = isVocalSong(phrases);
+  const energy = withIntensity(energyLookup(features), features, phrases); // with each section's intensity (intensity.js)
   return {
     features,
     durationMs,
     timing,
-    energy: withIntensity(energyLookup(features), features, phrases), // with each section's intensity (intensity.js)
+    energy,
+    sections: sectionStarts(features, timing, energy),
     busy: busyFactor(features),
     phrases,
     leaders,
@@ -100,14 +103,13 @@ function chartNotes(ctx, diff, trace = null) {
   const supports = diff.oneLayer ? phrases.map(() => []) : ctx.supports;
   const all = []; // final notes so far, time-ordered
   const drumTimes = new Set(); // the moments of drum hits (a groove repeat keeps their lane roles)
-  // Where a bass or lead line plays (or the features cannot tell), a phrase's resting hands hold through the rests;
-  // no such hold runs into the next phrase, so a repeat copies it.
+  // Where a bass or lead line plays (or the features cannot tell), a phrase's rests are held through; the holds are
+  // part of the phrase, so a repeat copies them.
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
   const withGapHolds = (notes, tail, p, toMs) =>
     tonal(p)
-      ? step("gapHolds", notes, addGapHolds([...tail, ...notes], diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs))
+      ? step("gapHolds", notes, addGapHolds([...tail, ...notes], features, diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs))
       : notes;
-
   // A bar that plays like one just before it takes that bar's lanes, so a groove keeps its pattern.
   const grooved = (notes, fromMs, toMs, fixed) => step("groove", notes, repeatBarLanes(notes, timing, { fromMs, toMs, fixed }));
 
@@ -186,12 +188,15 @@ function chartNotes(ctx, diff, trace = null) {
   return { notes, sustained: new Set(notes.filter((n) => n.len > 0 && !gapHeld.has(key(n))).map(key)) };
 }
 
-// No hold runs past the end of the song, whatever produced it. The hold share is capped per phrase (a cap over the
-// whole song would demote holds unevenly and break the repeats); real sustains are kept before gap holds.
+// No hold runs past the end of the song, whatever produced it. Sections open on a note; only then, with every moment
+// of the chart known, do holds let go on the next one. The hold share is capped per phrase (a cap over the whole song
+// would demote holds unevenly and break the repeats); real sustains are kept before gap holds.
 function finish(ctx, { notes, sustained }, diff, trace = null) {
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const held = step("clipHolds", notes, clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing));
-  const clipped = step("finalFloors", held, enforceFloors(held, diff, ctx.timing));
+  const accented = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy));
+  const settled = step("settleHolds", accented, settleHolds(accented, diff, ctx.timing, ctx.durationMs));
+  const clipped = step("finalFloors", settled, enforceFloors(settled, diff, ctx.timing));
   const floored = diff.oneHoldAtATime ? step("oneHold", clipped, oneHoldAtATime(clipped)) : clipped;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const last = ctx.phrases.length - 1;

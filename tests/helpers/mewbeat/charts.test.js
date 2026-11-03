@@ -122,7 +122,7 @@ describe("mewbeat chart generator", () => {
   it("leadInAndSilence", () => {
     const features = fixture({ energy: (ms) => (ms >= 30000 && ms < 40000 ? 0 : 1) });
     for (const chart of Object.values(chartsOf(features))) {
-      assert.ok(chart.notes.every((n) => n.t >= 1500), `${chart.difficulty}: note in lead-in`);
+      assert.ok(chart.notes.every((n) => n.t >= 1000), `${chart.difficulty}: note in lead-in`);
       assert.ok(
         chart.notes.every((n) => n.t < 30000 || n.t >= 40000),
         `${chart.difficulty}: note in silence`,
