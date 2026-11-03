@@ -71,6 +71,9 @@ def _label(g: float | None) -> str:
     return names.get(g, f"{g:g}")
 
 
+GAP_LABELS = tuple(sorted({_label(g) for g in GAP_CLASSES} | {"other"}))
+
+
 def _quantiles(values, qs=(0.1, 0.5, 0.9)) -> dict:
     if len(values) == 0:
         return {f"p{int(q * 100)}": None for q in qs}
@@ -181,7 +184,8 @@ def chart_metrics(notes: list[N], grid, breaks: list[tuple[int, int]] | None = N
     # On quantized positions (v2): the gap class is the rhythm the chart means, not the tracker's jitter.
     gaps_beats = np.array([(grid.beat_pos(b) - grid.beat_pos(a)) for a, b in zip(qtimes[:-1], qtimes[1:])])
     gc = Counter(_label(gap_class(g)) for g in gaps_beats)
-    out["gap_share"] = {k: v / len(gaps_beats) for k, v in sorted(gc.items())}
+    # Every class is reported, absent ones as 0 (v2.1): a missing key became an empty table cell that medians skipped.
+    out["gap_share"] = {k: gc.get(k, 0) / len(gaps_beats) for k in GAP_LABELS}
     out["gap_ms"] = {"min": float(gaps_ms.min()), **_quantiles(gaps_ms, (0.05, 0.5))}
     out["gap_beats"] = _quantiles(gaps_beats, (0.05, 0.25, 0.5, 0.75))
     # Runs of consecutive gaps of one length (RC: "consecutive 1/2", "consecutive 1/4"): notes in the run = gaps + 1.

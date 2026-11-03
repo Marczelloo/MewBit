@@ -52,7 +52,7 @@ Klucze w plikach `shared/data/<poziom>/{human,algo}/<set>.json` odpowiadają naz
 | `triplet_share` | udział chwil na 1/3, 1/6, 1/12 (podziały, których siatka algorytmu nie ma) |
 | `on_beat_share`, `on_downbeat_share` | udział chwil na beacie / na pierwszej mierze taktu (metrum z timing pointu) |
 | `downbeats_carried` | udział downbeatów w czasie aktywnym, na których jest chwila |
-| `gap_share` | odstęp między kolejnymi chwilami w beatach, przypisany do najbliższej klasy z {8, 6, 4, 3, 2, 3/2, 1, 3/4, 2/3, 1/2, 1/3, 1/4, 1/6, 1/8, 1/12, 1/16} z tolerancją ±6% względnie; inne = `other` |
+| `gap_share` | odstęp między kolejnymi chwilami w beatach, przypisany do najbliższej klasy z {8, 6, 4, 3, 2, 3/2, 1, 3/4, 2/3, 1/2, 1/3, 1/4, 1/6, 1/8, 1/12, 1/16} z tolerancją ±6% względnie; inne = `other`. Zawsze wszystkie 17 klas, nieobecna = 0 (od v2.1) |
 | `gap_ms`, `gap_beats` | rozkład odstępów (min, kwantyle) |
 | `run_1/2`, `run_1/4`, `run_1/3`, `run_1/6`, `run_1/8`, `run_1/1` | serie kolejnych odstępów jednej klasy (jak w Ranking Criteria „consecutive 1/2”): liczba serii/min, maks. i p90 liczby nut w serii |
 | `fast_runs_1_4_or_finer` | serie odstępów ≤ 1/4 beatu: liczba/min, maks. nut |
@@ -227,3 +227,14 @@ Nowe metryki:
 Nie wprowadzone:
 - klasy odstępów w ms: wystarczą `gap_ms` i skwantowane klasy;
 - osobna metryka „akordy w strumieniu 1/2”: to samo co `chords_in_half_runs_per_min`.
+
+## Poprawka v2.1 (2026-11-03): `gap_share` z zerami
+
+Do v2 `gap_share` zawierało tylko klasy odstępów obecne w charcie. W `*_metrics.csv` brak klasy dawał pustą komórkę, a mediany
+w pandas pomijały takie wiersze. Najbardziej dotknęło to generatora Easy: przy 17 z 20 chartów bez odstępów 1/2 mediana
+wychodziła 0,10 zamiast 0,00. Od v2.1 `chart_metrics.py` zapisuje każdą klasę z `GAP_LABELS` (16 klas i `other`, nieobecna = 0),
+tak jak `snap_share`. Udziały klas obecnych się nie zmieniają.
+
+Zapisane metryki uzupełnia `pipeline/backfill_gap_share.py` (dopisuje zera). Z `--verify` przelicza `gap_share` od nowa
+z nut i siatki, a wynik porównuje z zapisanym: 352 charty, 0 różnic. Potem `pipeline/aggregate.py` i `synthesis/level_distance.py`.
+Raporty poziomów od początku liczyły brak klasy jako 0, więc się nie zmieniają.

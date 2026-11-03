@@ -8,29 +8,19 @@ DSP pluginu i `activity/src/mewbeat/highway.js` nie zmieniły się od commita `d
 - **Etapy 1–3 są zakończone.**
   - Wynik: `REPORT.md`.
   - Plan zmian: `REPORT.md` część 6 („Plan zmian”, z miarami sukcesu i oceną architektury). Audyt kodu z plikami i liniami: część 5. Fragmenty do gry: część 7.
-  - Raporty poziomów: `levels/<poziom>/REPORT.md`. Definicje metryk: `shared/metrics.md` (wersja v2).
+  - Raporty poziomów: `levels/<poziom>/REPORT.md`. Definicje metryk: `shared/metrics.md` (wersja v2.1).
 - **Nic z planu nie jest wdrożone.** Następny krok to krok 1 planu: parametry Normal i Easy, holdy, akcenty na startach sekcji.
 
-### Errata do `REPORT.md` (wykryta przy przekazaniu, w raporcie jeszcze niepoprawiona)
+### Errata `gap_share`: poprawiona
 
-**Przyczyna.** `pipeline/metrics/chart_metrics.py` zapisuje w `gap_share` tylko klasy odstępów, które w charcie występują. Gdy klasy brak, kolumna w `*_metrics.csv` jest pusta (NaN), a mediany w pandas pomijają takie wiersze. Klasa nieobecna powinna liczyć się jako 0.
-
-**Co się zmienia** (poprawione wartości, test 20 utworów):
-
-| Miejsce w `REPORT.md` | Jest | Powinno być |
-|---|---|---|
-| 3.1, odstępy 1/2, generator Easy p10 / p50 / p90 | 0,09 / 0,10 / 0,17 | 0,00 / 0,00 / 0,09 |
-| 3.1, odstępy 1/2, ludzie Easy p10 | 0,14 | 0,04 |
-| 4.1, odstępy 1/2, stosunek Easy | 0,28 | 0,00 |
-| 4.1, mediana odległości Easy od ludzi | 1,31 | 1,26 |
-| 4.1, „Normal istotnie bliżej ludzi niż Easy (13/20, p = 0,017); najsłabszy jest Easy” | jak obok | 11/20, p = 0,105, różnica **nieistotna** na pełnym panelu; Easy jest najsłabszy w gęstości, pokryciu beatów i 1/2 |
-
-**Czego to nie zmienia.**
-- Hard vs Normal bez zmian: 11/20, p = 0,67. Wartości 1/2 Normal i Hard nie mają pustych wierszy.
-- Część 1 raportu podaje Easy 1/2 poprawnie (0,00).
-- Raport Easy liczył 1/2 poprawnie. Inne użycia `gap_share.*` z pustymi wierszami (u ludzi klasy `2`, `other`, `1/4`) mogą lekko zawyżać mediany.
-
-**Naprawa.** W `chart_metrics.py` emitować wszystkie klasy z `GAP_CLASSES` z zerami (tak jak `snap_share`), potem `aggregate.py` i skrypty `synthesis/`. Do tego czasu przy analizie robić `fillna(0)` na kolumnach `gap_share.*`.
+- **Przyczyna.** `gap_share` zapisywało tylko klasy odstępów obecne w charcie, więc mediany pomijały charty bez danej klasy.
+- **Naprawa.** Od v2.1 `pipeline/metrics/chart_metrics.py` zapisuje wszystkie klasy, nieobecna = 0. Świeży `run_pipeline.py` liczy już v2.1.
+- **Zacommitowane metryki** uzupełnił `pipeline/backfill_gap_share.py --verify`: 352 charty przeliczone od nowa, 0 różnic.
+- **Poprawione w `REPORT.md`:**
+  - 3.1: odstępy 1/2 Easy, generator 0,00 / 0,00 / 0,09;
+  - 4.1: mediana panelu Easy 1,26; Normal bliżej ludzi niż Easy w 11/20, p = 0,105, czyli nieistotnie (było 13/20, p = 0,017).
+- **Bez zmian:** Hard wobec Normal (11/20, p = 0,67), część 1 i raporty poziomów.
+- **Opis:** `shared/metrics.md` („Poprawka v2.1”) i `REPORT.md` część 8.
 
 ## 2. Dane poza gitem
 
@@ -100,7 +90,7 @@ Całość zajmuje ok. 1 h na 4 rdzeniach; najdłużej liczą się cechy librosa.
 
 ## 5. Linia bazowa v19
 
-Mediany na 20 utworach testowych, mapy ludzi tego samego utworu i poziomu. Źródło: `shared/data/<poziom>/{human,algo}_metrics.csv` (puste `gap_share.*` liczone jako 0) i `synthesis/out/level_distance_summary.json`.
+Mediany na 20 utworach testowych, mapy ludzi tego samego utworu i poziomu. Źródło: `shared/data/<poziom>/{human,algo}_metrics.csv` i `synthesis/out/level_distance_summary.json`.
 
 | Metryka | Easy ludzie | Easy v19 | Normal ludzie | Normal v19 | Hard ludzie | Hard v19 |
 |---|---|---|---|---|---|---|
@@ -123,7 +113,7 @@ Mediany na 20 utworach testowych, mapy ludzi tego samego utworu i poziomu. Źró
 .venv/bin/python -I mapping-analysis/synthesis/level_distance.py --shared mapping-analysis/data/stage1 --out mapping-analysis/data/stage1/synthesis
 ```
 
-Wynik porównuj z `synthesis/out/level_distance_summary.json` (Easy tam jeszcze 1,31, zob. erratę).
+Wynik porównuj z `synthesis/out/level_distance_summary.json`. Porównania poziomów po utworach (część 4.1 raportu) są w nim w kluczu `paired`, a odległości per utwór w `level_distance_per_song.csv`.
 
 **Odtworzenie bit po bicie.** Generator jest deterministyczny. Kolumna `n_notes` w lokalnym `algo_metrics.csv` powinna być identyczna z zacommitowaną; inaczej różnią się cechy DSP, czyli dekodowanie audio albo JDK.
 
@@ -134,23 +124,22 @@ Wynik porównuj z `synthesis/out/level_distance_summary.json` (Easy tam jeszcze 
 ## 6. Ryzyka i rzeczy niesprawdzone
 
 **Błędy znane:**
-1. Errata `gap_share` (część 1).
-2. `fcntl` w `run_pipeline.py` blokuje Windows natywnie.
+1. `fcntl` w `run_pipeline.py` blokuje Windows natywnie.
 
 **Niesprawdzone:**
-3. Żadnego chartu nie sprawdzono w grze. Fragmenty do gry są w `REPORT.md`, część 7; liczby nie mówią, czy chart jest przyjemny.
-4. Eksperyment `synthesis/ablation.py` zmieniał tylko parametry poziomów. Zmiany we wspólnych funkcjach (siatka, holdy, wybór momentów) nie były testowane.
-5. Klasyfikację perkusji pluginu oceniono tylko na sygnale syntetycznym.
-6. Nie wiadomo, czy „hold do następnej nuty” w tej samej ręce jest grywalny w tej grze (okno puszczenia ×1,5 zostaje). Grywalności nie sprawdzono.
+2. Żadnego chartu nie sprawdzono w grze. Fragmenty do gry są w `REPORT.md`, część 7; liczby nie mówią, czy chart jest przyjemny.
+3. Eksperyment `synthesis/ablation.py` zmieniał tylko parametry poziomów. Zmiany we wspólnych funkcjach (siatka, holdy, wybór momentów) nie były testowane.
+4. Klasyfikację perkusji pluginu oceniono tylko na sygnale syntetycznym.
+5. Nie wiadomo, czy „hold do następnej nuty” w tej samej ręce jest grywalny w tej grze (okno puszczenia ×1,5 zostaje). Grywalności nie sprawdzono.
 
 **Ograniczenia danych:**
-7. Charty generatora powstały z audio z `.osz`, a w grze bot gra inny upload; analiza tempa może wyjść inaczej.
-8. Korpus to popularne osu!mania: szybkie, japońskie i elektroniczne, z lat 2022–26. Tylko 4 gatunki nadają się do porównań. Docelowy gracz Easy z Discorda może potrzebować mniejszej gęstości niż gracz osu!.
-9. Przesunięcie osi czasu jest dopasowane na nutach ludzi (jeden parametr na utwór). 5 utworów oznaczonych w `shared/alignment.md`.
-10. Próg powtórzeń muzyki (0,75) skalibrowano na mapach ludzi.
-11. Zestaw 1746870 wykluczony (brak zgodnej kopii); poziom `hell` nieanalizowany.
+6. Charty generatora powstały z audio z `.osz`, a w grze bot gra inny upload; analiza tempa może wyjść inaczej.
+7. Korpus to popularne osu!mania: szybkie, japońskie i elektroniczne, z lat 2022–26. Tylko 4 gatunki nadają się do porównań. Docelowy gracz Easy z Discorda może potrzebować mniejszej gęstości niż gracz osu!.
+8. Przesunięcie osi czasu jest dopasowane na nutach ludzi (jeden parametr na utwór). 5 utworów oznaczonych w `shared/alignment.md`.
+9. Próg powtórzeń muzyki (0,75) skalibrowano na mapach ludzi.
+10. Zestaw 1746870 wykluczony (brak zgodnej kopii); poziom `hell` nieanalizowany.
 
 **Uwagi praktyczne:**
-12. Jar pluginu zacommitowany w `helpers/lavalink/plugins/` ma tylko cechy v1, więc bot uzna utwory za „uncharted”. Do testów w grze przebuduj go (`scripts/build-mewbeat-plugin.mjs`).
-13. W raportach poziomów zostały 3 niespełnione prośby o metryki na poziom (część 8 każdego raportu). Najważniejsza: rytm na siatce binarnej w ±25 ms; jest częściowo zastąpiona przez `synthesis/robustness.py`.
-14. Klucz OAuth osu! i hasło konta pojawiły się w czacie tej sesji. Nie ma ich w żadnym pliku ani w gicie, ale trzeba je zmienić.
+11. Jar pluginu zacommitowany w `helpers/lavalink/plugins/` ma tylko cechy v1, więc bot uzna utwory za „uncharted”. Do testów w grze przebuduj go (`scripts/build-mewbeat-plugin.mjs`).
+12. W raportach poziomów zostały 3 niespełnione prośby o metryki na poziom (część 8 każdego raportu). Najważniejsza: rytm na siatce binarnej w ±25 ms; jest częściowo zastąpiona przez `synthesis/robustness.py`.
+13. Klucz OAuth osu! i hasło konta pojawiły się w czacie tej sesji. Nie ma ich w żadnym pliku ani w gicie, ale trzeba je zmienić.

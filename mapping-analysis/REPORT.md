@@ -142,8 +142,8 @@ Wszystkie reguły Z i T potwierdziły się na 20 mapach testowych każdego pozio
 | nuty/s | 2,72 / 3,64 / 4,40 | 1,43 / 1,87 / 2,41 |
 | beaty z nutą | 0,68 / 0,86 / 0,92 | 0,22 / 0,36 / 0,56 |
 | downbeaty z nutą | 0,77 / 0,95 / 1,00 | 0,05 / 0,35 / 0,71 |
-| odstępy 1/2 | 0,14 / 0,29 / 0,38 | 0,09 / 0,10 / 0,17 (powyżej 150 BPM 0) |
-| odstępy 2-beatowe | 0,01 / 0,03 / 0,14 | 0,12 / 0,26 / 0,81 |
+| odstępy 1/2 | 0,04 / 0,28 / 0,38 | 0,00 / 0,00 / 0,09 (zero w 17/20 utworów, wszystkich ≥ 150 BPM) |
+| odstępy 2-beatowe | 0,00 / 0,03 / 0,14 | 0,12 / 0,26 / 0,81 |
 | min. odstęp [ms] | 135 / 162 / 198 | 214 / 286 / 327 |
 | akordy | 0,01 / 0,16 / 0,22 | 0,00 / 0,07 / 0,13 |
 | puszczenie holda na następnej nucie | 0,93 / 0,99 / 1,00 | 0,17 / 0,35 / 0,49 |
@@ -208,7 +208,7 @@ Niedobory występują w każdym z czterech dużych gatunków.
 2. Tempo i faza (pkt 1.2). W 12/19 utworów odczuwany beat generatora to 2 beaty ludzkie, bo `feltBeatMs` mnoży beat przez `foldFactor` albo tracker łapie połowę tempa. Wszystkie progi Normal działają wtedy dwa razy za mocno.
 3. Holdy (pkt 1.4).
 4. Akordy (pkt 1.5).
-5. Dziury w pulsie: odstępy 3/2 i 2 beaty 0,04 wobec 0,01.
+5. Dziury w pulsie: odstępy 3/2 i 2 beaty 0,03 i 0,04 wobec 0,01 i 0,00 (częstsze w 18/20 utworów).
 6. Przerwy i kontrast: generator gra w 11/13 ludzkich przerw ≥ 4 beaty.
 7. Powtórzenia.
 8. Ręce i tryle w jednej ręce.
@@ -273,7 +273,7 @@ Hard generatora ma tyle samo chwil na beat co ludzie (2,01 wobec 2,02), ale mnie
 
 Sprawdziłem to dwoma sposobami (`synthesis/level_distance.py`, panel 18 metryk ustalony przed liczeniem).
 
-**Cały panel: hipoteza się nie potwierdza.** Mediany odległości od ludzi po metrykach (w IQR ludzi): Easy 1,31, Normal 1,18, Hard 1,13. Po utworach Hard jest bliżej ludzi niż Normal w 11 z 20 utworów (Wilcoxon p = 0,67): bez różnicy. Normal jest natomiast istotnie bliżej ludzi niż Easy (13/20, p = 0,017). Najsłabszy jest więc Easy, nie Normal.
+**Cały panel: hipoteza się nie potwierdza.** Mediany odległości od ludzi po metrykach (w IQR ludzi): Easy 1,26, Normal 1,18, Hard 1,13. Po utworach (mediana panelu w utworze: Easy 1,46, Normal 1,27, Hard 1,37) Hard jest bliżej ludzi niż Normal w 11 z 20 utworów (dokładny Wilcoxon p = 0,67): bez różnicy. Normal jest bliżej ludzi niż Easy także tylko w 11 z 20 (p = 0,105), więc na pełnym panelu żaden poziom nie odstaje istotnie. Easy jest najsłabszy w wymiarach „grania z muzyką” (tabela niżej: gęstość, beaty i półbeaty z nutą, odstępy 1/2, recall), nie Normal.
 
 **Wymiary „grania z muzyką”: hipoteza się potwierdza.** Stosunek generator / człowiek w tym samym utworze:
 
@@ -281,7 +281,7 @@ Sprawdziłem to dwoma sposobami (`synthesis/level_distance.py`, panel 18 metryk 
 |---|---|---|---|---|
 | gęstość (nuty/beat) | 0,57 | 0,61 | 0,78 | 19/20, p < 0,001 |
 | półbeaty z nutą | 0,24 | 0,44 | 0,67 | 18/20, p = 0,003 |
-| odstępy 1/2 | 0,28 | 0,44 | 0,61 | 14/20, p = 0,004 |
+| odstępy 1/2 | 0,00 | 0,44 | 0,61 | 14/20, p = 0,004 |
 | najdłuższa seria 1/2 | 0,00 | 0,15 | 0,29 | 14/20, p = 0,09 |
 | odtworzone ludzkie chwile (recall) | 0,43 | 0,58 | 0,74 | 18/20, p < 0,001 |
 | beaty z nutą | 0,42 | 0,72 | 0,66 | 9/20, bez różnicy |
@@ -475,6 +475,7 @@ Na każdym poziomie oceniaj:
 - W trakcie etapu 2 zmieniłem metryki na v2, bo trzy analizy zgłosiły błędy pomiaru karzące generator za drganie siatki. Raporty poziomów są na v2.
 - Pokrycie siatki dla generatora jest liczone z tolerancją 10 ms; przy ±25 ms jest wyższe (część 1, pkt 1, i `synthesis/out/robustness_summary.json`).
 - Próg powtórzeń muzyki (0,75) jest skalibrowany na mapach ludzi, więc sprzyja im w porównaniu bezwzględnym.
+- `gap_share` w wersji v2.1 (poprawione po pierwszym wydaniu raportu). Wcześniej klasa odstępu nieobecna w charcie dawała pustą komórkę tabeli, a mediany ją pomijały. Teraz każda klasa ma wartość, nieobecna = 0. Zapisane metryki uzupełnił `pipeline/backfill_gap_share.py`; przeliczenie od nowa 352 chartów dało 0 różnic. Zmieniły się tylko liczby Easy: odstępy 1/2 w części 3.1 (generator 0,10 → 0,00), mediana panelu 1,31 → 1,26 oraz porównanie Normal z Easy w części 4.1 (było 13/20, p = 0,017, istotne; jest 11/20, p = 0,105). Hard wobec Normal, część 1 i raporty poziomów się nie zmieniły (raporty poziomów od początku liczyły brak jako 0).
 
 **Eksperymenty i zakres:**
 - `synthesis/ablation.py` zmienia tylko parametry poziomów. Skutków zmian w funkcjach wspólnych (siatka, holdy, wybór) nie testowałem, bo wymagałyby zmiany kodu.
@@ -494,7 +495,7 @@ Na każdym poziomie oceniaj:
   - kalibracja onsetów.
 - **Charty i metryki:**
   - generator v19 bez zmian dla 20 utworów testowych × 3 poziomy;
-  - metryki v2 dla wszystkich map (`pipeline/run_pipeline.py`).
+  - metryki v2 dla wszystkich map (`pipeline/run_pipeline.py`), `gap_share` uzupełnione do v2.1 (`pipeline/backfill_gap_share.py --verify`).
 - **Analizy:**
   - trzy izolowane analizy poziomów (`levels/*/`);
   - etap 3: `synthesis/cross_levels.py`, `level_distance.py`, `robustness.py`, `ablation.py`.

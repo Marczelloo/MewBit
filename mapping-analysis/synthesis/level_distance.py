@@ -8,7 +8,8 @@ generator's value is compared with the human chart of the same song: |algo - hum
 inter-quartile range of that metric on that level (all human charts of the level), so "1" means one human IQR away and
 levels with different spreads stay comparable. Reported per metric: the median over songs, the share of songs where the
 generator falls inside the human p10-p90 band of the level, and the paired difference. Plus the generator's precision
-and recall against the human chart of the same level (versus_human).
+and recall against the human chart of the same level (versus_human). Per song, the median distance over the panel;
+levels are compared on it pairwise over the same songs (how many songs each is closer, two-sided Wilcoxon signed-rank).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.stats import wilcoxon
 
 ROOT = Path(__file__).resolve().parents[1]
 LEVELS = ("easy", "normal", "hard")
@@ -57,11 +59,11 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=ROOT / "synthesis" / "out")
     args = ap.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
-    rows, summary = [], {}
+    rows, summary, per_song = [], {}, {}
     for level in LEVELS:
         human, algo = load(args.shared, level, "human"), load(args.shared, level, "algo")
         both = algo.index.intersection(human.index)
-        dists, inside = [], []
+        dists, inside, song_cols = [], [], []
         for col, label in PANEL:
             h_all = human[col].dropna()
             iqr = float(h_all.quantile(0.75) - h_all.quantile(0.25)) or float(h_all.std()) or 1.0
@@ -75,7 +77,9 @@ def main(argv=None) -> int:
                          "paired_diff_p50": float((a[ok] - h[ok]).median()) if ok.any() else None,
                          "distance_iqr_p50": float(d.median()) if ok.any() else None, "algo_inside_human_p10_p90": float(within)})
             dists.append(float(d.median()) if ok.any() else np.nan)
+            song_cols.append(d.rename(col))
             inside.append(within)
+        per_song[level] = pd.concat(song_cols, axis=1).median(axis=1)
         vs = algo.loc[both]
         summary[level] = {
             "songs": int(len(both)),
@@ -87,7 +91,15 @@ def main(argv=None) -> int:
             "precision_p50": float(vs["versus_human.precision"].median()), "recall_p50": float(vs["versus_human.recall"].median()),
             "precision_p10_p90": [float(vs["versus_human.precision"].quantile(0.1)), float(vs["versus_human.precision"].quantile(0.9))],
             "recall_p10_p90": [float(vs["versus_human.recall"].quantile(0.1)), float(vs["versus_human.recall"].quantile(0.9))],
+            "per_song_distance_iqr_p50": float(per_song[level].median()),
         }
+    songs = pd.DataFrame(per_song)
+    songs.to_csv(args.out / "level_distance_per_song.csv", index_label="set_id")
+    summary["paired"] = {}
+    for a, b in (("hard", "normal"), ("normal", "easy"), ("hard", "easy")):
+        pair = songs[[a, b]].dropna()
+        summary["paired"][f"{a}_vs_{b}"] = {"songs": int(len(pair)), f"{a}_closer": int((pair[a] < pair[b]).sum()),
+                                            "wilcoxon_p": float(wilcoxon(pair[a], pair[b]).pvalue)}
     table = pd.DataFrame(rows)
     table.to_csv(args.out / "level_distance.csv", index=False)
     (args.out / "level_distance_summary.json").write_text(json.dumps(summary, indent=1))
