@@ -1,0 +1,11 @@
+| set | utwór | gatunek | relacja tempa | czas (oś audio) | co widać w danych |
+|---|---|---|---|---|---|
+| 2224035 | JINGBURGER – Konton Boogie | pop | odczuwany beat = 2 beaty ludzkie | 01:44–01:49 | Gęstość w kiai: człowiek 39 nut (9 chwil na 1/2, 17 akordów), algorytm 10 nut (1 na 1/2, 1 akordów) w 4 taktach |
+| 2200258 | Kashii Moimi feat. KAFU – Cat Loving (kageminori bootleg) | electronic | odczuwany beat = 2 beaty ludzkie | 00:19–00:23 | Gęstość w kiai: człowiek 32 nut (4 chwil na 1/2, 13 akordów), algorytm 12 nut (0 na 1/2, 2 akordów) w 4 taktach |
+| 1894317 | kessoku band – Seishun Complex (TV Size) | anime | odczuwany beat = 2 beaty ludzkie | 01:16–01:21 | Gęstość w kiai: człowiek 43 nut (14 chwil na 1/2, 11 akordów), algorytm 17 nut (1 na 1/2, 2 akordów) w 4 taktach |
+| 1784295 | Rokudenashi – Tada Koe Hitotsu | pop | 1:1 | 00:45–00:53 | Granica sekcji: człowiek 20 akordów i 53 nut, algorytm 3 akordów i 23 nut; posłuchać, czy wejście nowej sekcji jest zaznaczone |
+| 2270163 | ANGUISH, vlad pivo, YARCHE SOLNCA & ily – Krasavitsa | electronic | bez siatki (NO_TIMING) | 00:34–00:39 | Granica sekcji: człowiek 16 akordów i 35 nut, algorytm 0 akordów i 23 nut; posłuchać, czy wejście nowej sekcji jest zaznaczone |
+| 1570640 | Lime – 8bit Voyager | electronic | odczuwany beat = 2 beaty ludzkie | 00:44–00:49 | Holdy algorytmu z nutami drugiej ręki w środku: 8 z 8 (człowiek 0 z 0); sprawdzić czytelność i puszczenia poza siatką |
+| 1773164 | TUYU – Itsuka Otona ni Nareru to Ii ne. | pop | odczuwany beat = 2 beaty ludzkie | 01:06–01:12 | Holdy algorytmu z nutami drugiej ręki w środku: 7 z 7 (człowiek 1 z 24); sprawdzić czytelność i puszczenia poza siatką |
+| 2314654 | Laur – PRAGMATISM -RESURRECTION- | electronic | 1:1 | 02:27–02:33 | Chwile algorytmu poza 1/1, 1/2, 1/4 siatki ludzkiej: 12 z 18 (człowiek 5); sprawdzić, czy nuty nie „pływają” względem bitu |
+| 808872 | Kobaryo – Perfect Neglect | electronic | odczuwany beat = 2 beaty ludzkie | 00:51–00:55 | Chwile algorytmu poza 1/1, 1/2, 1/4 siatki ludzkiej: 11 z 15 (człowiek 0); sprawdzić, czy nuty nie „pływają” względem bitu |
