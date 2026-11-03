@@ -1,0 +1,7 @@
+# Separate environment for audio/stems.py (Spleeter 4stems). Needs Python 3.10:
+#   uv python install 3.10 && uv venv -p 3.10 <venv> && VIRTUAL_ENV=<venv> uv pip install -r requirements-stems.txt
+# Weights: https://github.com/deezer/spleeter/releases/download/v1.4.0/4stems.tar.gz, unpacked to <models>/4stems/
+spleeter==2.4.0
+tensorflow==2.9.3
+numpy==1.26.4
+librosa==0.10.2.post1
