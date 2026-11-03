@@ -27,7 +27,7 @@ MIRRORS = {
     "osudirect": "https://osu.direct/api/d/{id}?noVideo=1",
 }
 MAX_BYTES = 200 * 1024 * 1024
-UA = "mapping-analysis/1.0 (corpus download for a research report)"
+UA = "MewBit-mapping-analysis/1.0 (+https://github.com/Marczelloo/MewBit)"  # mirrors refuse clients that do not name themselves
 
 
 def official_checksums(cache: Path, set_id: int) -> dict[int, str]:
