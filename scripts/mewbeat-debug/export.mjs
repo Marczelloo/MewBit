@@ -12,7 +12,15 @@ import { fileURLToPath } from "node:url";
 const LEVELS = ["easy", "normal", "hard"];
 const WORK = "/work";
 // The saved runs of the generator, oldest first: their charts are shown beside the live one.
-const SNAPSHOTS = { v19: `${WORK}/data/algo_charts`, v21: `${WORK}/h21/data/algo_charts`, v25: `${WORK}/s5/data/algo_charts` };
+const SNAPSHOTS = {
+  v19: `${WORK}/data/algo_charts`,
+  v20: `${WORK}/e1/data/algo_charts`,
+  v21: `${WORK}/h21/data/algo_charts`,
+  v22: `${WORK}/p2run/data/algo_charts`,
+  v23: `${WORK}/s3/data/algo_charts`,
+  v24: `${WORK}/s4/data/algo_charts`,
+  v25: `${WORK}/s5/data/algo_charts`,
+};
 const RUN = `${WORK}/s7/run-train`;
 const FEATURES = `${WORK}/p2run/data/features`; // v4: the first version with the one of the bar found phrase by phrase
 
