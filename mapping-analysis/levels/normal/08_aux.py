@@ -7,7 +7,7 @@ udział torów zewnętrznych dla kicka/snare i liczbę nut algorytmu w przerwach
 - akordy z sąsiednią chwilą bliżej niż 0,9 beatu (to, co spaceChords w kodzie Normal usuwa przy „odczuwanym beacie” = 2 beaty ludzkie),
 - udział beatów siatki ludzkiej z chwilą (pokrycie beatów) i półbeatów,
 - odstęp nuta→nuta w ms w oknach 1/2-strumienia: najkrótszy powtarzalny odstęp (p5) względem BPM.
-Wynik: results/aux.md
+Wynik: results/auxiliary.md
 """
 import sys
 from pathlib import Path
@@ -51,7 +51,7 @@ for sp in ["train", "test", "algo"]:
     sub = R[R.split == sp]
     rows.append([lab[sp], len(sub), fmt_q(sub.chord_near), fmt_q(sub.chord_half)])
 txt = "### Akordy a sąsiednie chwile (na mapę, p10/p50/p90)\n\n" + md_table(rows, ["grupa", "map", "akordy z sąsiadem < 0,9 beatu", "akordy z sąsiadem w odstępie 1/2 beatu"])
-(RESULTS / "aux.md").write_text(txt)
+(RESULTS / "auxiliary.md").write_text(txt)
 print(txt)
 
 
@@ -91,7 +91,7 @@ for df, who, sp in ((H[H.split == "train"], "human", "ludzie trening"), (H[H.spl
     rows.append([sp, len(P)] + [fmt_q(P[k]) for k in ["kick", "snare", "bass", "lead", "low", "high", "vocal"]] + [fmt_q(P["kick_outer"]), fmt_q(P["snare_outer"])])
 txt2 = ("### Pojedyncze nuty: udział lewej ręki wg dźwięku w slocie (na mapę, p10/p50/p90); ostatnie dwie kolumny: udział torów zewnętrznych 0/3\n\n" +
         md_table(rows, ["grupa", "map", "kick", "snare", "bass", "lead", "tylko pasmo low", "tylko pasmo high", "tylko stem wokalu", "kick: tory 0/3", "snare: tory 0/3"]))
-(RESULTS / "aux.md").write_text(txt + "\n\n" + txt2)
+(RESULTS / "auxiliary.md").write_text(txt + "\n\n" + txt2)
 print(txt2)
 
 
@@ -141,5 +141,5 @@ for x in LR[LR.split == "test"].itertuples():
 C = pd.DataFrame(cnt)
 txt3 += (f"\n\nW {len(C)} przerwach ≥ 4 beaty ludzi z testu ({C.set_id.nunique()} utworów) algorytm ma nuty w {int((C.algo_notes > 0).sum())}; "
          f"nut na beat przerwy p10/p50/p90: {fmt_q(C.per_beat)}.")
-(RESULTS / "aux.md").write_text(txt + "\n\n" + txt2 + "\n\n" + txt3)
+(RESULTS / "auxiliary.md").write_text(txt + "\n\n" + txt2 + "\n\n" + txt3)
 print(txt3)

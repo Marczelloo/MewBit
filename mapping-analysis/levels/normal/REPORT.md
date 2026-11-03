@@ -822,7 +822,7 @@ $PY -I 03_sections.py      # granice sekcji, intro/outro, kontrast → results/s
 $PY -I 04_holds.py         # holdy: klasy, ręka przy puszczeniu, regresja `chosen_hold_start` → results/holds.md, holds_per_chart.csv
 $PY -I 05_genres.py        # gatunki: KW + BH, OLS z BPM, test, algorytm wg gatunku → results/genres.md
 $PY -I 06_algo.py          # algorytm vs ludzie (z versus_human), relacja tempa, per utwór, okna → results/algo_vs_human.md, windows.csv, candidates.md
-$PY -I 08_aux.py           # pomocnicze: tory zewnętrzne, nuty algorytmu w ludzkich przerwach → results/aux.md
+$PY -I 08_aux.py           # pomocnicze: tory zewnętrzne, nuty algorytmu w ludzkich przerwach → results/auxiliary.md
 $PY -I 09_numbers.py       # liczności tendencji, wpływ oznaczonych utworów → results/numbers.md
 $PY -I 10_jitter_check.py  # czułość rytmu na drgania czasu → results/jitter_check.md
 $PY -I 07_window.py 2224035 1:44 1:49   # podgląd fragmentu
