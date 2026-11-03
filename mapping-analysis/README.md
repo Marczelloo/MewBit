@@ -5,7 +5,9 @@ oraz sprawdzenie hipotezy „Hard wypada lepiej niż Normal”. Kod algorytmu (`
 
 ## Stan na 2026-11-03
 
-**Etap 1 jest gotowy.** Wyniki: `shared/`, czyli korpus, poziomy, metryki per poziom w `shared/data/<poziom>/`,
+**Etapy 1–3 są gotowe; raport końcowy: `REPORT.md`.** Raporty poziomów: `levels/<poziom>/REPORT.md`, analizy między poziomami: `synthesis/`.
+
+Etap 1: Wyniki: `shared/`, czyli korpus, poziomy, metryki per poziom w `shared/data/<poziom>/`,
 dane utworów w `shared/data/songs/`, charty wszystkich poziomów dla etapu 3 w `shared/cross/` oraz `shared/alignment.md`.
 - **osu! API.** Migawka 6103 zestawów Ranked 4K w cache `data/corpus/`. Zakresy SR: `shared/levels.md`. Korpus: `shared/corpus.csv`.
 - **Pliki `.osz`.** Za zgodą użytkownika z mirrora osu.direct (`pipeline/corpus/download_mirror.py`). Każdy plik ma
