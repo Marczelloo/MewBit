@@ -7,6 +7,7 @@ const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { beatPosition } = require("../../../helpers/mewbeat/charts/grid");
 const { limitHoldShare, oneHoldAtATime } = require("../../../helpers/mewbeat/charts/holds");
 const { copyRepeat } = require("../../../helpers/mewbeat/charts/repeats");
+const { rhythmOf } = require("../../../helpers/mewbeat/charts/rhythm");
 const { balanceHands } = require("../../../helpers/mewbeat/charts/seams");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
@@ -61,22 +62,24 @@ describe("gaps and fast runs", () => {
   });
 
   for (const source of ["lead", "drums"]) {
-    it(`Normal keeps a whole stream of ${source} and adds quarters below quarterMaxBpm`, () => {
+    it(`Normal alone keeps a whole stream of ${source}, quarters too`, () => {
       const line = every(2000, 18000, 125).map((t) => event(t, source, { level: 1 }));
       const times = [...new Set(chart(line, normal).map((n) => n.t))];
       assert.ok(times.some(offHalfGrid), "quarters stay");
       for (const t of every(2000, 18000, 250)) assert.ok(times.includes(t), `half beat ${t}`);
     });
 
-    it(`Normal keeps ${source} on the half beats from quarterMaxBpm on`, () => {
+    it(`Normal cut from Hard keeps few quarters of ${source} in a fast song`, () => {
       const fast = buildTiming(makeFeatures({ durationMs: 32000, bpm: 160 }), 32000);
       const line = every(8, 48, 1).map((i) => event(Math.round((i * 375) / 4), source, { level: 1 })); // 1/4 grid at 160 BPM
-      const notes = applyDifficulty(line, normal, fast, LOUD, [], 0.9, 32000);
+      const rhythm = rhythmOf(line.map((e) => ({ t: e.t, lane: e.lane })), { eventTimes: [], onsets: [] });
+      const notes = applyDifficulty(line, normal, fast, LOUD, [], 0.9, 32000, false, null, { rhythm, fromMs: 0, toMs: Infinity });
       assert.ok(notes.length > 0);
-      for (const n of notes) {
+      const quarters = notes.filter((n) => {
         const halves = beatPosition(fast, n.t) * 2;
-        assert.ok(Math.abs(halves - Math.round(halves)) < 0.02, `${n.t}`);
-      }
+        return Math.abs(halves - Math.round(halves)) >= 0.02;
+      });
+      assert.ok(quarters.length <= 0.1 * notes.length, `${quarters.length} of ${notes.length}`);
     });
   }
 

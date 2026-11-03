@@ -164,7 +164,7 @@ describe("mewbeat chart generator", () => {
 
   describe("absolute playability floors", () => {
     const MIN_LANE_GAP_MS = { easy: 350, normal: 200, hard: 150, hell: 110 };
-    const MIN_EASY_NOTE_GAP_MS = 200;
+    const MIN_EASY_NOTE_GAP_MS = 130;
     const scenarios = {
       "180 BPM confident": () => makeFeatures({ bpm: 180, confidence: 0.9, durationMs: 120000, energy: () => 1 }),
       "200 BPM confident": () => makeFeatures({ bpm: 200, confidence: 0.9, durationMs: 120000, energy: () => 1 }),
@@ -179,7 +179,7 @@ describe("mewbeat chart generator", () => {
         }
       });
 
-      it(`keeps easy notes at least 200 ms apart in any lane: ${name}`, () => {
+      it(`keeps easy notes at least 130 ms apart in any lane: ${name}`, () => {
         const times = [...new Set(chartsOf(build()).easy.notes.map((n) => n.t))];
         for (let i = 1; i < times.length; i++) {
           assert.ok(times[i] - times[i - 1] >= MIN_EASY_NOTE_GAP_MS, `${times[i - 1]} -> ${times[i]}`);
@@ -242,9 +242,9 @@ describe("mewbeat chart generator", () => {
       for (const chart of Object.values(chartsOf(noisy))) {
         const times = [...new Set(chart.notes.map((n) => n.t))];
         for (let i = 1; i < times.length; i++) {
-          // 0.98: a snapped note may sit 2% under the floor (beat jitter), nothing more.
+          // 0.94: a half beat is half of the beat it sits in, and the extra beat shortens that one by 20 ms.
           assert.ok(
-            times[i] - times[i - 1] >= 0.98 * FLOORS[chart.difficulty] - 1,
+            times[i] - times[i - 1] >= 0.94 * FLOORS[chart.difficulty] - 1,
             `${chart.difficulty}: ${times[i - 1]} -> ${times[i]}`,
           );
         }

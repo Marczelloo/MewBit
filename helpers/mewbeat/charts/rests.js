@@ -6,6 +6,7 @@
 const { LEAD_IN_MS, MAX_SNAP_DISTANCE_MS } = require("./difficulty");
 const { gridSlot } = require("./grid");
 const { beatMsOf, holdSafe } = require("./holds");
+const { MID_ENERGY } = require("./rhythm");
 const { nearestIndex } = require("./util");
 
 const FILL_MIN_ENERGY = 0.2; // a rest is filled only where the music is at least this loud (a quiet passage may rest)
@@ -13,6 +14,7 @@ const LEADER_BONUS = 0.5; // a sound of the phrase's leading layer (the sung lin
 const BAND_LANES = { low: 0, lowmid: 1, highmid: 2, high: 3 };
 const KICK_LANES = [0, 3];
 const SNARE_LANES = [1, 2];
+const QUIET_REST_BEATS = 1; // in a quiet phrase of a level with diff.quietBeats, a rest may be this much longer unfilled
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const endOf = (n) => n.t + (n.len > 0 ? n.len : 0);
@@ -76,13 +78,19 @@ function restsOf(notes, diff, timing, untilMs) {
 // fillRests(notes, ctx, diff, { fromMs, toMs, untilMs }) -> notes, time-ordered. `ctx` is generate.js's analysis
 // (features, timing, energy, phrases, leaders). Fill notes go between fromMs and toMs only (one phrase, so a repeat
 // copies its source's fills); `untilMs` (the end of the song, for the last phrase) ends the rest after the last note.
-function fillRests(notes, ctx, diff, { fromMs: windowFrom = LEAD_IN_MS, toMs: windowTo = Infinity, untilMs = null } = {}) {
+// `rhythm` (optional, rhythm.js) limits the sounds to the moments of the level this one is cut from.
+function fillRests(notes, ctx, diff, { fromMs: windowFrom = LEAD_IN_MS, toMs: windowTo = Infinity, untilMs = null } = {}, rhythm = null) {
   if (!(diff.fillRestBeats > 0)) return notes;
   const { features, timing, energy, phrases = [], leaders = [] } = ctx;
-  const sounds = soundsOf(features);
+  const sounds = rhythm ? rhythm.sounds : soundsOf(features);
   const leaderAt = (t) => {
     const i = phrases.findIndex((p) => t >= p.startMs && t < p.endMs);
     return i < 0 ? null : leaders[i];
+  };
+  // A beat a quiet phrase gave up leaves a rest of two beats: that one is the music's, not a hole to fill.
+  const phraseIsQuiet = (t) => {
+    const phrase = phrases.find((p) => t >= p.startMs && t < p.endMs);
+    return diff.quietBeats > 0 && Number.isFinite(phrase?.energy) && phrase.energy < MID_ENERGY;
   };
   const laneGap = diff.minLaneGapMs ?? 0;
   const out = [...notes].sort(byTime);
@@ -94,6 +102,10 @@ function fillRests(notes, ctx, diff, { fromMs: windowFrom = LEAD_IN_MS, toMs: wi
     const beat = beatMsOf(timing, fromMs);
     const clear = Math.max(diff.minNoteGapMs ?? 0, beat / 2);
     const mid = (fromMs + toMs) / 2;
+    if (phraseIsQuiet(mid) && toMs - fromMs < (diff.fillRestBeats + QUIET_REST_BEATS) * beat) {
+      tried.add(fromMs);
+      continue;
+    }
     const leader = leaderAt(mid);
     const candidates = [];
     const lo = Math.max(fromMs + clear, windowFrom);

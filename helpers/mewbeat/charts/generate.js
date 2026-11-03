@@ -10,6 +10,7 @@ const { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasStead
 const { copyRepeat, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { fillRests } = require("./rests");
+const { nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
 const { balanceHands, fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
@@ -20,6 +21,7 @@ const { lowerBound } = require("./util");
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
 const MIN_COPY_SHARE = 0.5; // a repeat keeping less of its source than this is charted fresh
+const PLAYS_ON_ENERGY = 0.35; // a phrase at least this loud plays on, for a level cut from a harder one
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
@@ -31,6 +33,7 @@ function analyse(raw) {
   const leaders = chooseLeaders(phrases);
   const vocal = isVocalSong(phrases);
   const energy = withIntensity(energyLookup(features), features, phrases); // with each section's intensity (intensity.js)
+  const onsets = sortedOnsets(features);
   return {
     features,
     durationMs,
@@ -42,20 +45,11 @@ function analyse(raw) {
     leaders,
     vocal,
     supports: phrases.map((phrase, i) => supportLayers(phrase, leaders[i], vocal)), // the layers charted beside the leader
-    eventTimes: sortedEventTimes(features),
+    onsets,
+    eventTimes: onsets.map((o) => o.t), // what a copied note may sit on
+    final: {}, // difficulty -> its finished notes (finalNotes)
+    rhythms: {}, // difficulty -> the moments the level below it is cut from (upperRhythm)
   };
-}
-
-// Every layer event and band onset, sorted: what a copied note may sit on.
-function sortedEventTimes(features) {
-  const times = [];
-  for (const layer of ["drums", "bass", "lead"]) {
-    for (const e of Array.isArray(features[layer]) ? features[layer] : []) if (Number.isFinite(e?.t)) times.push(e.t);
-  }
-  for (const band of features.bands) {
-    for (const o of Array.isArray(band?.onsets) ? band.onsets : []) if (Number.isFinite(o?.t)) times.push(o.t);
-  }
-  return times.sort((a, b) => a - b);
 }
 
 // --- one difficulty ------------------------------------------------------------------------
@@ -80,8 +74,10 @@ function copiedRepeat(ctx, all, i, diff) {
   const sourceNotes = inWindow(all, from, to);
   if (sourceNotes.length === 0) return null;
   // A copy may end sooner than its source (or the song): its holds are clipped to fit.
-  const copied = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing), Math.min(phrase.endMs, durationMs), diff, timing)
+  const fitted = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing), Math.min(phrase.endMs, durationMs), diff, timing)
     .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
+  const upper = upperRhythm(ctx, diff);
+  const copied = upper ? nested(fitted, upper) : fitted;
   return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? copied : null;
 }
 
@@ -92,14 +88,16 @@ function leadersOf(ctx, diff) {
   return ctx.leaders.map((leader, i) => (leader !== "bands" && heard(ctx.phrases[i]) ? "lead" : leader));
 }
 
-// One difficulty charted from the music, phrase by phrase: { notes, sustained }. Every difficulty is charted on its
-// own (its grid, gaps and density pick from the music's events), not thinned from a harder one, so an Easy pattern
-// is made for Easy. `sustained` holds the keys ("t:lane") of the real sustain holds, which the hold cap keeps longest.
+// One difficulty charted from the music, phrase by phrase: { notes, sustained }. A difficulty with diff.cutFrom takes
+// its moments from that harder level (rhythm.js) and lays out its own lanes, so an Easy pattern is made for Easy while
+// every moment of it is one Normal plays too. `sustained` holds the keys ("t:lane") of the real sustain holds, which
+// the hold cap keeps longest.
 // `trace` (optional, trace.js) hears what every stage did.
 function chartNotes(ctx, diff, trace = null) {
   const { features, timing, energy, phrases, durationMs } = ctx;
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const leaders = leadersOf(ctx, diff);
+  const rhythm = upperRhythm(ctx, diff);
   const supports = diff.oneLayer ? phrases.map(() => []) : ctx.supports;
   const all = []; // final notes so far, time-ordered
   const drumTimes = new Set(); // the moments of drum hits (a groove repeat keeps their lane roles)
@@ -129,7 +127,7 @@ function chartNotes(ctx, diff, trace = null) {
     if (copy) return [...fill, ...notes];
     const before = new Set(all);
     const window = { fromMs: phrases[i].startMs, toMs: end ? Infinity : phrases[last].endMs, untilMs: end ? durationMs : null };
-    return step("fillRests", [...fill, ...notes], fillRests([...all, ...fill, ...notes], ctx, diff, window).filter((n) => !before.has(n)));
+    return step("fillRests", [...fill, ...notes], fillRests([...all, ...fill, ...notes], ctx, diff, window, rhythm).filter((n) => !before.has(n)));
   };
 
   // Where the phrase's notes join the chart. A repeat keeps its source's hands; only a jack at its seam may move.
@@ -153,7 +151,7 @@ function chartNotes(ctx, diff, trace = null) {
       continue;
     }
 
-    if (leaders[i] === "bands") {
+    if (leaders[i] === "bands" && !rhythm) {
       // Consecutive band-path phrases are one window (the band path keeps no
       // state across windows); a repeat ends it so the copy sees its source.
       let last = i;
@@ -167,9 +165,13 @@ function chartNotes(ctx, diff, trace = null) {
     }
 
     trace?.enter(i, { ...info, charted: "pattern" });
-    const made = patternEvents(phrase, leaders[i], features, timing, supports[i]);
+    const found = patternEvents(phrase, leaders[i], features, timing, supports[i]);
+    const made = rhythm ? found : withBeats(found, phrase, ctx);
     const events = trace ? trace.tagged(made) : made;
-    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, leaders[i] === "drums" && hasSteadyPulse(phrase), trace);
+    // Cut from a harder level, a phrase that plays on gets its beats whatever leads it.
+    const steady = (leaders[i] === "drums" && hasSteadyPulse(phrase)) || (!!rhythm && phrase.energy >= PLAYS_ON_ENERGY);
+    const cut = rhythm && { rhythm, fromMs: i === 0 ? 0 : phrase.startMs, toMs: i === phrases.length - 1 ? Infinity : phrase.endMs };
+    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steady, trace, cut);
     // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
     for (const e of events) if (e.source === "drums") drumTimes.add(e.t);
     let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => drumTimes.has(n.t));
@@ -195,7 +197,9 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const held = step("clipHolds", notes, clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing));
   const accented = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy));
-  const settled = step("settleHolds", accented, settleHolds(accented, diff, ctx.timing, ctx.durationMs));
+  const upper = upperRhythm(ctx, diff);
+  const inside = upper ? step("nested", accented, nested(accented, upper)) : accented;
+  const settled = step("settleHolds", inside, settleHolds(inside, diff, ctx.timing, ctx.durationMs));
   const clipped = step("finalFloors", settled, enforceFloors(settled, diff, ctx.timing));
   const floored = diff.oneHoldAtATime ? step("oneHold", clipped, oneHoldAtATime(clipped)) : clipped;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
@@ -212,10 +216,23 @@ const notesFor = (ctx, difficulty, trace = null) => {
   return finish(ctx, chartNotes(ctx, diff, trace), diff, trace);
 };
 
+// A level's finished notes, once per song: the levels below it are cut from them.
+function finalNotes(ctx, difficulty) {
+  ctx.final[difficulty] ??= notesFor(ctx, difficulty);
+  return ctx.final[difficulty];
+}
+
+// The moments diff is cut from, or null for a level charted straight from the music.
+function upperRhythm(ctx, diff) {
+  if (!diff.cutFrom) return null;
+  ctx.rhythms[diff.cutFrom] ??= rhythmOf(finalNotes(ctx, diff.cutFrom), ctx);
+  return ctx.rhythms[diff.cutFrom];
+}
+
 // --- public API --------------------------------------------------------------
 
 function chartFrom(ctx, difficulty, audioKey) {
-  const notes = notesFor(ctx, difficulty);
+  const notes = finalNotes(ctx, difficulty);
   if (notes.length < MIN_NOTES) return null;
   const { features, durationMs } = ctx;
   return {

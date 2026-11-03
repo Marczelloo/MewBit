@@ -43,8 +43,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 24", () => {
-    assert.equal(GENERATOR_VERSION, 24);
+  it("is version 25", () => {
+    assert.equal(GENERATOR_VERSION, 25);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -242,12 +242,10 @@ describe("generator v4", () => {
     assert.ok(leaders.every((l) => l === "drums"), leaders.join());
     const { easy } = chartsOf(features);
     assert.ok(easy.notes.length > 20);
-    for (const n of easy.notes) {
-      const hit = features.drums.find((d) => Math.abs(d.t - n.t) <= 2 && d.kind !== "hat");
-      assert.ok(hit, `no kick/snare under note ${n.t}`);
-      const lanes = hit.kind === "kick" ? [0, 3] : [1, 2];
-      assert.ok(lanes.includes(n.lane), `${hit.kind} at ${n.t} on lane ${n.lane}`);
-    }
+    // A moment only Normal found (a half beat a hat carries, a hit this level's pattern left out) keeps Normal's lane.
+    const onRole = easy.notes.map((n) => [n, features.drums.find((d) => Math.abs(d.t - n.t) <= 2 && d.kind !== "hat")]).filter(([, hit]) => hit);
+    const kept = onRole.filter(([n, hit]) => (hit.kind === "kick" ? [0, 3] : [1, 2]).includes(n.lane));
+    assert.ok(kept.length >= 0.8 * onRole.length, `${kept.length} of ${onRole.length}`);
     assert.equal(phrases.length, 8);
   });
 });
@@ -477,7 +475,7 @@ describe("applyDifficulty", () => {
 
 describe("enforceFloors", () => {
   it("drops only notes that break a floor", () => {
-    const p = DIFFICULTIES.easy; // 200 ms any lane, 350 ms same lane
+    const p = { ...DIFFICULTIES.easy, minNoteGapMs: 200 }; // 200 ms any lane, 350 ms same lane
     const notes = [
       { t: 2000, lane: 0 },
       { t: 2150, lane: 1 }, // < 200 ms after the previous moment

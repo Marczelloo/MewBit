@@ -5,7 +5,9 @@ export const LEVELS = ["easy", "normal", "hard", "hell"];
 export const STAGES = {
   gridLevel: "poziom wg siatki",
   level: "poza poziomem trudności",
-  fastQuarter: "ćwierćnuta w szybkim utworze",
+  cut: "cięcie do rytmu wyższego poziomu",
+  budget: "budżet półbeatów i ćwierćbeatów",
+  nested: "poza chwilami wyższego poziomu",
   leadIn: "przed startem chartu",
   silence: "cisza w utworze",
   thinChords: "przerzedzanie akordów",
@@ -50,6 +52,7 @@ export const KINDS = {
   gapHolds: "hold w pauzie",
   accents: "nuta na początku sekcji",
   sustainHolds: "hold z długiego dźwięku",
+  cut: "z rytmu trudniejszego poziomu",
 };
 
 export const KIND_SHORT = {
@@ -59,9 +62,10 @@ export const KIND_SHORT = {
   fillGaps: "perkusja w pauzie",
   fillRests: "dźwięk w pauzie",
   accents: "początek sekcji",
+  cut: "z wyższego poziomu",
 };
 
-export const SOURCES = { bass: "bas", drums: "perkusja", lead: "melodia (lead)", bands: "pasma" };
+export const SOURCES = { bass: "bas", drums: "perkusja", lead: "melodia (lead)", bands: "pasma", rhythm: "rytm" };
 
 export const stageName = (s) => STAGES[s] ?? s;
 export const ruleName = (r) => RULES[r] ?? r;

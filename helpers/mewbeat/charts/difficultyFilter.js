@@ -5,6 +5,7 @@
 const { DENSITY_WINDOW_MS, ENERGY_EXPONENT, LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { beatPosition, gridSlot, timeAtPosition } = require("./grid");
 const { beatMsOf, holdBlocks, holdSafe, isSupport, planHolds, spacedBlocked } = require("./holds");
+const { budgeted, cutToRhythm } = require("./rhythm");
 const { lowerBound, nearestIndex } = require("./util");
 
 const LANES = 4;
@@ -214,12 +215,13 @@ function slotRank(timing, t) {
 // out by a louder drum transient. A long note goes before its equals: the song holds it, and a hold says so to the player.
 function selectionOrder(items, diff, timing) {
   if (!diff.leaderFirst) return [...items].sort(byPriority);
+  const cutFrom = !!diff.cutFrom; // cut from a harder level: where a moment sits comes before what plays it
   const ranked = items.map((item) => {
     const rank = slotRank(timing, item.t);
     const long = item.sustainMs >= beatMsOf(timing, item.t) ? 1 : 0;
     return { item, rank, long, tier: rank > 0 && isSupport(item) ? 1 : 0 }; // the downbeat is everyone's
   });
-  ranked.sort((a, b) => a.tier - b.tier || a.item.level - b.item.level || a.rank - b.rank || b.long - a.long || byPriority(a.item, b.item));
+  ranked.sort((a, b) => (cutFrom ? a.item.level - b.item.level || a.rank - b.rank || a.tier - b.tier : a.tier - b.tier || a.item.level - b.item.level || a.rank - b.rank) || b.long - a.long || byPriority(a.item, b.item));
   return ranked.map((r) => r.item);
 }
 
@@ -282,11 +284,6 @@ function longNoteOnBeat(e, timing) {
   return { ...e, t, level: 0, sustainMs: e.sustainMs + e.t - t };
 }
 
-// A song at diff.quarterMaxBpm or faster has no 1/4 grid to play on this difficulty: its stream is the half beats.
-function tooFastForQuarter(e, diff, timing) {
-  return diff.quarterMaxBpm > 0 && timing?.snapped && 60000 / timing.medianMs >= diff.quarterMaxBpm && offHalfGrid(timing, e.t);
-}
-
 // A chord with a note closer than diff.chordGapBeats (or diff.gapBeats) keeps only its best note: it would sit inside a run.
 function spaceChords(items, diff, timing) {
   const moments = groupByTime(items);
@@ -322,8 +319,9 @@ function fastQuarterLevel(e, diff, timing) {
 // without it the energy at the event's time is used. `phraseEndMs` (optional) keeps holds
 // inside their phrase. A sustained bass/lead event becomes a hold (see holds.js). `steadyPulse` (optional)
 // marks a phrase whose beats carry drum or bass onsets: it gets a density floor (pulsePowerFloor). `trace` (optional,
-// trace.js) hears what every stage did; the notes then keep their ids.
-function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity, steadyPulse = false, trace = null) {
+// trace.js) hears what every stage did; the notes then keep their ids. `cut` (optional, { rhythm, fromMs, toMs }) is the
+// harder level's rhythm this phrase is cut from, and the part of it the phrase covers (rhythm.js).
+function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity, steadyPulse = false, trace = null, cut = null) {
   const energy = asLookup(energyAt);
   const tail = (Array.isArray(prevNotes) ? prevNotes : []).filter((n) => Number.isFinite(n?.t) && Number.isInteger(n?.lane));
   const sorted = [...events].sort(byTime);
@@ -342,10 +340,12 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
     .map((e) => fastQuarterLevel(e, diff, timing))
     .sort(byTime);
   step("gridLevel", sorted, placed);
-  let items = keep("level", placed, (e) => (e.level <= diff.maxLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords));
-  items = keep("fastQuarter", items, (e) => !tooFastForQuarter(e, diff, timing));
+  const inRhythm = cut ? step("cut", placed, cutToRhythm(placed, cut, timing)).sort(byTime) : placed;
+  const topLevel = cut ? diff.cutLevel : diff.maxLevel;
+  let items = keep("level", inRhythm, (e) => (e.level <= topLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords));
   items = keep("leadIn", items, (e) => e.t >= LEAD_IN_MS);
   items = keep("silence", items, (e) => energy.at(e.t) >= SILENCE_ENERGY).map((e) => ({ ...e }));
+  if (cut) items = step("budget", items, budgeted(items, diff, timing, cut, phraseEnergy));
 
   if (diff.thinChords) items = step("thinChords", items, thinChords(items, diff, timing, phraseEnergy, energy));
   items = step("capMoments", items, capMoments(items, diff.chord ? 2 : 1));

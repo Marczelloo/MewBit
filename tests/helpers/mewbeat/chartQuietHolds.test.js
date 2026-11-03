@@ -37,12 +37,13 @@ describe("quiet rhythmic passages", () => {
     assert.deepEqual(chooseLeaders(phrases), Array(phrases.length).fill("drums"));
   });
 
-  it("gets about a note per beat on Normal and half that on Easy", () => {
+  // A mapper of Easy keeps 62% of the beats where the music is quiet (REPORT, F2).
+  it("gets about a note per beat on Normal and the quiet share of that on Easy", () => {
     const features = softKicks();
     const phrases = phrasesOf(features);
     const perPhrase = (chart) => chart.notes.length / phrases.length;
     assert.ok(perPhrase(generateChart(features, "normal", "k")) >= PHRASE_BEATS * DIFFICULTIES.normal.pulseNotesPerBeat);
-    assert.ok(perPhrase(generateChart(features, "easy", "k")) >= PHRASE_BEATS * DIFFICULTIES.easy.pulseNotesPerBeat);
+    assert.ok(perPhrase(generateChart(features, "easy", "k")) >= PHRASE_BEATS * DIFFICULTIES.easy.pulseNotesPerBeat * DIFFICULTIES.easy.quietBeats);
   });
 
   it("a quiet pad with no pulse stays sparse", () => {

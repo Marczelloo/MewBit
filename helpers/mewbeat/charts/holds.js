@@ -8,7 +8,7 @@ const { lowerBound, nearestIndex } = require("./util");
 
 const MAX_HOLD_BEATS = 4;
 const MAX_HOLD_SHARE = 0.12; // holds are at most this share of a chart's notes: more reads as a held-note chart
-const HOLD_SOURCES = new Set(["bass", "lead"]); // drum events never become holds
+const HOLD_SOURCES = new Set(["bass", "lead", "rhythm"]); // drum events never become holds
 // addSustainHolds: a long, confident bass/lead note turns the tap charted on its start into a hold.
 const SUSTAIN_MIN_BEATS = 1.5;
 const SUSTAIN_MIN_CONF = 0.8;
@@ -187,7 +187,7 @@ function planHolds(items, diff, timing, prev, phraseEndMs = Infinity) {
     let chosen = len;
     let { direct, all } = blockersAt(len);
     if (all.length > 0) {
-      const gapBlockers = direct.filter((o) => o.t > c.t);
+      const gapBlockers = direct.filter((o) => o.t > c.t && !yields(o, c)); // what gives way does not shorten the hold
       const clipped = Math.round(Math.min(...gapBlockers.map((o) => o.t - gapAfterHold(c.lane, o.lane, diff) - c.t)));
       if (gapBlockers.length > 0 && clipped > 0 && clipped >= minLen) {
         chosen = clipped;

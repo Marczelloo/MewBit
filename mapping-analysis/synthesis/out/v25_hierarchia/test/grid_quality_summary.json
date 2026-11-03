@@ -1,0 +1,11 @@
+{
+ "songs": 20,
+ "with_grid": 20,
+ "half_tempo": 1,
+ "on_human_beat_ge_0_85": 15,
+ "phase_measured": 20,
+ "phase_ge_0_8": 12,
+ "phase_lt_0_3": 2,
+ "on_human_beat_p50": 0.9075396825396825,
+ "phase_p50": 0.9131428571428571
+}
