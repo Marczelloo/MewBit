@@ -27,7 +27,7 @@ class TempoEstimatorTest {
     }
 
     private static double bpmOf(float[] flux, double strongOnsetsPerSecond) {
-        return TempoEstimator.estimate(flux, flux, HOPS, HOP_SECONDS, strongOnsetsPerSecond).bpm();
+        return TempoEstimator.estimate(flux, HOPS, HOP_SECONDS, strongOnsetsPerSecond).bpm();
     }
 
     @Test

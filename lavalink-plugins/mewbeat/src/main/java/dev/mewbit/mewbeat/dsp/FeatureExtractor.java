@@ -39,6 +39,7 @@ public final class FeatureExtractor {
     private static final double ONSET_WINDOW_SECONDS = 0.5;
     private static final double MIN_ONSET_GAP_SECONDS = 0.05;
     private static final double SNAP_TO_DOWNBEAT_CONFIDENCE = 0.5;
+    private static final int BEAT_LOW_WINDOW_MS = 25;
     // The generator's strong onset and silence limits (busyness.js), which its density factor reads the same way.
     private static final double STRONG_ONSET = 0.5;
     private static final double AUDIBLE_ENERGY = 0.08;
@@ -204,23 +205,11 @@ public final class FeatureExtractor {
         double[] energy = normalisedEnergy();
         float[] combined = combinedFlux();
         TempoEstimator.Result tempo = TempoEstimator.estimate(
-                combined, flux[LOW], hops, HOP / (double) sampleRate, strongOnsetsPerSecond(bands, energy));
+                combined, hops, HOP / (double) sampleRate, strongOnsetsPerSecond(bands, energy));
         List<Integer> beats = new ArrayList<>();
         for (int hop : tempo.beatHops()) {
             beats.add(hopTimeMs(hop));
         }
-        List<Integer> downbeats = new ArrayList<>();
-        for (int i = tempo.downbeatPhase(); i < beats.size(); i += 4) {
-            downbeats.add(beats.get(i));
-        }
-
-        List<Double> energyValues = new ArrayList<>(energy.length);
-        for (double e : energy) {
-            energyValues.add(e);
-        }
-        List<Features.Section> sections = Highlight.sections(
-                energy, durationMs, downbeats, tempo.confidence() >= SNAP_TO_DOWNBEAT_CONFIDENCE);
-        Integer highlight = Highlight.find(energy, durationMs, sections);
 
         long hpssStart = System.nanoTime();
         for (float[][] pair : hpss.flush()) {
@@ -233,8 +222,25 @@ public final class FeatureExtractor {
         PitchTracker.Lines lines = pitchTracker.finish(onsetTimes(bands));
         pitchNanos += System.nanoTime() - pitchStart;
 
+        int[] beatMs = beats.stream().mapToInt(Integer::intValue).toArray();
+        int beatLength = beatLength(beatMs);
+        float[][] beatChroma = beatChroma(beatMs, beatLength, lines, durationMs);
+        List<Integer> downbeats = new ArrayList<>();
+        for (int i : Downbeats.pick(beatLow(beatMs), beatChroma)) {
+            downbeats.add(beats.get(i));
+        }
+
+        List<Double> energyValues = new ArrayList<>(energy.length);
+        for (double e : energy) {
+            energyValues.add(e);
+        }
+        List<Features.Section> sections = Highlight.sections(
+                energy, durationMs, downbeats, tempo.confidence() >= SNAP_TO_DOWNBEAT_CONFIDENCE);
+        Integer highlight = Highlight.find(energy, durationMs, sections);
+
         long repetitionStart = System.nanoTime();
-        List<Features.Phrase> phrases = phrases(beats, downbeats, tempo.confidence(), lines, durationMs, drums, combined);
+        List<Features.Phrase> phrases =
+                phrases(beatMs, beatLength, beatChroma, downbeats, tempo.confidence(), lines, durationMs, drums, combined);
         repetitionNanos += System.nanoTime() - repetitionStart;
 
         return new Features(
@@ -290,30 +296,39 @@ public final class FeatureExtractor {
                 .toArray();
     }
 
-    private List<Features.Phrase> phrases(
-            List<Integer> beats,
-            List<Integer> downbeats,
-            double tempoConfidence,
-            PitchTracker.Lines lines,
-            int durationMs,
-            List<Features.Drum> drums,
-            float[] combined) {
-        int n = beats.size();
-        if (n < 2) {
-            return List.of();
+    /** The median beat interval; 0 with fewer than two beats. */
+    private static int beatLength(int[] beatMs) {
+        if (beatMs.length < 2) {
+            return 0;
         }
-        int[] beatMs = beats.stream().mapToInt(Integer::intValue).toArray();
-        float[][] beatChroma = new float[n][];
-        float[][] beatRhythm = new float[n][];
-        int chromaFrame = 0;
-        int fluxHop = 0;
-        int[] intervals = new int[n - 1];
-        for (int i = 0; i < n - 1; i++) {
+        int[] intervals = new int[beatMs.length - 1];
+        for (int i = 0; i < intervals.length; i++) {
             intervals[i] = beatMs[i + 1] - beatMs[i];
         }
-        int[] sortedIntervals = intervals.clone();
-        Arrays.sort(sortedIntervals);
-        int beatLength = sortedIntervals[sortedIntervals.length / 2];
+        Arrays.sort(intervals);
+        return intervals[intervals.length / 2];
+    }
+
+    /** The strongest low-band flux around each beat. */
+    private float[] beatLow(int[] beatMs) {
+        float[] low = new float[beatMs.length];
+        int hop = 0;
+        for (int i = 0; i < beatMs.length; i++) {
+            while (hop < hops && hopTimeMs(hop) < beatMs[i] - BEAT_LOW_WINDOW_MS) {
+                hop++;
+            }
+            for (int h = hop; h < hops && hopTimeMs(h) <= beatMs[i] + BEAT_LOW_WINDOW_MS; h++) {
+                low[i] = Math.max(low[i], flux[LOW][h]);
+            }
+        }
+        return low;
+    }
+
+    /** The L2-normalised chroma heard during each beat, all zero where there is none. */
+    private static float[][] beatChroma(int[] beatMs, int beatLength, PitchTracker.Lines lines, int durationMs) {
+        int n = beatMs.length;
+        float[][] beatChroma = new float[n][];
+        int chromaFrame = 0;
         for (int i = 0; i < n; i++) {
             int from = beatMs[i];
             int to = i + 1 < n ? beatMs[i + 1] : Math.min(durationMs, from + beatLength);
@@ -329,7 +344,29 @@ public final class FeatureExtractor {
                 chromaFrame++;
             }
             beatChroma[i] = frames == 0 ? chroma : l2Normalised(chroma);
+        }
+        return beatChroma;
+    }
 
+    private List<Features.Phrase> phrases(
+            int[] beatMs,
+            int beatLength,
+            float[][] beatChroma,
+            List<Integer> downbeats,
+            double tempoConfidence,
+            PitchTracker.Lines lines,
+            int durationMs,
+            List<Features.Drum> drums,
+            float[] combined) {
+        int n = beatMs.length;
+        if (n < 2) {
+            return List.of();
+        }
+        float[][] beatRhythm = new float[n][];
+        int fluxHop = 0;
+        for (int i = 0; i < n; i++) {
+            int from = beatMs[i];
+            int to = i + 1 < n ? beatMs[i + 1] : Math.min(durationMs, from + beatLength);
             float[] rhythm = new float[4];
             while (fluxHop < hops && hopTimeMs(fluxHop) < to) {
                 int t = hopTimeMs(fluxHop);

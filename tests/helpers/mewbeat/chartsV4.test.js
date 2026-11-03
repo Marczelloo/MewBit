@@ -39,7 +39,7 @@ function setup(features) {
 
 describe("generator v4", () => {
   it("is version 21", () => {
-    assert.equal(GENERATOR_VERSION, 21);
+    assert.equal(GENERATOR_VERSION, 22);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));

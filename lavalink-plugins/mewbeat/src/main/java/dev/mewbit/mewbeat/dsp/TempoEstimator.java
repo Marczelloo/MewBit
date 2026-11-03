@@ -32,22 +32,20 @@ final class TempoEstimator {
     private static final double FAST_HALF_TEMPO_ONSETS_PER_BEAT = 12;
     private static final double MIN_HALF_COMB = 0.8;
 
-    /** {@code beatHops} are hop indices; {@code downbeatPhase} is 0..3, the beat index mod 4 that starts a bar. */
-    record Result(double bpm, double confidence, int[] beatHops, int downbeatPhase) {}
+    /** {@code beatHops} are hop indices. */
+    record Result(double bpm, double confidence, int[] beatHops) {}
 
-    static final Result NONE = new Result(0, 0, new int[0], 0);
+    static final Result NONE = new Result(0, 0, new int[0]);
 
     private TempoEstimator() {}
 
     /**
      * @param onsetFlux per-hop onset strength summed over the bands
-     * @param lowFlux per-hop low-band flux, used to find the downbeat
      * @param count number of valid hops
      * @param hopSeconds hop duration in seconds
      * @param strongOnsetsPerSecond strong onsets over all bands per second of audible audio
      */
-    static Result estimate(
-            float[] onsetFlux, float[] lowFlux, int count, double hopSeconds, double strongOnsetsPerSecond) {
+    static Result estimate(float[] onsetFlux, int count, double hopSeconds, double strongOnsetsPerSecond) {
         int lagLo = (int) Math.floor(60 / (MAX_BPM * hopSeconds));
         int lagHi = (int) Math.ceil(60 / (MIN_BPM * hopSeconds));
         if (count < 4 * lagHi) {
@@ -97,11 +95,7 @@ final class TempoEstimator {
         double ratio = acf[best] / meanAcf;
         double confidence = Math.max(0, Math.min(1, (ratio - 1) / 4));
 
-        int[] beats = trackBeats(envelope, count, period);
-        if (beats.length == 0) {
-            return new Result(bpm, confidence, beats, 0);
-        }
-        return new Result(bpm, confidence, beats, downbeatPhase(beats, lowFlux, count));
+        return new Result(bpm, confidence, trackBeats(envelope, count, period));
     }
 
     /**
@@ -336,32 +330,5 @@ final class TempoEstimator {
             to--;
         }
         return Arrays.copyOfRange(snapped, from, to);
-    }
-
-    /** The beat index mod 4 whose beats carry the most low-band (kick) energy. */
-    private static int downbeatPhase(int[] beats, float[] lowFlux, int count) {
-        double[] sums = new double[4];
-        int[] counts = new int[4];
-        for (int i = 0; i < beats.length; i++) {
-            float strongest = 0;
-            for (int d = -SNAP_HOPS; d <= SNAP_HOPS; d++) {
-                int j = beats[i] + d;
-                if (j >= 0 && j < count) {
-                    strongest = Math.max(strongest, lowFlux[j]);
-                }
-            }
-            sums[i & 3] += strongest;
-            counts[i & 3]++;
-        }
-        int best = 0;
-        double bestMean = -1;
-        for (int phase = 0; phase < 4; phase++) {
-            double mean = counts[phase] == 0 ? 0 : sums[phase] / counts[phase];
-            if (mean > bestMean) {
-                bestMean = mean;
-                best = phase;
-            }
-        }
-        return best;
     }
 }
