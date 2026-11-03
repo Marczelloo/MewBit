@@ -28,14 +28,24 @@ DSP pluginu i `activity/src/mewbeat/highway.js` nie zmieniły się od commita `d
 |---|---|---|---|
 | 100 plików `.osz` korpusu | `data/osz/<set>.osz` | wszystko: mapy ludzi i audio | `download_mirror.py` (krok 4 niżej); weryfikacja MD5 z `shared/corpus_checksums.json` |
 | audio, cechy pluginu, cechy librosa, analiza i charty generatora | `data/audio`, `data/features`, `data/librosa`, `data/algo_analysis`, `data/algo_charts` | metryki generatora i porównanie z ludźmi | `run_pipeline.py` z `.osz` (krok 5); DSP kompiluje się sam przez `javac` |
-| stemy Spleeter | `data/stems` | tylko kolumny `stem_*` | opcjonalnie, osobne środowisko (`requirements-stems.txt`, Python 3.10, wagi `4stems` z GitHub Releases Spleetera) |
+| stemy Spleeter | `data/stems` | kolumny `stem_*` i `alignment.no_sound_share` (bez stemów ta jedna metryka panelu wychodzi wyższa, więc porównuj między sobą przebiegi bez stemów) | opcjonalnie, osobne środowisko (`requirements-stems.txt`, Python 3.10, wagi `4stems` z GitHub Releases Spleetera) |
 | tabele slotów | `shared/data/<poziom>/slots/` | regresje wyboru dźwięków w raportach poziomów | `run_pipeline.py` |
 | migawka osu! API (cache, `listing.json`, `candidates.json`) | `data/corpus/` | **tylko** ponowny dobór korpusu, a nie metryki | `fetch_candidates.py` z kluczami API (ok. 1 h 45 min) |
 | kopie wiki osu! | `data/references/` | cytaty z Ranking Criteria w raportach poziomów | `pipeline/fetch_references.py` |
 
 ## 3. Odtworzenie na Windowsie
 
-**Uwaga: `pipeline/run_pipeline.py` importuje `fcntl`** (blokada przy stemach), którego nie ma na Windowsie, więc natywnie się nie uruchomi. Do czasu poprawki używaj WSL2. Repozytorium klonuj do katalogu WSL, nie pod `/mnt/c` (szybkość I/O).
+**Uwaga: `pipeline/run_pipeline.py` importuje `fcntl`** (blokada przy stemach), którego nie ma na Windowsie, więc natywnie się nie uruchomi. Działają dwie drogi: Docker albo WSL2.
+
+**Docker** (tak powstała `synthesis/out/baseline_v19/`; pełne 100 utworów bez stemów to ok. 8 min przy `--jobs 4`). Charty i `n_notes` z tego obrazu są identyczne z zacommitowanymi. Dane trzymaj w nazwanym wolumenie, a repo montuj tylko do odczytu:
+
+```bash
+docker build -t mewbeat-ma -f mapping-analysis/pipeline/Dockerfile mapping-analysis
+```
+
+Polecenia z kroków 4 i 5 uruchamiaj w tym obrazie, kierując `--work`, `--shared`, `--build` i `--out` do wolumenu.
+
+**WSL2.** Repozytorium klonuj do katalogu WSL, nie pod `/mnt/c` (szybkość I/O).
 
 Jednorazowo, w PowerShellu:
 
@@ -86,7 +96,8 @@ Całość zajmuje ok. 1 h na 4 rdzeniach; najdłużej liczą się cechy librosa.
   310607, 363594, 563569, 636959, 808872, 859248, 923488, 1000722, 1277503, 1329723, 1570640, 1697477, 1773164,
   1784295, 1894317, 2200258, 2224035, 2270163, 2314654, 2515207.
   - Wszystkie mają komplet poziomów; mapperzy testu nie występują w treningu.
-- **Luka do zamknięcia na początku.** `run_pipeline.py` generuje charty generatora tylko dla `split = test` (linia z `test = row.get("split") == "test"`). Do strojenia na treningu trzeba generować charty także dla `train`, np. tym samym `pipeline/algo/generate_charts.js`.
+- **Generowanie na treningu.** `run_pipeline.py --algo-splits train` tworzy charty generatora tylko dla treningu, a `level_distance.py --split train` liczy na nich panel. Domyślnie obie opcje dotyczą testu.
+- **Użycia testu** zapisuj w `TEST_USAGE.md`.
 
 ## 5. Linia bazowa v19
 
@@ -120,6 +131,13 @@ Wynik porównuj z `synthesis/out/level_distance_summary.json`. Porównania pozio
 **Dopuszczalny dryf.** Metryki audio (onsety, przesunięcie osi) mogą się różnić o kilka ms przy innych wersjach ffmpeg i librosa. Oczekuj zgodności panelu w ±0,05 IQR i precision/recall w ±0,02.
 
 **Pozostałe analizy etapu 3:** `synthesis/cross_levels.py`, `robustness.py` i `ablation.py` przyjmują `--shared mapping-analysis/data/stage1` i `--work mapping-analysis/data`.
+
+**Punkt odniesienia dla kolejnych etapów: `synthesis/out/baseline_v19/`.** Tabela wyżej ma stemy, a przebiegi lokalne nie, więc etapy porównuj z tym katalogiem:
+
+- `train/`: panel (`level_distance*`), siatka (`grid_quality*`), `cross_levels_summary.json` i `robustness_summary.json` dla 80 utworów treningowych. Na tym stroimy.
+- `test/`: panel dla 20 utworów testowych bez stemów, do kontroli po etapie.
+
+`pipeline/compare_baseline.py` sprawdza zgodność świeżego przebiegu z zacommitowanymi chartami, a `synthesis/grid_quality.py` liczy kryteria siatki z części 6 raportu; na danych zacommitowanych daje 25/100, 18/90, 51/90 i 10/100.
 
 ## 6. Ryzyka i rzeczy niesprawdzone
 

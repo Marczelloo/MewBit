@@ -57,11 +57,13 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--shared", type=Path, default=ROOT / "shared")
     ap.add_argument("--out", type=Path, default=ROOT / "synthesis" / "out")
+    ap.add_argument("--split", default="test", help="which songs' generator charts to compare; the human IQR always comes from all human charts")
     args = ap.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     rows, summary, per_song = [], {}, {}
     for level in LEVELS:
         human, algo = load(args.shared, level, "human"), load(args.shared, level, "algo")
+        algo = algo[algo["split"] == args.split]
         both = algo.index.intersection(human.index)
         dists, inside, song_cols = [], [], []
         for col, label in PANEL:
@@ -104,7 +106,7 @@ def main(argv=None) -> int:
     table.to_csv(args.out / "level_distance.csv", index=False)
     (args.out / "level_distance_summary.json").write_text(json.dumps(summary, indent=1))
     pivot = table.pivot(index="label", columns="level", values="distance_iqr_p50")[list(LEVELS)].reindex([p[1] for p in PANEL])
-    print("distance from humans, in human IQRs (median over test songs):")
+    print(f"distance from humans, in human IQRs (median over {args.split} songs):")
     print(pivot.round(2).to_string())
     print(json.dumps(summary, indent=1))
     return 0

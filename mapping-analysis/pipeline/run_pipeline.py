@@ -6,8 +6,8 @@
 Per beatmapset of the corpus (shared/corpus.csv, from corpus/select_corpus.py):
   1. finds its .osz in --maps, reads it as data (osu_format.read_osz), picks the difficulty chosen for each level;
   2. copies the audio out, runs the plugin DSP (features JSON v2) and the librosa features on it (cached in --work);
-  3. dumps the generator's own analysis (beat grid, phrases, leaders) and, for test songs, generates its charts;
-  4. measures every human chart and, for test songs, every algorithm chart on the human map's timing grid.
+  3. dumps the generator's own analysis (beat grid, phrases, leaders) and, for songs of --algo-splits, generates its charts;
+  4. measures every human chart and, for songs of --algo-splits, every algorithm chart on the human map's timing grid.
 Outputs, one folder per level so a level's analysis never needs another level's files:
   shared/data/<level>/human/<set>.json, shared/data/<level>/algo/<set>.json, shared/data/<level>/slots/<who>_<set>.npz
   shared/data/songs/<set>.json  (level-independent: alignment check, structure, the algorithm's beat tracking)
@@ -20,6 +20,7 @@ import argparse
 import csv
 import fcntl
 import json
+import multiprocessing
 import re
 import subprocess
 import sys
@@ -197,9 +198,9 @@ def process(row: dict, args) -> dict:
     write_json(args.shared / "data" / "songs" / f"{sid}.json", song)
 
     cross = {"set_id": sid, "split": row.get("split"), "human": {}, "algo": {}}
-    test = row.get("split") == "test"
+    with_algo = row.get("split") in args.algo_splits
     algo_dir = args.work / "algo_charts"
-    if test:
+    if with_algo:
         missing = [l for l in LEVELS if not (algo_dir / l / f"{sid}.json").exists()]
         if missing:
             subprocess.run(["node", str(HERE / "algo" / "generate_charts.js"), str(feats_path), str(algo_dir), "--levels", ",".join(missing), "--key", f"osu:{sid}"],
@@ -218,7 +219,7 @@ def process(row: dict, args) -> dict:
             np.savez_compressed(lvl_out / "slots" / f"human_{sid}.npz", **slots)
             cross["human"][level] = [[n.t, n.lane, n.end] for n in notes]
             status["levels"][level] = "human"
-        if test:
+        if with_algo:
             data = json.loads((algo_dir / level / f"{sid}.json").read_text())
             chart = data.get("chart")
             if chart is None:
@@ -257,9 +258,11 @@ def main(argv=None) -> int:
     ap.add_argument("--bias", type=Path, default=ROOT / "shared" / "onset_bias.json")
     ap.add_argument("--only", default="")
     ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--algo-splits", default="test", help="corpus splits that get generator charts: test, train or train,test; tuning uses train only")
     ap.add_argument("--stems-python", type=Path, help="python of the Spleeter environment (audio/stems.py); omit to skip stems")
     ap.add_argument("--stems-models", type=Path, help="folder containing Spleeter's 4stems/ weights")
     args = ap.parse_args(argv)
+    args.algo_splits = set(args.algo_splits.split(","))
     if not (args.build / "FeatureDump.class").exists():
         extract_features.compile_dsp(args.build)
     args.bias = json.loads(args.bias.read_text())["bias_ms"] if args.bias.exists() else {}
@@ -270,7 +273,8 @@ def main(argv=None) -> int:
         keep = set(args.only.split(","))
         rows = [r for r in rows if r["set_id"] in keep]
     if args.jobs > 1:
-        with ProcessPoolExecutor(args.jobs) as pool:
+        # spawn, not fork: forked workers crashed with a null-pointer segfault in the 100-set run, never alone.
+        with ProcessPoolExecutor(args.jobs, mp_context=multiprocessing.get_context("spawn")) as pool:
             results = list(pool.map(run_one, rows, [args] * len(rows)))
     else:
         results = [run_one(r, args) for r in rows]
