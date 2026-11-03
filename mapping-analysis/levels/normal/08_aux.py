@@ -1,4 +1,8 @@
-"""Pomiary pomocnicze z nut (nie są oficjalnymi metrykami; prośby w REPORT.md, część 8).
+"""Pomiary pomocnicze z nut (nie są oficjalnymi metrykami).
+
+Po metrykach v2 raport używa oficjalnych odpowiedników: `chords_in_half_runs_per_min` (akordy w strumieniu 1/2),
+`hand_by_class.*` (ręka wg dźwięku), `rest_context.*` (kontekst przerw ≥ 4 beaty). Ze skryptu raport bierze już tylko
+udział torów zewnętrznych dla kicka/snare i liczbę nut algorytmu w przerwach człowieka (brak oficjalnych odpowiedników).
 
 - akordy z sąsiednią chwilą bliżej niż 0,9 beatu (to, co spaceChords w kodzie Normal usuwa przy „odczuwanym beacie” = 2 beaty ludzkie),
 - udział beatów siatki ludzkiej z chwilą (pokrycie beatów) i półbeatów,

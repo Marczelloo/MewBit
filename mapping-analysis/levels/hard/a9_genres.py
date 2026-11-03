@@ -19,15 +19,17 @@ pat = pat[pat.who == "human"][["set_id", "hand_dev4bar_p50", "chord_share_in_q_s
 hol = hol[hol.who == "human"][["set_id", "release_on_1_4", "with_inside"]]
 sl = sl[sl.who == "human"][["set_id", "rate_1/1", "rate_1/2", "rate_1/4", "rate_1/8", "chord_rate_1/1", "rate_1/4_with_perc_onset"]]
 h = h.merge(pat, on="set_id", how="left").merge(hol, on="set_id", how="left").merge(sl, on="set_id", how="left")
-h["one_hand_jump"] = h["chord2_jedna ręka L"] + h["chord2_jedna ręka P"]
+h["one_hand_jump"] = 1 - h["chord2_split_hands_share"]
 METRICS = ["bpm", "nps", "notes_per_beat", "moments_per_beat", "chord_share", "chord_size_share.3", "one_hand_jump", "hold_share",
            "hold_len_beats.p50", "gap_share.1/2", "gap_share.1/4", "triplet_share", "snap_share.4", "run_1/2.max_notes", "run_1/4.max_notes",
            "trill_share", "stair_share", "minijack_share", "jack_max_notes", "pattern4_distinct_per_100", "rests_ge_2b.per_min",
            "empty_bar_share", "bar_notes_cv", "phrase4_notes_p90_over_p10", "kiai_density_ratio", "alignment.perc.share",
            "alignment.no_sound_share", "plugin_events.lead.recall", "plugin_events.bass.recall", "plugin_events.kick.recall",
            "plugin_events.snare.recall", "plugin_events.hat.recall", "repetition.repeat.rhythm", "sections.boundary_chord_share",
-           "rate_1/1", "rate_1/2", "rate_1/4", "chord_rate_1/1", "rate_1/4_with_perc_onset", "release_on_1_4", "with_inside",
-           "hand_dev4bar_p50", "chord_share_in_q_streams", "trill_max_notes", "left_hand_share", "single_step_share.1"]
+           "coverage.beat", "coverage.half", "coverage.quarter", "chord_rate_on_mapped_beats", "rate_1/4_with_perc_onset", "release_on_1_4",
+           "holds_context.release_at_next_moment_share", "with_inside", "hand_balance_4bar.p50", "chords_in_half_runs_per_min",
+           "trills.max_notes", "anchor_rc_max_notes", "hand_by_class.kick.left_share", "left_hand_share", "single_step_share.1",
+           "kiai_start.chord_share", "sections.bar_chords_vs_rms_spearman"]
 rows = []
 for split in ["train", "test"]:
     d0 = h[h.split == split]

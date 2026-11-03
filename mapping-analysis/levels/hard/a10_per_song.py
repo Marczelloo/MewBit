@@ -33,8 +33,12 @@ for sid in a.index:
              algo_stars_game=raw["chart"]["stars"], human_sr=h.loc[sid, "stars"])
     for m in ["nps", "moments_per_beat", "chord_share", "downbeats_carried", "snap_share.8", "snap_share.16", "snap_share.off",
               "trill_share", "left_hand_share", "hold_len_beats.p50", "holds_with_notes_inside_share", "sections.boundary_chord_share",
-              "alignment.perc.share", "alignment.no_sound_share", "plugin_events.lead.recall", "plugin_events.kick.recall", "grid_error_ms.p50"]:
+              "alignment.perc.share", "alignment.no_sound_share", "plugin_events.lead.recall", "plugin_events.kick.recall", "grid_error_ms.p50",
+              "coverage.beat", "coverage.half", "chord_rate_on_mapped_beats", "gap_share.other", "hand_balance_4bar.p50", "hand_by_class.kick.left_share",
+              "trills.max_notes", "kiai_start.chord_share", "holds_context.release_at_next_moment_share", "sections.boundary_note_share"]:
         r[f"H {m}"] = h.loc[sid, m]
+        r[f"A {m}"] = a.loc[sid, m]
+    for m in ["versus_human.recall", "versus_human.precision", "versus_human.grid_offset_ms.p50", "versus_human.grid_offset_ms.abs_over_10ms_share"]:
         r[f"A {m}"] = a.loc[sid, m]
     for m in ["gap_other", "gap_3/4", "run_le_1/2_max", "run_1/2_max"]:
         r[f"H q:{m}"] = rob.loc[(sid, "human"), m]
@@ -57,8 +61,10 @@ print(T[cols].round(2).to_string())
 # relations inside the test set (n=19 snapped)
 S = T[T.snapped == True]
 for x, y in [("downbeat_agree", "A downbeats_carried"), ("downbeat_agree", "A sections.boundary_chord_share"), ("half_phase", "A rate_1/1"),
-             ("A grid_error_ms.p50", "A snap_share.16"), ("beat_ratio", "A rate_1/8"), ("beat_ratio", "A q:gap_other"), ("drums_share", "A trill_share"),
+             ("A grid_error_ms.p50", "A snap_share.16"), ("A versus_human.grid_offset_ms.abs_over_10ms_share", "A gap_share.other"),
+             ("A versus_human.grid_offset_ms.abs_over_10ms_share", "A coverage.beat"), ("beat_ratio", "A versus_human.recall"), ("beat_ratio", "A rate_1/8"), ("beat_ratio", "A q:gap_other"), ("drums_share", "A trill_share"),
              ("lead_share", "A left_hand_share"), ("lead_share", "A plugin_events.lead.recall")]:
     rho, p = stats.spearmanr(S[x], S[y], nan_policy="omit")
     print(f"{x} ~ {y}: rho={rho:.2f} p={p:.3f} n={S[[x, y]].dropna().shape[0]}")
-print(S.groupby(S.beat_ratio.round(1))[["A rate_1/8", "A q:gap_other", "A chord_share", "A nps", "A snap_share.16"]].median())
+print(S.groupby(S.beat_ratio.round(1))[["A rate_1/8", "A q:gap_other", "A gap_share.other", "A chord_share", "A nps", "A snap_share.16", "A versus_human.recall"]].median())
+print(T[["set_id", "genre", "beat_ratio", "A versus_human.recall", "A versus_human.precision", "A versus_human.grid_offset_ms.p50", "A versus_human.grid_offset_ms.abs_over_10ms_share", "A coverage.beat", "A gap_share.other", "A kiai_start.chord_share", "A sections.boundary_note_share"]].round(2).to_string())
