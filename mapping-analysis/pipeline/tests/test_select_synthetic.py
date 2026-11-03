@@ -40,7 +40,7 @@ def fake(seed: int, n: int = 1500, easy_rare: bool = False) -> list[dict]:
 
 def check(cands_raw):
     cands, info = sc.prepare(cands_raw, RANGES)
-    sets, dev = sc.select(cands)
+    sets, dev, limits = sc.select(cands)
     splits = sc.split(sets)
     assert len(sets) == sc.TARGET or dev, (len(sets), dev)
     g = Counter(s["genre"] for s in sets)
@@ -48,7 +48,9 @@ def check(cands_raw):
     m = Counter(x for s in sets for x in s["mappers"])
     assert max(m.values()) <= sc.MAX_PER_MAPPER, m.most_common(3)
     assert max(Counter(s["period"] for s in sets).values()) <= sc.MAX_PER_PERIOD
-    assert max(Counter(s["bpm_bin"] for s in sets).values()) <= sc.MAX_PER_BPM_BIN
+    bpm = Counter(s["bpm_bin"] for s in sets)
+    for b, (lo, hi) in limits.items():
+        assert bpm[b] <= hi and (bpm[b] >= lo or any("BPM" in d for d in dev)), (b, bpm[b], lo, hi, dev)
     per_level = {l: sum(l in s["levels"] for s in sets) for l in sc.LEVELS}
     for l, n in per_level.items():
         assert n >= sc.MIN_PER_LEVEL or any(l in d for d in dev), (l, n, dev)
@@ -57,10 +59,10 @@ def check(cands_raw):
     train_m = {x for s in sets if s["set_id"] not in test for x in s["mappers"]}
     test_m = {x for s in sets if s["set_id"] in test for x in s["mappers"]}
     assert not train_m & test_m, train_m & test_m
-    sets2, _ = sc.select(sc.prepare(cands_raw, RANGES)[0])
+    sets2, _, _ = sc.select(sc.prepare(cands_raw, RANGES)[0])
     assert [s["set_id"] for s in sets] == [s["set_id"] for s in sets2], "not deterministic"
     with tempfile.TemporaryDirectory() as tmp:
-        sc.write(sets, splits, info, dev, RANGES, {"finished": "synthetic"}, Path(tmp))
+        sc.write(sets, splits, info, dev, RANGES, {"finished": "synthetic"}, Path(tmp), limits)
         assert (Path(tmp) / "corpus.csv").read_text().count("\n") == len(sets) + 1
     return per_level, len(test), dict(g), dev, sum(len(s["levels"]) == 3 for s in sets)
 

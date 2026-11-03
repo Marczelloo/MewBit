@@ -29,6 +29,18 @@ MIN_GENRES = 6
 MAX_PER_MAPPER = 3
 MAX_PER_PERIOD = 35  # of 100: no 3-year period holds more than about a third
 MAX_PER_BPM_BIN = 40
+# BPM spread: each BPM bin holds between BPM_FLOOR_RATIO and BPM_CAP_RATIO times its share among the population's full
+# sets (sets with all three levels), and never more than MAX_PER_BPM_BIN. Popularity alone over-picks fast songs.
+BPM_FLOOR_RATIO = 0.8
+BPM_CAP_RATIO = 1.25
+# How this rule got here (also written to corpus_selection.md): the first selection had only a fixed 40-per-bin cap and
+# gave 10 % of songs under 150 BPM against 25 % among the population's full sets; 0.5x-1.5x still gave 12 %. The game
+# mostly plays songs under 150 BPM, so the corpus is held representative of the population's tempo spread instead.
+CRITERIA_HISTORY = [
+    "Przebieg 1: tylko limit 40 na przedział BPM → < 150 BPM: 10 utworów (populacja pełnych zestawów: 25%), ≥ 210 BPM: 21 (populacja: 7%).",
+    "Przebieg 2: przedział BPM 0,5×–1,5× udziału w populacji → < 150 BPM: 12 utworów, ≥ 210 BPM: 11.",
+    "Przebieg 3 (obowiązujący): 0,8×–1,25× udziału w populacji, bo gra gra głównie utwory < 150 BPM, a 12 utworów to za mała grupa do wniosków.",
+]
 MIN_HIT_LENGTH_S = 30
 GROUP_MIN = 15  # a (genre, period) group smaller than this is normalised within its period alone
 RATING_PRIOR_VOTES = 10  # Bayesian average: m votes of the global mean
@@ -51,6 +63,16 @@ TAG_GENRES = [
     ("classical", r"\b(classical|orchestra|piano|symphony|baroque)\b"),
     ("folk", r"\b(folk|celtic|acoustic)\b"),
 ]
+
+
+# Cuts of one recording are one song: "(TV Size)", "(Cut Ver.)", "(Short Ver.)", "(Game Ver.)" and the like are dropped
+# from the title. Remixes and covers keep their own key (different music).
+VERSION_TAG = re.compile(r"\s*[\(\[][^\)\]]*\b(tv ?size|cut ver|short ver|game ver|full ver|extended|sped up|ver\.)[^\)\]]*[\)\]]", re.I)
+
+
+def song_key(s: dict) -> str:
+    norm = lambda x: re.sub(r"[^0-9a-z\u3040-\u30ff\u4e00-\u9fff]+", "", (x or "").lower())
+    return f"{norm(s.get('artist'))}|{norm(VERSION_TAG.sub('', s.get('title') or ''))}"
 
 
 def period_of(year: int) -> str:
@@ -122,7 +144,7 @@ def prepare(cands: list[dict], ranges: dict) -> tuple[list[dict], dict]:
         mappers = {s.get("creator_id")} | {o for d in chosen.values() if d for o in d["owners"]}
         out.append({**s, "chosen": chosen, "levels": [l for l in LEVELS if chosen[l]], "year": year, "period": period_of(year),
                     "genre": genre, "genre_source": source, "rating_bayes": bayes, "mappers": sorted(m for m in mappers if m),
-                    "bpm_bin": bpm_bin(float(s.get("bpm") or 0))})
+                    "bpm_bin": bpm_bin(float(s.get("bpm") or 0)), "song": song_key(s)})
     # Normalise popularity and rating inside (genre, period); small groups inside their period.
     groups = defaultdict(list)
     for s in out:
@@ -147,16 +169,27 @@ def prepare(cands: list[dict], ranges: dict) -> tuple[list[dict], dict]:
     return out, {"typical_stars": typical, "rating_global_mean": global_mean, "groups": {k: len(v) for k, v in pools.items()}}
 
 
+def bpm_limits(cands: list[dict]) -> dict[str, tuple[int, int]]:
+    """{bpm bin: (floor, cap)} from the BPM shares of the population's full sets."""
+    full = [s for s in cands if len(s["levels"]) == len(LEVELS)] or cands
+    share = Counter(s["bpm_bin"] for s in full)
+    return {b: (int(math.floor(BPM_FLOOR_RATIO * n / len(full) * TARGET)),
+                min(MAX_PER_BPM_BIN, int(math.ceil(BPM_CAP_RATIO * n / len(full) * TARGET)))) for b, n in share.items()}
+
+
 class Picks:
-    def __init__(self):
+    def __init__(self, bpm_cap: dict[str, int] | None = None):
         self.sets: list[dict] = []
+        self.bpm_cap = bpm_cap or {}
+        self.songs = Counter()
         self.genre, self.mapper, self.period, self.bpm, self.level = Counter(), Counter(), Counter(), Counter(), Counter()
 
     def fits(self, s: dict) -> bool:
-        return (self.genre[s["genre"]] < MAX_PER_GENRE and all(self.mapper[m] < MAX_PER_MAPPER for m in s["mappers"])
-                and self.period[s["period"]] < MAX_PER_PERIOD and self.bpm[s["bpm_bin"]] < MAX_PER_BPM_BIN)
+        return (self.songs[s["song"]] == 0 and self.genre[s["genre"]] < MAX_PER_GENRE and all(self.mapper[m] < MAX_PER_MAPPER for m in s["mappers"])
+                and self.period[s["period"]] < MAX_PER_PERIOD and self.bpm[s["bpm_bin"]] < self.bpm_cap.get(s["bpm_bin"], MAX_PER_BPM_BIN))
 
     def add(self, s: dict, sign: int = 1) -> None:
+        self.songs[s["song"]] += sign
         self.genre[s["genre"]] += sign
         self.period[s["period"]] += sign
         self.bpm[s["bpm_bin"]] += sign
@@ -167,10 +200,12 @@ class Picks:
         (self.sets.append(s) if sign > 0 else self.sets.remove(s))
 
 
-def select(cands: list[dict]) -> tuple[list[dict], list[str]]:
+def select(cands: list[dict]) -> tuple[list[dict], list[str], dict]:
     deviations: list[str] = []
+    limits = bpm_limits(cands)
+    floor = {b: lo for b, (lo, _) in limits.items()}
     order = sorted(cands, key=lambda s: (-len(s["levels"]), -s["score"], s["set_id"]))
-    picks = Picks()
+    picks = Picks({b: hi for b, (_, hi) in limits.items()})
     for s in order:
         if len(picks.sets) >= TARGET:
             break
@@ -181,8 +216,9 @@ def select(cands: list[dict]) -> tuple[list[dict], list[str]]:
 
     def repair(has) -> bool:
         """Swaps the weakest selected set without `has` for the best unselected set with it, if the caps allow and no
-        level falls below min(quota, its count before the swap) and no genre disappears."""
+        level or BPM bin falls below min(quota, its count before the swap) and no genre disappears."""
         before = dict(picks.level)
+        before_bpm = dict(picks.bpm)
         chosen = {s["set_id"] for s in picks.sets}
         for cand in sorted((s for s in cands if s["set_id"] not in chosen and has(s)), key=lambda s: (-s["score"], s["set_id"])):
             for out in sorted((s for s in picks.sets if not has(s)), key=lambda s: (s["score"], s["set_id"])):
@@ -191,7 +227,8 @@ def select(cands: list[dict]) -> tuple[list[dict], list[str]]:
                     picks.add(cand)
                     levels_ok = all(picks.level[l] >= min(MIN_PER_LEVEL, before.get(l, 0)) for l in LEVELS)
                     genre_ok = picks.genre[out["genre"]] > 0 or out["genre"] == cand["genre"]
-                    if levels_ok and genre_ok:
+                    bpm_ok = all(picks.bpm[b] >= min(floor.get(b, 0), before_bpm.get(b, 0)) for b in floor)
+                    if levels_ok and genre_ok and bpm_ok:
                         return True
                     picks.add(cand, -1)
                 picks.add(out, +1)
@@ -209,11 +246,19 @@ def select(cands: list[dict]) -> tuple[list[dict], list[str]]:
         if not repair(lambda s, present=present: s["genre"] not in present and s["genre"] != "unknown"):
             deviations.append(f"only {len(present)} genres reachable (quota {MIN_GENRES})")
             break
-    for cap, counter, limit in (("genre", picks.genre, MAX_PER_GENRE), ("period", picks.period, MAX_PER_PERIOD), ("bpm bin", picks.bpm, MAX_PER_BPM_BIN)):
+    for b in sorted(floor):
+        while picks.bpm[b] < floor[b]:
+            if not repair(lambda s, b=b: s["bpm_bin"] == b):
+                deviations.append(f"BPM {b}: only {picks.bpm[b]} sets (floor {floor[b]}); no swap within the caps found")
+                break
+    for cap, counter, limit in (("genre", picks.genre, MAX_PER_GENRE), ("period", picks.period, MAX_PER_PERIOD)):
         over = {k: v for k, v in counter.items() if v > limit}
         if over:
             deviations.append(f"{cap} cap exceeded: {over}")
-    return sorted(picks.sets, key=lambda s: s["set_id"]), deviations
+    over = {b: v for b, v in picks.bpm.items() if v > picks.bpm_cap.get(b, MAX_PER_BPM_BIN)}
+    if over:
+        deviations.append(f"BPM cap exceeded: {over}")
+    return sorted(picks.sets, key=lambda s: s["set_id"]), deviations, limits
 
 
 def split(sets: list[dict]) -> dict[int, str]:
@@ -256,7 +301,7 @@ def split(sets: list[dict]) -> dict[int, str]:
     return {s["set_id"]: ("test" if s["set_id"] in test else "train") for s in sets}
 
 
-def write(sets, splits, info, deviations, ranges, snapshot, out: Path) -> None:
+def write(sets, splits, info, deviations, ranges, snapshot, out: Path, limits: dict | None = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     cols = ["set_id", "split", "artist", "title", "creator", "creator_id", "mappers", "genre", "genre_source", "language",
             "ranked_date", "year", "period", "bpm", "bpm_bin", "play_count", "favourite_count", "rating_mean", "rating_votes",
@@ -294,10 +339,11 @@ def write(sets, splits, info, deviations, ranges, snapshot, out: Path) -> None:
         f"{json.dumps({k: round(v, 2) for k, v in info['typical_stars'].items()})}. Na poziom jedna dyfficulty: najbliższa typowemu SR, "
         f"remis → dyfficulty hosta → niższe id; tylko dyfficulty 4K Ranked o hit length ≥ {MIN_HIT_LENGTH_S} s.", "",
         "## Kwoty", "",
-        f"- {TARGET} zestawów; pierwszeństwo: liczba poziomów (3 > 2 > 1), potem score.",
+        f"- {TARGET} zestawów, każdy inna piosenka (`song_key`: wykonawca + tytuł bez dopisków wersji typu „TV Size”, „Cut Ver.”); pierwszeństwo: liczba poziomów (3 > 2 > 1), potem score.",
         f"- ≥ {MIN_PER_LEVEL} zestawów na poziom; ≤ {MAX_PER_GENRE} na gatunek; ≥ {MIN_GENRES} gatunków; ≤ {MAX_PER_MAPPER} zestawy na mappera "
         "(host zestawu i właściciele wybranych dyfficulty liczą się razem);",
-        f"  ≤ {MAX_PER_PERIOD} na okres {PERIOD_YEARS}-letni; ≤ {MAX_PER_BPM_BIN} na przedział BPM {BPM_BINS[1:-1]}.",
+        f"  ≤ {MAX_PER_PERIOD} na okres {PERIOD_YEARS}-letni; przedział BPM (granice {BPM_BINS[1:-1]}) między {BPM_FLOOR_RATIO}× a {BPM_CAP_RATIO}× "
+        f"swojego udziału wśród pełnych zestawów populacji, maks. {MAX_PER_BPM_BIN}: (min, maks.) = {json.dumps(limits or {}, sort_keys=True)}.",
         f"- Podział: {TEST} test / {TARGET - TEST} trening, po składowych grafu mapperów (żaden mapper w obu częściach), proporcjonalnie do gatunków, zestawy pełne najpierw.", "",
         "## Wynik", "",
         f"- Zestawy: {len(sets)}; z kompletem poziomów: {sum(len(s['levels']) == 3 for s in sets)}; test: {len(test)} (pełnych: {sum(len(s['levels']) == 3 for s in test)}).",
@@ -308,6 +354,7 @@ def write(sets, splits, info, deviations, ranges, snapshot, out: Path) -> None:
         f"- Mapperzy z największą liczbą zestawów: {Counter(m for s in sets for m in s['mappers']).most_common(5)}.",
         f"- Grupy normalizacji z fallbackiem do okresu: {sum(s['group_fallback'] for s in sets)} zestawów.", "",
         "## Odstępstwa od kwot", "", *([f"- {d}" for d in deviations] or ["- brak"]), "",
+        "## Zmiany kryterium BPM w trakcie selekcji", "", *[f"- {h}" for h in CRITERIA_HISTORY], "",
     ]
     (out / "corpus_selection.md").write_text("\n".join(lines))
     dl = ["# Lista do pobrania (.osz)", "",
@@ -330,10 +377,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     ranges = {k: tuple(v) for k, v in json.loads(args.levels.read_text())["ranges"].items()}
     cands, info = prepare(json.loads(args.candidates.read_text()), ranges)
-    sets, deviations = select(cands)
+    sets, deviations, limits = select(cands)
     splits = split(sets)
     snapshot = json.loads(args.snapshot.read_text()) if args.snapshot and args.snapshot.exists() else {}
-    write(sets, splits, info, deviations, ranges, snapshot, args.out)
+    write(sets, splits, info, deviations, ranges, snapshot, args.out, limits)
     print(f"{len(sets)} sets ({sum(v == 'test' for v in splits.values())} test); deviations: {deviations or 'none'}")
     return 0
 
