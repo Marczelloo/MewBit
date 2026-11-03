@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 20", () => {
-    assert.equal(GENERATOR_VERSION, 20);
+  it("is version 21", () => {
+    assert.equal(GENERATOR_VERSION, 21);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -437,6 +437,39 @@ describe("applyDifficulty", () => {
     const three = [0, 1, 2].map((lane) => ({ t: 3000, lane, level: 0, s: 1 - lane / 10, source: "lead" }));
     assert.equal(applyDifficulty(three, DIFFICULTIES.hard, timing, () => 0.9, []).length, 2);
     assert.equal(applyDifficulty(three, DIFFICULTIES.easy, timing, () => 0.9, []).length, 1);
+  });
+
+  describe("half beats first at a fast tempo", () => {
+    const hard = DIFFICULTIES.hard;
+    const atBpm = (bpm) => {
+      const features = makeFeatures({ bpm, durationMs: 16000 });
+      const beat = features.tempo.beats[8];
+      const note = (lane, source, level, beats) => ({ t: Math.round(beat + (beats * 60000) / bpm), lane, level, s: 0.8, source });
+      return {
+        timing: buildTiming(features, 16000),
+        half: note(0, "drums", 1, 1 / 2),
+        fine: note(1, "drums", 2, 1 / 4),
+        everyday: note(2, "lead", 1, 3 / 4),
+      };
+    };
+    const kept = ({ timing, half, fine, everyday }, diff) => {
+      const times = new Set(applyDifficulty([half, fine, everyday], diff, timing, () => 0.9, [], 0.9, 16000).map((n) => n.t));
+      return { half: times.has(half.t), fine: times.has(fine.t), everyday: times.has(everyday.t) };
+    };
+
+    it("is a Hard rule, so Easy, Normal and Hell keep their levels", () => {
+      assert.equal(hard.fastQuarterMs, 90);
+      for (const name of ["easy", "normal", "hell"]) assert.equal(DIFFICULTIES[name].fastQuarterMs, undefined);
+    });
+
+    it("above about 167 BPM a fine note off the half beats drops out; one a level stronger stays", () => {
+      assert.deepEqual(kept(atBpm(180), hard), { half: true, fine: false, everyday: true });
+      assert.deepEqual(kept(atBpm(180), { ...hard, fastQuarterMs: 0 }), { half: true, fine: true, everyday: true });
+    });
+
+    it("leaves a slower song alone", () => {
+      assert.deepEqual(kept(atBpm(150), hard), { half: true, fine: true, everyday: true });
+    });
   });
 });
 

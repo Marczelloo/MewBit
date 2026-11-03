@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 20;
+const GENERATOR_VERSION = 21;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -139,6 +139,7 @@ const DIFFICULTIES = {
     quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 2,
+    fastQuarterMs: 90, // above about 167 BPM the half beats come first (difficultyFilter.js fastQuarterLevel)
     holdOtherHand: "free",
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,

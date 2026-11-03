@@ -326,6 +326,15 @@ function pulsePowerFloor(diff, timing) {
   return Math.min(1, (diff.pulseNotesPerBeat * 1000) / (timing.medianMs * diff.maxNps));
 }
 
+// At a tempo too fast for its 1/4 grid to be the everyday one (a 1/4 step under diff.fastQuarterMs), that grid counts
+// as the fine one: an event off the half beats steps down a level, so the half beats claim their place first and what
+// was already fine (hats, 1/8 hits) drops out.
+function fastQuarterLevel(e, diff, timing) {
+  if (!(diff.fastQuarterMs > 0) || !timing?.snapped) return e;
+  if (beatMsOf(timing, e.t) / 4 >= diff.fastQuarterMs || !offHalfGrid(timing, e.t)) return e;
+  return { ...e, level: e.level + 1 };
+}
+
 // --- public API ----------------------------------------------------------------------------
 
 // applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy, phraseEndMs, steadyPulse) -> [{ t, lane, len? }]
@@ -347,6 +356,7 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   let items = sorted
     .map(onGrid)
     .map((e) => (diff.longNotesOnBeats ? longNoteOnBeat(e, timing) : e))
+    .map((e) => fastQuarterLevel(e, diff, timing))
     .sort(byTime)
     .filter((e) => (e.level <= diff.maxLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords))
     .filter((e) => {
