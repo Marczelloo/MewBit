@@ -207,16 +207,14 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
 
   const list = searching ? found : played;
   const rows = list.rows;
-  // A list opens on its first row, but a search shows nothing until the player picks a result.
-  const selected = useMemo(() => rows.find((row) => row.key === selectedKey) ?? (text ? null : rows[0]) ?? null, [rows, selectedKey, text]);
+  // No list picks a song by itself: the details, the preview and Play wait for the player's pick.
+  const selected = useMemo(() => rows.find((row) => row.key === selectedKey) ?? null, [rows, selectedKey]);
 
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
   }, [selected?.key]);
 
-  // Only a song the player picked, not the first row a list opens on: a preview makes the server render the song.
-  const pickedRow = rows.find((row) => row.key === selectedKey) ?? null;
-  const previewRow = onPlay && preparing !== null ? null : pickedRow;
+  const previewRow = onPlay && preparing !== null ? null : selected;
   const previewRowRef = useRef(previewRow);
   previewRowRef.current = previewRow;
   const previewKey = previewRow?.key ?? null;
@@ -307,6 +305,8 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     setQuery("");
     setScope(id);
     setSelectedKey(null);
+    setPlayError(null);
+    setAddedNote(null);
   };
 
   let emptyCopy = null;
@@ -373,7 +373,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
         ) : (
           <div className="mb-ss-placeholder">
             <b>{searching ? "Pick a result" : "Pick a song"}</b>
-            <span>{searching ? "Click a song to see its levels and hear a preview." : "Search above, or choose one that was played."}</span>
+            <span>{searching ? "Click a song to see its levels and hear a preview." : "Choose one that was played, or search above."}</span>
           </div>
         )}
       </section>
