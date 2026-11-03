@@ -73,6 +73,55 @@ def frame_value(env: np.ndarray, t_ms: np.ndarray, hop_ms: float, reach_frames: 
     return vals
 
 
+# --- the osu! timeline against the decoded audio ------------------------------------------------------------------
+
+OFFSET_SEARCH_MS = 100  # lags searched: -100..+100 ms
+OFFSET_TOL_MS = 15
+
+
+def _share_at(on: np.ndarray, times: np.ndarray, lag: float, tol: float) -> float:
+    if len(on) < 2 or len(times) == 0:
+        return 0.0
+    t = times + lag
+    i = np.clip(np.searchsorted(on, t), 1, len(on) - 1)
+    return float(np.mean(np.minimum(np.abs(on[i] - t), np.abs(on[i - 1] - t)) <= tol))
+
+
+def _fit_lag(on: np.ndarray, times: np.ndarray) -> tuple[float, float, float]:
+    """(lag, share at lag, share at 0): the centre of the plateau of best shares (a +-15 ms tolerance makes the best
+    share flat over a range of lags), refined by the median signed distance of the notes that sit on an onset."""
+    lags = np.arange(-OFFSET_SEARCH_MS, OFFSET_SEARCH_MS + 1)
+    shares = np.array([_share_at(on, times, l, OFFSET_TOL_MS) for l in lags])
+    k = int(np.argmax(shares))
+    lo = hi = k
+    while lo > 0 and shares[lo - 1] >= shares[k] - 0.005:
+        lo -= 1
+    while hi < len(lags) - 1 and shares[hi + 1] >= shares[k] - 0.005:
+        hi += 1
+    coarse = float(lags[(lo + hi) // 2])
+    if len(on) < 2 or len(times) == 0:
+        return coarse, float(shares[k]), float(shares[OFFSET_SEARCH_MS])
+    t = times + coarse
+    i = np.clip(np.searchsorted(on, t), 1, len(on) - 1)
+    d = np.where(np.abs(on[i] - t) <= np.abs(on[i - 1] - t), on[i] - t, on[i - 1] - t)
+    near = np.abs(d) <= OFFSET_TOL_MS
+    lag = coarse + (float(np.median(d[near])) if near.any() else 0.0)
+    return lag, _share_at(on, times, lag, OFFSET_TOL_MS), float(shares[OFFSET_SEARCH_MS])
+
+
+def estimate_offset(times_ms, npz, events: dict[str, np.ndarray], bias_ms: dict[str, float]) -> dict:
+    """The shift (ms) that moves human note times onto the decoded audio, fitted against percussive onsets (librosa,
+    bias-corrected); the plugin's lowmid onsets give an independent check. One parameter per song: it absorbs the MP3
+    decoder delay ffmpeg trims and the mapper's own offset."""
+    times = np.asarray(sorted(set(times_ms)), dtype=float)
+    lag, share, zero = _fit_lag(corrected_onsets(npz, "perc", bias_ms), times)
+    lowmid = np.sort(events["lowmid"][:, 0]) if len(events.get("lowmid", [])) else np.array([])
+    lm_lag, lm_share, _ = _fit_lag(lowmid, times)
+    return {"offset_ms": int(round(lag)), "share_at_offset": share, "share_at_zero": zero,
+            "plugin_lowmid_offset_ms": int(round(lm_lag)), "plugin_lowmid_share": lm_share,
+            "agreement_ms": int(round(abs(lag - lm_lag))), "notes": int(len(times))}
+
+
 # --- alignment and which sounds are mapped -----------------------------------------------------------------------
 
 

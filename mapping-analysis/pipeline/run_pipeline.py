@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import json
 import re
 import subprocess
@@ -37,7 +38,7 @@ import audio_metrics as am  # noqa: E402
 import chart_metrics as cm  # noqa: E402
 import extract_features  # noqa: E402
 import librosa_features  # noqa: E402
-from osu_format import TimingGrid, copy_audio, main_bpm, parse_osu, read_osz  # noqa: E402
+from osu_format import TimingGrid, copy_audio, main_bpm, parse_osu, read_osz, shifted  # noqa: E402
 
 LEVELS = ("easy", "normal", "hard")
 
@@ -149,8 +150,13 @@ def process(row: dict, args) -> dict:
     if args.stems_python:
         stems_path = args.work / "stems" / f"{sid}.npz"
         if not stems_path.exists():
-            subprocess.run([str(args.stems_python), "-I", str(HERE / "audio" / "stems.py"), "--models", str(args.stems_models), str(audio), str(stems_path)],
-                           check=True, capture_output=True)
+            # One separation at a time: TensorFlow takes several GB per song, and parallel jobs ran out of memory.
+            stems_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(stems_path.parent / ".lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                if not stems_path.exists():
+                    subprocess.run([str(args.stems_python), "-I", str(HERE / "audio" / "stems.py"), "--models", str(args.stems_models), str(audio), str(stems_path)],
+                                   check=True, capture_output=True)
         npz.update({k: v for k, v in np.load(stems_path).items() if "stem_" in k})
     events = am.plugin_events(features)
     bias = args.bias
@@ -158,6 +164,13 @@ def process(row: dict, args) -> dict:
     if not analysis_path.exists():
         subprocess.run(["node", str(HERE / "algo" / "dump_analysis.js"), str(feats_path), str(analysis_path)], check=True, capture_output=True)
     analysis = json.loads(analysis_path.read_text())
+
+    # The osu! timeline and the decoded audio differ by tens of ms (MP3 decoder delay, the mapper's offset): one shift
+    # per song, fitted on every chosen difficulty's notes, moves the human maps onto the audio timeline, where the
+    # algorithm's charts and every audio feature already are.
+    offset = am.estimate_offset([n.t for bm in chosen.values() for n in bm.notes], npz, events, bias)
+    chosen = {lvl: shifted(bm, offset["offset_ms"]) for lvl, bm in chosen.items()}
+    ref = max(chosen.values(), key=lambda bm: len(bm.notes))
 
     # Timing consistency across the chosen difficulties (the ranking criteria want one timing per set).
     reds = {lvl: red_lines(bm) for lvl, bm in chosen.items()}
@@ -167,6 +180,7 @@ def process(row: dict, args) -> dict:
     span = (float(ref_notes[0].t), float(max(n.end if n.hold else n.t for n in ref_notes)) + 1)
     song = {
         "set_id": sid, "audio": audio.name, "audio_names": sorted(audio_names), "timing_consistent": timing_consistent,
+        "timeline_offset": offset,
         "variable_bpm": ref_grid.is_variable, "meters": sorted(ref_grid.meters), "red_lines": len(ref_grid.reds),
         "main_bpm": main_bpm(ref_grid, *span), "duration_ms": float(npz["duration_ms"]), "reference_level": next(l for l, b in chosen.items() if b is ref),
         "alignment_reference": am.onset_alignment(ref_notes, npz, bias),

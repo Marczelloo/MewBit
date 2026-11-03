@@ -354,6 +354,8 @@ def write(sets, splits, info, deviations, ranges, snapshot, out: Path, limits: d
         f"- Mapperzy z największą liczbą zestawów: {Counter(m for s in sets for m in s['mappers']).most_common(5)}.",
         f"- Grupy normalizacji z fallbackiem do okresu: {sum(s['group_fallback'] for s in sets)} zestawów.", "",
         "## Odstępstwa od kwot", "", *([f"- {d}" for d in deviations] or ["- brak"]), "",
+        *(["## Wykluczone zestawy", "", f"- {info['excluded']}: żadna kopia z mirrorów nie zgadzała się z sumami MD5 oficjalnego API "
+           "(osu.direct: inna wersja dyfficulty, nerinyan: brak, catboy: odmowa dostępu).", ""] if info.get("excluded") else []),
         "## Zmiany kryterium BPM w trakcie selekcji", "", *[f"- {h}" for h in CRITERIA_HISTORY], "",
     ]
     (out / "corpus_selection.md").write_text("\n".join(lines))
@@ -374,9 +376,13 @@ def main(argv=None) -> int:
     ap.add_argument("--levels", type=Path, required=True)
     ap.add_argument("--snapshot", type=Path)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--exclude", default="", help="set ids to leave out (e.g. no verifiable copy could be downloaded)")
     args = ap.parse_args(argv)
+    excluded = {int(x) for x in args.exclude.split(",") if x.strip()}
     ranges = {k: tuple(v) for k, v in json.loads(args.levels.read_text())["ranges"].items()}
-    cands, info = prepare(json.loads(args.candidates.read_text()), ranges)
+    cands, info = prepare([c for c in json.loads(args.candidates.read_text()) if c.get("set_id") not in excluded], ranges)
+    if excluded:
+        info["excluded"] = sorted(excluded)
     sets, deviations, limits = select(cands)
     splits = split(sets)
     snapshot = json.loads(args.snapshot.read_text()) if args.snapshot and args.snapshot.exists() else {}

@@ -24,16 +24,20 @@ Zakresy SR (`shared/levels.json`): {"easy": [0.0, 1.65], "normal": [1.65, 2.7], 
 ## Wynik
 
 - Zestawy: 100; z kompletem poziomów: 93; test: 20 (pełnych: 20).
-- Na poziom: {'easy': 99, 'normal': 97, 'hard': 95}; w teście: {'easy': 20, 'normal': 20, 'hard': 20}.
-- Gatunki: {'anime': 25, 'electronic': 25, 'video game': 22, 'pop': 16, 'rock': 4, 'novelty': 2, 'classical': 1, 'folk': 1, 'hip hop': 1, 'jazz': 1, 'metal': 1, 'other': 1}; źródło gatunku: {'api': 100}.
-- Gatunki w teście: {'electronic': 6, 'anime': 5, 'video game': 5, 'pop': 3, 'novelty': 1}.
-- Okresy: {'2022-2024': 35, '2025-2027': 32, '2019-2021': 16, '2016-2018': 10, '2013-2015': 7}; BPM: {'180-210': 38, '150-180': 33, '120-150': 15, '>=210': 10, '0-120': 4}.
+- Na poziom: {'easy': 99, 'normal': 98, 'hard': 95}; w teście: {'easy': 20, 'normal': 20, 'hard': 20}.
+- Gatunki: {'anime': 25, 'electronic': 25, 'video game': 21, 'pop': 18, 'rock': 3, 'novelty': 2, 'classical': 1, 'folk': 1, 'hip hop': 1, 'jazz': 1, 'metal': 1, 'other': 1}; źródło gatunku: {'api': 100}.
+- Gatunki w teście: {'electronic': 6, 'anime': 5, 'pop': 4, 'video game': 4, 'novelty': 1}.
+- Okresy: {'2022-2024': 35, '2025-2027': 31, '2019-2021': 16, '2016-2018': 11, '2013-2015': 7}; BPM: {'180-210': 37, '150-180': 34, '120-150': 15, '>=210': 10, '0-120': 4}.
 - Mapperzy z największą liczbą zestawów: [(3734394, 3), (2596306, 3), (4632359, 3), (7707789, 3), (3484485, 3)].
 - Grupy normalizacji z fallbackiem do okresu: 5 zestawów.
 
 ## Odstępstwa od kwot
 
 - brak
+
+## Wykluczone zestawy
+
+- [1746870]: żadna kopia z mirrorów nie zgadzała się z sumami MD5 oficjalnego API (osu.direct: inna wersja dyfficulty, nerinyan: brak, catboy: odmowa dostępu).
 
 ## Zmiany kryterium BPM w trakcie selekcji
 

@@ -188,6 +188,17 @@ def parse_osu(text: str) -> Beatmap:
     return bm
 
 
+def shifted(bm: Beatmap, ms: float) -> Beatmap:
+    """A copy of the beatmap with every time moved by `ms` (notes, hold ends, timing points, breaks): the map moved
+    from the osu! timeline onto the timeline of the decoded audio (audio_metrics.estimate_offset)."""
+    off = int(round(ms))
+    out = Beatmap(dict(bm.general), dict(bm.metadata), dict(bm.difficulty), format_version=bm.format_version)
+    out.timing = [TimingPoint(p.t + ms, p.beat_length, p.meter, p.uninherited, p.kiai) for p in bm.timing]
+    out.notes = [Note(n.t + off, n.lane, n.end + off if n.end is not None else None) for n in bm.notes]
+    out.breaks = [(a + off, b + off) for a, b in bm.breaks]
+    return out
+
+
 # --- timing grid ---------------------------------------------------------------------------------------------------
 
 
