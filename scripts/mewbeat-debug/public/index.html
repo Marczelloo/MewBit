@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mewbeat · debugger chartów</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <div class="songpick">
+    <button id="prevSong" class="ico" title="Poprzedni utwór ([)">‹</button>
+    <button id="songBtn" class="songbtn" title="Wybierz utwór">Ładuję listę…</button>
+    <button id="nextSong" class="ico" title="Następny utwór (])">›</button>
+    <div id="songPop" hidden>
+      <input id="songFilter" type="text" placeholder="Filtruj: artysta / tytuł" autocomplete="off" spellcheck="false">
+      <div class="seg" id="sortSeg">
+        <button data-sort="name" class="on">A–Z</button>
+        <button data-sort="dist">Dystans ↓</button>
+      </div>
+      <ul id="songList"></ul>
+    </div>
+  </div>
+  <div class="seg" id="levelSeg" title="Poziom (klawisze 1-4)">
+    <button data-level="easy">easy <kbd>1</kbd></button>
+    <button data-level="normal">normal <kbd>2</kbd></button>
+    <button data-level="hard">hard <kbd>3</kbd></button>
+    <button data-level="hell">hell <kbd>4</kbd></button>
+  </div>
+  <label class="inl">Snapshot <select id="snapSel"><option value="">brak</option></select></label>
+  <button id="recalc" title="Przelicz chart z aktualnego kodu generatora (audio i pozycja zostają)">Przelicz</button>
+  <span id="genInfo" class="tnum"></span>
+  <span id="msg" class="msg"></span>
+</header>
+
+<section id="transport">
+  <button id="playBtn" class="play" title="Odtwarzaj / pauza (Spacja)" disabled>▶</button>
+  <span id="timeNow" class="time tnum">0:00.000</span><span class="dim">/</span><span id="timeTotal" class="time dim tnum">0:00.000</span><span id="audioStatus" class="dim"></span>
+  <label class="inl">Skocz do <input id="jumpTo" type="text" size="8" placeholder="1:36.5" spellcheck="false"></label>
+  <div class="seg" id="rateSeg" title="Prędkość">
+    <button data-rate="0.5">0.5×</button>
+    <button data-rate="0.75">0.75×</button>
+    <button data-rate="1" class="on">1×</button>
+  </div>
+  <label class="inl">Głośność <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+  <label class="inl chk"><input id="clickGen" type="checkbox"> klik: generator</label>
+  <label class="inl chk"><input id="clickHum" type="checkbox"> klik: człowiek</label>
+  <label class="inl" title="Przesunięcie nut i kliknięć względem audio (dekodery mp3 dodają opóźnienie)">Offset <input id="offset" type="range" min="-150" max="150" step="1" value="0"> <span id="offsetVal" class="tnum offv">0 ms</span> <button id="offsetReset" class="mini">0</button></label>
+  <label class="inl chk"><input id="follow" type="checkbox" checked> śledź</label>
+  <span class="grow"></span>
+  <button id="zoomOut" class="ico" title="Oddal (-)">−</button>
+  <button id="zoomIn" class="ico" title="Przybliż (+)">+</button>
+</section>
+
+<section id="legend">
+  <span id="legendChips"></span>
+  <label class="inl chk"><input id="showRej" type="checkbox" checked> odrzucone</label>
+  <span id="filterChip" class="fchip" hidden></span>
+  <span class="grow"></span>
+  <span id="loopInfo" class="tnum dim">A–B: brak (Shift+przeciągnij)</span>
+  <button id="loopClear" class="mini" disabled>Wyczyść A–B</button>
+  <span id="cursorT" class="tnum dim cur">kursor –</span>
+</section>
+
+<div id="warn" hidden></div>
+
+<main>
+  <div id="left">
+    <div id="canvasWrap"><canvas id="cv"></canvas></div>
+    <div id="ovWrap"><canvas id="ov"></canvas></div>
+  </div>
+  <aside id="panel"></aside>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

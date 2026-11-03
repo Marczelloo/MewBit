@@ -161,9 +161,9 @@ function fastRunHolds(candidate, accepted, diff, felt) {
   return true;
 }
 
-// Does adding `candidate` keep every gap and the sliding density cap?
-// `accepted` is time-sorted. `timing` (optional) gives the beat for diff.gapBeats and diff.maxFastRun.
-function fits(candidate, accepted, diff, energy, powerFloor = 0, timing = null) {
+// What adding `candidate` would break of the gaps and the sliding density cap: null when it keeps them all, else the rule
+// (with the note it clashes with). `accepted` is time-sorted. `timing` (optional) gives the beat for diff.gapBeats and diff.maxFastRun.
+function whyNotFits(candidate, accepted, diff, energy, powerFloor = 0, timing = null) {
   const noteGap = diff.minNoteGapMs ?? 0;
   const laneGap = diff.minLaneGapMs ?? 0;
   const felt = feltBeatMs(timing, candidate.t);
@@ -172,11 +172,14 @@ function fits(candidate, accepted, diff, energy, powerFloor = 0, timing = null) 
   for (let i = at; i < accepted.length && accepted[i].t < candidate.t + reach; i++) {
     const n = accepted[i];
     const dt = Math.abs(n.t - candidate.t);
-    if (n.t !== candidate.t && (dt < noteGap || dt < beatGapMs(candidate, n, diff, felt))) return false;
-    if (n.lane === candidate.lane && dt < laneGap) return false;
-    if (n.lane === candidate.lane && n.t === candidate.t) return false;
+    const clash = (rule, needMs) => ({ rule, t: n.t, lane: n.lane, dtMs: dt, needMs });
+    if (n.t !== candidate.t && dt < noteGap) return clash("noteGap", noteGap);
+    if (n.t !== candidate.t && dt < beatGapMs(candidate, n, diff, felt)) return clash("beatGap", beatGapMs(candidate, n, diff, felt));
+    if (n.lane === candidate.lane && dt < laneGap) return clash("laneGap", laneGap);
+    if (n.lane === candidate.lane && n.t === candidate.t) return clash("sameSpot", 0);
   }
-  return fastRunHolds(candidate, accepted, diff, felt) && densityHolds(candidate, accepted, diff, energy, powerFloor);
+  if (!fastRunHolds(candidate, accepted, diff, felt)) return { rule: "fastRun" };
+  return densityHolds(candidate, accepted, diff, energy, powerFloor) ? null : { rule: "density" };
 }
 
 // Mean of energy^ENERGY_EXPONENT, times the section's intensity (intensity.js) where the lookup has one, over a
@@ -241,12 +244,16 @@ function selectionOrder(items, diff, timing) {
 
 // Picks events in priority order (lowest level first, then strongest), skipping
 // any that would break a floor or the density cap; so the highest level and the
-// weakest events are what gets dropped.
-function selectByFloors(items, diff, energy, prevNotes, powerFloor = 0, timing = null) {
+// weakest events are what gets dropped. `onReject` (optional) hears each one dropped and why.
+function selectByFloors(items, diff, energy, prevNotes, powerFloor = 0, timing = null, onReject = null) {
   const accepted = prevNotes.map((n) => ({ t: n.t, lane: n.lane })).sort(byTime);
   const kept = [];
   for (const item of selectionOrder(items, diff, timing)) {
-    if (!fits(item, accepted, diff, energy, powerFloor, timing)) continue;
+    const why = whyNotFits(item, accepted, diff, energy, powerFloor, timing);
+    if (why) {
+      onReject?.(item, why);
+      continue;
+    }
     accepted.splice(lowerBound(accepted.map((n) => n.t), item.t), 0, { t: item.t, lane: item.lane, source: item.source });
     kept.push(item);
   }
@@ -342,8 +349,9 @@ function fastQuarterLevel(e, diff, timing) {
 // `phraseEnergy` (optional) is the phrase's mean energy for Normal's quarter-grid rule;
 // without it the energy at the event's time is used. `phraseEndMs` (optional) keeps holds
 // inside their phrase. A sustained bass/lead event becomes a hold (see holds.js). `steadyPulse` (optional)
-// marks a phrase whose beats carry drum or bass onsets: it gets a density floor (pulsePowerFloor).
-function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity, steadyPulse = false) {
+// marks a phrase whose beats carry drum or bass onsets: it gets a density floor (pulsePowerFloor). `trace` (optional,
+// trace.js) hears what every stage did; the notes then keep their ids.
+function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseEnergy = null, phraseEndMs = Infinity, steadyPulse = false, trace = null) {
   const energy = asLookup(energyAt);
   const tail = (Array.isArray(prevNotes) ? prevNotes : []).filter((n) => Number.isFinite(n?.t) && Number.isInteger(n?.lane));
   const sorted = [...events].sort(byTime);
@@ -353,31 +361,37 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   // A tonal note on the 1/8 grid is level 1 so Normal keeps the syncopation; there it plays on the 1/4 grid.
   const onGrid = (e) => (diff.maxLevel < FINE_LEVEL && Number.isFinite(e.coarseT) ? { ...e, t: e.coarseT } : e);
 
-  let items = sorted
+  const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
+  const keep = (stage, list, test) => step(stage, list, list.filter(test));
+
+  const placed = sorted
     .map(onGrid)
     .map((e) => (diff.longNotesOnBeats ? longNoteOnBeat(e, timing) : e))
     .map((e) => fastQuarterLevel(e, diff, timing))
-    .sort(byTime)
-    .filter((e) => (e.level <= diff.maxLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords))
-    .filter((e) => {
-      // A sung or bass line is not "quiet phrase filler": its off-beat notes are the tune.
-      if (!(diff.quarterMinEnergy > 0) || e.level !== 1 || TONAL_SOURCES.has(e.source)) return true;
-      const slot = gridSlot(timing, e.t);
-      const offHalf = slot !== null && !slot.beat && !slot.half;
-      return !(offHalf && (phraseEnergy ?? energy.at(e.t)) < diff.quarterMinEnergy);
-    })
-    .filter((e) => e.t >= LEAD_IN_MS && energy.at(e.t) >= SILENCE_ENERGY)
-    .map((e) => ({ ...e }));
+    .sort(byTime);
+  step("gridLevel", sorted, placed);
+  let items = keep("level", placed, (e) => (e.level <= diff.maxLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords));
+  items = keep("quietQuarter", items, (e) => {
+    // A sung or bass line is not "quiet phrase filler": its off-beat notes are the tune.
+    if (!(diff.quarterMinEnergy > 0) || e.level !== 1 || TONAL_SOURCES.has(e.source)) return true;
+    const slot = gridSlot(timing, e.t);
+    const offHalf = slot !== null && !slot.beat && !slot.half;
+    return !(offHalf && (phraseEnergy ?? energy.at(e.t)) < diff.quarterMinEnergy);
+  });
+  items = keep("leadIn", items, (e) => e.t >= LEAD_IN_MS);
+  items = keep("silence", items, (e) => energy.at(e.t) >= SILENCE_ENERGY).map((e) => ({ ...e }));
 
-  if (diff.thinChords) items = thinChords(items, diff, timing, phraseEnergy, energy);
-  items = capMoments(items, diff.chord ? 2 : 1);
-  items = limitJacks(items, diff, prev, { strict: false, timing });
-  items = selectByFloors(items, diff, energy, prev, steadyPulse ? pulsePowerFloor(diff, timing) : 0, timing);
-  if (diff.maxQuarterShare != null) items = capQuarters(items, diff, timing);
-  if (diff.thinChords) items = spaceChords(items, diff, timing);
-  items = planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs);
-  items = limitJacks(items, diff, prev, { strict: true, timing });
-  return items.sort(byTime).map((n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane }));
+  if (diff.thinChords) items = step("thinChords", items, thinChords(items, diff, timing, phraseEnergy, energy));
+  items = step("capMoments", items, capMoments(items, diff.chord ? 2 : 1));
+  items = step("jacks", items, limitJacks(items, diff, prev, { strict: false, timing }));
+  const onReject = trace ? (item, why) => trace.reject(item, "floors", why) : null;
+  items = step("floors", items, selectByFloors(items, diff, energy, prev, steadyPulse ? pulsePowerFloor(diff, timing) : 0, timing, onReject));
+  if (diff.maxQuarterShare != null) items = step("capQuarters", items, capQuarters(items, diff, timing));
+  if (diff.thinChords) items = step("spaceChords", items, spaceChords(items, diff, timing));
+  items = step("planHolds", items, planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs));
+  items = step("jacks", items, limitJacks(items, diff, prev, { strict: true, timing }));
+  const bare = (n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane });
+  return items.sort(byTime).map((n) => (trace ? { ...bare(n), tid: n.tid } : bare(n)));
 }
 
 // Final whole-song pass: drops only notes that break minNoteGapMs (any lane,

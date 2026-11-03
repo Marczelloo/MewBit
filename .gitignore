@@ -24,3 +24,4 @@ web/dist
 
 # Chart preview tool output
 .mewbeat-preview/
+.mewbeat-debug/

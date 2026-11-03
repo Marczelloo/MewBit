@@ -13,6 +13,7 @@ const { fillRests } = require("./rests");
 const { balanceHands, fillGaps, orientDrums } = require("./seams");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
+const { createTrace } = require("./trace");
 const { lowerBound } = require("./util");
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
@@ -91,8 +92,10 @@ function leadersOf(ctx, diff) {
 // One difficulty charted from the music, phrase by phrase: { notes, sustained }. Every difficulty is charted on its
 // own (its grid, gaps and density pick from the music's events), not thinned from a harder one, so an Easy pattern
 // is made for Easy. `sustained` holds the keys ("t:lane") of the real sustain holds, which the hold cap keeps longest.
-function chartNotes(ctx, diff) {
+// `trace` (optional, trace.js) hears what every stage did.
+function chartNotes(ctx, diff, trace = null) {
   const { features, timing, energy, phrases, durationMs } = ctx;
+  const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const leaders = leadersOf(ctx, diff);
   const supports = diff.oneLayer ? phrases.map(() => []) : ctx.supports;
   const all = []; // final notes so far, time-ordered
@@ -102,11 +105,11 @@ function chartNotes(ctx, diff) {
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
   const withGapHolds = (notes, tail, p, toMs) =>
     tonal(p)
-      ? addGapHolds([...tail, ...notes], diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs)
+      ? step("gapHolds", notes, addGapHolds([...tail, ...notes], diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs))
       : notes;
 
   // A bar that plays like one just before it takes that bar's lanes, so a groove keeps its pattern.
-  const grooved = (notes, fromMs, toMs, fixed) => repeatBarLanes(notes, timing, { fromMs, toMs, fixed });
+  const grooved = (notes, fromMs, toMs, fixed) => step("groove", notes, repeatBarLanes(notes, timing, { fromMs, toMs, fixed }));
 
   // Where the charted layer rests (a sung line pausing, a lead dropping out, the leading layer changing at a seam) while
   // the drums play on, the drums carry the beat through; a drum pattern starts on the side the hands are on.
@@ -119,18 +122,18 @@ function chartNotes(ctx, diff) {
     // Hard and Hell carry the beat through with every drum hit; Easy and Normal take single sounds (fillRests) instead.
     const fill = diff.fillRestBeats > 0
       ? []
-      : fillGaps(all, notes, features, timing, energy, end && !copy ? durationMs : null).filter((n) => !copy || n.t < phrases[i].startMs);
+      : step("fillGaps", [], fillGaps(all, notes, features, timing, energy, end && !copy ? durationMs : null).filter((n) => !copy || n.t < phrases[i].startMs));
     for (const n of fill) drumTimes.add(n.t);
     if (copy) return [...fill, ...notes];
     const before = new Set(all);
     const window = { fromMs: phrases[i].startMs, toMs: end ? Infinity : phrases[last].endMs, untilMs: end ? durationMs : null };
-    return fillRests([...all, ...fill, ...notes], ctx, diff, window).filter((n) => !before.has(n));
+    return step("fillRests", [...fill, ...notes], fillRests([...all, ...fill, ...notes], ctx, diff, window).filter((n) => !before.has(n)));
   };
 
   // Where the phrase's notes join the chart. A repeat keeps its source's hands; only a jack at its seam may move.
   const place = (notes, tail, copy = false) => {
-    const balanced = diff.balanceHands && !copy ? balanceHands(notes, all, tail) : notes;
-    all.push(...spreadLanes(balanced, diff, timing, tail));
+    const balanced = diff.balanceHands && !copy ? step("hands", notes, balanceHands(notes, all, tail)) : notes;
+    all.push(...step("spreadLanes", balanced, spreadLanes(balanced, diff, timing, tail)));
   };
 
   for (let i = 0; i < phrases.length; ) {
@@ -140,8 +143,10 @@ function chartNotes(ctx, diff) {
 
     // A repeat plays like its source.
     const copied = copiedRepeat(ctx, all, i, diff);
+    const info = { leader: leaders[i], supports: supports[i], repeat: isRepeat(phrase, i) };
     if (copied) {
-      place(bridged(copied, i, true), tail, true);
+      trace?.enter(i, { ...info, charted: "copy" });
+      place(bridged(trace ? trace.copied(copied) : copied, i, true), tail, true);
       i++;
       continue;
     }
@@ -152,21 +157,24 @@ function chartNotes(ctx, diff) {
       let last = i;
       while (last + 1 < phrases.length && leaders[last + 1] === "bands" && !isRepeat(phrases[last + 1], last + 1)) last++;
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
-      const notes = grooved(bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs }), phrase.startMs, toMs);
-      place(bridged(withGapHolds(limitJacks(notes, diff, tail, { strict: false, timing }), tail, phrase, toMs), i, false, last), tail);
+      trace?.enter(i, { ...info, charted: "bands", lastPhrase: last });
+      const notes = grooved(step("bandPath", [], bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs })), phrase.startMs, toMs);
+      place(bridged(withGapHolds(step("jacks", notes, limitJacks(notes, diff, tail, { strict: false, timing })), tail, phrase, toMs), i, false, last), tail);
       i = last + 1;
       continue;
     }
 
-    const events = patternEvents(phrase, leaders[i], features, timing, supports[i]);
-    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, leaders[i] === "drums" && hasSteadyPulse(phrase));
+    trace?.enter(i, { ...info, charted: "pattern" });
+    const made = patternEvents(phrase, leaders[i], features, timing, supports[i]);
+    const events = trace ? trace.tagged(made) : made;
+    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, leaders[i] === "drums" && hasSteadyPulse(phrase), trace);
     // Drum hits keep their lane roles (kicks outside, snares inside); the tonal notes take the earlier bar's lanes freely.
     for (const e of events) if (e.source === "drums") drumTimes.add(e.t);
     let patterned = grooved(charted, phrase.startMs, phrase.endMs, (n) => drumTimes.has(n.t));
-    if (changes(i) && leaders[i] === "drums" && supports[i].length === 0) patterned = orientDrums(patterned, tail);
+    if (changes(i) && leaders[i] === "drums" && supports[i].length === 0) patterned = step("orientDrums", patterned, orientDrums(patterned, tail));
     // A drum hit moved out of a jack keeps its role (limitJacks tries the role partner first for a drums source).
     const asDrum = (n) => (drumTimes.has(n.t) ? { ...n, source: "drums" } : n);
-    const repeated = limitJacks(patterned.map(asDrum), diff, tail, { strict: true, timing }).map(({ source, ...n }) => n);
+    const repeated = step("jacks", patterned, limitJacks(patterned.map(asDrum), diff, tail, { strict: true, timing }).map(({ source, ...n }) => n));
     place(bridged(withGapHolds(repeated, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i), tail);
     i++;
   }
@@ -174,27 +182,29 @@ function chartNotes(ctx, diff) {
   // sustains planned with the phrase) are what a hold cap keeps longest.
   const key = (n) => `${n.t}:${n.lane}`;
   const gapHeld = new Set(all.filter((n) => n.len > 0 && n.gapHold).map(key));
-  const notes = addSustainHolds(all.sort(byTime), features, diff, timing, durationMs).map(({ gapHold, ...n }) => n);
+  const notes = step("sustainHolds", all, addSustainHolds(all.sort(byTime), features, diff, timing, durationMs).map(({ gapHold, ...n }) => n));
   return { notes, sustained: new Set(notes.filter((n) => n.len > 0 && !gapHeld.has(key(n))).map(key)) };
 }
 
 // No hold runs past the end of the song, whatever produced it. The hold share is capped per phrase (a cap over the
 // whole song would demote holds unevenly and break the repeats); real sustains are kept before gap holds.
-function finish(ctx, { notes, sustained }, diff) {
-  const clipped = enforceFloors(clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing), diff, ctx.timing);
-  const floored = diff.oneHoldAtATime ? oneHoldAtATime(clipped) : clipped;
+function finish(ctx, { notes, sustained }, diff, trace = null) {
+  const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
+  const held = step("clipHolds", notes, clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing));
+  const clipped = step("finalFloors", held, enforceFloors(held, diff, ctx.timing));
+  const floored = diff.oneHoldAtATime ? step("oneHold", clipped, oneHoldAtATime(clipped)) : clipped;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const last = ctx.phrases.length - 1;
   const inPhrase = (n, i) => (i === 0 || n.t >= ctx.phrases[i].startMs) && (i === last || n.t < ctx.phrases[i].endMs);
-  if (last < 0) return limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare);
-  return ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, isSustain, diff.maxHoldShare)).sort(byTime);
+  if (last < 0) return step("holdShare", floored, limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare));
+  return step("holdShare", floored, ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, isSustain, diff.maxHoldShare)).sort(byTime));
 }
 
 const diffOf = (ctx, difficulty) => effectiveDifficulty(DIFFICULTIES[difficulty], ctx.busy);
 
-const notesFor = (ctx, difficulty) => {
+const notesFor = (ctx, difficulty, trace = null) => {
   const diff = diffOf(ctx, difficulty);
-  return finish(ctx, chartNotes(ctx, diff), diff);
+  return finish(ctx, chartNotes(ctx, diff, trace), diff, trace);
 };
 
 // --- public API --------------------------------------------------------------
@@ -237,4 +247,29 @@ function generateAll(features, audioKey) {
   return easy && normal && hard && hell ? { easy, normal, hard, hell } : null;
 }
 
-module.exports = { GENERATOR_VERSION, generateAll, generateChart, starsOf };
+// generateChart plus the chart's story, for the debugger: the same chart, every candidate with what became of it
+// (trace.js), the grid and phrases it was charted on, and the difficulty's parameters for this song. `chart` is null
+// when too few notes survive; the story is there all the same.
+function traceChart(features, difficulty, audioKey) {
+  if (!DIFFICULTIES[difficulty]) throw new Error(`Unknown difficulty: ${difficulty}`);
+  if (!usable(features)) return null;
+  const ctx = analyse(features);
+  const trace = createTrace();
+  const notes = notesFor(ctx, difficulty, trace);
+  const chart = chartFrom(ctx, difficulty, audioKey);
+  const { timing, phrases } = ctx;
+  const story = trace.report(notes);
+  // A band-path window enters at its first phrase; the ones it spans are charted with it.
+  const chartedAs = (i) => story.phrases[i] ?? { leader: ctx.leaders[i], supports: ctx.supports[i], repeat: false, charted: "bands" };
+  return {
+    chart,
+    ...story,
+    phrases: phrases.map((p, i) => ({ startMs: p.startMs, endMs: p.endMs, repeatOf: p.repeatOf, similarity: p.similarity, energy: p.energy, confidence: p.confidence, ...chartedAs(i), index: i })),
+    grid: { snapped: !!timing.snapped, medianMs: timing.medianMs ?? null, foldFactor: timing.foldFactor ?? 1, beats: timing.beats ?? [], downbeats: timing.downbeats ?? [] },
+    diff: diffOf(ctx, difficulty),
+    vocal: ctx.vocal,
+    busy: ctx.busy,
+  };
+}
+
+module.exports = { GENERATOR_VERSION, generateAll, generateChart, starsOf, traceChart };
