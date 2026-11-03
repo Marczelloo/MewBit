@@ -1,4 +1,5 @@
-"""Density, rhythmic divisions and limits on Easy, and how they depend on BPM (RC scale around 180 BPM).
+"""Density, rhythmic divisions and limits on Easy, and how they depend on BPM (RC scale around 180 BPM). Metrics v2:
+beat / half-beat coverage is the official coverage.*.
 Humans: train for the rules, test to check them. Writes out/bpm_bins.csv, out/limits.csv."""
 import sys
 from pathlib import Path
@@ -9,7 +10,7 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.stats import spearmanr
 
-from common import OUT, metrics, q, slots
+from common import OUT, metrics, q
 
 h = metrics("human")
 a = metrics("algo")
@@ -24,17 +25,10 @@ for df in (h, a):
     df["half_gap_ms"] = 30000 / df.bpmm
     df["sub_beat_gap_share"] = df[[c for c in ["gap_share.3/4", "gap_share.1/2", "gap_share.1/4", "gap_share.1/3", "gap_share.2/3"] if c in df.columns]].sum(axis=1)
 
-# half-beat mapped rate per map from the slot tables
-def half_rate(who, sid):
-    z = slots(who, sid)
-    m = z["snap"] == 2
-    b = z["snap"] == 1
-    return z["mapped"][m].mean(), z["mapped"][b].mean()
-
-for who, df in (("human", h), ("algo", a)):
-    rr = [half_rate(who, s) for s in df.set_id]
-    df["half_mapped"] = [x[0] for x in rr]
-    df["beat_mapped"] = [x[1] for x in rr]
+# beat / half-beat coverage: the official metrics v2 (coverage.beat, coverage.half; one slot per moment)
+for df in (h, a):
+    df["half_mapped"] = df["coverage.half"]
+    df["beat_mapped"] = df["coverage.beat"]
 
 tr = h[h.split == "train"]
 te = h[h.split == "test"]
@@ -107,6 +101,14 @@ lim = {
     "max_simultaneous_holds <= 1": lambda d: d.max_simultaneous_holds <= 1,
     "max_simultaneous_holds <= 2": lambda d: d.max_simultaneous_holds <= 2,
     "holds_with_notes_inside_share <= 0.2 (maps with holds)": lambda d: (d.holds_with_notes_inside_share.fillna(0) <= 0.2),
+    "holds_context.release_at_next_moment_share >= 0.8 (maps with holds)": lambda d: d["holds_context.release_at_next_moment_share"].fillna(1) >= 0.8,
+    "holds_context.start_on_beat_share >= 0.7 (maps with holds)": lambda d: d["holds_context.start_on_beat_share"].fillna(1) >= 0.7,
+    "hold_short_share.lt_1 <= 0.05 (maps with holds)": lambda d: d["hold_short_share.lt_1"].fillna(0) <= 0.05,
+    "chords_in_half_runs_per_min == 0": lambda d: d.chords_in_half_runs_per_min == 0,
+    "kiai_start.note_share == 1 (maps with kiai)": lambda d: d["kiai_start.note_share"].fillna(1) >= 0.999,
+    "kiai_start.chord_share >= 0.5 (maps with kiai)": lambda d: d["kiai_start.chord_share"].fillna(1) >= 0.5,
+    "hand_balance_4bar.over_0_2_share == 0": lambda d: d["hand_balance_4bar.over_0_2_share"].fillna(0) == 0,
+    "coverage.beat >= 0.6": lambda d: d["coverage.beat"] >= 0.6,
     "other_hand_notes_per_beat_in_hold.p90 == 0": lambda d: d["other_hand_notes_per_beat_in_hold.p90"].fillna(0) == 0,
     "release_snap_share.1 >= 0.7 (maps with holds)": lambda d: d["release_snap_share.1"].fillna(1) >= 0.7,
     "release_gap_beats.p5 >= 0.99": lambda d: d["release_gap_beats.p5"].fillna(9) >= 0.99,
@@ -137,5 +139,3 @@ print("\n== maps breaking the RC Easy rhythm guidelines (train+test humans)")
 cols2 = ["set_id", "split", "genre", "bpmm", "owner", "stars", "run_1/4.count_per_min", "run_1/4.max_notes", "run_1/2.max_notes", "triplet_share", "snap_share.4", "gap_ms.min", "notes_per_beat"]
 br = h[(h["run_1/4.count_per_min"] > 0) | (h["run_1/2.max_notes"] > 9) | (h.triplet_share > 0.01)]
 print(br[cols2].sort_values("bpmm").to_string(index=False, float_format=lambda v: f"{v:.3g}"))
-h[["set_id", "half_mapped", "beat_mapped"]].to_csv(OUT / "half_beat_rates_human.csv", index=False)
-a[["set_id", "half_mapped", "beat_mapped"]].to_csv(OUT / "half_beat_rates_algo.csv", index=False)

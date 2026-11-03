@@ -104,28 +104,11 @@ def mmss(ms):
 TOL_MS = 25.0
 
 
-def chosen_target(z, nts, binary_first):
-    """Each moment goes to exactly one slot (the nearest within 25 ms); binary_first: nearest 1/8-grid slot first."""
-    t = z["t"]
-    cnt = {}
-    for n in nts:
-        cnt[n[0]] = cnt.get(n[0], 0) + 1
-    chosen = np.zeros(len(t), bool)
-    nnotes = np.zeros(len(t), int)
-    binary = np.isin(z["snap"], [1, 2, 4, 8])
-    unassigned = 0
-    for m in sorted(cnt):
-        d = np.abs(t - m)
-        if binary_first:
-            db = np.where(binary, d, np.inf)
-            i = int(np.argmin(db))
-            if db[i] > TOL_MS:
-                i = int(np.argmin(d))
-        else:
-            i = int(np.argmin(d))
-        if d[i] <= TOL_MS:
-            chosen[i] = True
-            nnotes[i] = max(nnotes[i], cnt[m])
-        else:
-            unassigned += 1
-    return chosen, nnotes, unassigned
+def chosen_target(z, nts, binary_first=None):
+    """Official exclusive slot target (metrics v2): `chosen`, `chosen_n_notes`. Returns (chosen, n_notes, moments without slot).
+    `binary_first` is kept for the old call signature; the pipeline already gives each moment one slot (the coarsest
+    division within its source's tolerance, else the nearest slot within 25 ms)."""
+    chosen = z["chosen"].astype(bool)
+    nn = z["chosen_n_notes"].astype(int)
+    moments = len(set(n[0] for n in nts))
+    return chosen, nn, moments - int(chosen.sum())

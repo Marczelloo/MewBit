@@ -1,5 +1,5 @@
-"""Where the generator's Easy chart departs most from the human Easy chart, per test song: note matching (+-40 ms),
-and 4-bar windows on the human grid scored by density ratio, missing half beats, notes inside holds, kiai and section
+"""Where the generator's Easy chart departs most from the human Easy chart, per test song: the official note matching
+(versus_human.precision / recall, metrics v2) and, within 4-bar windows, the same +-40 ms matching; 4-bar windows on the human grid scored by density ratio, missing half beats, notes inside holds, kiai and section
 starts. Times are on the decoded audio's timeline (mm:ss); the bot may play another upload, so they are approximate."""
 import sys
 from pathlib import Path
@@ -32,9 +32,10 @@ for sid in a.set_id:
     at = np.array(sorted({n[0] for n in an}), float)
     so = song(sid)
     z = slots("human", sid)
+    ar = a.set_index("set_id").loc[sid]
     rows.append({"set_id": sid, "artist": te.loc[sid, "artist"], "title": te.loc[sid, "title"], "genre": te.loc[sid, "genre"],
-                 "algo_on_human (precision)": match(at, ht), "human_on_algo (recall)": match(ht, at),
-                 "human_downbeats_with_algo": None})
+                 "precision": ar["versus_human.precision"], "recall": ar["versus_human.recall"],
+                 "lane_overlap": ar["versus_human.lane_overlap_on_matched"], "grid_offset_p50_ms": ar["versus_human.grid_offset_ms.p50"]})
     # 4-bar windows on the human grid
     db_t = z["t"][z["downbeat"]]
     bars = db_t
@@ -59,16 +60,14 @@ for sid in a.set_id:
         wins.append({"set_id": sid, "from_ms": t0, "to_ms": t1, "from": mmss(t0), "to": mmss(t1), "h_notes": hnn, "a_notes": ann,
                      "ratio": ann / max(1, hnn), "h_half": half_h, "a_inside_holds": inside, "kiai": kiai, "rms": rms,
                      "db_h": db_h, "db_a": db_a, "match_h": match(hm, am) if len(hm) else np.nan, "match_a": match(am, hm) if len(am) else np.nan})
-    r = rows[-1]
-    r["human_downbeats_with_algo"] = None
 
 R = pd.DataFrame(rows)
 W = pd.DataFrame(wins)
 W.to_csv(OUT / "fragment_windows.csv", index=False)
 pd.set_option("display.width", 250)
 pd.set_option("display.max_rows", 300)
-print(R.drop(columns=["human_downbeats_with_algo"]).to_string(index=False, float_format=lambda v: f"{v:.2f}"))
-print("\nprecision p10/p50/p90:", np.nanpercentile(R.iloc[:, 4], [10, 50, 90]).round(2), " recall:", np.nanpercentile(R.iloc[:, 5], [10, 50, 90]).round(2))
+print(R.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+print("\nprecision p10/p50/p90:", np.nanpercentile(R.precision, [10, 50, 90]).round(2), " recall:", np.nanpercentile(R.recall, [10, 50, 90]).round(2))
 R.to_csv(OUT / "note_matching.csv", index=False)
 
 print("\n== per song: the window with the lowest density ratio (loud windows only, rms >= song median) and the one with most notes inside holds")

@@ -33,7 +33,9 @@ M = ["mbpm", "stars", "nps", "notes_per_beat", "moments_per_beat", "gap_share.1"
      "alignment.perc.share", "alignment.harm.share", "alignment.stem_vocals.share", "alignment.stem_drums.share", "alignment.stem_bass.share",
      "plugin_events.lead.recall", "plugin_events.snare.recall", "plugin_events.kick.recall", "plugin_events.bass.recall",
      "repetition.repeat.rhythm", "rep_rhythm_gain", "repetition.repeat.lanes_or_mirror",
-     "sections.boundary_chord_share", "sections.bar_density_vs_rms_spearman"]
+     "sections.boundary_chord_share", "sections.bar_density_vs_rms_spearman",
+     "coverage.beat", "coverage.half", "chord_rate_on_mapped_beats", "chords_in_half_runs_per_min", "trills.one_hand_share", "hand_balance_4bar.p90",
+     "holds_context.release_at_next_moment_share", "holds_context.head_in_chord_share", "kiai_start.chord_share", "sections.bar_chords_vs_rms_spearman"]
 
 TR = H[(H.split == "train") & H.genre.isin(MAIN_GENRES)]
 TE = H[(H.split == "test") & H.genre.isin(MAIN_GENRES)]
@@ -91,7 +93,8 @@ out.append("### Gatunki za małe do uogólnień (tylko informacyjnie)\n\n" + md_
 KEY = ["nps", "notes_per_beat", "gap_share.1/2", "gap_share.1", "run_1/2.max_notes", "chord_share", "chord_position_share.offbeat",
        "hold_len_beats.p50", "holds_with_notes_inside_share", "release_snap_share.1", "downbeats_carried", "snap_share.off", "trill_share",
        "repetition.repeat.rhythm", "rests_ge_2b.per_min", "kiai_density_ratio", "plugin_events.snare.recall", "plugin_events.lead.recall",
-       "alignment.no_sound_share", "sections.boundary_chord_share"]
+       "alignment.no_sound_share", "sections.boundary_chord_share", "coverage.beat", "coverage.half", "chords_in_half_runs_per_min",
+       "holds_context.release_at_next_moment_share", "kiai_start.chord_share", "hand_balance_4bar.p90", "versus_human.recall", "versus_human.precision"]
 HT = H[H.split == "test"].set_index("set_id")
 AT = A.set_index("set_id")
 grows = []
@@ -99,7 +102,7 @@ for m in KEY:
     cells = [m]
     for g in MAIN_GENRES + ["novelty"]:
         ids = AT[AT.genre == g].index
-        hv = pd.to_numeric(HT.loc[ids, m], errors="coerce")
+        hv = pd.to_numeric(HT.loc[ids, m], errors="coerce") if m in HT else pd.Series(np.nan, index=ids)
         av = pd.to_numeric(AT.loc[ids, m], errors="coerce")
         cells.append(f"{fmt(hv.median())} → {fmt(av.median())}")
     grows.append(cells)

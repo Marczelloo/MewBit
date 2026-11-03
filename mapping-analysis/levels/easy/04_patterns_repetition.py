@@ -1,4 +1,5 @@
-"""Patterns (lanes, steps, trills, stairs, entropy) and repetition when the music repeats, Easy.
+"""Patterns (lanes, steps, trills, stairs, entropy, hand balance) and repetition when the music repeats, Easy (metrics v2:
+repetition.* on quantized positions).
 Humans train/test; the generator on the test songs, paired with the human map of the same song."""
 import sys
 from pathlib import Path
@@ -20,7 +21,9 @@ for df in (h, a):
     df["outer_share"] = df["lane_share.0"] + df["lane_share.3"]
 
 cols = ["inner_share", "left_hand_share", "single_step_share.0", "single_step_share.1", "single_step_share.2", "single_step_share.3",
-        "hand_switch_share", "trill_share", "stair_share", "pattern4_entropy_bits", "pattern4_distinct_per_100", "minijack_share",
+        "hand_switch_share", "trill_share", "trills.runs_per_min", "trills.max_notes", "trills.one_hand_share", "stair_share",
+        "hand_balance_4bar.p50", "hand_balance_4bar.p90", "hand_balance_4bar.over_0_2_share", "anchor_rc_max_notes",
+        "hand_by_class.kick.left_share", "hand_by_class.snare.left_share", "hand_by_class.bass.left_share", "hand_by_class.lead.left_share", "pattern4_entropy_bits", "pattern4_distinct_per_100", "minijack_share",
         "minijack_gap_beats.p50", "jack_max_notes", "anchor_max_notes", "chord_share", "chord2_split_hands_share",
         "chord_position_share.downbeat", "chord_position_share.beat", "chord_position_share.offbeat",
         "repetition.repeat_pairs", "repetition.repeat.rhythm", "repetition.baseline.rhythm", "rep_rhythm_gain",

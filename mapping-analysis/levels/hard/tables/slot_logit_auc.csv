@@ -1,7 +1,7 @@
 model,data,auc,p10,p90
 human_train,human_train,0.9796129472284728,,
 human_train,human_test,0.9860021358066131,,
-human_train,algo_test,0.9029323440542465,,
-algo_test,algo_test,0.9474918016639514,,
-algo_test,human_test,0.9661365538966308,,
+human_train,algo_test,0.9035241504362778,,
+algo_test,algo_test,0.9323687058882505,,
+algo_test,human_test,0.9722184234397101,,
 human_train,human_test per song p10/p50/p90,0.9892353679908429,0.9756669236995786,0.9966656396896414

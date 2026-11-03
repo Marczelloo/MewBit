@@ -1,37 +1,45 @@
 rule,train_n,train_mappers,train_share,test_n,test_mappers,test_share,algo_n,algo_mappers,algo_share,klasa,test_ok
 "Gęstość: nps 7,5-11",75,62,0.92,20,20,0.9,20.0,1.0,0.35,silna tendencja,tak
-Beaty (1/1) zmapowane >= 80%,75,62,0.92,20,20,1.0,20.0,1.0,0.35,silna tendencja,tak
+Beaty z chwilą >= 80% (coverage.beat),75,62,0.92,20,20,1.0,20.0,1.0,0.0,silna tendencja,tak
 Downbeaty niesione >= 85%,75,62,0.9066666666666666,20,20,0.8,20.0,1.0,0.0,silna tendencja,nie
-Półbeaty (1/2) zmapowane >= 60%,75,62,0.9333333333333333,20,20,0.95,20.0,1.0,0.6,silna tendencja,tak
-Sloty 1/8 prawie puste (<= 1%),75,62,0.92,20,20,1.0,20.0,1.0,0.05,silna tendencja,tak
+Półbeaty z chwilą >= 60% (coverage.half),75,62,0.9333333333333333,20,20,0.95,20.0,1.0,0.35,silna tendencja,tak
+"Sloty 1/8 prawie puste (<= 1%, chosen)",75,62,0.92,20,20,1.0,20.0,1.0,0.05,silna tendencja,tak
 Brak chwil poza siatką (snap off = 0),75,62,0.96,20,20,0.9,20.0,1.0,0.0,twarda zasada,tak
 Bez serii 1/8 dłuższych niż 3 nuty,75,62,0.92,20,20,0.9,20.0,1.0,1.0,silna tendencja,tak
 Akordy >= 25% chwil,75,62,0.96,20,20,0.9,20.0,1.0,0.05,twarda zasada,tak
-Akord na >= 50% zmapowanych beatów,75,62,0.92,20,20,0.9,20.0,1.0,0.0,silna tendencja,tak
-Skoki jednej ręki >= 25% akordów 2-nutowych,75,62,0.9733333333333334,20,20,0.95,20.0,1.0,0.0,twarda zasada,tak
+Akord na >= 50% zmapowanych beatów (chord_rate_on_mapped_beats),75,62,0.92,20,20,0.9,20.0,1.0,0.0,silna tendencja,tak
+Skoki jednej ręki >= 25% akordów 2-nutowych (1 - chord2_split_hands_share),75,62,0.9733333333333334,20,20,0.95,20.0,1.0,0.0,twarda zasada,tak
 Brak akordów 4-nutowych,75,62,0.96,20,20,1.0,20.0,1.0,1.0,twarda zasada,tak
 Akordy 3-nutowe obecne (> 0),75,62,0.9466666666666667,20,20,0.9,20.0,1.0,0.0,silna tendencja,tak
 Balans rąk: lewa 48-52%,75,62,0.9866666666666667,20,20,1.0,20.0,1.0,0.15,twarda zasada,tak
-Balans rąk w 4 taktach: mediana odchylenia <= 3 pp,75,62,0.96,20,20,0.9,20.0,1.0,0.05,twarda zasada,tak
+"Balans rąk w 4 taktach: hand_balance_4bar.p50 <= 0,03",75,62,0.9733333333333334,20,20,0.9,20.0,1.0,0.1,twarda zasada,tak
+Brak okien 4 taktów z przewagą > 70/30,75,62,1.0,20,20,0.95,20.0,1.0,0.35,twarda zasada,tak
+Stopa (kick) bez stałej ręki: lewa 45-55% (hand_by_class),75,62,0.8666666666666667,20,20,0.95,20.0,1.0,0.05,silna tendencja,tak
+Werbel (snare) bez stałej ręki: lewa 45-55%,75,62,0.96,20,20,0.95,20.0,1.0,0.05,twarda zasada,tak
 Puszczenia holdów na siatce 1/4 >= 95% (>= 10 holdów),62,53,0.9516129032258065,17,17,1.0,20.0,1.0,0.0,twarda zasada,tak
+Puszczenie przy następnej chwili >= 70% holdów,62,53,0.9032258064516129,17,17,1.0,20.0,1.0,0.0,silna tendencja,tak
 Hold >= 1/4 beatu (p10),66,56,1.0,18,18,1.0,20.0,1.0,1.0,twarda zasada,tak
 Holdy z nutą w środku <= 40%,66,56,0.9393939393939394,18,18,0.9444444444444444,20.0,1.0,0.0,silna tendencja,tak
 Mediana długości holda <= 1 beat,66,56,0.9090909090909091,18,18,0.9444444444444444,20.0,1.0,0.0,silna tendencja,tak
 Holdy obecne (>= 2% nut),75,62,0.8266666666666667,20,20,0.75,20.0,1.0,1.0,silna tendencja,tak
 Jack <= 7 chwil,75,62,0.9466666666666667,20,20,0.9,20.0,1.0,1.0,silna tendencja,tak
 "Brak minijacków 1/4 (<= 0,5% par)",75,62,0.96,20,20,1.0,20.0,1.0,0.95,twarda zasada,tak
-Tryl <= 9 nut (miara pomocnicza),75,62,0.9733333333333334,20,20,0.95,20.0,1.0,0.8,twarda zasada,tak
+Tryl <= 9 nut (trills.max_notes),75,62,0.9866666666666667,20,20,1.0,20.0,1.0,0.65,twarda zasada,tak
 "trill_share <= 0,12",75,62,0.9733333333333334,20,20,0.95,20.0,1.0,0.05,twarda zasada,tak
-Anchor < 5 nut (RC),75,62,0.02666666666666667,20,20,0.0,20.0,1.0,0.0,styl / zależne,tak
-Odstępy 'other' po kwantyzacji <= 2%,75,62,0.96,20,20,1.0,20.0,1.0,0.0,twarda zasada,tak
-Odstępy 3/4 po kwantyzacji <= 3%,75,62,0.8933333333333333,20,20,0.9,20.0,1.0,0.1,silna tendencja,tak
-Najdłuższy ciąg odstępów <= 1/2 >= 40 chwil,75,62,0.96,20,20,0.9,20.0,1.0,0.3,twarda zasada,tak
-"Rytm powtórzeń: różnica powtórzenie - baza >= 0,1 (pomocnicza)",75,62,0.92,20,20,1.0,20.0,1.0,0.7,silna tendencja,tak
-"Tory powtórzeń: różnica powtórzenie - baza >= 0,05 (pomocnicza)",75,62,0.8666666666666667,20,20,0.9,20.0,1.0,0.6,silna tendencja,tak
+"Anchor < 5 nut (anchor_max_notes, stara miara)",75,62,0.02666666666666667,20,20,0.0,20.0,1.0,0.0,styl / zależne,tak
+Anchor RC < 5 nut (anchor_rc_max_notes),75,62,0.4666666666666667,20,20,0.5,20.0,1.0,0.8,styl / zależne,tak
+Anchor RC <= 8 nut,75,62,0.8,20,20,0.95,20.0,1.0,1.0,silna tendencja,tak
+"Odstępy 'other' <= 2% (gap_share.other, v2)",75,62,0.96,20,20,1.0,20.0,1.0,0.0,twarda zasada,tak
+"Odstępy 3/4 <= 3% (gap_share.3/4, v2)",75,62,0.8933333333333333,20,20,0.9,20.0,1.0,0.1,silna tendencja,tak
+Odstępy 'other' po kwantyzacji do 1/8 <= 2% (pomocn.),75,62,0.96,20,20,1.0,20.0,1.0,0.0,twarda zasada,tak
+Najdłuższy ciąg odstępów <= 1/2 >= 40 chwil (pomocn.),75,62,0.96,20,20,0.9,20.0,1.0,0.3,twarda zasada,tak
+"Rytm powtórzeń: repeat - baseline >= 0,1 (repetition v2)",60,50,0.9,19,19,0.9473684210526315,16.0,1.0,0.5,silna tendencja,tak
+"Tory powtórzeń: repeat - baseline (lustro) >= 0,05 (repetition v2)",60,50,0.8666666666666667,19,19,0.9473684210526315,16.0,1.0,0.8125,silna tendencja,tak
 Bez przerw >= 4 beaty,75,62,0.8133333333333334,20,20,0.8,20.0,1.0,0.95,silna tendencja,tak
 Puste takty <= 5%,75,62,0.8933333333333333,20,20,0.95,20.0,1.0,1.0,silna tendencja,tak
 Kiai gęstsze niż reszta (ratio > 1),67,54,0.9552238805970149,20,20,0.95,20.0,1.0,1.0,twarda zasada,tak
-Nuta na downbeacie >= 75% granic sekcji,75,62,0.9333333333333333,20,20,0.95,20.0,1.0,0.7,silna tendencja,tak
-Akord na downbeacie >= 50% granic sekcji,75,62,0.96,20,20,1.0,20.0,1.0,0.05,twarda zasada,tak
+Akord na początku każdego kiai (kiai_start.chord_share = 1),67,54,0.9552238805970149,20,20,0.9,20.0,1.0,0.0,twarda zasada,tak
+"Nuta na downbeacie >= 75% granic sekcji (v2, ±25 ms)",75,62,0.9333333333333333,20,20,0.95,20.0,1.0,0.8,silna tendencja,tak
+"Akord na downbeacie >= 50% granic sekcji (v2, ±25 ms)",75,62,0.96,20,20,1.0,20.0,1.0,0.05,twarda zasada,tak
 Bez dźwięku (no_sound) <= 20% chwil,75,62,0.8533333333333334,20,20,0.95,20.0,1.0,0.55,silna tendencja,tak
 OD <= 8 (RC),75,62,0.9866666666666667,20,20,0.95,,,,twarda zasada,tak

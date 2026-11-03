@@ -64,36 +64,55 @@ KEY = [
     ("sections.boundary_chord_share", "akord na granicy sekcji"), ("sections.boundary_note_share", "nuta na granicy (tol. siatki)"),
     ("sections.boundary_rising_density_ratio_median", "gęstość po/przed, granice w górę"),
     ("sections.bar_density_vs_rms_spearman", "ρ nuty~RMS taktu"),
+    # metryki v2
+    ("coverage.beat", "pokrycie beatów"), ("coverage.half", "pokrycie półbeatów"), ("coverage.quarter", "pokrycie 1/4"),
+    ("coverage.beat_kiai", "pokrycie beatów w kiai"), ("chord_rate_on_mapped_beats", "akordy na zmapowanych beatach"),
+    ("chords_in_half_runs_per_min", "akordy w serii 1/2 /min"), ("hand_balance_4bar.p50", "|lewa−0,5| w 4 taktach p50"),
+    ("hand_balance_4bar.p90", "|lewa−0,5| w 4 taktach p90"), ("trills.max_notes", "najdłuższy tryl"), ("trills.runs_per_min", "tryle /min"),
+    ("trills.one_hand_share", "tryle w jednej ręce"), ("anchor_rc_max_notes", "anchor (RC)"),
+    ("holds_context.release_at_next_moment_share", "puszczenie na następnej chwili"), ("holds_context.start_on_beat_share", "hold startuje na beacie"),
+    ("holds_context.head_in_chord_share", "głowa holda w akordzie"), ("holds_context.notes_inside_share_by_length.1", "holdy ~1 beat z nutą w środku"),
+    ("holds_context.notes_inside_share_by_length.2+", "holdy ≥ 1½ beatu z nutą w środku"), ("holds_context.holds_by_length.1/2", "holdy < ¾ beatu [liczba]"),
+    ("holds_context.holds_by_length.1", "holdy ¾–1½ beatu [liczba]"), ("holds_context.holds_by_length.2+", "holdy ≥ 1½ beatu [liczba]"),
+    ("holds_context.shield_1_4_per_min", "shield 1/4 /min"), ("kiai_start.note_share", "nuta na początku kiai"), ("kiai_start.chord_share", "akord na początku kiai"),
+    ("sections.bar_chords_vs_rms_spearman", "ρ akordy~RMS taktu"), ("sections.boundary_empty_last_beat_share", "pusty ostatni beat przed granicą"),
+    ("rest_context.at_boundary_share", "przerwy ≥ 4 beaty przy granicy"),
+    ("hand_by_class.kick.left_share", "kick: lewa ręka"), ("hand_by_class.snare.left_share", "snare: lewa ręka"),
+    ("versus_human.precision", "precyzja vs człowiek (±40 ms)"), ("versus_human.recall", "recall vs człowiek (±40 ms)"),
+    ("versus_human.lane_overlap_on_matched", "zgodność torów w trafionych"), ("versus_human.grid_offset_ms.p50", "przesunięcie od siatki p50 [ms]"),
+    ("versus_human.grid_offset_ms.abs_over_10ms_share", "chwile > 10 ms od siatki"),
 ]
 rows = []
 for m, name in KEY:
-    hv = pd.to_numeric(HT[m], errors="coerce")
+    hv = pd.to_numeric(HT[m], errors="coerce") if m in HT else pd.Series(np.nan, index=AT.index)
     av = pd.to_numeric(AT[m], errors="coerce")
     d = (av - hv).dropna()
     try:
         p = stats.wilcoxon(av.loc[d.index], hv.loc[d.index]).pvalue if len(d) >= 6 and (d != 0).any() else np.nan
     except ValueError:
         p = np.nan
-    rows.append([name, f"`{m}`", fmt_q(HTR[m]), fmt_q(hv), fmt_q(av), f"{int((d < 0).sum())}/{int((d > 0).sum())}", fmt(p, 3)])
+    rows.append([name, f"`{m}`", fmt_q(HTR[m]) if m in HTR else "—", fmt_q(hv), fmt_q(av), f"{int((d < 0).sum())}/{int((d > 0).sum())}", fmt(p, 3)])
 out = ["### 1. Ludzie (test, n=20 map, 20 mapperów) vs algorytm (te same 20 utworów), p10 / p50 / p90\n\n" +
        md_table(rows, ["metryka", "klucz", "ludzie trening (78)", "ludzie test", "algorytm test", "algo < / > człowiek (utwory)", "Wilcoxon p"])]
 
 # --- 2. relacja tempa --------------------------------------------------------------------------------------------------
 G = ["odczuwany beat = 2 beaty ludzkie", "1:1", "bez siatki (NO_TIMING)"]
-TM = ["nps", "notes_per_beat", "gap_share.1/2", "gap_share.1", "run_1/2.max_notes", "minijack_gap_beats.p50", "chord_share", "chord_position_share.offbeat",
-      "downbeats_carried", "snap_share.off", "triplet_share", "hold_len_beats.p50", "repetition.repeat.rhythm"]
+TM = ["nps", "notes_per_beat", "coverage.beat", "coverage.half", "gap_share.1/2", "gap_share.1", "run_1/2.max_notes", "minijack_gap_beats.p50", "chord_share",
+      "chord_position_share.offbeat", "chords_in_half_runs_per_min", "downbeats_carried", "snap_share.off", "triplet_share", "hold_len_beats.p50",
+      "repetition.repeat.rhythm", "repetition.baseline.rhythm", "versus_human.recall", "versus_human.precision", "versus_human.grid_offset_ms.abs_over_10ms_share"]
 rows = []
 for m in TM:
     cells = [m]
     for g in G:
         ids = AT.index[AT.tempo_rel == g]
-        cells.append(f"{fmt(pd.to_numeric(HT.loc[ids, m], errors='coerce').median())} → {fmt(pd.to_numeric(AT.loc[ids, m], errors='coerce').median())}")
+        hmed = pd.to_numeric(HT.loc[ids, m], errors='coerce').median() if m in HT else np.nan
+        cells.append(f"{fmt(hmed)} → {fmt(pd.to_numeric(AT.loc[ids, m], errors='coerce').median())}")
     rows.append(cells)
 hdr = ["metryka (ludzie p50 → algorytm p50)"] + [f"{g} (n={int((AT.tempo_rel == g).sum())})" for g in G]
 out.append("### 2. Wg relacji tempa algorytmu do siatki ludzkiej\n\n" + md_table(rows, hdr))
 # Mann-Whitney między dwiema głównymi grupami dla algorytmu
 mw = []
-for m in ["run_1/2.max_notes", "gap_share.1/2", "minijack_gap_beats.p50", "notes_per_beat"]:
+for m in ["run_1/2.max_notes", "gap_share.1/2", "minijack_gap_beats.p50", "notes_per_beat", "coverage.half", "chords_in_half_runs_per_min", "versus_human.recall"]:
     a = pd.to_numeric(AT.loc[AT.tempo_rel == G[0], m], errors="coerce").dropna()
     b = pd.to_numeric(AT.loc[AT.tempo_rel == G[1], m], errors="coerce").dropna()
     mw.append(f"{m}: p={stats.mannwhitneyu(a, b).pvalue:.3f}")

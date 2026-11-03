@@ -6930,7 +6930,7 @@ algo,1000722,w górę,False,3,1.1111111111111112,0.0,0.2,test,anime,algo,77.0
 algo,1000722,płaska,True,-4,1.0,0.0,0.2222222222222222,test,anime,algo,77.0
 algo,1000722,płaska,True,-3,1.3333333333333333,0.0,0.18181818181818182,test,anime,algo,77.0
 algo,1000722,płaska,True,-2,1.1111111111111112,0.0,0.18181818181818182,test,anime,algo,77.0
-algo,1000722,płaska,True,-1,1.1111111111111112,0.0,0.3,test,anime,algo,77.0
+algo,1000722,płaska,True,-1,1.1111111111111112,0.0,0.2,test,anime,algo,77.0
 algo,1000722,płaska,True,0,1.2222222222222223,0.0,0.2727272727272727,test,anime,algo,77.0
 algo,1000722,płaska,True,1,1.0,0.0,0.2222222222222222,test,anime,algo,77.0
 algo,1000722,płaska,True,2,1.0,0.0,0.375,test,anime,algo,77.0
@@ -6973,13 +6973,13 @@ algo,1277503,w górę,False,-2,0.625,0.0,0.0,test,video game,algo,190.0
 algo,1277503,w górę,False,-1,1.0,0.3333333333333333,0.0,test,video game,algo,190.0
 algo,1277503,w górę,False,0,1.125,0.2857142857142857,0.14285714285714285,test,video game,algo,190.0
 algo,1277503,w górę,False,1,1.0,0.3333333333333333,0.0,test,video game,algo,190.0
-algo,1277503,w górę,False,2,1.25,0.25,0.25,test,video game,algo,190.0
+algo,1277503,w górę,False,2,1.25,0.25,0.125,test,video game,algo,190.0
 algo,1277503,w górę,False,3,1.5,0.5,0.5,test,video game,algo,190.0
-algo,1277503,w dół,False,-4,1.25,0.25,0.25,test,video game,algo,190.0
+algo,1277503,w dół,False,-4,1.25,0.25,0.125,test,video game,algo,190.0
 algo,1277503,w dół,False,-3,1.5,0.5,0.5,test,video game,algo,190.0
 algo,1277503,w dół,False,-2,0.75,0.0,0.3333333333333333,test,video game,algo,190.0
-algo,1277503,w dół,False,-1,1.375,0.375,0.125,test,video game,algo,190.0
-algo,1277503,w dół,False,0,0.75,0.2,0.2,test,video game,algo,190.0
+algo,1277503,w dół,False,-1,1.375,0.375,0.0,test,video game,algo,190.0
+algo,1277503,w dół,False,0,0.75,0.2,0.0,test,video game,algo,190.0
 algo,1277503,w dół,False,1,0.875,0.0,0.0,test,video game,algo,190.0
 algo,1277503,w dół,False,2,0.75,0.0,0.0,test,video game,algo,190.0
 algo,1277503,w dół,False,3,0.875,0.16666666666666666,0.0,test,video game,algo,190.0
@@ -7092,8 +7092,8 @@ algo,1570640,płaska,False,-3,0.9,0.0,0.4444444444444444,test,electronic,algo,18
 algo,1570640,płaska,False,-2,0.9,0.0,0.4444444444444444,test,electronic,algo,182.0
 algo,1570640,płaska,False,-1,0.9,0.125,0.5,test,electronic,algo,182.0
 algo,1570640,płaska,False,0,0.9,0.0,0.1111111111111111,test,electronic,algo,182.0
-algo,1570640,płaska,False,1,1.4,0.07692307692307693,0.38461538461538464,test,electronic,algo,182.0
-algo,1570640,płaska,False,2,1.0,0.0,0.6,test,electronic,algo,182.0
+algo,1570640,płaska,False,1,1.4,0.07692307692307693,0.3076923076923077,test,electronic,algo,182.0
+algo,1570640,płaska,False,2,1.0,0.0,0.4,test,electronic,algo,182.0
 algo,1570640,płaska,False,3,0.7,0.0,0.3333333333333333,test,electronic,algo,182.0
 algo,1570640,w dół,False,-4,1.3,0.0,0.38461538461538464,test,electronic,algo,182.0
 algo,1570640,w dół,False,-3,1.1,0.1111111111111111,0.2222222222222222,test,electronic,algo,182.0
@@ -7102,9 +7102,9 @@ algo,1570640,w dół,False,-1,0.6,0.0,0.0,test,electronic,algo,182.0
 algo,1570640,w dół,False,0,0.9,0.0,0.0,test,electronic,algo,182.0
 algo,1570640,w dół,False,1,0.6,0.0,0.3333333333333333,test,electronic,algo,182.0
 algo,1570640,w dół,False,2,0.9,0.5,0.16666666666666666,test,electronic,algo,182.0
-algo,1570640,w dół,False,3,0.7,0.2,0.2,test,electronic,algo,182.0
+algo,1570640,w dół,False,3,0.7,0.2,0.0,test,electronic,algo,182.0
 algo,1570640,w górę,False,-4,0.7,0.16666666666666666,0.3333333333333333,test,electronic,algo,182.0
-algo,1570640,w górę,False,-3,0.9,0.3333333333333333,0.3333333333333333,test,electronic,algo,182.0
+algo,1570640,w górę,False,-3,0.9,0.3333333333333333,0.16666666666666666,test,electronic,algo,182.0
 algo,1570640,w górę,False,-2,0.5,0.2,0.2,test,electronic,algo,182.0
 algo,1570640,w górę,False,-1,1.0,0.1111111111111111,0.3333333333333333,test,electronic,algo,182.0
 algo,1570640,w górę,False,0,1.1,0.0,0.09090909090909091,test,electronic,algo,182.0
@@ -7112,8 +7112,8 @@ algo,1570640,w górę,False,1,1.1,0.0,0.36363636363636365,test,electronic,algo,1
 algo,1570640,w górę,False,2,1.1,0.1,0.2,test,electronic,algo,182.0
 algo,1570640,w górę,False,3,1.2,0.2,0.2,test,electronic,algo,182.0
 algo,1570640,w górę,False,-4,0.8,0.0,0.3333333333333333,test,electronic,algo,182.0
-algo,1570640,w górę,False,-3,1.0,0.125,0.25,test,electronic,algo,182.0
-algo,1570640,w górę,False,-2,0.6,0.0,0.2857142857142857,test,electronic,algo,182.0
+algo,1570640,w górę,False,-3,1.0,0.125,0.0,test,electronic,algo,182.0
+algo,1570640,w górę,False,-2,0.6,0.0,0.14285714285714285,test,electronic,algo,182.0
 algo,1570640,w górę,False,-1,1.4,0.0,0.5,test,electronic,algo,182.0
 algo,1570640,w górę,False,0,0.9,0.0,0.1111111111111111,test,electronic,algo,182.0
 algo,1570640,w górę,False,1,0.8,0.0,0.25,test,electronic,algo,182.0
@@ -7140,7 +7140,7 @@ algo,1697477,płaska,False,-3,1.0,0.125,0.375,test,video game,algo,200.0
 algo,1697477,płaska,False,-2,0.6666666666666666,0.0,0.3333333333333333,test,video game,algo,200.0
 algo,1697477,płaska,False,-1,1.1111111111111112,0.1111111111111111,0.5555555555555556,test,video game,algo,200.0
 algo,1697477,płaska,False,0,0.6666666666666666,0.2,0.2,test,video game,algo,200.0
-algo,1697477,płaska,False,1,1.0,0.0,0.3333333333333333,test,video game,algo,200.0
+algo,1697477,płaska,False,1,1.0,0.0,0.2222222222222222,test,video game,algo,200.0
 algo,1697477,płaska,False,2,0.6666666666666666,0.2,0.2,test,video game,algo,200.0
 algo,1697477,płaska,False,3,1.1111111111111112,0.0,0.4,test,video game,algo,200.0
 algo,1697477,płaska,False,-4,0.6666666666666666,0.2,0.2,test,video game,algo,200.0
@@ -7156,7 +7156,7 @@ algo,1697477,płaska,False,-3,0.8888888888888888,0.0,0.625,test,video game,algo,
 algo,1697477,płaska,False,-2,1.1111111111111112,0.0,0.5,test,video game,algo,200.0
 algo,1697477,płaska,False,-1,1.4444444444444444,0.0,0.38461538461538464,test,video game,algo,200.0
 algo,1697477,płaska,False,0,0.5555555555555556,0.0,0.4,test,video game,algo,200.0
-algo,1697477,płaska,False,1,0.5555555555555556,0.0,0.8,test,video game,algo,200.0
+algo,1697477,płaska,False,1,0.5555555555555556,0.0,0.6,test,video game,algo,200.0
 algo,1697477,płaska,False,2,0.7777777777777778,0.0,0.7142857142857143,test,video game,algo,200.0
 algo,1697477,płaska,False,3,0.6666666666666666,0.0,0.16666666666666666,test,video game,algo,200.0
 algo,1697477,płaska,False,-4,0.6666666666666666,0.0,0.16666666666666666,test,video game,algo,200.0
@@ -7166,10 +7166,10 @@ algo,1697477,płaska,False,-1,0.3333333333333333,0.0,1.0,test,video game,algo,20
 algo,1697477,płaska,False,0,0.6666666666666666,0.2,0.0,test,video game,algo,200.0
 algo,1697477,płaska,False,1,0.6666666666666666,0.2,0.2,test,video game,algo,200.0
 algo,1697477,płaska,False,2,0.7777777777777778,0.16666666666666666,0.3333333333333333,test,video game,algo,200.0
-algo,1697477,płaska,False,3,0.7777777777777778,0.4,0.2,test,video game,algo,200.0
+algo,1697477,płaska,False,3,0.7777777777777778,0.4,0.0,test,video game,algo,200.0
 algo,1697477,płaska,False,-4,0.6666666666666666,0.2,0.2,test,video game,algo,200.0
 algo,1697477,płaska,False,-3,0.7777777777777778,0.16666666666666666,0.3333333333333333,test,video game,algo,200.0
-algo,1697477,płaska,False,-2,0.7777777777777778,0.4,0.2,test,video game,algo,200.0
+algo,1697477,płaska,False,-2,0.7777777777777778,0.4,0.0,test,video game,algo,200.0
 algo,1697477,płaska,False,-1,0.6666666666666666,0.0,0.3333333333333333,test,video game,algo,200.0
 algo,1697477,płaska,False,0,0.8888888888888888,0.0,0.125,test,video game,algo,200.0
 algo,1697477,płaska,False,1,0.2222222222222222,0.0,1.0,test,video game,algo,200.0
@@ -7201,7 +7201,7 @@ algo,1697477,płaska,False,2,1.4444444444444444,0.18181818181818182,0.3636363636
 algo,1697477,płaska,False,3,1.2222222222222223,0.2222222222222222,0.3333333333333333,test,video game,algo,200.0
 algo,1697477,płaska,False,-4,1.2222222222222223,0.2222222222222222,0.3333333333333333,test,video game,algo,200.0
 algo,1697477,płaska,False,-3,1.1111111111111112,0.0,0.3,test,video game,algo,200.0
-algo,1697477,płaska,False,-2,1.2222222222222223,0.1,0.3,test,video game,algo,200.0
+algo,1697477,płaska,False,-2,1.2222222222222223,0.1,0.2,test,video game,algo,200.0
 algo,1697477,płaska,False,-1,1.3333333333333333,0.2,0.3,test,video game,algo,200.0
 algo,1697477,płaska,False,0,1.0,0.125,0.375,test,video game,algo,200.0
 algo,1697477,płaska,False,1,1.4444444444444444,0.3,0.2,test,video game,algo,200.0
@@ -7213,10 +7213,10 @@ algo,1697477,w dół,False,-2,1.3333333333333333,0.2,0.4,test,video game,algo,20
 algo,1697477,w dół,False,-1,1.0,0.2857142857142857,0.42857142857142855,test,video game,algo,200.0
 algo,1697477,w dół,False,0,0.4444444444444444,0.0,0.0,test,video game,algo,200.0
 algo,1697477,w dół,False,1,0.4444444444444444,0.3333333333333333,0.0,test,video game,algo,200.0
-algo,1697477,w dół,False,2,0.3333333333333333,0.5,0.5,test,video game,algo,200.0
+algo,1697477,w dół,False,2,0.3333333333333333,0.5,0.0,test,video game,algo,200.0
 algo,1697477,w dół,False,3,0.6666666666666666,0.2,0.6,test,video game,algo,200.0
-algo,1773164,płaska,False,-4,1.0909090909090908,0.09090909090909091,0.09090909090909091,test,pop,algo,176.0
-algo,1773164,płaska,False,-3,1.0,0.1,0.3,test,pop,algo,176.0
+algo,1773164,płaska,False,-4,1.0909090909090908,0.09090909090909091,0.0,test,pop,algo,176.0
+algo,1773164,płaska,False,-3,1.0,0.1,0.1,test,pop,algo,176.0
 algo,1773164,płaska,False,-2,1.0909090909090908,0.0,0.25,test,pop,algo,176.0
 algo,1773164,płaska,False,-1,1.0,0.0,0.36363636363636365,test,pop,algo,176.0
 algo,1773164,płaska,False,0,1.0909090909090908,0.0,0.3333333333333333,test,pop,algo,176.0
@@ -7243,9 +7243,9 @@ algo,1773164,płaska,False,-4,0.9090909090909091,0.0,0.1111111111111111,test,pop
 algo,1773164,płaska,False,-3,0.8181818181818182,0.1111111111111111,0.1111111111111111,test,pop,algo,176.0
 algo,1773164,płaska,False,-2,0.8181818181818182,0.0,0.3333333333333333,test,pop,algo,176.0
 algo,1773164,płaska,False,-1,0.7272727272727273,0.0,0.125,test,pop,algo,176.0
-algo,1773164,płaska,False,0,0.9090909090909091,0.0,0.1111111111111111,test,pop,algo,176.0
-algo,1773164,płaska,False,1,1.0909090909090908,0.09090909090909091,0.2727272727272727,test,pop,algo,176.0
-algo,1773164,płaska,False,2,0.9090909090909091,0.0,0.2727272727272727,test,pop,algo,176.0
+algo,1773164,płaska,False,0,0.9090909090909091,0.0,0.0,test,pop,algo,176.0
+algo,1773164,płaska,False,1,1.0909090909090908,0.09090909090909091,0.0,test,pop,algo,176.0
+algo,1773164,płaska,False,2,0.9090909090909091,0.0,0.18181818181818182,test,pop,algo,176.0
 algo,1773164,płaska,False,3,1.1818181818181819,0.08333333333333333,0.3333333333333333,test,pop,algo,176.0
 algo,1773164,płaska,True,-4,1.0,0.1,0.2,test,pop,algo,176.0
 algo,1773164,płaska,True,-3,1.0,0.0,0.36363636363636365,test,pop,algo,176.0
@@ -7278,24 +7278,24 @@ algo,1773164,płaska,False,-1,0.9090909090909091,0.1111111111111111,0.2222222222
 algo,1773164,płaska,False,0,0.7272727272727273,0.0,0.0,test,pop,algo,176.0
 algo,1773164,płaska,False,1,1.0909090909090908,0.09090909090909091,0.2727272727272727,test,pop,algo,176.0
 algo,1773164,płaska,False,2,0.8181818181818182,0.0,0.1111111111111111,test,pop,algo,176.0
-algo,1773164,płaska,False,3,0.9090909090909091,0.1111111111111111,0.3333333333333333,test,pop,algo,176.0
+algo,1773164,płaska,False,3,0.9090909090909091,0.1111111111111111,0.1111111111111111,test,pop,algo,176.0
 algo,1773164,płaska,False,-4,0.8181818181818182,0.125,0.125,test,pop,algo,176.0
 algo,1773164,płaska,False,-3,0.9090909090909091,0.1111111111111111,0.2222222222222222,test,pop,algo,176.0
 algo,1773164,płaska,False,-2,0.9090909090909091,0.0,0.1,test,pop,algo,176.0
-algo,1773164,płaska,False,-1,0.6363636363636364,0.0,0.3333333333333333,test,pop,algo,176.0
-algo,1773164,płaska,False,0,0.8181818181818182,0.0,0.1111111111111111,test,pop,algo,176.0
+algo,1773164,płaska,False,-1,0.6363636363636364,0.0,0.16666666666666666,test,pop,algo,176.0
+algo,1773164,płaska,False,0,0.8181818181818182,0.0,0.0,test,pop,algo,176.0
 algo,1773164,płaska,False,1,1.0909090909090908,0.0,0.3076923076923077,test,pop,algo,176.0
 algo,1773164,płaska,False,2,0.7272727272727273,0.0,0.125,test,pop,algo,176.0
 algo,1773164,płaska,False,3,1.0,0.1,0.3,test,pop,algo,176.0
 algo,1773164,płaska,False,-4,1.0,0.0,0.2727272727272727,test,pop,algo,176.0
-algo,1773164,płaska,False,-3,1.1818181818181819,0.09090909090909091,0.45454545454545453,test,pop,algo,176.0
-algo,1773164,płaska,False,-2,0.9090909090909091,0.0,0.36363636363636365,test,pop,algo,176.0
+algo,1773164,płaska,False,-3,1.1818181818181819,0.09090909090909091,0.2727272727272727,test,pop,algo,176.0
+algo,1773164,płaska,False,-2,0.9090909090909091,0.0,0.2727272727272727,test,pop,algo,176.0
 algo,1773164,płaska,False,-1,1.0909090909090908,0.09090909090909091,0.2727272727272727,test,pop,algo,176.0
 algo,1773164,płaska,False,0,0.8181818181818182,0.0,0.1111111111111111,test,pop,algo,176.0
 algo,1773164,płaska,False,1,0.9090909090909091,0.1111111111111111,0.1111111111111111,test,pop,algo,176.0
 algo,1773164,płaska,False,2,1.0909090909090908,0.0,0.4166666666666667,test,pop,algo,176.0
 algo,1773164,płaska,False,3,1.0909090909090908,0.3333333333333333,0.2222222222222222,test,pop,algo,176.0
-algo,1773164,płaska,False,-4,1.0,0.1,0.5,test,pop,algo,176.0
+algo,1773164,płaska,False,-4,1.0,0.1,0.4,test,pop,algo,176.0
 algo,1773164,płaska,False,-3,1.0,0.0,0.45454545454545453,test,pop,algo,176.0
 algo,1773164,płaska,False,-2,1.0909090909090908,0.2,0.4,test,pop,algo,176.0
 algo,1773164,płaska,False,-1,1.0,0.2222222222222222,0.3333333333333333,test,pop,algo,176.0
@@ -7379,13 +7379,13 @@ algo,1894317,płaska,False,-4,0.8888888888888888,0.14285714285714285,0.0,test,an
 algo,1894317,płaska,False,-3,0.6666666666666666,0.0,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,-2,0.7777777777777778,0.0,0.14285714285714285,test,anime,algo,190.0
 algo,1894317,płaska,False,-1,0.8888888888888888,0.0,0.0,test,anime,algo,190.0
-algo,1894317,płaska,False,0,1.2222222222222223,0.2222222222222222,0.2222222222222222,test,anime,algo,190.0
+algo,1894317,płaska,False,0,1.2222222222222223,0.2222222222222222,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,1,1.0,0.14285714285714285,0.0,test,anime,algo,190.0
-algo,1894317,płaska,False,2,0.8888888888888888,0.125,0.125,test,anime,algo,190.0
+algo,1894317,płaska,False,2,0.8888888888888888,0.125,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,3,1.1111111111111112,0.2857142857142857,0.0,test,anime,algo,190.0
-algo,1894317,płaska,False,-4,1.2222222222222223,0.2222222222222222,0.2222222222222222,test,anime,algo,190.0
+algo,1894317,płaska,False,-4,1.2222222222222223,0.2222222222222222,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,-3,1.0,0.14285714285714285,0.0,test,anime,algo,190.0
-algo,1894317,płaska,False,-2,0.8888888888888888,0.125,0.125,test,anime,algo,190.0
+algo,1894317,płaska,False,-2,0.8888888888888888,0.125,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,-1,1.1111111111111112,0.2857142857142857,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,0,0.8888888888888888,0.2857142857142857,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,1,0.8888888888888888,0.14285714285714285,0.14285714285714285,test,anime,algo,190.0
@@ -7397,22 +7397,22 @@ algo,1894317,płaska,True,-2,1.1111111111111112,0.25,0.0,test,anime,algo,190.0
 algo,1894317,płaska,True,-1,1.1111111111111112,0.25,0.0,test,anime,algo,190.0
 algo,1894317,płaska,True,0,0.6666666666666666,0.2,0.0,test,anime,algo,190.0
 algo,1894317,płaska,True,1,1.1111111111111112,0.1111111111111111,0.3333333333333333,test,anime,algo,190.0
-algo,1894317,płaska,True,2,1.3333333333333333,0.2,0.2,test,anime,algo,190.0
+algo,1894317,płaska,True,2,1.3333333333333333,0.2,0.1,test,anime,algo,190.0
 algo,1894317,płaska,True,3,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,anime,algo,190.0
 algo,1894317,płaska,False,-4,1.1111111111111112,0.1111111111111111,0.3333333333333333,test,anime,algo,190.0
-algo,1894317,płaska,False,-3,1.3333333333333333,0.2,0.2,test,anime,algo,190.0
+algo,1894317,płaska,False,-3,1.3333333333333333,0.2,0.1,test,anime,algo,190.0
 algo,1894317,płaska,False,-2,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,anime,algo,190.0
-algo,1894317,płaska,False,-1,1.2222222222222223,0.375,0.125,test,anime,algo,190.0
+algo,1894317,płaska,False,-1,1.2222222222222223,0.375,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,0,0.8888888888888888,0.14285714285714285,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,1,1.2222222222222223,0.2222222222222222,0.1111111111111111,test,anime,algo,190.0
 algo,1894317,płaska,False,2,1.1111111111111112,0.1111111111111111,0.4444444444444444,test,anime,algo,190.0
 algo,1894317,płaska,False,3,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,anime,algo,190.0
-algo,1894317,płaska,False,-4,1.1111111111111112,0.1111111111111111,0.1111111111111111,test,anime,algo,190.0
+algo,1894317,płaska,False,-4,1.1111111111111112,0.1111111111111111,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,-3,1.2222222222222223,0.1,0.2,test,anime,algo,190.0
 algo,1894317,płaska,False,-2,1.2222222222222223,0.1,0.2,test,anime,algo,190.0
 algo,1894317,płaska,False,-1,1.1111111111111112,0.0,0.3,test,anime,algo,190.0
 algo,1894317,płaska,False,0,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,anime,algo,190.0
-algo,1894317,płaska,False,1,1.1111111111111112,0.1111111111111111,0.4444444444444444,test,anime,algo,190.0
+algo,1894317,płaska,False,1,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,anime,algo,190.0
 algo,1894317,płaska,False,2,1.1111111111111112,0.25,0.125,test,anime,algo,190.0
 algo,1894317,płaska,False,3,1.1111111111111112,0.25,0.0,test,anime,algo,190.0
 algo,1894317,płaska,False,-4,1.2222222222222223,0.2222222222222222,0.2222222222222222,test,anime,algo,190.0
@@ -7475,7 +7475,7 @@ algo,2200258,w górę,True,-4,1.0,0.14285714285714285,0.0,test,electronic,algo,2
 algo,2200258,w górę,True,-3,0.625,0.0,0.0,test,electronic,algo,220.0
 algo,2200258,w górę,True,-2,1.0,0.3333333333333333,0.16666666666666666,test,electronic,algo,220.0
 algo,2200258,w górę,True,-1,0.875,0.0,0.14285714285714285,test,electronic,algo,220.0
-algo,2200258,w górę,True,0,1.125,0.0,0.3333333333333333,test,electronic,algo,220.0
+algo,2200258,w górę,True,0,1.125,0.0,0.2222222222222222,test,electronic,algo,220.0
 algo,2200258,w górę,True,1,1.25,0.1111111111111111,0.3333333333333333,test,electronic,algo,220.0
 algo,2200258,w górę,True,2,1.125,0.125,0.125,test,electronic,algo,220.0
 algo,2200258,w górę,True,3,1.375,0.375,0.25,test,electronic,algo,220.0
@@ -7483,7 +7483,7 @@ algo,2224035,płaska,False,-4,1.0,0.0,0.1111111111111111,test,pop,algo,190.0
 algo,2224035,płaska,False,-3,1.1111111111111112,0.1111111111111111,0.1111111111111111,test,pop,algo,190.0
 algo,2224035,płaska,False,-2,1.0,0.125,0.0,test,pop,algo,190.0
 algo,2224035,płaska,False,-1,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,pop,algo,190.0
-algo,2224035,płaska,False,0,1.3333333333333333,0.1,0.1,test,pop,algo,190.0
+algo,2224035,płaska,False,0,1.3333333333333333,0.1,0.0,test,pop,algo,190.0
 algo,2224035,płaska,False,1,1.0,0.1111111111111111,0.4444444444444444,test,pop,algo,190.0
 algo,2224035,płaska,False,2,1.1111111111111112,0.0,0.2,test,pop,algo,190.0
 algo,2224035,płaska,False,3,1.3333333333333333,0.2,0.3,test,pop,algo,190.0
@@ -7494,7 +7494,7 @@ algo,2224035,płaska,False,-1,1.0,0.0,0.3333333333333333,test,pop,algo,190.0
 algo,2224035,płaska,False,0,1.0,0.125,0.25,test,pop,algo,190.0
 algo,2224035,płaska,False,1,0.8888888888888888,0.14285714285714285,0.0,test,pop,algo,190.0
 algo,2224035,płaska,False,2,0.6666666666666666,0.0,0.16666666666666666,test,pop,algo,190.0
-algo,2224035,płaska,False,3,1.1111111111111112,0.42857142857142855,0.5714285714285714,test,pop,algo,190.0
+algo,2224035,płaska,False,3,1.1111111111111112,0.42857142857142855,0.2857142857142857,test,pop,algo,190.0
 algo,2224035,płaska,False,-4,0.6666666666666666,0.5,0.25,test,pop,algo,190.0
 algo,2224035,płaska,False,-3,0.8888888888888888,0.0,0.25,test,pop,algo,190.0
 algo,2224035,płaska,False,-2,1.0,0.125,0.125,test,pop,algo,190.0
@@ -7542,7 +7542,7 @@ algo,2224035,w górę,True,-1,0.8888888888888888,0.14285714285714285,0.142857142
 algo,2224035,w górę,True,0,0.8888888888888888,0.0,0.0,test,pop,algo,190.0
 algo,2224035,w górę,True,1,0.8888888888888888,0.14285714285714285,0.2857142857142857,test,pop,algo,190.0
 algo,2224035,w górę,True,2,1.0,0.0,0.1111111111111111,test,pop,algo,190.0
-algo,2224035,w górę,True,3,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,pop,algo,190.0
+algo,2224035,w górę,True,3,1.1111111111111112,0.1111111111111111,0.1111111111111111,test,pop,algo,190.0
 algo,2224035,płaska,False,-4,1.1111111111111112,0.1111111111111111,0.2222222222222222,test,pop,algo,190.0
 algo,2224035,płaska,False,-3,0.8888888888888888,0.0,0.0,test,pop,algo,190.0
 algo,2224035,płaska,False,-2,1.1111111111111112,0.1111111111111111,0.3333333333333333,test,pop,algo,190.0
@@ -7559,11 +7559,11 @@ algo,2224035,w dół,False,0,0.4444444444444444,0.0,0.0,test,pop,algo,190.0
 algo,2224035,w dół,False,1,0.4444444444444444,0.0,0.0,test,pop,algo,190.0
 algo,2224035,w dół,False,2,0.4444444444444444,0.0,0.0,test,pop,algo,190.0
 algo,2224035,w dół,False,3,0.5555555555555556,0.0,0.2,test,pop,algo,190.0
-algo,2270163,w dół,False,-4,0.8,0.14285714285714285,0.14285714285714285,test,electronic,algo,185.0
+algo,2270163,w dół,False,-4,0.8,0.14285714285714285,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,-3,0.8,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,w dół,False,-2,1.0,0.0,0.2,test,electronic,algo,185.0
+algo,2270163,w dół,False,-2,1.0,0.0,0.1,test,electronic,algo,185.0
 algo,2270163,w dół,False,-1,0.9,0.0,0.2222222222222222,test,electronic,algo,185.0
-algo,2270163,w dół,False,0,0.6,0.0,0.16666666666666666,test,electronic,algo,185.0
+algo,2270163,w dół,False,0,0.6,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,1,0.6,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,2,0.6,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,3,0.8,0.0,0.0,test,electronic,algo,185.0
@@ -7571,56 +7571,56 @@ algo,2270163,w górę,True,-4,0.5,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w górę,True,-3,0.6,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w górę,True,-2,0.9,0.0,0.3333333333333333,test,electronic,algo,185.0
 algo,2270163,w górę,True,-1,0.9,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,w górę,True,0,1.1,0.0,0.18181818181818182,test,electronic,algo,185.0
+algo,2270163,w górę,True,0,1.1,0.0,0.09090909090909091,test,electronic,algo,185.0
 algo,2270163,w górę,True,1,1.1,0.0,0.09090909090909091,test,electronic,algo,185.0
 algo,2270163,w górę,True,2,0.8,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w górę,True,3,1.2,0.0,0.25,test,electronic,algo,185.0
 algo,2270163,w dół,False,-4,0.9,0.0,0.1111111111111111,test,electronic,algo,185.0
-algo,2270163,w dół,False,-3,1.2,0.0,0.25,test,electronic,algo,185.0
+algo,2270163,w dół,False,-3,1.2,0.0,0.16666666666666666,test,electronic,algo,185.0
 algo,2270163,w dół,False,-2,1.0,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,-1,1.0,0.25,0.0,test,electronic,algo,185.0
-algo,2270163,w dół,False,0,0.8,0.0,0.25,test,electronic,algo,185.0
+algo,2270163,w dół,False,0,0.8,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,1,0.8,0.0,0.25,test,electronic,algo,185.0
-algo,2270163,w dół,False,2,0.5,0.0,0.6,test,electronic,algo,185.0
+algo,2270163,w dół,False,2,0.5,0.0,0.2,test,electronic,algo,185.0
 algo,2270163,w dół,False,3,0.7,0.0,0.14285714285714285,test,electronic,algo,185.0
 algo,2270163,w górę,False,-4,0.8,0.0,0.25,test,electronic,algo,185.0
-algo,2270163,w górę,False,-3,0.5,0.0,0.6,test,electronic,algo,185.0
+algo,2270163,w górę,False,-3,0.5,0.0,0.2,test,electronic,algo,185.0
 algo,2270163,w górę,False,-2,0.7,0.0,0.14285714285714285,test,electronic,algo,185.0
 algo,2270163,w górę,False,-1,0.8,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,w górę,False,0,1.1,0.2222222222222222,0.2222222222222222,test,electronic,algo,185.0
+algo,2270163,w górę,False,0,1.1,0.2222222222222222,0.1111111111111111,test,electronic,algo,185.0
 algo,2270163,w górę,False,1,1.0,0.0,0.4,test,electronic,algo,185.0
 algo,2270163,w górę,False,2,1.0,0.0,0.5,test,electronic,algo,185.0
 algo,2270163,w górę,False,3,1.2,0.0,0.5,test,electronic,algo,185.0
 algo,2270163,w dół,False,-4,0.9,0.0,0.3333333333333333,test,electronic,algo,185.0
-algo,2270163,w dół,False,-3,0.8,0.0,0.375,test,electronic,algo,185.0
-algo,2270163,w dół,False,-2,0.9,0.0,0.3333333333333333,test,electronic,algo,185.0
-algo,2270163,w dół,False,-1,1.1,0.1,0.5,test,electronic,algo,185.0
+algo,2270163,w dół,False,-3,0.8,0.0,0.25,test,electronic,algo,185.0
+algo,2270163,w dół,False,-2,0.9,0.0,0.1111111111111111,test,electronic,algo,185.0
+algo,2270163,w dół,False,-1,1.1,0.1,0.4,test,electronic,algo,185.0
 algo,2270163,w dół,False,0,0.3,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,w dół,False,1,0.9,0.0,0.25,test,electronic,algo,185.0
+algo,2270163,w dół,False,1,0.9,0.0,0.125,test,electronic,algo,185.0
 algo,2270163,w dół,False,2,0.1,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,3,0.5,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,płaska,True,-4,0.3,0.0,0.5,test,electronic,algo,185.0
-algo,2270163,płaska,True,-3,1.0,0.0,0.45454545454545453,test,electronic,algo,185.0
+algo,2270163,płaska,True,-3,1.0,0.0,0.36363636363636365,test,electronic,algo,185.0
 algo,2270163,płaska,True,-2,0.5,0.0,0.2,test,electronic,algo,185.0
 algo,2270163,płaska,True,-1,1.0,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,płaska,True,0,0.8,0.0,0.125,test,electronic,algo,185.0
-algo,2270163,płaska,True,1,1.1,0.0,0.18181818181818182,test,electronic,algo,185.0
+algo,2270163,płaska,True,0,0.8,0.0,0.0,test,electronic,algo,185.0
+algo,2270163,płaska,True,1,1.1,0.0,0.09090909090909091,test,electronic,algo,185.0
 algo,2270163,płaska,True,2,0.9,0.125,0.0,test,electronic,algo,185.0
 algo,2270163,płaska,True,3,1.1,0.0,0.18181818181818182,test,electronic,algo,185.0
-algo,2270163,w dół,False,-4,1.3,0.18181818181818182,0.18181818181818182,test,electronic,algo,185.0
+algo,2270163,w dół,False,-4,1.3,0.18181818181818182,0.09090909090909091,test,electronic,algo,185.0
 algo,2270163,w dół,False,-3,1.1,0.2222222222222222,0.1111111111111111,test,electronic,algo,185.0
 algo,2270163,w dół,False,-2,1.0,0.1111111111111111,0.1111111111111111,test,electronic,algo,185.0
 algo,2270163,w dół,False,-1,1.1,0.1,0.1,test,electronic,algo,185.0
 algo,2270163,w dół,False,0,0.7,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,w dół,False,1,1.1,0.0,0.18181818181818182,test,electronic,algo,185.0
-algo,2270163,w dół,False,2,0.7,0.0,0.42857142857142855,test,electronic,algo,185.0
+algo,2270163,w dół,False,1,1.1,0.0,0.09090909090909091,test,electronic,algo,185.0
+algo,2270163,w dół,False,2,0.7,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w dół,False,3,1.1,0.0,0.2727272727272727,test,electronic,algo,185.0
 algo,2270163,w górę,True,-4,0.7,0.0,0.0,test,electronic,algo,185.0
-algo,2270163,w górę,True,-3,1.1,0.0,0.18181818181818182,test,electronic,algo,185.0
-algo,2270163,w górę,True,-2,0.7,0.0,0.42857142857142855,test,electronic,algo,185.0
+algo,2270163,w górę,True,-3,1.1,0.0,0.09090909090909091,test,electronic,algo,185.0
+algo,2270163,w górę,True,-2,0.7,0.0,0.0,test,electronic,algo,185.0
 algo,2270163,w górę,True,-1,1.1,0.0,0.2727272727272727,test,electronic,algo,185.0
 algo,2270163,w górę,True,0,1.0,0.25,0.0,test,electronic,algo,185.0
-algo,2270163,w górę,True,1,1.2,0.2,0.4,test,electronic,algo,185.0
+algo,2270163,w górę,True,1,1.2,0.2,0.3,test,electronic,algo,185.0
 algo,2270163,w górę,True,2,0.9,0.3333333333333333,0.5,test,electronic,algo,185.0
 algo,2270163,w górę,True,3,1.4,0.07142857142857142,0.42857142857142855,test,electronic,algo,185.0
 algo,2314654,płaska,False,-4,0.5263157894736842,0.0,0.0,test,electronic,algo,174.0
@@ -7634,22 +7634,22 @@ algo,2314654,płaska,False,3,0.9473684210526315,0.125,0.25,test,electronic,algo,
 algo,2314654,płaska,False,-4,0.631578947368421,0.5,0.0,test,electronic,algo,174.0
 algo,2314654,płaska,False,-3,0.631578947368421,0.0,0.0,test,electronic,algo,174.0
 algo,2314654,płaska,False,-2,0.7368421052631579,0.16666666666666666,0.0,test,electronic,algo,174.0
-algo,2314654,płaska,False,-1,0.9473684210526315,0.0,0.4444444444444444,test,electronic,algo,174.0
+algo,2314654,płaska,False,-1,0.9473684210526315,0.0,0.2222222222222222,test,electronic,algo,174.0
 algo,2314654,płaska,False,0,1.0526315789473684,0.25,0.25,test,electronic,algo,174.0
 algo,2314654,płaska,False,1,1.263157894736842,0.2,0.2,test,electronic,algo,174.0
 algo,2314654,płaska,False,2,1.1578947368421053,0.2222222222222222,0.2222222222222222,test,electronic,algo,174.0
 algo,2314654,płaska,False,3,1.1578947368421053,0.375,0.125,test,electronic,algo,174.0
 algo,2314654,płaska,True,-4,1.1578947368421053,0.2222222222222222,0.1111111111111111,test,electronic,algo,174.0
 algo,2314654,płaska,True,-3,1.368421052631579,0.08333333333333333,0.6666666666666666,test,electronic,algo,174.0
-algo,2314654,płaska,True,-2,1.263157894736842,0.2,0.2,test,electronic,algo,174.0
+algo,2314654,płaska,True,-2,1.263157894736842,0.2,0.1,test,electronic,algo,174.0
 algo,2314654,płaska,True,-1,1.1578947368421053,0.1,0.3,test,electronic,algo,174.0
 algo,2314654,płaska,True,0,0.8421052631578947,0.3333333333333333,0.16666666666666666,test,electronic,algo,174.0
 algo,2314654,płaska,True,1,1.0526315789473684,0.1111111111111111,0.3333333333333333,test,electronic,algo,174.0
 algo,2314654,płaska,True,2,1.368421052631579,0.18181818181818182,0.36363636363636365,test,electronic,algo,174.0
 algo,2314654,płaska,True,3,1.0526315789473684,0.1111111111111111,0.3333333333333333,test,electronic,algo,174.0
-algo,2314654,w dół,False,-4,1.263157894736842,0.2,0.3,test,electronic,algo,174.0
+algo,2314654,w dół,False,-4,1.263157894736842,0.2,0.2,test,electronic,algo,174.0
 algo,2314654,w dół,False,-3,0.9473684210526315,0.0,0.2222222222222222,test,electronic,algo,174.0
-algo,2314654,w dół,False,-2,0.5263157894736842,0.0,0.2,test,electronic,algo,174.0
+algo,2314654,w dół,False,-2,0.5263157894736842,0.0,0.0,test,electronic,algo,174.0
 algo,2314654,w dół,False,-1,0.9473684210526315,0.5,0.3333333333333333,test,electronic,algo,174.0
 algo,2314654,w dół,False,0,0.9473684210526315,0.0,0.4444444444444444,test,electronic,algo,174.0
 algo,2314654,w dół,False,1,0.5263157894736842,0.0,0.2,test,electronic,algo,174.0
@@ -7662,9 +7662,9 @@ algo,2314654,płaska,False,-1,1.0526315789473684,0.0,0.2727272727272727,test,ele
 algo,2314654,płaska,False,0,1.0526315789473684,0.1111111111111111,0.3333333333333333,test,electronic,algo,174.0
 algo,2314654,płaska,False,1,1.1578947368421053,0.1,0.2,test,electronic,algo,174.0
 algo,2314654,płaska,False,2,1.4736842105263157,0.07692307692307693,0.38461538461538464,test,electronic,algo,174.0
-algo,2314654,płaska,False,3,0.8421052631578947,0.14285714285714285,0.14285714285714285,test,electronic,algo,174.0
+algo,2314654,płaska,False,3,0.8421052631578947,0.14285714285714285,0.0,test,electronic,algo,174.0
 algo,2314654,w górę,True,-4,1.4736842105263157,0.07692307692307693,0.38461538461538464,test,electronic,algo,174.0
-algo,2314654,w górę,True,-3,0.8421052631578947,0.14285714285714285,0.14285714285714285,test,electronic,algo,174.0
+algo,2314654,w górę,True,-3,0.8421052631578947,0.14285714285714285,0.0,test,electronic,algo,174.0
 algo,2314654,w górę,True,-2,0.631578947368421,0.0,0.16666666666666666,test,electronic,algo,174.0
 algo,2314654,w górę,True,-1,0.8421052631578947,0.0,0.16666666666666666,test,electronic,algo,174.0
 algo,2314654,w górę,True,0,1.0526315789473684,0.2,0.5,test,electronic,algo,174.0
@@ -7675,17 +7675,17 @@ algo,2314654,w dół,False,-4,1.263157894736842,0.1,0.5,test,electronic,algo,174
 algo,2314654,w dół,False,-3,1.1578947368421053,0.09090909090909091,0.45454545454545453,test,electronic,algo,174.0
 algo,2314654,w dół,False,-2,1.1578947368421053,0.1,0.2,test,electronic,algo,174.0
 algo,2314654,w dół,False,-1,1.263157894736842,0.2,0.3,test,electronic,algo,174.0
-algo,2314654,w dół,False,0,0.8421052631578947,0.14285714285714285,0.42857142857142855,test,electronic,algo,174.0
+algo,2314654,w dół,False,0,0.8421052631578947,0.14285714285714285,0.2857142857142857,test,electronic,algo,174.0
 algo,2314654,w dół,False,1,0.631578947368421,0.2,0.4,test,electronic,algo,174.0
 algo,2314654,w dół,False,2,0.9473684210526315,0.0,0.14285714285714285,test,electronic,algo,174.0
 algo,2314654,w dół,False,3,0.631578947368421,0.14285714285714285,0.2857142857142857,test,electronic,algo,174.0
 algo,2314654,w górę,False,-4,0.9473684210526315,0.0,0.14285714285714285,test,electronic,algo,174.0
 algo,2314654,w górę,False,-3,0.631578947368421,0.14285714285714285,0.2857142857142857,test,electronic,algo,174.0
-algo,2314654,w górę,False,-2,0.9473684210526315,0.0,0.5555555555555556,test,electronic,algo,174.0
+algo,2314654,w górę,False,-2,0.9473684210526315,0.0,0.4444444444444444,test,electronic,algo,174.0
 algo,2314654,w górę,False,-1,0.42105263157894735,0.0,0.5,test,electronic,algo,174.0
 algo,2314654,w górę,False,0,0.8421052631578947,0.14285714285714285,0.2857142857142857,test,electronic,algo,174.0
 algo,2314654,w górę,False,1,0.631578947368421,0.0,0.3333333333333333,test,electronic,algo,174.0
-algo,2314654,w górę,False,2,0.631578947368421,0.0,0.5,test,electronic,algo,174.0
+algo,2314654,w górę,False,2,0.631578947368421,0.0,0.16666666666666666,test,electronic,algo,174.0
 algo,2314654,w górę,False,3,0.9473684210526315,0.2857142857142857,0.14285714285714285,test,electronic,algo,174.0
 algo,2314654,płaska,False,-4,1.1578947368421053,0.0,0.2222222222222222,test,electronic,algo,174.0
 algo,2314654,płaska,False,-3,0.9473684210526315,0.2222222222222222,0.2222222222222222,test,electronic,algo,174.0
@@ -7700,18 +7700,18 @@ algo,2515207,płaska,False,-3,0.5714285714285714,0.0,0.25,test,pop,algo,152.0
 algo,2515207,płaska,False,-2,0.7142857142857143,0.25,0.0,test,pop,algo,152.0
 algo,2515207,płaska,False,-1,0.7142857142857143,0.0,0.0,test,pop,algo,152.0
 algo,2515207,płaska,False,0,0.5714285714285714,0.0,0.0,test,pop,algo,152.0
-algo,2515207,płaska,False,1,1.0,0.16666666666666666,0.16666666666666666,test,pop,algo,152.0
-algo,2515207,płaska,False,2,1.4285714285714286,0.1111111111111111,0.3333333333333333,test,pop,algo,152.0
+algo,2515207,płaska,False,1,1.0,0.16666666666666666,0.0,test,pop,algo,152.0
+algo,2515207,płaska,False,2,1.4285714285714286,0.1111111111111111,0.2222222222222222,test,pop,algo,152.0
 algo,2515207,płaska,False,3,0.8571428571428571,0.0,0.16666666666666666,test,pop,algo,152.0
-algo,2515207,płaska,False,-4,1.0,0.16666666666666666,0.16666666666666666,test,pop,algo,152.0
-algo,2515207,płaska,False,-3,1.4285714285714286,0.1111111111111111,0.3333333333333333,test,pop,algo,152.0
+algo,2515207,płaska,False,-4,1.0,0.16666666666666666,0.0,test,pop,algo,152.0
+algo,2515207,płaska,False,-3,1.4285714285714286,0.1111111111111111,0.2222222222222222,test,pop,algo,152.0
 algo,2515207,płaska,False,-2,0.8571428571428571,0.0,0.16666666666666666,test,pop,algo,152.0
 algo,2515207,płaska,False,-1,1.4285714285714286,0.1111111111111111,0.3333333333333333,test,pop,algo,152.0
-algo,2515207,płaska,False,0,0.8571428571428571,0.0,0.3333333333333333,test,pop,algo,152.0
+algo,2515207,płaska,False,0,0.8571428571428571,0.0,0.0,test,pop,algo,152.0
 algo,2515207,płaska,False,1,1.2857142857142858,0.5,0.16666666666666666,test,pop,algo,152.0
 algo,2515207,płaska,False,2,0.5714285714285714,0.3333333333333333,0.0,test,pop,algo,152.0
 algo,2515207,płaska,False,3,1.2857142857142858,0.5,0.16666666666666666,test,pop,algo,152.0
-algo,2515207,w górę,False,-4,0.8571428571428571,0.0,0.3333333333333333,test,pop,algo,152.0
+algo,2515207,w górę,False,-4,0.8571428571428571,0.0,0.0,test,pop,algo,152.0
 algo,2515207,w górę,False,-3,1.2857142857142858,0.5,0.16666666666666666,test,pop,algo,152.0
 algo,2515207,w górę,False,-2,0.5714285714285714,0.3333333333333333,0.0,test,pop,algo,152.0
 algo,2515207,w górę,False,-1,1.2857142857142858,0.5,0.16666666666666666,test,pop,algo,152.0
@@ -7764,8 +7764,8 @@ algo,2515207,płaska,False,-3,0.7142857142857143,0.0,0.0,test,pop,algo,152.0
 algo,2515207,płaska,False,-2,1.0,0.0,0.2857142857142857,test,pop,algo,152.0
 algo,2515207,płaska,False,-1,0.8571428571428571,0.0,0.0,test,pop,algo,152.0
 algo,2515207,płaska,False,0,0.7142857142857143,0.0,0.0,test,pop,algo,152.0
-algo,2515207,płaska,False,1,0.7142857142857143,0.0,0.2,test,pop,algo,152.0
-algo,2515207,płaska,False,2,1.4285714285714286,0.25,0.25,test,pop,algo,152.0
+algo,2515207,płaska,False,1,0.7142857142857143,0.0,0.0,test,pop,algo,152.0
+algo,2515207,płaska,False,2,1.4285714285714286,0.25,0.125,test,pop,algo,152.0
 algo,2515207,płaska,False,3,0.7142857142857143,0.0,0.2,test,pop,algo,152.0
 algo,2515207,w górę,False,-4,0.8571428571428571,0.0,0.16666666666666666,test,pop,algo,152.0
 algo,2515207,w górę,False,-3,1.8571428571428572,0.08333333333333333,0.5,test,pop,algo,152.0
@@ -7794,25 +7794,25 @@ algo,2515207,w górę,True,3,1.2857142857142858,0.125,0.0,test,pop,algo,152.0
 algo,2515207,w dół,False,-4,1.2857142857142858,0.125,0.0,test,pop,algo,152.0
 algo,2515207,w dół,False,-3,1.5714285714285714,0.1,0.3,test,pop,algo,152.0
 algo,2515207,w dół,False,-2,0.8571428571428571,0.0,0.0,test,pop,algo,152.0
-algo,2515207,w dół,False,-1,1.5714285714285714,0.0,0.2727272727272727,test,pop,algo,152.0
+algo,2515207,w dół,False,-1,1.5714285714285714,0.0,0.18181818181818182,test,pop,algo,152.0
 algo,2515207,w dół,False,0,1.1428571428571428,0.0,0.125,test,pop,algo,152.0
 algo,2515207,w dół,False,1,1.2857142857142858,0.125,0.25,test,pop,algo,152.0
 algo,2515207,w dół,False,2,0.7142857142857143,0.0,0.2,test,pop,algo,152.0
 algo,2515207,w dół,False,3,0.7142857142857143,0.0,0.2,test,pop,algo,152.0
 algo,310607,w dół,False,-4,1.2,0.6666666666666666,0.0,test,video game,algo,185.0
 algo,310607,w dół,False,-3,1.0,0.5,0.0,test,video game,algo,185.0
-algo,310607,w dół,False,-2,1.0,0.0,0.2,test,video game,algo,185.0
-algo,310607,w dół,False,-1,1.2,0.0,0.5,test,video game,algo,185.0
+algo,310607,w dół,False,-2,1.0,0.0,0.1,test,video game,algo,185.0
+algo,310607,w dół,False,-1,1.2,0.0,0.4166666666666667,test,video game,algo,185.0
 algo,310607,w dół,False,0,0.8,0.0,0.25,test,video game,algo,185.0
-algo,310607,w dół,False,1,0.7,0.16666666666666666,0.16666666666666666,test,video game,algo,185.0
-algo,310607,w dół,False,2,0.9,0.0,0.5555555555555556,test,video game,algo,185.0
+algo,310607,w dół,False,1,0.7,0.16666666666666666,0.0,test,video game,algo,185.0
+algo,310607,w dół,False,2,0.9,0.0,0.4444444444444444,test,video game,algo,185.0
 algo,310607,w dół,False,3,0.8,0.0,0.25,test,video game,algo,185.0
 algo,310607,płaska,False,-4,0.8,0.0,0.25,test,video game,algo,185.0
-algo,310607,płaska,False,-3,0.7,0.16666666666666666,0.16666666666666666,test,video game,algo,185.0
-algo,310607,płaska,False,-2,0.9,0.0,0.5555555555555556,test,video game,algo,185.0
+algo,310607,płaska,False,-3,0.7,0.16666666666666666,0.0,test,video game,algo,185.0
+algo,310607,płaska,False,-2,0.9,0.0,0.4444444444444444,test,video game,algo,185.0
 algo,310607,płaska,False,-1,0.8,0.0,0.25,test,video game,algo,185.0
-algo,310607,płaska,False,0,0.6,0.0,0.5,test,video game,algo,185.0
-algo,310607,płaska,False,1,0.9,0.125,0.5,test,video game,algo,185.0
+algo,310607,płaska,False,0,0.6,0.0,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,1,0.9,0.125,0.375,test,video game,algo,185.0
 algo,310607,płaska,False,2,0.8,0.0,0.2857142857142857,test,video game,algo,185.0
 algo,310607,płaska,False,3,0.5,0.0,0.16666666666666666,test,video game,algo,185.0
 algo,310607,w górę,True,-4,0.5,0.25,0.0,test,video game,algo,185.0
@@ -7822,27 +7822,27 @@ algo,310607,w górę,True,-1,0.8,0.0,0.375,test,video game,algo,185.0
 algo,310607,w górę,True,0,1.1,0.0,0.2727272727272727,test,video game,algo,185.0
 algo,310607,w górę,True,1,1.0,0.0,0.2,test,video game,algo,185.0
 algo,310607,w górę,True,2,1.0,0.0,0.2,test,video game,algo,185.0
-algo,310607,w górę,True,3,1.2,0.0,0.5,test,video game,algo,185.0
+algo,310607,w górę,True,3,1.2,0.0,0.3,test,video game,algo,185.0
 algo,310607,płaska,False,-4,0.8,0.1111111111111111,0.1111111111111111,test,video game,algo,185.0
 algo,310607,płaska,False,-3,0.9,0.0,0.1111111111111111,test,video game,algo,185.0
 algo,310607,płaska,False,-2,1.1,0.0,0.2727272727272727,test,video game,algo,185.0
 algo,310607,płaska,False,-1,1.1,0.1,0.2,test,video game,algo,185.0
 algo,310607,płaska,False,0,1.0,0.0,0.2,test,video game,algo,185.0
 algo,310607,płaska,False,1,0.9,0.0,0.2222222222222222,test,video game,algo,185.0
-algo,310607,płaska,False,2,1.3,0.08333333333333333,0.4166666666666667,test,video game,algo,185.0
-algo,310607,płaska,False,3,1.0,0.1111111111111111,0.3333333333333333,test,video game,algo,185.0
-algo,310607,płaska,False,-4,1.3,0.08333333333333333,0.4166666666666667,test,video game,algo,185.0
-algo,310607,płaska,False,-3,1.0,0.1111111111111111,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,2,1.3,0.08333333333333333,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,3,1.0,0.1111111111111111,0.2222222222222222,test,video game,algo,185.0
+algo,310607,płaska,False,-4,1.3,0.08333333333333333,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,-3,1.0,0.1111111111111111,0.2222222222222222,test,video game,algo,185.0
 algo,310607,płaska,False,-2,0.9,0.0,0.2222222222222222,test,video game,algo,185.0
 algo,310607,płaska,False,-1,0.9,0.0,0.2222222222222222,test,video game,algo,185.0
 algo,310607,płaska,False,0,1.3,0.08333333333333333,0.25,test,video game,algo,185.0
-algo,310607,płaska,False,1,1.1,0.0,0.36363636363636365,test,video game,algo,185.0
-algo,310607,płaska,False,2,0.9,0.0,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,1,1.1,0.0,0.2727272727272727,test,video game,algo,185.0
+algo,310607,płaska,False,2,0.9,0.0,0.1111111111111111,test,video game,algo,185.0
 algo,310607,płaska,False,3,0.8,0.0,0.5,test,video game,algo,185.0
-algo,310607,płaska,True,-4,0.9,0.125,0.5,test,video game,algo,185.0
-algo,310607,płaska,True,-3,1.1,0.1,0.2,test,video game,algo,185.0
+algo,310607,płaska,True,-4,0.9,0.125,0.375,test,video game,algo,185.0
+algo,310607,płaska,True,-3,1.1,0.1,0.1,test,video game,algo,185.0
 algo,310607,płaska,True,-2,1.3,0.0,0.3076923076923077,test,video game,algo,185.0
-algo,310607,płaska,True,-1,0.7,0.0,0.2857142857142857,test,video game,algo,185.0
+algo,310607,płaska,True,-1,0.7,0.0,0.0,test,video game,algo,185.0
 algo,310607,płaska,True,0,0.9,0.125,0.375,test,video game,algo,185.0
 algo,310607,płaska,True,1,1.0,0.0,0.2,test,video game,algo,185.0
 algo,310607,płaska,True,2,1.1,0.0,0.4,test,video game,algo,185.0
@@ -7854,10 +7854,10 @@ algo,310607,płaska,False,-1,1.1,0.0,0.45454545454545453,test,video game,algo,18
 algo,310607,płaska,False,0,0.9,0.0,0.2222222222222222,test,video game,algo,185.0
 algo,310607,płaska,False,1,1.0,0.1111111111111111,0.3333333333333333,test,video game,algo,185.0
 algo,310607,płaska,False,2,1.0,0.0,0.3,test,video game,algo,185.0
-algo,310607,płaska,False,3,1.0,0.1111111111111111,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,3,1.0,0.1111111111111111,0.1111111111111111,test,video game,algo,185.0
 algo,310607,płaska,False,-4,1.0,0.1111111111111111,0.3333333333333333,test,video game,algo,185.0
 algo,310607,płaska,False,-3,1.0,0.0,0.3,test,video game,algo,185.0
-algo,310607,płaska,False,-2,1.0,0.1111111111111111,0.3333333333333333,test,video game,algo,185.0
+algo,310607,płaska,False,-2,1.0,0.1111111111111111,0.1111111111111111,test,video game,algo,185.0
 algo,310607,płaska,False,-1,0.7,0.0,0.0,test,video game,algo,185.0
 algo,310607,płaska,False,0,1.1,0.1,0.2,test,video game,algo,185.0
 algo,310607,płaska,False,1,1.2,0.0,0.3333333333333333,test,video game,algo,185.0
@@ -7909,13 +7909,13 @@ algo,363594,płaska,False,-2,1.3333333333333333,0.3333333333333333,0.5,test,anim
 algo,363594,płaska,False,-1,1.0,0.0,0.0,test,anime,algo,284.0
 algo,363594,płaska,False,0,1.0,0.2,0.0,test,anime,algo,284.0
 algo,363594,płaska,False,1,1.1666666666666667,0.4,0.0,test,anime,algo,284.0
-algo,363594,płaska,False,2,1.3333333333333333,0.3333333333333333,0.16666666666666666,test,anime,algo,284.0
+algo,363594,płaska,False,2,1.3333333333333333,0.3333333333333333,0.0,test,anime,algo,284.0
 algo,363594,płaska,False,3,0.8333333333333334,0.0,0.0,test,anime,algo,284.0
-algo,363594,w górę,False,-4,1.3333333333333333,0.3333333333333333,0.16666666666666666,test,anime,algo,284.0
+algo,363594,w górę,False,-4,1.3333333333333333,0.3333333333333333,0.0,test,anime,algo,284.0
 algo,363594,w górę,False,-3,0.8333333333333334,0.0,0.0,test,anime,algo,284.0
 algo,363594,w górę,False,-2,0.8333333333333334,0.25,0.0,test,anime,algo,284.0
 algo,363594,w górę,False,-1,1.0,0.0,0.5,test,anime,algo,284.0
-algo,363594,w górę,False,0,0.8333333333333334,0.0,0.2,test,anime,algo,284.0
+algo,363594,w górę,False,0,0.8333333333333334,0.0,0.0,test,anime,algo,284.0
 algo,363594,w górę,False,1,0.8333333333333334,0.0,0.2,test,anime,algo,284.0
 algo,363594,w górę,False,2,1.5,0.2857142857142857,0.2857142857142857,test,anime,algo,284.0
 algo,363594,w górę,False,3,0.8333333333333334,0.0,0.0,test,anime,algo,284.0
@@ -7938,12 +7938,12 @@ algo,363594,w dół,False,3,0.8333333333333334,0.0,0.0,test,anime,algo,284.0
 algo,563569,płaska,False,-4,0.9565217391304348,0.2222222222222222,0.1111111111111111,test,video game,algo,177.0
 algo,563569,płaska,False,-3,1.1304347826086956,0.4444444444444444,0.1111111111111111,test,video game,algo,177.0
 algo,563569,płaska,False,-2,1.2173913043478262,0.4,0.2,test,video game,algo,177.0
-algo,563569,płaska,False,-1,0.9565217391304348,0.1,0.3,test,video game,algo,177.0
-algo,563569,płaska,False,0,1.0434782608695652,0.3333333333333333,0.2222222222222222,test,video game,algo,177.0
+algo,563569,płaska,False,-1,0.9565217391304348,0.1,0.2,test,video game,algo,177.0
+algo,563569,płaska,False,0,1.0434782608695652,0.3333333333333333,0.1111111111111111,test,video game,algo,177.0
 algo,563569,płaska,False,1,0.6956521739130435,0.14285714285714285,0.0,test,video game,algo,177.0
 algo,563569,płaska,False,2,1.0434782608695652,0.5,0.0,test,video game,algo,177.0
 algo,563569,płaska,False,3,0.9565217391304348,0.2222222222222222,0.2222222222222222,test,video game,algo,177.0
-algo,563569,płaska,False,-4,1.0434782608695652,0.3333333333333333,0.2222222222222222,test,video game,algo,177.0
+algo,563569,płaska,False,-4,1.0434782608695652,0.3333333333333333,0.1111111111111111,test,video game,algo,177.0
 algo,563569,płaska,False,-3,0.6956521739130435,0.14285714285714285,0.0,test,video game,algo,177.0
 algo,563569,płaska,False,-2,1.0434782608695652,0.5,0.0,test,video game,algo,177.0
 algo,563569,płaska,False,-1,0.9565217391304348,0.2222222222222222,0.2222222222222222,test,video game,algo,177.0
@@ -7979,10 +7979,10 @@ algo,563569,płaska,False,-4,1.0434782608695652,0.2,0.2,test,video game,algo,177
 algo,563569,płaska,False,-3,1.0434782608695652,0.5,0.0,test,video game,algo,177.0
 algo,563569,płaska,False,-2,0.782608695652174,0.125,0.25,test,video game,algo,177.0
 algo,563569,płaska,False,-1,1.0434782608695652,0.5,0.0,test,video game,algo,177.0
-algo,563569,płaska,False,0,0.9565217391304348,0.125,0.375,test,video game,algo,177.0
+algo,563569,płaska,False,0,0.9565217391304348,0.125,0.125,test,video game,algo,177.0
 algo,563569,płaska,False,1,0.43478260869565216,0.4,0.4,test,video game,algo,177.0
-algo,563569,płaska,False,2,1.3043478260869565,0.07692307692307693,0.46153846153846156,test,video game,algo,177.0
-algo,563569,płaska,False,3,0.9565217391304348,0.09090909090909091,0.18181818181818182,test,video game,algo,177.0
+algo,563569,płaska,False,2,1.3043478260869565,0.07692307692307693,0.3076923076923077,test,video game,algo,177.0
+algo,563569,płaska,False,3,0.9565217391304348,0.09090909090909091,0.09090909090909091,test,video game,algo,177.0
 algo,563569,w górę,True,-4,1.1304347826086956,0.3,0.2,test,video game,algo,177.0
 algo,563569,w górę,True,-3,0.782608695652174,0.5,0.0,test,video game,algo,177.0
 algo,563569,w górę,True,-2,0.782608695652174,0.5,0.0,test,video game,algo,177.0
@@ -8044,7 +8044,7 @@ algo,636959,płaska,False,-3,1.3,0.3,0.2,test,anime,algo,187.5
 algo,636959,płaska,False,-2,1.0,0.1111111111111111,0.2222222222222222,test,anime,algo,187.5
 algo,636959,płaska,False,-1,1.1,0.0,0.36363636363636365,test,anime,algo,187.5
 algo,636959,płaska,False,0,1.2,0.0,0.4166666666666667,test,anime,algo,187.5
-algo,636959,płaska,False,1,1.2,0.09090909090909091,0.45454545454545453,test,anime,algo,187.5
+algo,636959,płaska,False,1,1.2,0.09090909090909091,0.36363636363636365,test,anime,algo,187.5
 algo,636959,płaska,False,2,0.9,0.0,0.42857142857142855,test,anime,algo,187.5
 algo,636959,płaska,False,3,0.8,0.42857142857142855,0.2857142857142857,test,anime,algo,187.5
 algo,636959,płaska,False,-4,0.9,0.0,0.42857142857142855,test,anime,algo,187.5
@@ -8073,61 +8073,61 @@ algo,636959,płaska,False,2,1.2,0.09090909090909091,0.36363636363636365,test,ani
 algo,636959,płaska,False,3,1.4,0.08333333333333333,0.3333333333333333,test,anime,algo,187.5
 algo,808872,w górę,False,-4,1.0,0.14285714285714285,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-3,0.75,0.0,0.0,test,electronic,algo,230.0
-algo,808872,w górę,False,-2,1.0,0.14285714285714285,0.14285714285714285,test,electronic,algo,230.0
-algo,808872,w górę,False,-1,0.75,0.0,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,w górę,False,0,1.25,0.0,0.4444444444444444,test,electronic,algo,230.0
-algo,808872,w górę,False,1,1.0,0.0,0.14285714285714285,test,electronic,algo,230.0
-algo,808872,w górę,False,2,1.0,0.25,0.125,test,electronic,algo,230.0
-algo,808872,w górę,False,3,1.0,0.0,0.375,test,electronic,algo,230.0
-algo,808872,płaska,False,-4,1.25,0.0,0.4444444444444444,test,electronic,algo,230.0
-algo,808872,płaska,False,-3,1.0,0.0,0.14285714285714285,test,electronic,algo,230.0
-algo,808872,płaska,False,-2,1.0,0.25,0.125,test,electronic,algo,230.0
-algo,808872,płaska,False,-1,1.0,0.0,0.375,test,electronic,algo,230.0
+algo,808872,w górę,False,-2,1.0,0.14285714285714285,0.0,test,electronic,algo,230.0
+algo,808872,w górę,False,-1,0.75,0.0,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,w górę,False,0,1.25,0.0,0.2222222222222222,test,electronic,algo,230.0
+algo,808872,w górę,False,1,1.0,0.0,0.0,test,electronic,algo,230.0
+algo,808872,w górę,False,2,1.0,0.25,0.0,test,electronic,algo,230.0
+algo,808872,w górę,False,3,1.0,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,-4,1.25,0.0,0.2222222222222222,test,electronic,algo,230.0
+algo,808872,płaska,False,-3,1.0,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,-2,1.0,0.25,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,-1,1.0,0.0,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,0,1.25,0.42857142857142855,0.14285714285714285,test,electronic,algo,230.0
 algo,808872,płaska,False,1,0.625,0.0,0.2,test,electronic,algo,230.0
 algo,808872,płaska,False,2,1.125,0.2857142857142857,0.14285714285714285,test,electronic,algo,230.0
-algo,808872,płaska,False,3,1.125,0.3333333333333333,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,płaska,False,3,1.125,0.3333333333333333,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,-4,1.25,0.42857142857142855,0.14285714285714285,test,electronic,algo,230.0
 algo,808872,płaska,False,-3,0.625,0.0,0.2,test,electronic,algo,230.0
 algo,808872,płaska,False,-2,1.125,0.2857142857142857,0.14285714285714285,test,electronic,algo,230.0
-algo,808872,płaska,False,-1,1.125,0.3333333333333333,0.16666666666666666,test,electronic,algo,230.0
-algo,808872,płaska,False,0,1.125,0.1111111111111111,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,płaska,False,1,1.25,0.0,0.4,test,electronic,algo,230.0
+algo,808872,płaska,False,-1,1.125,0.3333333333333333,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,0,1.125,0.1111111111111111,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,1,1.25,0.0,0.2,test,electronic,algo,230.0
 algo,808872,płaska,False,2,1.125,0.125,0.5,test,electronic,algo,230.0
 algo,808872,płaska,False,3,0.875,0.0,0.42857142857142855,test,electronic,algo,230.0
-algo,808872,płaska,False,-4,1.125,0.1111111111111111,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,płaska,False,-3,1.25,0.0,0.4,test,electronic,algo,230.0
+algo,808872,płaska,False,-4,1.125,0.1111111111111111,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,-3,1.25,0.0,0.2,test,electronic,algo,230.0
 algo,808872,płaska,False,-2,1.125,0.125,0.5,test,electronic,algo,230.0
 algo,808872,płaska,False,-1,0.875,0.0,0.42857142857142855,test,electronic,algo,230.0
-algo,808872,płaska,False,0,1.25,0.0,0.1,test,electronic,algo,230.0
-algo,808872,płaska,False,1,1.125,0.0,0.375,test,electronic,algo,230.0
-algo,808872,płaska,False,2,1.125,0.1111111111111111,0.4444444444444444,test,electronic,algo,230.0
-algo,808872,płaska,False,3,0.75,0.0,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,w dół,False,-4,1.25,0.0,0.1,test,electronic,algo,230.0
-algo,808872,w dół,False,-3,1.125,0.0,0.375,test,electronic,algo,230.0
-algo,808872,w dół,False,-2,1.125,0.1111111111111111,0.4444444444444444,test,electronic,algo,230.0
-algo,808872,w dół,False,-1,0.75,0.0,0.3333333333333333,test,electronic,algo,230.0
+algo,808872,płaska,False,0,1.25,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,1,1.125,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,2,1.125,0.1111111111111111,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,3,0.75,0.0,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,w dół,False,-4,1.25,0.0,0.0,test,electronic,algo,230.0
+algo,808872,w dół,False,-3,1.125,0.0,0.0,test,electronic,algo,230.0
+algo,808872,w dół,False,-2,1.125,0.1111111111111111,0.0,test,electronic,algo,230.0
+algo,808872,w dół,False,-1,0.75,0.0,0.16666666666666666,test,electronic,algo,230.0
 algo,808872,w dół,False,0,0.875,0.16666666666666666,0.16666666666666666,test,electronic,algo,230.0
 algo,808872,w dół,False,1,0.625,0.25,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,2,0.875,0.5,0.0,test,electronic,algo,230.0
-algo,808872,w dół,False,3,0.875,0.0,0.42857142857142855,test,electronic,algo,230.0
+algo,808872,w dół,False,3,0.875,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-4,0.875,0.16666666666666666,0.16666666666666666,test,electronic,algo,230.0
 algo,808872,w górę,False,-3,0.625,0.25,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-2,0.875,0.5,0.0,test,electronic,algo,230.0
-algo,808872,w górę,False,-1,0.875,0.0,0.42857142857142855,test,electronic,algo,230.0
-algo,808872,w górę,False,0,0.875,0.3333333333333333,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,w górę,False,-1,0.875,0.0,0.0,test,electronic,algo,230.0
+algo,808872,w górę,False,0,0.875,0.3333333333333333,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,1,1.125,0.0,0.5555555555555556,test,electronic,algo,230.0
 algo,808872,w górę,False,2,0.875,0.4,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,3,1.0,0.14285714285714285,0.2857142857142857,test,electronic,algo,230.0
-algo,808872,w dół,False,-4,0.875,0.3333333333333333,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,w dół,False,-4,0.875,0.3333333333333333,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,-3,1.125,0.0,0.5555555555555556,test,electronic,algo,230.0
 algo,808872,w dół,False,-2,0.875,0.4,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,-1,1.0,0.14285714285714285,0.2857142857142857,test,electronic,algo,230.0
-algo,808872,w dół,False,0,0.75,0.0,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,w dół,False,0,0.75,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,1,0.875,0.16666666666666666,0.16666666666666666,test,electronic,algo,230.0
 algo,808872,w dół,False,2,0.5,0.3333333333333333,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,3,1.0,0.14285714285714285,0.0,test,electronic,algo,230.0
-algo,808872,w górę,False,-4,0.75,0.0,0.16666666666666666,test,electronic,algo,230.0
+algo,808872,w górę,False,-4,0.75,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-3,0.875,0.16666666666666666,0.16666666666666666,test,electronic,algo,230.0
 algo,808872,w górę,False,-2,0.5,0.3333333333333333,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-1,1.0,0.14285714285714285,0.0,test,electronic,algo,230.0
@@ -8140,48 +8140,48 @@ algo,808872,płaska,False,-3,0.875,0.16666666666666666,0.16666666666666666,test,
 algo,808872,płaska,False,-2,1.0,0.6,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,-1,1.25,0.25,0.25,test,electronic,algo,230.0
 algo,808872,płaska,False,0,1.0,0.16666666666666666,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,płaska,False,1,1.375,0.0,0.4,test,electronic,algo,230.0
-algo,808872,płaska,False,2,0.75,0.14285714285714285,0.2857142857142857,test,electronic,algo,230.0
-algo,808872,płaska,False,3,1.25,0.0,0.4,test,electronic,algo,230.0
+algo,808872,płaska,False,1,1.375,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,2,0.75,0.14285714285714285,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,3,1.25,0.0,0.2,test,electronic,algo,230.0
 algo,808872,płaska,False,-4,1.0,0.14285714285714285,0.14285714285714285,test,electronic,algo,230.0
 algo,808872,płaska,False,-3,1.125,0.125,0.375,test,electronic,algo,230.0
-algo,808872,płaska,False,-2,1.0,0.14285714285714285,0.2857142857142857,test,electronic,algo,230.0
-algo,808872,płaska,False,-1,1.125,0.0,0.375,test,electronic,algo,230.0
+algo,808872,płaska,False,-2,1.0,0.14285714285714285,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,-1,1.125,0.0,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,0,0.75,0.0,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,1,1.0,0.14285714285714285,0.14285714285714285,test,electronic,algo,230.0
 algo,808872,płaska,False,2,1.25,0.125,0.0,test,electronic,algo,230.0
-algo,808872,płaska,False,3,0.625,0.0,0.3333333333333333,test,electronic,algo,230.0
+algo,808872,płaska,False,3,0.625,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,True,-4,0.75,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,True,-3,1.0,0.14285714285714285,0.14285714285714285,test,electronic,algo,230.0
 algo,808872,w górę,True,-2,1.25,0.125,0.0,test,electronic,algo,230.0
-algo,808872,w górę,True,-1,0.625,0.0,0.3333333333333333,test,electronic,algo,230.0
+algo,808872,w górę,True,-1,0.625,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,True,0,1.125,0.0,0.3333333333333333,test,electronic,algo,230.0
 algo,808872,w górę,True,1,1.0,0.14285714285714285,0.5714285714285714,test,electronic,algo,230.0
 algo,808872,w górę,True,2,1.125,0.0,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,w górę,True,3,1.25,0.0,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,płaska,False,-4,1.25,0.0,0.3,test,electronic,algo,230.0
+algo,808872,w górę,True,3,1.25,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,-4,1.25,0.0,0.2,test,electronic,algo,230.0
 algo,808872,płaska,False,-3,1.25,0.0,0.6,test,electronic,algo,230.0
 algo,808872,płaska,False,-2,1.125,0.125,0.25,test,electronic,algo,230.0
 algo,808872,płaska,False,-1,1.375,0.1111111111111111,0.1111111111111111,test,electronic,algo,230.0
-algo,808872,płaska,False,0,1.0,0.125,0.25,test,electronic,algo,230.0
+algo,808872,płaska,False,0,1.0,0.125,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,1,0.625,0.0,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,2,1.125,0.2857142857142857,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,3,0.875,0.16666666666666666,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,-4,0.875,0.0,0.2857142857142857,test,electronic,algo,230.0
 algo,808872,płaska,False,-3,1.25,0.25,0.125,test,electronic,algo,230.0
-algo,808872,płaska,False,-2,1.125,0.0,0.3333333333333333,test,electronic,algo,230.0
+algo,808872,płaska,False,-2,1.125,0.0,0.0,test,electronic,algo,230.0
 algo,808872,płaska,False,-1,1.0,0.14285714285714285,0.14285714285714285,test,electronic,algo,230.0
 algo,808872,płaska,False,0,1.25,0.1111111111111111,0.3333333333333333,test,electronic,algo,230.0
 algo,808872,płaska,False,1,1.0,0.14285714285714285,0.14285714285714285,test,electronic,algo,230.0
-algo,808872,płaska,False,2,1.375,0.0,0.3,test,electronic,algo,230.0
-algo,808872,płaska,False,3,1.0,0.125,0.25,test,electronic,algo,230.0
-algo,808872,w dół,False,-4,0.75,0.25,0.25,test,electronic,algo,230.0
+algo,808872,płaska,False,2,1.375,0.0,0.0,test,electronic,algo,230.0
+algo,808872,płaska,False,3,1.0,0.125,0.0,test,electronic,algo,230.0
+algo,808872,w dół,False,-4,0.75,0.25,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,-3,0.5,0.25,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,-2,0.5,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,-1,1.125,0.125,0.125,test,electronic,algo,230.0
 algo,808872,w dół,False,0,0.125,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,1,0.375,0.0,0.0,test,electronic,algo,230.0
-algo,808872,w dół,False,2,0.5,0.0,0.25,test,electronic,algo,230.0
+algo,808872,w dół,False,2,0.5,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,3,0.25,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-4,0.25,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,-3,0.375,0.0,0.0,test,electronic,algo,230.0
@@ -8190,9 +8190,9 @@ algo,808872,w górę,False,-1,0.375,0.5,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,0,1.0,0.14285714285714285,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,1,1.0,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w górę,False,2,1.125,0.125,0.375,test,electronic,algo,230.0
-algo,808872,w górę,False,3,1.125,0.0,0.375,test,electronic,algo,230.0
-algo,808872,w dół,False,-4,1.125,0.0,0.3333333333333333,test,electronic,algo,230.0
-algo,808872,w dół,False,-3,0.875,0.0,0.375,test,electronic,algo,230.0
+algo,808872,w górę,False,3,1.125,0.0,0.125,test,electronic,algo,230.0
+algo,808872,w dół,False,-4,1.125,0.0,0.0,test,electronic,algo,230.0
+algo,808872,w dół,False,-3,0.875,0.0,0.0,test,electronic,algo,230.0
 algo,808872,w dół,False,-2,1.25,0.1111111111111111,0.5555555555555556,test,electronic,algo,230.0
 algo,808872,w dół,False,-1,1.25,0.1111111111111111,0.4444444444444444,test,electronic,algo,230.0
 algo,808872,w dół,False,0,1.125,0.0,0.4444444444444444,test,electronic,algo,230.0
@@ -8211,29 +8211,29 @@ algo,859248,płaska,False,-4,0.8,0.125,0.25,test,anime,algo,180.0
 algo,859248,płaska,False,-3,1.0,0.25,0.25,test,anime,algo,180.0
 algo,859248,płaska,False,-2,1.2,0.2,0.5,test,anime,algo,180.0
 algo,859248,płaska,False,-1,1.1,0.2222222222222222,0.3333333333333333,test,anime,algo,180.0
-algo,859248,płaska,False,0,1.0,0.42857142857142855,0.14285714285714285,test,anime,algo,180.0
+algo,859248,płaska,False,0,1.0,0.42857142857142855,0.0,test,anime,algo,180.0
 algo,859248,płaska,False,1,1.3,0.18181818181818182,0.36363636363636365,test,anime,algo,180.0
-algo,859248,płaska,False,2,0.9,0.125,0.125,test,anime,algo,180.0
+algo,859248,płaska,False,2,0.9,0.125,0.0,test,anime,algo,180.0
 algo,859248,płaska,False,3,1.2,0.2222222222222222,0.2222222222222222,test,anime,algo,180.0
 algo,859248,płaska,False,-4,1.1,0.09090909090909091,0.36363636363636365,test,anime,algo,180.0
 algo,859248,płaska,False,-3,0.9,0.0,0.1111111111111111,test,anime,algo,180.0
 algo,859248,płaska,False,-2,1.1,0.1,0.2,test,anime,algo,180.0
 algo,859248,płaska,False,-1,1.2,0.3333333333333333,0.2222222222222222,test,anime,algo,180.0
-algo,859248,płaska,False,0,1.1,0.125,0.5,test,anime,algo,180.0
+algo,859248,płaska,False,0,1.1,0.125,0.375,test,anime,algo,180.0
 algo,859248,płaska,False,1,0.8,0.2857142857142857,0.14285714285714285,test,anime,algo,180.0
 algo,859248,płaska,False,2,0.9,0.1111111111111111,0.2222222222222222,test,anime,algo,180.0
-algo,859248,płaska,False,3,1.1,0.25,0.125,test,anime,algo,180.0
+algo,859248,płaska,False,3,1.1,0.25,0.0,test,anime,algo,180.0
 algo,859248,w górę,True,-4,0.9,0.2222222222222222,0.2222222222222222,test,anime,algo,180.0
 algo,859248,w górę,True,-3,0.9,0.125,0.125,test,anime,algo,180.0
 algo,859248,w górę,True,-2,0.8,0.16666666666666666,0.3333333333333333,test,anime,algo,180.0
-algo,859248,w górę,True,-1,0.7,0.14285714285714285,0.2857142857142857,test,anime,algo,180.0
-algo,859248,w górę,True,0,1.3,0.08333333333333333,0.3333333333333333,test,anime,algo,180.0
+algo,859248,w górę,True,-1,0.7,0.14285714285714285,0.14285714285714285,test,anime,algo,180.0
+algo,859248,w górę,True,0,1.3,0.08333333333333333,0.25,test,anime,algo,180.0
 algo,859248,w górę,True,1,0.9,0.125,0.0,test,anime,algo,180.0
 algo,859248,w górę,True,2,1.1,0.0,0.3,test,anime,algo,180.0
 algo,859248,w górę,True,3,1.2,0.2,0.2,test,anime,algo,180.0
 algo,859248,płaska,False,-4,1.1,0.1,0.3,test,anime,algo,180.0
 algo,859248,płaska,False,-3,1.1,0.0,0.2,test,anime,algo,180.0
-algo,859248,płaska,False,-2,0.6,0.0,0.14285714285714285,test,anime,algo,180.0
+algo,859248,płaska,False,-2,0.6,0.0,0.0,test,anime,algo,180.0
 algo,859248,płaska,False,-1,1.0,0.125,0.0,test,anime,algo,180.0
 algo,859248,płaska,False,0,0.6,0.16666666666666666,0.16666666666666666,test,anime,algo,180.0
 algo,859248,płaska,False,1,1.1,0.1,0.3,test,anime,algo,180.0

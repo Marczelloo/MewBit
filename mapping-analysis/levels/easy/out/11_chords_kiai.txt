@@ -3,13 +3,13 @@
   chord_rate_kiai: 0.02 / 0.09 / 0.38 (n=71)
   chord_rate_nokiai: 0.03 / 0.10 / 0.22 (n=71)
   hold_rate_kiai: 0.00 / 0.12 / 0.34 (n=71)
-  hold_rate_nokiai: 0.03 / 0.15 / 0.28 (n=71)
+  hold_rate_nokiai: 0.03 / 0.16 / 0.29 (n=71)
   chord_rate_downbeat: 0.09 / 0.23 / 0.56 (n=79)
   chord_rate_otherbeat: 0.00 / 0.06 / 0.27 (n=79)
   chord_rate_loud: 0.03 / 0.12 / 0.34 (n=79)
   chord_rate_quiet: 0.00 / 0.02 / 0.17 (n=79)
   beat_mapped_kiai: 0.69 / 0.94 / 1.00 (n=71)
-  beat_mapped_nokiai: 0.53 / 0.77 / 0.90 (n=71)
+  beat_mapped_nokiai: 0.53 / 0.77 / 0.89 (n=71)
   half_mapped_kiai: 0.00 / 0.22 / 0.51 (n=71)
   half_mapped_nokiai: 0.06 / 0.17 / 0.40 (n=71)
   maps with more chords in kiai: 35/71; more 1/2 in kiai: 37/71
@@ -30,16 +30,16 @@
   maps with more chords in kiai: 12/20; more 1/2 in kiai: 11/20
 
 == generator
-  chord_rate_kiai: 0.00 / 0.03 / 0.12 (n=20)
+  chord_rate_kiai: 0.00 / 0.03 / 0.14 (n=20)
   chord_rate_nokiai: 0.00 / 0.06 / 0.13 (n=20)
-  hold_rate_kiai: 0.17 / 0.24 / 0.26 (n=20)
-  hold_rate_nokiai: 0.19 / 0.22 / 0.26 (n=20)
-  chord_rate_downbeat: 0.00 / 0.01 / 0.27 (n=20)
+  hold_rate_kiai: 0.18 / 0.23 / 0.27 (n=20)
+  hold_rate_nokiai: 0.19 / 0.22 / 0.25 (n=20)
+  chord_rate_downbeat: 0.00 / 0.01 / 0.26 (n=20)
   chord_rate_otherbeat: 0.00 / 0.03 / 0.12 (n=20)
-  chord_rate_loud: 0.00 / 0.07 / 0.15 (n=20)
-  chord_rate_quiet: 0.00 / 0.02 / 0.09 (n=20)
-  beat_mapped_kiai: 0.33 / 0.45 / 0.77 (n=20)
-  beat_mapped_nokiai: 0.28 / 0.44 / 0.68 (n=20)
+  chord_rate_loud: 0.00 / 0.07 / 0.14 (n=20)
+  chord_rate_quiet: 0.00 / 0.02 / 0.07 (n=20)
+  beat_mapped_kiai: 0.33 / 0.44 / 0.76 (n=20)
+  beat_mapped_nokiai: 0.28 / 0.43 / 0.67 (n=20)
   half_mapped_kiai: 0.00 / 0.02 / 0.21 (n=20)
   half_mapped_nokiai: 0.00 / 0.05 / 0.18 (n=20)
-  maps with more chords in kiai: 6/20; more 1/2 in kiai: 5/20
+  maps with more chords in kiai: 7/20; more 1/2 in kiai: 5/20

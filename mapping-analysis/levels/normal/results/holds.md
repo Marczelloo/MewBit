@@ -28,29 +28,29 @@
 
 | grupa | zmapowanych slotów | udział startów holda |
 |---|---|---|
-| ludzie trening | 45998 | 0.145 |
-| ludzie test | 11268 | 0.158 |
-| algorytm test | 9329 | 0.129 |
+| ludzie trening | 44605 | 0.149 |
+| ludzie test | 11118 | 0.160 |
+| algorytm test | 7954 | 0.129 |
 
 #### Regresja logistyczna `hold_start` (osobno na każdej grupie; 18 cech o największym |współczynniku| u ludzi)
 
 | cecha | ludzie trening | ludzie test | algorytm test |
 |---|---|---|---|
-| pos_1/1 | +0.58 | +1.25 | +0.01 |
-| pos_1/2 | +0.31 | +0.98 | +0.19 |
-| pos_1/4 | -0.21 | +0.09 | +0.06 |
-| pos_1/6 | -0.19 | +0.01 | +0.08 |
-| env_full | -0.17 | +0.67 | -0.20 |
-| env_stem_vocals | +0.13 | +0.29 | +0.10 |
-| env_stem_drums | -0.12 | -0.22 | +0.11 |
-| chord | +0.11 | +0.09 | -1.87 |
-| env_perc | +0.11 | -0.09 | +0.16 |
-| downbeat | +0.10 | +0.09 | +0.14 |
-| pos_1/3 | -0.10 | -0.63 | +0.06 |
-| ev_high | -0.09 | -0.11 | -0.08 |
-| env_lowmid | -0.08 | -0.14 | +0.04 |
-| env_harm | +0.08 | +0.21 | +0.12 |
-| onset_stem_vocals | +0.08 | +0.07 | +0.11 |
+| pos_1/1 | +1.04 | +0.80 | -0.12 |
+| pos_1/2 | +0.76 | +0.55 | +0.08 |
+| env_full | -0.13 | +0.63 | -0.19 |
+| env_stem_vocals | +0.13 | +0.29 | +0.12 |
+| env_stem_drums | -0.12 | -0.22 | +0.14 |
+| chord | +0.11 | +0.09 | -1.86 |
+| downbeat | +0.10 | +0.09 | +0.15 |
+| ev_high | -0.10 | -0.12 | -0.03 |
+| env_perc | +0.09 | -0.09 | +0.17 |
+| env_lowmid | -0.09 | -0.13 | +0.00 |
+| pos_1/3 | +0.08 | -0.41 | +0.03 |
+| env_harm | +0.08 | +0.21 | +0.11 |
+| onset_stem_vocals | +0.08 | +0.08 | +0.10 |
 | onset_highmid | +0.07 | -0.29 | +0.07 |
-| env_high | +0.07 | -0.48 | +0.03 |
-| bar4_3 | +0.07 | +0.04 | +0.01 |
+| bar4_3 | +0.06 | +0.04 | +0.00 |
+| onset_full | -0.06 | +0.20 | -0.01 |
+| ev_perc | +0.06 | -0.02 | -0.15 |
+| onset_harm | -0.06 | -0.12 | -0.16 |

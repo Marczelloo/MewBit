@@ -1,7 +1,6 @@
 """Co ludzie mapują na Hard: tabele slotów.
-Cel 'chosen' = slot najbliższy chwili (każda chwila trafia do dokładnie jednego slotu, ±25 ms), bo kolumna `mapped`
-oznacza każdy slot w ±25 ms od chwili i przy wysokim BPM jedna chwila zapala 2-3 sloty (1/8 i 1/6 leżą 11-14 ms od siebie).
-Algorytm nie ma trioli, więc jego chwila trafia do najbliższego slotu binarnego (1/8), a dopiero bez niego do 1/6.
+Cel = oficjalna kolumna `chosen` (metryki v2): każda chwila należy do jednego slotu (najgrubszy podział w tolerancji
+źródła, inaczej najbliższy slot w ±25 ms). `mapped` zapala każdy slot w ±25 ms, więc nie służy do regresji.
 Wynik: tables/slot_rates.csv, tables/slot_logit_coefs.csv, tables/slot_logit_auc.csv, tables/slot_group_importance.csv,
        tables/slot_recall_by_source.csv
 """
@@ -13,38 +12,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
-from common import TABLES, algo, human, notes, slots
+from common import TABLES, algo, chosen_target, human, notes, slots
 
 DET = ["full", "perc", "harm", "low", "lowmid", "highmid", "high", "stem_drums", "stem_bass", "stem_vocals", "stem_other"]
 EV = ["kick", "snare", "hat", "perc", "bass", "lead", "low", "lowmid", "highmid", "high"]
 TOL = 25.0
-
-
-def chosen_target(z, nts, binary_first):
-    t = z["t"]
-    mts = np.array(sorted(set(n[0] for n in nts)), dtype=float)
-    chosen = np.zeros(len(t), bool)
-    nnotes = np.zeros(len(t), int)
-    cnt = {}
-    for n in nts:
-        cnt[n[0]] = cnt.get(n[0], 0) + 1
-    binary = np.isin(z["snap"], [1, 2, 4, 8])
-    unassigned = 0
-    for m in mts:
-        d = np.abs(t - m)
-        if binary_first:
-            db = np.where(binary, d, np.inf)
-            i = int(np.argmin(db))
-            if db[i] > TOL:
-                i = int(np.argmin(d))
-        else:
-            i = int(np.argmin(d))
-        if d[i] <= TOL:
-            chosen[i] = True
-            nnotes[i] = max(nnotes[i], cnt[m])
-        else:
-            unassigned += 1
-    return chosen, nnotes, unassigned
 
 
 def frame(who, sid, meta):
@@ -53,7 +25,7 @@ def frame(who, sid, meta):
     chosen, nn, un = chosen_target(z, nts, binary_first=(who == "algo"))
     df = pd.DataFrame({k: z[k] for k in z if z[k].ndim == 1})
     df["chosen"] = chosen
-    df["chord"] = nn >= 2
+    df["chord"] = chosen & (nn >= 2)
     df["set_id"] = sid
     df["who"] = who
     for k, v in meta.items():

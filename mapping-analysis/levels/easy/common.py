@@ -48,9 +48,15 @@ def notes(who, set_id):
     return d["notes"]
 
 
-def slots(who, set_id):
+def slots(who, set_id, target="chosen"):
+    """Slot table. Metrics v2: with target="chosen" (default) the targets `mapped`, `n_notes`, `hold_start` are the
+    exclusive ones (one slot per moment: `chosen`, `chosen_n_notes`, `chosen_hold_start`); target="mapped" keeps the
+    old +-25 ms ones."""
     z = np.load(EASY / "slots" / f"{who}_{set_id}.npz")
-    return {k: z[k] for k in z.files}
+    d = {k: z[k] for k in z.files}
+    if target == "chosen":
+        d["mapped"], d["n_notes"], d["hold_start"] = d["chosen"], d["chosen_n_notes"], d["chosen_hold_start"]
+    return d
 
 
 def q(s, qs=(0.1, 0.5, 0.9)):

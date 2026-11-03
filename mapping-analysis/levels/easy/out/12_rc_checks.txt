@@ -1,3 +1,0 @@
-humans train: chords inside 1/2 runs per min 0.00 / 0.00 / 0.61, share of chords 0.00 / 0.00 / 0.03, maps with none 64/79
-humans test: chords inside 1/2 runs per min 0.00 / 0.00 / 1.13, share of chords 0.00 / 0.00 / 0.04, maps with none 17/20
-generator: chords inside 1/2 runs per min 0.00 / 0.00 / 0.00, share of chords 0.00 / 0.00 / 0.00, maps with none 20/20

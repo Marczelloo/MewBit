@@ -1,7 +1,7 @@
 rule,train,train_mappers_violating,test,test_mappers_violating,algo,algo_mappers_violating
 no 3+ note chords,79/79,0,20/20,0,20/20,0
 no runs of 1/4 (run_1/4.count==0),76/79,3,19/20,1,19/20,1
-no gap < 1/2 beat (gap_beats.p5>=0.49 & no 1/4 gaps),76/79,3,19/20,1,20/20,0
+no gap < 1/2 beat (gap_beats.p5>=0.49 & no 1/4 gaps),76/79,3,19/20,1,19/20,1
 run_1/2.max_notes <= 5,58/79,21,13/20,7,19/20,1
 run_1/2.max_notes <= 9,71/79,8,18/20,2,20/20,0
 no triplets (triplet_share==0),67/79,11,19/20,1,4/20,16
@@ -13,6 +13,14 @@ no fast minijack (<=1/4),79/79,0,20/20,0,20/20,0
 max_simultaneous_holds <= 1,55/79,20,17/20,3,20/20,0
 max_simultaneous_holds <= 2,79/79,0,20/20,0,20/20,0
 holds_with_notes_inside_share <= 0.2 (maps with holds),75/79,4,20/20,0,0/20,20
+holds_context.release_at_next_moment_share >= 0.8 (maps with holds),77/79,2,20/20,0,0/20,20
+holds_context.start_on_beat_share >= 0.7 (maps with holds),72/79,7,18/20,2,9/20,11
+hold_short_share.lt_1 <= 0.05 (maps with holds),71/79,8,19/20,1,19/20,1
+chords_in_half_runs_per_min == 0,64/79,14,17/20,3,20/20,0
+kiai_start.note_share == 1 (maps with kiai),78/79,1,19/20,1,4/20,16
+kiai_start.chord_share >= 0.5 (maps with kiai),67/79,12,17/20,3,1/20,19
+hand_balance_4bar.over_0_2_share == 0,75/79,4,19/20,1,8/20,12
+coverage.beat >= 0.6,74/79,5,19/20,1,1/20,19
 other_hand_notes_per_beat_in_hold.p90 == 0,67/79,11,19/20,1,0/20,20
 release_snap_share.1 >= 0.7 (maps with holds),73/79,6,19/20,1,0/20,20
 release_gap_beats.p5 >= 0.99,74/79,5,19/20,1,20/20,0
@@ -24,5 +32,5 @@ notes_per_beat >= 0.85,71/79,8,18/20,2,0/20,20
 no_sound_share <= 0.05,67/79,12,18/20,2,14/20,6
 "left_hand_share in [0.47,0.53]",78/79,1,19/20,1,19/20,1
 chord_share <= 0.30,74/79,5,19/20,1,20/20,0
-boundary_note_share >= 0.7,71/79,8,18/20,2,0/20,20
+boundary_note_share >= 0.7,71/79,8,18/20,2,5/20,15
 kiai_density_ratio >= 1 (maps with kiai),70/79,8,20/20,0,9/20,11

@@ -5,7 +5,7 @@ Pomocnicze pomiary z nut (nie są oficjalnymi metrykami; zob. „Prośby o nowe 
 - nuty startujące w trakcie holda: ta sama ręka / druga ręka, akord na starcie holda,
 - odstęp od puszczenia do następnej chwili (w beatach),
 - gdzie startuje hold (pozycja w takcie, w bloku 4 taktów) i czy po nim jest przerwa.
-Do tego regresja logistyczna `hold_start` wśród zmapowanych slotów.
+Do tego regresja logistyczna `chosen_hold_start` wśród slotów `chosen`.
 
 Wynik: results/holds.md
 """
@@ -116,6 +116,9 @@ for df, who in ((H, "human"), (A, "algo")):
     for r in df.itertuples():
         s = slots(who, r.set_id)
         d = pd.DataFrame(s)
+        d["mapped"] = d["chosen"].astype(bool)  # metryki v2: wyłączny cel
+        d["n_notes"] = d["chosen_n_notes"]
+        d["hold_start"] = d["chosen_hold_start"].astype(bool)
         d = d[d.mapped]
         d["set_id"] = r.set_id
         d["grp"] = r.split if who == "human" else "algo"

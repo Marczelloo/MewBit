@@ -10,19 +10,19 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.stats import kruskal
 
-from common import MAIN_GENRES, OUT, metrics, q, slots
+from common import MAIN_GENRES, OUT, metrics, q
 
 h = metrics("human")
 for g in ["1/2", "2", "3/4"]:
     h[f"gap_share.{g}"] = h[f"gap_share.{g}"].fillna(0)
 h["rep_rhythm_gain"] = h["repetition.repeat.rhythm"] - h["repetition.baseline.rhythm"]
-hb = pd.read_csv(OUT / "half_beat_rates_human.csv")
-h = h.merge(hb, on="set_id")
+h["beat_mapped"] = h["coverage.beat"]  # metrics v2
+h["half_mapped"] = h["coverage.half"]
 cols = ["nps", "notes_per_beat", "beat_mapped", "half_mapped", "gap_share.1/2", "gap_share.2", "run_1/2.max_notes", "chord_share",
-        "chord2_split_hands_share", "hold_share", "hold_len_beats.p50", "holds_with_notes_inside_share", "max_simultaneous_holds",
-        "trill_share", "stair_share", "pattern4_entropy_bits", "minijack_share", "jack_max_notes", "rests_ge_2b.per_min", "longest_rest_beats",
+        "chord2_split_hands_share", "chord_rate_on_mapped_beats", "hold_share", "holds_context.release_at_next_moment_share", "hold_len_beats.p50", "holds_with_notes_inside_share", "max_simultaneous_holds",
+        "trill_share", "trills.runs_per_min", "hand_balance_4bar.p50", "stair_share", "pattern4_entropy_bits", "minijack_share", "jack_max_notes", "rests_ge_2b.per_min", "longest_rest_beats",
         "bar_notes_cv", "phrase4_notes_p90_over_p10", "kiai_density_ratio", "sections.bar_density_vs_rms_spearman",
-        "sections.boundary_note_share", "sections.boundary_chord_share", "rep_rhythm_gain", "on_beat_share", "downbeats_carried",
+        "sections.boundary_note_share", "sections.boundary_chord_share", "kiai_start.chord_share", "sections.boundary_empty_last_beat_share", "rep_rhythm_gain", "on_beat_share", "downbeats_carried",
         "alignment.stem_vocals.share", "alignment.stem_drums.share", "alignment.harm.share", "plugin_events.lead.recall", "plugin_events.kick.recall",
         "plugin_events.snare.recall", "song.main_bpm", "stars"]
 tr = h[h.split == "train"]

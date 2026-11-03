@@ -2,7 +2,7 @@
 
 1. Udział zmapowanych slotów wg pozycji w siatce (ludzie trening/test, algorytm test).
 2. „Recall” klas zdarzeń pluginu i onsetów stemów/detektorów: P(slot zmapowany | jest zdarzenie), wg pozycji.
-3. Regresja logistyczna `mapped` (trening) -> AUC na teście ludzi; ten sam model na slotach algorytmu.
+3. Regresja logistyczna `chosen` (trening) -> AUC na teście ludzi; ten sam model na slotach algorytmu.
 4. Co odróżnia zmapowane od pominiętych dźwięków na beacie / półbeacie.
 
 Wynik: results/slots.md, results/slots_coefs.csv
@@ -30,6 +30,10 @@ POS = {1: "1/1", 2: "1/2", 4: "1/4", 8: "1/8", 3: "1/3", 6: "1/6"}
 def frame(who, set_id, split, genre):
     s = slots(who, set_id)
     d = pd.DataFrame({k: v for k, v in s.items()})
+    # metryki v2: wyłączny cel `chosen` (jedna chwila = jeden slot) zamiast `mapped` (każdy slot w ±25 ms)
+    d["mapped"] = d["chosen"].astype(bool)
+    d["n_notes"] = d["chosen_n_notes"]
+    d["hold_start"] = d["chosen_hold_start"].astype(bool)
     d["set_id"] = set_id
     d["who"] = who
     d["split"] = split
@@ -153,7 +157,7 @@ for name, cols in sets.items():
                  f"{roc_auc_score(y[te], p_te):.3f}", f"{per_song_auc(te, p_te):.3f}",
                  f"{roc_auc_score(y[al], p_al):.3f}", f"{per_song_auc(al, p_al):.3f}"])
     models[name] = (lr, sc, cols)
-out.append("### 3. Regresja logistyczna `mapped` (L2, C=1, cechy standaryzowane), uczona na 78 utworach treningowych\n\n"
+out.append("### 3. Regresja logistyczna `chosen` (L2, C=1, cechy standaryzowane), uczona na 78 utworach treningowych\n\n"
            "AUC na slotach ludzi z testu mówi, jak dobrze model przewiduje ludzkie decyzje na nowych utworach; AUC na slotach algorytmu mówi, "
            "na ile algorytm wybiera to, co model ludzki uważa za warte nuty.\n\n" +
            md_table(rows, ["model", "cech", "AUC trening", "AUC ludzie test (pula)", "AUC ludzie test (mediana na utwór)",

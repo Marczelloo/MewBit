@@ -1,6 +1,7 @@
-"""Diagnostics (not new metrics): holds in detail, and how much of the human Easy rhythm the generator's fixed Easy
-floors would forbid (minNoteGapMs 200, minLaneGapMs 350 from the end of a hold, laneGapBeats 1, the felt beat).
-Reads notes and slot tables only. Prints per-map quantiles."""
+"""Diagnostics (not new metrics): how much of the human Easy rhythm the generator's fixed Easy floors would forbid
+(minNoteGapMs 200, minLaneGapMs 350 from the end of a hold, laneGapBeats 1), and the sound under hold starts vs taps
+(slot table, `chosen`). Hold length, start on beat and release at the next moment are official since metrics v2
+(hold_short_share, holds_context.*): see 07_algo_vs_human.py. Prints per-map quantiles."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -40,24 +41,6 @@ def diag(who, sid):
     r["lane_gap_lt_1beat"] = float(np.mean(lg[:, 1] < 0.9 * 60000 / lg[:, 2])) if len(lg) else np.nan
     holds = [n for n in ns if n[2] is not None]
     r["n_holds"] = len(holds)
-    if holds:
-        lens = np.array([(n[2] - n[0]) * bpm_at(z, n[0]) / 60000 for n in holds])
-        r["hold_lt_0.9b"] = float(np.mean(lens < 0.9))
-        r["hold_len_p50"] = float(np.median(lens))
-        # hold start position: on a beat / downbeat of the human grid
-        idx = np.searchsorted(z["t"], [n[0] for n in holds])
-        idx = np.clip(idx, 0, len(z["t"]) - 1)
-        snap = z["snap"][idx]
-        r["hold_start_on_beat"] = float(np.mean(snap == 1))
-        # what comes right after a release: next moment's distance from the release, in beats
-        nxt = []
-        for n in holds:
-            later = times[times > n[0]]
-            later = later[later >= n[2] - 5]
-            if len(later):
-                nxt.append((later[0] - n[2]) * bpm_at(z, n[0]) / 60000)
-        r["next_after_release_p50"] = float(np.median(nxt)) if nxt else np.nan
-        r["next_at_release_share"] = float(np.mean(np.abs(np.array(nxt)) < 0.05)) if nxt else np.nan
     # features at hold starts vs other mapped slots (beats only, so position does not confound)
     hs = z["hold_start"] & (z["snap"] == 1)
     ms = z["mapped"] & ~z["hold_start"] & (z["snap"] == 1)

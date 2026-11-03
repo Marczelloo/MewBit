@@ -1,24 +1,24 @@
- set_id                                  artist                                 title      genre  algo_on_human (precision)  human_on_algo (recall)
-1000722                             Ohara Yuiko            Zero Centimeters (TV Size)      anime                       0.77                    0.53
-1277503                        Umeboshi Chazuke Panic! Pop'n! Picnic! (2019 REMASTER) video game                       0.56                    0.36
-1329723                                saradisk                        083 - nekomimi    novelty                       0.85                    0.39
-1570640                                    Lime                          8bit Voyager electronic                       0.25                    0.34
-1697477                           cosMo@BousouP              Hatsune Miku no Gekishou video game                       0.89                    0.38
-1773164                                    TUYU      Itsuka Otona ni Nareru to Ii ne.        pop                       0.98                    0.58
-1784295                             Rokudenashi                      Tada Koe Hitotsu        pop                       0.90                    0.46
-1894317                            kessoku band             Seishun Complex (TV Size)      anime                       0.96                    0.35
-2200258                 Kashii Moimi feat. KAFU       Cat Loving (kageminori bootleg) electronic                       0.73                    0.31
-2224035                              JINGBURGER                         Konton Boogie        pop                       0.85                    0.30
-2270163 ANGUISH, vlad pivo, YARCHE SOLNCA & ily                            Krasavitsa electronic                       0.46                    0.33
-2314654                                    Laur             PRAGMATISM -RESURRECTION- electronic                       0.74                    0.49
-2515207                                     TAK  PPPP feat. Hatsune Miku, Kasane Teto        pop                       0.90                    0.51
- 310607                              t+pazolite               Electric "Sister" Bitch video game                       0.59                    0.38
- 363594                     THE ORAL CIGARETTES                    Kyouran Hey Kids!!      anime                       0.90                    0.52
- 563569                     P*Light feat. mow*2                           OVERDRIVERS video game                       0.84                    0.62
- 636959                          Kiyoshi Hikawa     Genkai Toppa x Survivor (TV Size)      anime                       0.76                    0.49
- 808872                                 Kobaryo                       Perfect Neglect electronic                       0.90                    0.38
- 859248                            Nanawo Akari         One Room Sugar Life (TV Size)      anime                       0.89                    0.61
- 923488                                    HyuN                                  Grin electronic                       0.76                    0.67
+ set_id                                  artist                                 title      genre  precision  recall  lane_overlap  grid_offset_p50_ms
+1000722                             Ohara Yuiko            Zero Centimeters (TV Size)      anime       0.77    0.53          0.32                0.60
+1277503                        Umeboshi Chazuke Panic! Pop'n! Picnic! (2019 REMASTER) video game       0.56    0.36          0.36               -2.30
+1329723                                saradisk                        083 - nekomimi    novelty       0.85    0.39          0.29               -4.00
+1570640                                    Lime                          8bit Voyager electronic       0.25    0.34          0.36               -7.70
+1697477                           cosMo@BousouP              Hatsune Miku no Gekishou video game       0.89    0.38          0.30               -5.00
+1773164                                    TUYU      Itsuka Otona ni Nareru to Ii ne.        pop       0.98    0.58          0.35               -8.55
+1784295                             Rokudenashi                      Tada Koe Hitotsu        pop       0.90    0.46          0.33                0.50
+1894317                            kessoku band             Seishun Complex (TV Size)      anime       0.96    0.35          0.29               -2.60
+2200258                 Kashii Moimi feat. KAFU       Cat Loving (kageminori bootleg) electronic       0.73    0.31          0.31               -4.20
+2224035                              JINGBURGER                         Konton Boogie        pop       0.85    0.30          0.28               -5.10
+2270163 ANGUISH, vlad pivo, YARCHE SOLNCA & ily                            Krasavitsa electronic       0.46    0.33          0.22               -1.60
+2314654                                    Laur             PRAGMATISM -RESURRECTION- electronic       0.74    0.49          0.28               -6.10
+2515207                                     TAK  PPPP feat. Hatsune Miku, Kasane Teto        pop       0.90    0.51          0.33                1.40
+ 310607                              t+pazolite               Electric "Sister" Bitch video game       0.59    0.38          0.18               -7.90
+ 363594                     THE ORAL CIGARETTES                    Kyouran Hey Kids!!      anime       0.90    0.52          0.28               -1.20
+ 563569                     P*Light feat. mow*2                           OVERDRIVERS video game       0.84    0.62          0.30               -2.30
+ 636959                          Kiyoshi Hikawa     Genkai Toppa x Survivor (TV Size)      anime       0.76    0.49          0.41               -2.00
+ 808872                                 Kobaryo                       Perfect Neglect electronic       0.90    0.38          0.23              -10.10
+ 859248                            Nanawo Akari         One Room Sugar Life (TV Size)      anime       0.89    0.61          0.32               -2.30
+ 923488                                    HyuN                                  Grin electronic       0.76    0.67          0.31               -2.00
 
 precision p10/p50/p90: [0.55 0.84 0.91]  recall: [0.32 0.43 0.61]
 

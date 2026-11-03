@@ -19,7 +19,7 @@ def rows_for(who, sid, split, owner):
     z = slots(who if who == "algo" else "human", sid)
     ch, nn, _ = chosen_target(z, notes(who, sid), who == "algo")
     df = pd.DataFrame({k: z[k] for k in z if z[k].ndim == 1})[ch].copy()
-    df["hold"] = z["hold_start"][ch]
+    df["hold"] = z["chosen_hold_start"][ch].astype(bool)
     df["snap1"] = (df["snap"] == 1).astype(float)
     df["snap2"] = (df["snap"] == 2).astype(float)
     df["set_id"], df["split"], df["owner"], df["who"] = sid, split, owner, who
