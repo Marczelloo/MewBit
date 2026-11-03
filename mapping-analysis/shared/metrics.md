@@ -178,3 +178,52 @@ Klucze w plikach `shared/data/<poziom>/{human,algo}/<set>.json` odpowiadają naz
 - Czy nuta trafia w dźwięk, który słuchacz uważa za ważny. Onset w ±25 ms to warunek konieczny, nie wystarczający.
 - Hitsoundy i keysoundy osu! (nie przenoszą się na grę, w której audio gra bot).
 - Slider velocity (zmiany prędkości) w osu!mania. Gra ma stałą prędkość, więc SV pomijam.
+
+## Dodane i poprawione po etapie 2 (v2, 2026-11-03, dla wszystkich poziomów)
+
+Trzy analizy poziomów niezależnie zgłosiły błędy pomiaru, które karały generator za drganie siatki o 4–8 ms, oraz brakujące
+miary. Wszystkie zmiany dotyczą każdego poziomu i obu źródeł. Mapy ludzi leżą dokładnie na siatce, więc ich wartości
+w poprawionych metrykach się nie zmieniają.
+
+Poprawki:
+- **Pozycje skwantowane** (`quantized`): chwila jest przesuwana na dokładny punkt podziału, do którego ją sklasyfikowano.
+  Tak liczone są `gap_share`, `gap_beats`, serie `run_*`, `fast_runs_*`, wszystkie metryki z odstępów (akordy w strumieniach,
+  tryle) i `repetition.*` (`pattern_identity`). `gap_ms` zostaje w surowych ms.
+- **`hold_short_share`**: progi `lt_1_2` < 0,45 beatu i `lt_1` < 0,95 beatu, liczone na skwantowanych końcach.
+  Hold ½ beatu po zaokrągleniu do ms czytał się wcześniej jako krótszy.
+- **Granice sekcji**: nuta lub akord „na granicy”, jeśli leży w ±25 ms od jej downbeatu (było 3 ms).
+- **Tabela slotów**: nowa kolumna `chosen` (oraz `chosen_n_notes`, `chosen_hold_start`). Każda chwila należy do jednego
+  slotu: najgrubszego podziału w tolerancji swojego źródła, a gdy takiego nie ma, najbliższego w ±25 ms. `mapped` zapala
+  każdy slot w ±25 ms, więc przy ≥ 180 BPM jedna chwila zapalała slot 1/8 i sąsiedni 1/6 (np. 808872, generator Hard:
+  937 chwil, 1973 sloty `mapped`). Do regresji wyboru dźwięków służy `chosen`.
+
+Nowe metryki:
+- `coverage.{beat,half,quarter,beat_kiai,beat_no_kiai}`: udział punktów siatki czasu aktywnego z chwilą; `chord_rate_on_mapped_beats`.
+- `chords_in_half_runs_per_min`: akord, którego oba sąsiednie odstępy to 1/2 (RC Easy).
+- `chord_pairs_in_quarter_streams`: pary kolejnych akordów wewnątrz strumienia 1/4 (≥ 5 chwil, bez pierwszej i ostatniej),
+  udział par bliżej niż 1 beat (RC Hard).
+- `hand_balance_4bar`: |udział lewej ręki − 0,5| w oknach 4 taktów z ≥ 8 nutami (p50, p90, udział okien > 0,2).
+- `trills`: najdłuższy tryl (chwile jednonutowe x-y-x-y, ≤ 1 beat odstępu), tryle ≥ 10 nut na minutę (RC Hard: ≤ 9),
+  udział tryli w jednej ręce, tryle na minutę.
+- `anchor_rc_max_notes`: w strumieniu (odstępy ≤ 1/4, ≥ 5 chwil) jeden tor co 2. lub 3. chwilę, z co najmniej dwoma innymi
+  torami pomiędzy. Tryl dwóch torów się nie liczy. Uzupełnia dawne `anchor_max_notes`, które liczyło też tryle.
+- `holds_context`:
+  - `release_at_next_moment_share`: puszczenie w ±1/16 beatu od następnej chwili;
+  - `start_on_beat_share`, `head_in_chord_share`;
+  - `notes_inside_share_by_length` oraz `holds_by_length`: holdy < ¾, < 1½ i ≥ 1½ beatu;
+  - `shield_1_4_per_min`: nuta w tym samym torze ≤ 1/4 beatu przed głową holda.
+- `kiai_start.{n,note_share,chord_share}`: chwila lub akord na początku sekcji kiai.
+- `sections`:
+  - `bar_chords_vs_rms_spearman`;
+  - `boundary_empty_last_beat_share`: brak chwili w ostatnim beacie przed granicą;
+  - `boundary_profile_{all,rising,falling}`: mediana liczby nut w taktach −4…+3 względem granicy, podzielona przez medianę taktu utworu.
+- `rest_context`: przerwy ≥ 4 beaty: liczba, udział „głośnych” (średni RMS ≥ 0,5 p95), mediana RMS, udział przy granicy sekcji (± takt).
+- `hand_by_class.<kick|snare|hat|bass|lead>.left_share`: udział nut lewej ręki w chwilach na zdarzeniu pluginu tej klasy.
+- Tylko generator, `versus_human` (względem mapy człowieka tego samego utworu i poziomu):
+  - `precision`, `recall` chwil w ±40 ms;
+  - `lane_overlap_on_matched`;
+  - `grid_offset_ms`: przesunięcie ze znakiem do najbliższego punktu 1/8 lub 1/6 siatki człowieka (p10/p50/p90), udział |off| > 10 ms.
+
+Nie wprowadzone:
+- klasy odstępów w ms: wystarczą `gap_ms` i skwantowane klasy;
+- osobna metryka „akordy w strumieniu 1/2”: to samo co `chords_in_half_runs_per_min`.

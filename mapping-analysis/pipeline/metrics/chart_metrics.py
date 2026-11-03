@@ -110,6 +110,19 @@ def grid_error_ms(grid, t: float, d: int | None) -> float | None:
     return abs(pos * d - round(pos * d)) * L / d
 
 
+def quantized(grid, t: float, d: int | None) -> float:
+    """t moved onto the exact grid point of the divisor it was classified to (unchanged when off-grid). Human notes are
+    on it already; for generator notes this removes the 4-8 ms beat-tracker jitter before rhythm is compared."""
+    if d is None:
+        return float(t)
+    pos, i = grid.local_pos(t)
+    p = grid.reds[i]
+    return p.t + round(pos * d) / d * p.beat_length
+
+
+HOLD_LEN_TOL_BEATS = 0.05  # hold-length classes allow this much: a 1/2-beat hold rounded to ms reads 0.4998
+
+
 def chart_metrics(notes: list[N], grid, breaks: list[tuple[int, int]] | None = None, span: tuple[float, float] | None = None,
                   kind: str = "human") -> dict:
     """All grid-relative metrics of one chart. `span` (ms) limits the chart to a time range (default: its own).
@@ -150,6 +163,7 @@ def chart_metrics(notes: list[N], grid, breaks: list[tuple[int, int]] | None = N
     # --- rhythm ------------------------------------------------------------------------------------------------
     snaps = [grid.snap(t, tol(t)) for t in times]
     sc = Counter(snaps)
+    qtimes = np.array([quantized(grid, t, d) for t, d in zip(times, snaps)])
     errs = [e for e in (grid_error_ms(grid, t, d) for t, d in zip(times, snaps)) if e is not None]
     out["grid_error_ms"] = _quantiles(errs, (0.5, 0.9))
     out["snap_share"] = {str(d): sc.get(d, 0) / n_moments for d in SNAP_CLASSES} | {"off": sc.get(None, 0) / n_moments}
@@ -164,7 +178,8 @@ def chart_metrics(notes: list[N], grid, breaks: list[tuple[int, int]] | None = N
         hit = [bool(np.any(np.abs(times - b) <= tol(b))) for b in bar_starts]
         out["downbeats_carried"] = float(np.mean(hit))
     gaps_ms = np.diff(times)
-    gaps_beats = np.array([(grid.beat_pos(b) - grid.beat_pos(a)) for a, b in zip(times[:-1], times[1:])])
+    # On quantized positions (v2): the gap class is the rhythm the chart means, not the tracker's jitter.
+    gaps_beats = np.array([(grid.beat_pos(b) - grid.beat_pos(a)) for a, b in zip(qtimes[:-1], qtimes[1:])])
     gc = Counter(_label(gap_class(g)) for g in gaps_beats)
     out["gap_share"] = {k: v / len(gaps_beats) for k, v in sorted(gc.items())}
     out["gap_ms"] = {"min": float(gaps_ms.min()), **_quantiles(gaps_ms, (0.05, 0.5))}
@@ -223,9 +238,12 @@ def chart_metrics(notes: list[N], grid, breaks: list[tuple[int, int]] | None = N
     # --- holds -------------------------------------------------------------------------------------------------
     out["hold_share"] = len(holds) / n_notes
     if holds:
-        lens = [grid.beat_pos(h.end) - grid.beat_pos(h.t) for h in holds]
+        qs = {h: quantized(grid, h.t, grid.snap(h.t, tol(h.t))) for h in holds}
+        qe = {h: quantized(grid, h.end, grid.snap(h.end, tol(h.end))) for h in holds}
+        lens = [grid.beat_pos(qe[h]) - grid.beat_pos(qs[h]) for h in holds]
         out["hold_len_beats"] = _quantiles(lens)
-        out["hold_short_share"] = {"lt_1_2": float(np.mean([x < 0.5 - 1e-6 for x in lens])), "lt_1": float(np.mean([x < 1 - 1e-6 for x in lens]))}
+        out["hold_short_share"] = {"lt_1_2": float(np.mean([x < 0.5 - HOLD_LEN_TOL_BEATS for x in lens])),
+                                   "lt_1": float(np.mean([x < 1 - HOLD_LEN_TOL_BEATS for x in lens]))}
         inside = [any(h.t < n.t < h.end for n in notes if n is not h) for h in holds]
         out["holds_with_notes_inside_share"] = float(np.mean(inside))
         other_hand = [sum(1 for n in notes if h.t < n.t < h.end and (n.lane >> 1) != (h.lane >> 1)) / max(1e-9, (grid.beat_pos(h.end) - grid.beat_pos(h.t))) for h in holds]
@@ -311,6 +329,156 @@ def chart_metrics(notes: list[N], grid, breaks: list[tuple[int, int]] | None = N
         out["kiai_density_ratio"] = (kiai_flags.sum() / kiai_ms) / max(1e-9, (~kiai_flags).sum() / (last - first - kiai_ms))
     else:
         out["kiai_density_ratio"] = None
+    out.update(extra_metrics(notes, moments, times, qtimes, snaps, gaps_beats, grid, tol, first, last, drain_s))
+    return out
+
+
+def extra_metrics(notes, moments, times, qtimes, snaps, gaps_beats, grid, tol, first, last, drain_s) -> dict:
+    """Metrics added after stage 2 asked for them (shared/metrics.md, "Dodane po etapie 2"), for every level."""
+    out: dict = {}
+    n_moments = len(moments)
+    per_min = lambda k: k / max(1e-9, drain_s / 60)
+    sizes = np.array([len(m) for m in moments])
+
+    def has_moment(t):
+        i = np.searchsorted(times, t)
+        return any(0 <= j < len(times) and abs(times[j] - t) <= tol(t) for j in (i - 1, i))
+
+    def moment_at(t):
+        i = np.searchsorted(times, t)
+        best = [j for j in (i - 1, i) if 0 <= j < len(times) and abs(times[j] - t) <= tol(t)]
+        return min(best, key=lambda j: abs(times[j] - t)) if best else None
+
+    # Grid coverage: share of beat / half-beat / quarter points of the active span that carry a moment.
+    beats = grid.beats(first, last + 1, 1)
+    halves = [t for t in grid.beats(first, last + 1, 2) if grid.snap(t) == 2]
+    quarters = [t for t in grid.beats(first, last + 1, 4) if grid.snap(t) == 4]
+    cov = lambda pts: float(np.mean([has_moment(t) for t in pts])) if pts else None
+    out["coverage"] = {"beat": cov(beats), "half": cov(halves), "quarter": cov(quarters),
+                       "beat_kiai": cov([t for t in beats if grid.in_kiai(t)]), "beat_no_kiai": cov([t for t in beats if not grid.in_kiai(t)])}
+    on_beats = [moment_at(t) for t in beats]
+    on_beats = [j for j in on_beats if j is not None]
+    out["chord_rate_on_mapped_beats"] = float(np.mean(sizes[on_beats] >= 2)) if on_beats else None
+
+    # Chords inside 1/2 runs (RC Easy) and close chord pairs inside 1/4 streams (RC Hard).
+    is_half = [gap_class(g) == 0.5 for g in gaps_beats]
+    inside_half = [i for i in range(1, n_moments - 1) if sizes[i] >= 2 and is_half[i - 1] and is_half[i]]
+    out["chords_in_half_runs_per_min"] = per_min(len(inside_half))
+    fast = [g <= 0.26 for g in gaps_beats]
+    pairs = close = 0
+    i = 0
+    while i < len(fast):
+        if not fast[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(fast) and fast[j]:
+            j += 1
+        idx = list(range(i, j + 1))  # moments of the stream
+        if len(idx) >= 5:
+            chords = [k for k in idx[1:-1] if sizes[k] >= 2]
+            for a, b in zip(chords, chords[1:]):
+                pairs += 1
+                close += (grid.beat_pos(qtimes[b]) - grid.beat_pos(qtimes[a])) < 1 - 1e-6
+        i = j
+    out["chord_pairs_in_quarter_streams"] = {"pairs": pairs, "closer_than_1_beat_share": close / pairs if pairs else None}
+
+    # Hand balance in 4-bar windows with at least 8 notes.
+    devs = []
+    for a, b in bar_windows(grid, first, last, 4):
+        win = [n for n in notes if a <= n.t < b]
+        if len(win) >= 8:
+            devs.append(abs(sum(n.lane < 2 for n in win) / len(win) - 0.5))
+    out["hand_balance_4bar"] = {"p50": float(np.median(devs)) if devs else None, "p90": float(np.quantile(devs, 0.9)) if devs else None,
+                                "over_0_2_share": float(np.mean([d > 0.2 for d in devs])) if devs else None, "windows": len(devs)}
+
+    # Trills: runs of single-note moments alternating between two lanes, at most 1 beat apart.
+    lanes = [next(iter({n.lane for n in m})) if len({n.lane for n in m}) == 1 else None for m in moments]
+    runs = []
+    k = 0
+    while k < n_moments - 1:
+        if lanes[k] is None or lanes[k + 1] is None or lanes[k] == lanes[k + 1] or gaps_beats[k] > 1 + 1e-6:
+            k += 1
+            continue
+        x, y = lanes[k], lanes[k + 1]
+        e = k + 1
+        while e + 1 < n_moments and lanes[e + 1] == (x if (e + 1 - k) % 2 == 0 else y) and gaps_beats[e] <= 1 + 1e-6:
+            e += 1
+        if e - k + 1 >= 3:
+            runs.append((e - k + 1, (x >> 1) == (y >> 1)))
+        k = e
+    out["trills"] = {"max_notes": max((r[0] for r in runs), default=0), "ge10_per_min": per_min(sum(r[0] >= 10 for r in runs)),
+                     "one_hand_share": float(np.mean([r[1] for r in runs])) if runs else None, "runs_per_min": per_min(len(runs))}
+
+    # Anchors in the RC sense: inside a stream (gaps <= 1/4 beat, >= 5 moments) one column hit every 2nd or 3rd moment,
+    # with at least two other columns in between (a two-column trill is not an anchor).
+    best = 0
+    i = 0
+    while i < len(fast):
+        if not fast[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(fast) and fast[j]:
+            j += 1
+        idx = list(range(i, j + 1))
+        if len(idx) >= 5:
+            for col in range(LANES):
+                hits = [q for q in idx if any(n.lane == col for n in moments[q])]
+                chain, others = 1, set()
+                for a, b in zip(hits, hits[1:]):
+                    between = {n.lane for q in range(a + 1, b) for n in moments[q]} - {col}
+                    if b - a in (2, 3):
+                        chain += 1
+                        others |= between
+                    else:
+                        chain, others = 1, set()
+                    if len(others) >= 2:
+                        best = max(best, chain)
+        i = j
+    out["anchor_rc_max_notes"] = best
+
+    # Hold context.
+    holds = [n for n in notes if n.hold]
+    if holds:
+        beat = lambda t: grid.beat_ms(t)
+        rel_next, start_beat, in_chord = [], [], []
+        by_len = {"1/2": [], "1": [], "2+": []}
+        shields = 0
+        moment_of = {m[0].t: m for m in moments}
+        for h in holds:
+            later = times[times > h.t]
+            cand = later[later >= h.end - beat(h.end) / 16]
+            if len(cand):
+                rel_next.append(abs(cand[0] - h.end) <= beat(h.end) / 16)
+            start_beat.append(grid.snap(h.t, tol(h.t)) == 1)
+            in_chord.append(len(moment_of[h.t]) >= 2)
+            length = (grid.beat_pos(h.end) - grid.beat_pos(h.t))
+            cls = "1/2" if length < 0.75 else "1" if length < 1.5 else "2+"
+            by_len[cls].append(any(h.t < n.t < h.end for n in notes))
+            prev = [n for n in notes if n.lane == h.lane and n.t < h.t]
+            if prev and h.t - max(p.t for p in prev) <= 0.25 * beat(h.t) + tol(h.t):
+                shields += 1
+        out["holds_context"] = {
+            "release_at_next_moment_share": float(np.mean(rel_next)) if rel_next else None,
+            "start_on_beat_share": float(np.mean(start_beat)), "head_in_chord_share": float(np.mean(in_chord)),
+            "notes_inside_share_by_length": {k: (float(np.mean(v)) if v else None) for k, v in by_len.items()},
+            "holds_by_length": {k: len(v) for k, v in by_len.items()},
+            "shield_1_4_per_min": per_min(shields),
+        }
+    else:
+        out["holds_context"] = {"release_at_next_moment_share": None, "start_on_beat_share": None, "head_in_chord_share": None,
+                                "notes_inside_share_by_length": {"1/2": None, "1": None, "2+": None},
+                                "holds_by_length": {"1/2": 0, "1": 0, "2+": 0}, "shield_1_4_per_min": 0.0}
+
+    # Kiai starts: the grid point nearest each kiai start inside the chart's span.
+    starts = [a for a, _ in grid.kiai_spans if first <= a <= last]
+    hits = []
+    for a in starts:
+        j = moment_at(a)
+        hits.append((j is not None, j is not None and sizes[j] >= 2))
+    out["kiai_start"] = {"n": len(starts), "note_share": float(np.mean([h[0] for h in hits])) if hits else None,
+                         "chord_share": float(np.mean([h[1] for h in hits])) if hits else None}
     return out
 
 
@@ -320,13 +488,18 @@ def bar_windows(grid, first: float, last: float, bars: int = 4) -> list[tuple[fl
     return [(downs[i], downs[i + bars]) for i in range(0, len(downs) - bars, bars)]
 
 
-def pattern_identity(notes: list[N], grid, a: tuple[float, float], b: tuple[float, float], slots_per_beat: int = 24) -> dict:
-    """How alike the chart plays two windows: rhythm Jaccard on 1/24-beat slots and lane identity of shared moments."""
+def pattern_identity(notes: list[N], grid, a: tuple[float, float], b: tuple[float, float], slots_per_beat: int = 24,
+                     kind: str = "human") -> dict:
+    """How alike the chart plays two windows: rhythm Jaccard on 1/24-beat slots and lane identity of shared moments.
+    Positions are quantized to the classified grid point first (v2), so generator jitter is not read as another rhythm."""
+    tol = tolerance_of(grid, kind)
+
     def slots(w):
         pa = grid.beat_pos(w[0])
         out = {}
         for m in moments_of([n for n in notes if w[0] <= n.t < w[1]]):
-            k = int(round((grid.beat_pos(m[0].t) - pa) * slots_per_beat))
+            t = m[0].t
+            k = int(round((grid.beat_pos(quantized(grid, t, grid.snap(t, tol(t)))) - pa) * slots_per_beat))
             out[k] = tuple(sorted(n.lane for n in m))
         return out
     sa, sb = slots(a), slots(b)

@@ -100,10 +100,13 @@ def measure(notes, grid, breaks, npz, events, bias, kind: str = "human") -> tupl
     out = cm.chart_metrics(notes, grid, breaks, kind=kind)
     out["alignment"] = am.onset_alignment(notes, npz, bias)
     out["plugin_events"] = am.plugin_coincidence(notes, events, span)
-    out["repetition"] = am.repetition_metrics(notes, grid, npz, span)
+    out["repetition"] = am.repetition_metrics(notes, grid, npz, span, kind=kind)
     bars = am.bar_features(grid, npz, span)
-    out["sections"] = am.section_metrics(notes, grid, bars, am.section_boundaries(bars))
-    slots = am.slot_table(notes, grid, npz, events, span, bias)
+    boundaries = am.section_boundaries(bars)
+    out["sections"] = am.section_metrics(notes, grid, bars, boundaries)
+    out["rest_context"] = am.rest_context(notes, grid, npz, [float(bars["edges"][b]) for b in boundaries])
+    out["hand_by_class"] = am.hand_by_class(notes, events)
+    slots = am.slot_table(notes, grid, npz, events, span, bias, kind=kind)
     return out, slots
 
 
@@ -224,6 +227,8 @@ def process(row: dict, args) -> dict:
             grid = TimingGrid(chosen[level].timing) if level in chosen else ref_grid
             notes = cm.from_mewbeat(chart)
             metrics, slots = measure(notes, grid, [], npz, events, bias, kind="algo")
+            if level in chosen:
+                metrics["versus_human"] = am.versus_human(notes, cm.from_osu(chosen[level].notes), grid)
             metrics.update(set_id=sid, generator_version=data["meta"]["generatorVersion"], algo_stars=chart.get("stars"),
                            grid_from=level if level in chosen else song["reference_level"])
             write_json(lvl_out / "algo" / f"{sid}.json", metrics)
