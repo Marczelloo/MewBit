@@ -25,7 +25,7 @@ def detector_classes(npz) -> tuple[str, ...]:
     return LIBROSA_CLASSES + tuple(c for c in STEM_CLASSES if f"onsets_{c}" in keys)
 SLOT_DIVS = (1, 2, 3, 4, 6, 8)  # slots of the slot table: every 1/8 and every 1/6 beat
 STRUCT_KERNEL_BARS = 8
-REPEAT_SIM = 0.9  # 4-bar windows at least this alike in the audio are a musical repeat
+REPEAT_SIM = 0.75  # 4-bar windows at least this alike in the audio are a musical repeat (calibrated: shared/metrics.md)
 NONREPEAT_SIM = 0.6  # ...and at most this alike, a non-repeat (the baseline)
 
 
@@ -347,7 +347,12 @@ def repetition_metrics(notes: list[N], grid, npz, span: tuple[float, float]) -> 
         if not vals:
             return None
         return {k: float(np.mean([v[k] for v in vals])) for k in ("rhythm", "lanes", "lanes_or_mirror")} | {"pairs": len(vals)}
-    return {"repeat_pairs": len(rep), "repeat": mean_identity(rep), "baseline": mean_identity(base[:400])}
+    # Threshold sweep, for the calibration in shared/metrics.md (which threshold still separates repeats from the baseline).
+    sweep = {}
+    for thr in (0.70, 0.75, 0.80, 0.85, 0.90):
+        pairs = [(i, j) for i in range(len(windows)) for j in range(i + 1, len(windows)) if S[i, j] >= thr]
+        sweep[f"{thr:.2f}"] = {"pairs": len(pairs), "identity": mean_identity(pairs[:400])}
+    return {"repeat_pairs": len(rep), "repeat": mean_identity(rep), "baseline": mean_identity(base[:400]), "sweep": sweep}
 
 
 # --- the algorithm's beat grid against the human one --------------------------------------------------------------

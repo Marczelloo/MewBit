@@ -111,11 +111,25 @@ Klucze w plikach `shared/data/<poziom>/{human,algo}/<set>.json` odpowiadają naz
 
 - Okna po 4 takty od pierwszego downbeatu. Cecha okna: chroma (część harmoniczna) na beat, wycentrowana, plus obwiednia onsetów na 1/4 beatu,
   ważone 0,6/0,4 jak w pluginie, cosinus.
-- Pary okien o podobieństwie audio ≥ 0,9 = **muzyczne powtórzenie**, ≤ 0,6 = **linia bazowa**.
+- Pary okien o podobieństwie audio ≥ 0,75 = **muzyczne powtórzenie**, ≤ 0,6 = **linia bazowa**.
 - Dla par: `rhythm` = Jaccard pozycji chwil na siatce 1/24 beatu; `lanes` = udział wspólnych chwil o identycznych torach;
   `lanes_or_mirror` = to samo z dopuszczeniem lustra. Wynik: średnie dla powtórzeń i dla linii bazowej.
   Różnica powtórzenie − baza mówi, czy chart powtarza się tam, gdzie powtarza się muzyka.
-- Progi 0,9/0,6 są parametrem do kalibracji na danych: odsetek par powyżej progu na utwór raportuję w etapie 1.
+- **Kalibracja progu** (etap 1, wszystkie poziomy, mapy ludzi). Reguła: najniższy próg, przy którym mediana identyczności rytmu
+  ludzi w wykrytych powtórzeniach jest ≥ 0,9 na każdym poziomie. Wyniki dla Easy / Normal / Hard (`repetition.sweep`
+  zawiera wszystkie progi):
+
+  | próg | utwory z ≥ 3 parami | mediana `rhythm` w parach |
+  |---|---|---|
+  | 0,90 | 21/99, 21/98, 20/95 | 1,00, 0,98, 0,97 |
+  | 0,85 | 36, 35, 33 | 0,97, 0,96, 0,97 |
+  | 0,80 | 48, 45, 43 | 0,94, 0,95, 0,94 |
+  | **0,75** | **58, 56, 54** | **0,91, 0,91, 0,91** |
+  | 0,70 | 68, 67, 64 | 0,86, 0,88, 0,88 |
+
+  Linia bazowa (≤ 0,6): mediana `rhythm` 0,56, 0,61, 0,62.
+  Zastrzeżenie: wykrywanie powtórzeń muzyki jest kalibrowane sygnałem z map ludzi, a algorytm oceniam tym samym progiem.
+  To sprzyja ludziom w porównaniu bezwzględnym. Różnica powtórzenie − baza dla algorytmu pozostaje uczciwą miarą.
 
 ## Muzyka pod nutą
 

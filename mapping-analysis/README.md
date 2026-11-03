@@ -5,16 +5,16 @@ oraz sprawdzenie hipotezy „Hard wypada lepiej niż Normal”. Kod algorytmu (`
 
 ## Stan na 2026-11-03
 
-Etap 1 jest w toku. Blokady z 2026-11-02 są zdjęte:
-- **osu! API.** Migawka 6103 zestawów Ranked 4K jest w cache `data/corpus/`.
-- **Zakresy SR.** Ustalone w `shared/levels.md` i `levels.json`.
-- **Korpus.** `shared/corpus.csv` i `corpus_selection.md`.
-- **Pliki `.osz`.** Pobrane za zgodą użytkownika z mirrora osu.direct
-  (`pipeline/corpus/download_mirror.py`). Każdy plik ma zweryfikowane MD5 wybranych dyfficulty względem oficjalnego API.
-  osu! wydaje pliki tylko zalogowanej przeglądarce. Logowanie skryptem blokuje pusty token CSRF i tego nie obchodzę.
-
-Ważne odkrycie metodologiczne: oś czasu osu! wyprzedza zdekodowane audio o 30–50 ms. Mapy ludzi są przesuwane na oś audio
-(`shared/metrics.md`, „Oś czasu”).
+**Etap 1 jest gotowy.** Wyniki: `shared/`, czyli korpus, poziomy, metryki per poziom w `shared/data/<poziom>/`,
+dane utworów w `shared/data/songs/`, charty wszystkich poziomów dla etapu 3 w `shared/cross/` oraz `shared/alignment.md`.
+- **osu! API.** Migawka 6103 zestawów Ranked 4K w cache `data/corpus/`. Zakresy SR: `shared/levels.md`. Korpus: `shared/corpus.csv`.
+- **Pliki `.osz`.** Za zgodą użytkownika z mirrora osu.direct (`pipeline/corpus/download_mirror.py`). Każdy plik ma
+  zweryfikowane MD5 wybranych dyfficulty względem oficjalnego API. osu! wydaje pliki tylko zalogowanej przeglądarce;
+  logowanie skryptem blokuje pusty token CSRF i tego nie obchodzę.
+- **Oś czasu.** Oś osu! wyprzedza zdekodowane audio o 19–54 ms (mediana 36). Mapy ludzi są przesuwane na oś audio
+  (`shared/metrics.md`, „Oś czasu”). Zgodność z pluginem: mediana 3 ms; dryf w utworze: p90 5 ms.
+- **Pozostałe dane.** Stemy Spleeter 4stems dla 100 utworów. Charty algorytmu (generator v19) dla 20 utworów testowych × 3 poziomy.
+- Tabele slotów (`shared/data/<poziom>/slots/`, ok. 140 MB) są poza gitem. Odtwarza je `run_pipeline.py`.
 
 Gotowe wcześniej (2026-11-02): `shared/algorithm.md`, `shared/metrics.md`, kalibracja detektorów `shared/onset_bias.json`,
 pipeline sprawdzony testem dymnym na danych syntetycznych.
