@@ -8,6 +8,7 @@ users to stay around 60 requests per minute) and every response is cached under 
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import time
@@ -70,7 +71,8 @@ class OsuApi:
                 elif e.code not in (429, 500, 502, 503, 504):
                     raise RuntimeError(f"GET {path} failed: HTTP {e.code}") from None
                 time.sleep(2 ** (attempt + 1))
-            except urllib.error.URLError:
+            except (urllib.error.URLError, http.client.HTTPException, OSError):
+                # connection reset, timeout or a truncated response: wait and retry
                 time.sleep(2 ** (attempt + 1))
         else:
             raise RuntimeError(f"GET {path} kept failing")
