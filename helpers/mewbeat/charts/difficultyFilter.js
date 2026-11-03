@@ -13,12 +13,9 @@ const SEAM_LOOKBACK_MS = DENSITY_WINDOW_MS; // how much of the previous phrase's
 const FINE_LEVEL = 2; // events at this level sit on the 1/8 grid; below it a difficulty plays the 1/4 grid at most
 const TONAL_SOURCES = new Set(["bass", "lead"]);
 const GRID_SLACK = 0.9; // a gap in beats is met within this much: a bending grid stretches it, the next step down is far below
-const FAST_GAP_BEATS = 0.3; // a gap up to this long keeps a fast run going (diff.maxFastRun)
 const DOWNBEAT_MS = 1;
 
 const handOf = (lane) => lane >> 1;
-// The beat the player counts: a grid doubled for a half-time song (timing.foldFactor) still feels like its real tempo.
-const feltBeatMs = (timing, t) => beatMsOf(timing, t) * Math.max(1, timing?.foldFactor ?? 1);
 
 const asLookup = (energyAt) => (typeof energyAt === "function" ? { hopMs: 500, at: energyAt } : energyAt);
 
@@ -140,45 +137,29 @@ function limitJacks(notes, diff, prevNotes, { strict, timing = null }) {
 // --- floors and density ------------------------------------------------------------------
 
 // The gap diff.gapBeats asks of `candidate` to a note `n`: two notes of the sung or bass line may sit closer.
-function beatGapMs(candidate, n, diff, felt) {
+function beatGapMs(candidate, n, diff, beatMs) {
   if (!(diff.gapBeats > 0)) return 0;
   const tonal = TONAL_SOURCES.has(candidate.source) && TONAL_SOURCES.has(n.source);
-  return (tonal ? diff.tonalGapBeats ?? diff.gapBeats : diff.gapBeats) * felt * GRID_SLACK;
-}
-
-// Would `candidate` make more than diff.maxFastRun fast gaps in a row?
-function fastRunHolds(candidate, accepted, diff, felt) {
-  if (!(diff.maxFastRun > 0)) return true;
-  const fast = FAST_GAP_BEATS * felt;
-  const reach = fast * (diff.maxFastRun + 1);
-  const near = accepted.filter((n) => Math.abs(n.t - candidate.t) <= reach).map((n) => n.t);
-  const times = [...new Set([candidate.t, ...near])].sort((a, b) => a - b);
-  let run = 0;
-  for (let i = 1; i < times.length; i++) {
-    run = times[i] - times[i - 1] <= fast ? run + 1 : 0;
-    if (run > diff.maxFastRun) return false;
-  }
-  return true;
+  return (tonal ? diff.tonalGapBeats ?? diff.gapBeats : diff.gapBeats) * beatMs * GRID_SLACK;
 }
 
 // What adding `candidate` would break of the gaps and the sliding density cap: null when it keeps them all, else the rule
-// (with the note it clashes with). `accepted` is time-sorted. `timing` (optional) gives the beat for diff.gapBeats and diff.maxFastRun.
+// (with the note it clashes with). `accepted` is time-sorted. `timing` (optional) gives the beat for diff.gapBeats.
 function whyNotFits(candidate, accepted, diff, energy, powerFloor = 0, timing = null) {
   const noteGap = diff.minNoteGapMs ?? 0;
   const laneGap = diff.minLaneGapMs ?? 0;
-  const felt = feltBeatMs(timing, candidate.t);
-  const reach = Math.max(noteGap, laneGap, (diff.gapBeats ?? 0) * felt);
+  const beatMs = beatMsOf(timing, candidate.t);
+  const reach = Math.max(noteGap, laneGap, (diff.gapBeats ?? 0) * beatMs);
   const at = lowerBound(accepted.map((n) => n.t), candidate.t - reach);
   for (let i = at; i < accepted.length && accepted[i].t < candidate.t + reach; i++) {
     const n = accepted[i];
     const dt = Math.abs(n.t - candidate.t);
     const clash = (rule, needMs) => ({ rule, t: n.t, lane: n.lane, dtMs: dt, needMs });
     if (n.t !== candidate.t && dt < noteGap) return clash("noteGap", noteGap);
-    if (n.t !== candidate.t && dt < beatGapMs(candidate, n, diff, felt)) return clash("beatGap", beatGapMs(candidate, n, diff, felt));
+    if (n.t !== candidate.t && dt < beatGapMs(candidate, n, diff, beatMs)) return clash("beatGap", beatGapMs(candidate, n, diff, beatMs));
     if (n.lane === candidate.lane && dt < laneGap) return clash("laneGap", laneGap);
     if (n.lane === candidate.lane && n.t === candidate.t) return clash("sameSpot", 0);
   }
-  if (!fastRunHolds(candidate, accepted, diff, felt)) return { rule: "fastRun" };
   return densityHolds(candidate, accepted, diff, energy, powerFloor) ? null : { rule: "density" };
 }
 
@@ -301,18 +282,9 @@ function longNoteOnBeat(e, timing) {
   return { ...e, t, level: 0, sustainMs: e.sustainMs + e.t - t };
 }
 
-// At most diff.maxQuarterShare of the moments stay off the half-beat grid: the weakest go, long notes last.
-function capQuarters(items, diff, timing) {
-  const moments = groupByTime(items);
-  const quarters = moments.filter((m) => offHalfGrid(timing, m[0].t));
-  const share = diff.maxQuarterShare;
-  const excess = Math.ceil((quarters.length - share * moments.length) / (1 - share));
-  if (excess <= 0) return items;
-  const weight = (m) => Math.max(...m.map((e) => e.s ?? 0));
-  const long = (m) => m.some((e) => e.sustainMs > 0);
-  const out = quarters.sort((a, b) => long(a) - long(b) || weight(a) - weight(b)).slice(0, excess);
-  const dropped = new Set(out.flat());
-  return items.filter((e) => !dropped.has(e));
+// A song at diff.quarterMaxBpm or faster has no 1/4 grid to play on this difficulty: its stream is the half beats.
+function tooFastForQuarter(e, diff, timing) {
+  return diff.quarterMaxBpm > 0 && timing?.snapped && 60000 / timing.medianMs >= diff.quarterMaxBpm && offHalfGrid(timing, e.t);
 }
 
 // A chord with a note closer than diff.chordGapBeats (or diff.gapBeats) keeps only its best note: it would sit inside a run.
@@ -320,7 +292,7 @@ function spaceChords(items, diff, timing) {
   const moments = groupByTime(items);
   return moments.flatMap((moment, i) => {
     if (moment.length < 2) return moment;
-    const clear = (diff.chordGapBeats ?? diff.gapBeats) * feltBeatMs(timing, moment[0].t) * GRID_SLACK;
+    const clear = (diff.chordGapBeats ?? diff.gapBeats) * beatMsOf(timing, moment[0].t) * GRID_SLACK;
     const crowded = [moments[i - 1], moments[i + 1]].some((o) => o && Math.abs(o[0].t - moment[0].t) < clear);
     return crowded ? [[...moment].sort(byPriority)[0]] : moment;
   });
@@ -346,7 +318,7 @@ function fastQuarterLevel(e, diff, timing) {
 
 // applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy, phraseEndMs, steadyPulse) -> [{ t, lane, len? }]
 // `prevNotes` is the previous phrase's tail (gaps, jacks and holds carry across the seam).
-// `phraseEnergy` (optional) is the phrase's mean energy for Normal's quarter-grid rule;
+// `phraseEnergy` (optional) is the phrase's mean energy for the chords;
 // without it the energy at the event's time is used. `phraseEndMs` (optional) keeps holds
 // inside their phrase. A sustained bass/lead event becomes a hold (see holds.js). `steadyPulse` (optional)
 // marks a phrase whose beats carry drum or bass onsets: it gets a density floor (pulsePowerFloor). `trace` (optional,
@@ -371,13 +343,7 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
     .sort(byTime);
   step("gridLevel", sorted, placed);
   let items = keep("level", placed, (e) => (e.level <= diff.maxLevel || (diff.thinChords && e.accent)) && (!e.chordOnly || diff.drumChords));
-  items = keep("quietQuarter", items, (e) => {
-    // A sung or bass line is not "quiet phrase filler": its off-beat notes are the tune.
-    if (!(diff.quarterMinEnergy > 0) || e.level !== 1 || TONAL_SOURCES.has(e.source)) return true;
-    const slot = gridSlot(timing, e.t);
-    const offHalf = slot !== null && !slot.beat && !slot.half;
-    return !(offHalf && (phraseEnergy ?? energy.at(e.t)) < diff.quarterMinEnergy);
-  });
+  items = keep("fastQuarter", items, (e) => !tooFastForQuarter(e, diff, timing));
   items = keep("leadIn", items, (e) => e.t >= LEAD_IN_MS);
   items = keep("silence", items, (e) => energy.at(e.t) >= SILENCE_ENERGY).map((e) => ({ ...e }));
 
@@ -386,7 +352,6 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   items = step("jacks", items, limitJacks(items, diff, prev, { strict: false, timing }));
   const onReject = trace ? (item, why) => trace.reject(item, "floors", why) : null;
   items = step("floors", items, selectByFloors(items, diff, energy, prev, steadyPulse ? pulsePowerFloor(diff, timing) : 0, timing, onReject));
-  if (diff.maxQuarterShare != null) items = step("capQuarters", items, capQuarters(items, diff, timing));
   if (diff.thinChords) items = step("spaceChords", items, spaceChords(items, diff, timing));
   items = step("planHolds", items, planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs));
   items = step("jacks", items, limitJacks(items, diff, prev, { strict: true, timing }));
@@ -421,8 +386,8 @@ function enforceFloors(notes, diff, timing = null) {
   return out;
 }
 
-// spreadLanes(notes, diff, timing, prevNotes) -> notes (diff.spreadLanes): a note closer than laneGapBeats (felt
-// beats) after the last note of its lane moves to a free lane; only with none free is it dropped. The hand the last
+// spreadLanes(notes, diff, timing, prevNotes) -> notes (diff.spreadLanes): a note closer than laneGapBeats (beats)
+// after the last note of its lane moves to a free lane; only with none free is it dropped. The hand the last
 // note did not use comes first, then the lane nearest the mirror (which keeps a drum's kick or snare role). Whatever
 // made the repeat (a groove, a seam, a fill), a chart without one comes through untouched.
 function spreadLanes(notes, diff, timing, prevNotes = []) {
@@ -433,7 +398,7 @@ function spreadLanes(notes, diff, timing, prevNotes = []) {
   const dropped = new Set();
   let prevHand = null;
   for (const moment of groupByTime(out)) {
-    const gap = (diff.laneGapBeats ?? 0) * feltBeatMs(timing, moment[0].t) * GRID_SLACK;
+    const gap = (diff.laneGapBeats ?? 0) * beatMsOf(timing, moment[0].t) * GRID_SLACK;
     const taken = new Set(moment.map((n) => n.lane));
     for (const note of moment) {
       if (moment[0].t - lastAt[note.lane] < gap) {

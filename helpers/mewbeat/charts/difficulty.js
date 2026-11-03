@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 22;
+const GENERATOR_VERSION = 23;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -52,7 +52,6 @@ const DIFFICULTIES = {
     maxJack: 2, // longest same-lane run of consecutive notes (1 = no jacks)
     maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
     fillRestBeats: 2, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
-    quarterMinEnergy: null, // Normal: off-1/2-grid level-1 events need at least this phrase energy
     holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
     pulseNotesPerBeat: 0.5, // density floor in a drum-led phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
     holdOtherHand: "spaced", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
@@ -65,7 +64,7 @@ const DIFFICULTIES = {
     chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.7 },
     alternation: null,
     // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
-    gapBeats: 1 / 2, // any-lane gap on the pattern path, in felt beats (a doubled grid counts as its real tempo)
+    gapBeats: 1 / 2, // any-lane gap on the pattern path, in beats
     tonalGapBeats: 1 / 2, // ...between two notes of the sung or bass line
     leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
     thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
@@ -82,8 +81,8 @@ const DIFFICULTIES = {
     sustainMinBeats: 1,
   },
   normal: {
-    maxNps: 5,
-    maxNpsCeiling: 5.5,
+    maxNps: 6.5,
+    maxNpsCeiling: 7.5,
     baseDiv: 2,
     energyDiv: 2,
     highEnergyFrom: 0.6,
@@ -96,7 +95,6 @@ const DIFFICULTIES = {
     maxJack: 2,
     maxLevel: 1,
     fillRestBeats: 2,
-    quarterMinEnergy: 0.75,
     holdMinBeats: 1, // a half-beat hold reads as noise
     pulseNotesPerBeat: 1,
     holdOtherHand: "spaced",
@@ -108,10 +106,9 @@ const DIFFICULTIES = {
     maxChordShare: 1 / 3, // chords may run up to this share of the moments, a downbeat may always be one
     alternation: null,
     // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
-    gapBeats: 1 / 4, // any-lane gap on the pattern path, in felt beats (a doubled grid counts as its real tempo)
+    gapBeats: 1 / 4, // any-lane gap on the pattern path, in beats
     chordGapBeats: 1 / 2, // ...around a chord: it stays out of the fast runs
-    maxFastRun: 3, // at most this many fast gaps in a row
-    maxQuarterShare: 0.1, // at most this share of a phrase's moments off the half-beat grid
+    quarterMaxBpm: 150, // from this tempo on the stream is the half beats, nothing off them
     leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
     thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
     densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
@@ -136,7 +133,6 @@ const DIFFICULTIES = {
     maxJack: 3,
     maxLevel: 2,
     fillRestBeats: null, // Hard's rests are filled with the drums (seams.js fillGaps)
-    quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 2,
     fastQuarterMs: 90, // above about 167 BPM the half beats come first (difficultyFilter.js fastQuarterLevel)
@@ -167,7 +163,6 @@ const DIFFICULTIES = {
     maxJack: 4,
     maxLevel: 2,
     fillRestBeats: null,
-    quarterMinEnergy: null,
     holdMinBeats: 1,
     pulseNotesPerBeat: 4,
     holdOtherHand: "free",

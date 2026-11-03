@@ -5,14 +5,13 @@ export const LEVELS = ["easy", "normal", "hard", "hell"];
 export const STAGES = {
   gridLevel: "poziom wg siatki",
   level: "poza poziomem trudności",
-  quietQuarter: "cicha ćwierćnuta",
+  fastQuarter: "ćwierćnuta w szybkim utworze",
   leadIn: "przed startem chartu",
   silence: "cisza w utworze",
   thinChords: "przerzedzanie akordów",
   capMoments: "limit nut w jednej chwili",
   jacks: "limit jacków",
   floors: "minimalne odstępy",
-  capQuarters: "limit nut na ćwierćnutę",
   spaceChords: "odstępy akordów",
   planHolds: "plan holdów",
   groove: "powtórka układu taktu",
@@ -35,7 +34,6 @@ export const RULES = {
   beatGap: "za blisko w uderzeniach",
   laneGap: "ten sam pas za szybko",
   sameSpot: "w tym miejscu jest już nuta",
-  fastRun: "za długi szybki ciąg",
   density: "za gęsto (limit nut na sekundę)",
 };
 

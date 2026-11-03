@@ -105,7 +105,7 @@ test("describe prints the chart proxies", async () => {
   assert.match(text, /on-layer \d+%/);
   assert.match(text, /repeat identity \d+% \(\d+ repeats\)/);
   assert.match(text, /hands L\d+% R\d+%/);
-  assert.match(text, /nps mean [\d.]+ peak [\d.]+ \/ max 5/);
+  assert.match(text, /nps mean [\d.]+ peak [\d.]+ \/ max 6.5/);
   assert.match(text, /holds \d+/);
   assert.match(text, /leaders lead×\d+/);
 });

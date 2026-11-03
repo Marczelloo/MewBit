@@ -61,18 +61,31 @@ describe("gaps and fast runs", () => {
   });
 
   for (const source of ["lead", "drums"]) {
-    it(`Normal runs faster on ${source} only maxFastRun gaps in a row and only maxQuarterShare off the half beat`, () => {
+    it(`Normal keeps a whole stream of ${source} and adds quarters below quarterMaxBpm`, () => {
       const line = every(2000, 18000, 125).map((t) => event(t, source, { level: 1 }));
       const times = [...new Set(chart(line, normal).map((n) => n.t))];
-      let run = 0;
-      for (let i = 1; i < times.length; i++) {
-        run = times[i] - times[i - 1] <= 150 ? run + 1 : 0;
-        assert.ok(run <= normal.maxFastRun, `run at ${times[i]}`);
+      assert.ok(times.some(offHalfGrid), "quarters stay");
+      for (const t of every(2000, 18000, 250)) assert.ok(times.includes(t), `half beat ${t}`);
+    });
+
+    it(`Normal keeps ${source} on the half beats from quarterMaxBpm on`, () => {
+      const fast = buildTiming(makeFeatures({ durationMs: 32000, bpm: 160 }), 32000);
+      const line = every(8, 48, 1).map((i) => event(Math.round((i * 375) / 4), source, { level: 1 })); // 1/4 grid at 160 BPM
+      const notes = applyDifficulty(line, normal, fast, LOUD, [], 0.9, 32000);
+      assert.ok(notes.length > 0);
+      for (const n of notes) {
+        const halves = beatPosition(fast, n.t) * 2;
+        assert.ok(Math.abs(halves - Math.round(halves)) < 0.02, `${n.t}`);
       }
-      const quarters = times.filter(offHalfGrid).length;
-      assert.ok(quarters <= Math.ceil(normal.maxQuarterShare * times.length), `${quarters} of ${times.length}`);
     });
   }
+
+  it("the gaps count beats of the grid, also when it was doubled for a slow reading", () => {
+    const doubled = { ...timing, foldFactor: 2 };
+    const line = every(2000, 8000, 250).map((t) => event(t, "drums"));
+    const times = [...new Set(applyDifficulty(line, easy, doubled, LOUD, [], 0.9, 32000).map((n) => n.t))];
+    assert.ok(times.some((t, i) => i > 0 && t - times[i - 1] === 250), times.join());
+  });
 });
 
 describe("chords", () => {
@@ -115,7 +128,7 @@ describe("chords", () => {
   });
 
   it("a chord right next to another note is one note", () => {
-    const beats = every(6000, 10000, 500).map((t) => event(t)); // the quarter is one moment of ten, under maxQuarterShare
+    const beats = every(6000, 10000, 500).map((t) => event(t));
     const chord = [event(4000, "lead", { s: 1 }), event(4000, "lead", { lane: 2, s: 1 })];
     const notes = chart([...chord, event(4125, "lead", { lane: 0, level: 1 }), ...beats], normal);
     assert.ok(notes.some((n) => n.t === 4125), "the neighbour stays");

@@ -67,6 +67,6 @@ describe("traceChart", () => {
   it("names the rule that threw a note out", () => {
     const rejected = traceChart(song(SONGS.phrases), "easy", "key").records.filter((r) => r.rejected?.stage === "floors");
     assert.ok(rejected.length > 0);
-    for (const r of rejected) assert.match(r.rejected.why.rule, /^(noteGap|beatGap|laneGap|sameSpot|fastRun|density)$/);
+    for (const r of rejected) assert.match(r.rejected.why.rule, /^(noteGap|beatGap|laneGap|sameSpot|density)$/);
   });
 });

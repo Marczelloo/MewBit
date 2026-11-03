@@ -38,8 +38,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 21", () => {
-    assert.equal(GENERATOR_VERSION, 22);
+  it("is version 23", () => {
+    assert.equal(GENERATOR_VERSION, 23);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -347,16 +347,13 @@ describe("patternEvents", () => {
       assert.deepEqual(applyDifficulty(events, DIFFICULTIES.easy, timing, () => 0.3, [], 0.3, phrase.endMs), []);
     });
 
-    it("keeps bass/lead notes off the half beat in a quiet phrase on Normal, but not drums", () => {
+    it("keeps a 1/4 note of a quiet phrase on Normal, whatever plays it", () => {
       const features = makeFeatures({ durationMs: 16000 });
       const timing = buildTiming(features, 16000);
       const note = (source) => ({ t: 2125, lane: 1, level: 1, s: 0.8, source }); // a 1/4 slot off the beat and half beat
-      // The quarter is one moment of ten, as many as Normal keeps off the half-beat grid.
       const beats = [3000, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500].map((t) => ({ t, lane: 2, level: 0, s: 0.8, source: "lead" }));
       const normal = (source) => applyDifficulty([note(source), ...beats], DIFFICULTIES.normal, timing, () => 0.3, [], 0.3, 8000).filter((n) => n.t === 2125);
-      assert.equal(normal("lead").length, 1);
-      assert.equal(normal("bass").length, 1);
-      assert.equal(normal("drums").length, 0);
+      for (const source of ["lead", "bass", "drums"]) assert.equal(normal(source).length, 1, source);
     });
 
     it("adds a mirror note on a strong bar start and drums only when the phrase is loud", () => {
