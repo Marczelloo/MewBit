@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 25;
+const GENERATOR_VERSION = 26;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -36,6 +36,10 @@ const SNAPPED_FLOOR_SLACK = 0.98; // snapped notes may sit this much under the t
 
 const DIFFICULTIES = {
   easy: {
+    grammar: "easy", // which human lane patterns the level draws from (lanes.js)
+    chordKeep: [0.5, 0.14, 0, 0], // how many of the level above's chords stay chords, by place in the bar (downbeat, beat, half, finer)
+    chordNew: [0.08, 0, 0, 0], // ...and how many of its single notes become one
+    chordGapBeats: 1 / 2,
     maxNps: 3.5, // the busy factor spreads it 2.8-4.5; a mapper plays about 3.5 notes/s at 185 BPM and up
     maxNpsCeiling: 4.5, // the busy factor never lifts the density cap above this
     // Grid divisions per beat: baseDiv normally, energyDiv at energy >= highEnergyFrom,
@@ -74,18 +78,20 @@ const DIFFICULTIES = {
     leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
     thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
     densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
-    spreadLanes: true, // a same-lane repeat closer than laneGapBeats moves to a free lane
-    balanceHands: true, // a phrase is mirrored when that evens out the hands
     vocalLeads: true, // in a sung song the voice leads every phrase it is heard in: it is what a beginner follows
     oneLayer: true, // the leading layer alone: a second layer in the other hand is a skill Easy does not ask for
     longNotesOnBeats: true, // a long sung note off the half-beat grid starts on the nearest beat (its hold carries the voice)
     oneHoldAtATime: true, // a hold starting under another stays a tap: two held keys are a skill Easy does not ask for
     maxHoldShare: 0.2,
     gapHoldShare: 0.13, // holds are brought up to this share where a bass or lead line plays
-    sectionChordRise: 1.1, // a section this much louder than the last one opens on a chord (sections.js)
+    sectionChordRise: 0.9, // a section this much louder than the last one opens on a chord (sections.js)...
+    sectionChordEnergy: 0.35, // ...when it is at least this loud
     sustainMinBeats: 1,
   },
   normal: {
+    grammar: "normal",
+    chordKeep: [0.66, 0.64, 0.38, 0.38],
+    chordNew: [0.04, 0.04, 0.04, 0],
     maxNps: 6.5,
     maxNpsCeiling: 7.5,
     baseDiv: 2,
@@ -93,8 +99,8 @@ const DIFFICULTIES = {
     highEnergyFrom: 0.6,
     fineDiv: null,
     fineMinStrength: 0.9,
-    laneGapBeats: 1,
-    minLaneGapMs: 200,
+    laneGapBeats: 1 / 2,
+    minLaneGapMs: 150,
     minGapBeats: 1 / 4,
     minNoteGapMs: 100,
     maxJack: 2,
@@ -116,18 +122,24 @@ const DIFFICULTIES = {
     alternation: null,
     // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
     gapBeats: 1 / 4, // any-lane gap on the pattern path, in beats
-    chordGapBeats: 1 / 2, // ...around a chord: it stays out of the fast runs
+    chordGapBeats: 1 / 4, // ...around a chord
     leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
     thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
     densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
-    spreadLanes: true, // a same-lane repeat closer than laneGapBeats moves to a free lane
-    balanceHands: true, // a phrase is mirrored when that evens out the hands
     maxHoldShare: 0.15,
-    gapHoldShare: 0.1,
-    sectionChordRise: 0.9,
+    gapHoldShare: 0.14,
+    sectionChordRise: 0.7,
+    sectionChordEnergy: 0.3,
+    motifPull: 6,
+    echoMirror: 0.3,
     sustainMinBeats: 1,
   },
   hard: {
+    grammar: "hard",
+    chordRates: [1.3, 1.15, 0.26, 0.3], // how often a moment is a chord, by place in the bar (chords.js)
+    chordTriples: [0.3, 0.1, 0.1, 0.1], // how many of those chords take a third note
+    chordGapBeats: 1 / 8,
+    chordMinGapMs: 75,
     maxNps: 9.0,
     maxNpsCeiling: 10,
     baseDiv: 4,
@@ -147,8 +159,11 @@ const DIFFICULTIES = {
     fastQuarterMs: 90, // above about 167 BPM the half beats come first (difficultyFilter.js fastQuarterLevel)
     holdOtherHand: "free",
     restHoldBeats: 1 / 2, // the shortest hold a rest gets (the others: holdMinBeats)
-    gapHoldShare: 0.07,
-    sectionChordRise: 0.8,
+    gapHoldShare: 0.09,
+    sectionChordRise: 0.5,
+    sectionChordEnergy: 0.25,
+    motifPull: 6,
+    echoMirror: 0.3,
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.95, onDownbeat: false, minEnergy: 0.5 },
@@ -161,6 +176,11 @@ const DIFFICULTIES = {
   // music's own sixteenths and accents (finer onsets kept at a lower strength, chords on more of the loud hits,
   // denser drum pulses), so the chart is harder to play but still follows the song.
   hell: {
+    grammar: "hard",
+    chordRates: [1.35, 1.25, 0.38, 0.4],
+    chordTriples: [0.3, 0.1, 0.1, 0.1],
+    chordGapBeats: 1 / 8,
+    chordMinGapMs: 60,
     maxNps: 13.0,
     maxNpsCeiling: 16,
     baseDiv: 4,
@@ -180,7 +200,10 @@ const DIFFICULTIES = {
     holdOtherHand: "free",
     restHoldBeats: 1 / 2,
     gapHoldShare: 0.07,
-    sectionChordRise: 0.8,
+    sectionChordRise: 0.5,
+    sectionChordEnergy: 0.25,
+    motifPull: 6,
+    echoMirror: 0.3,
     bandBias: [0.9, 1, 1, 1],
     beatBias: 0,
     chord: { minStrength: 0.8, onDownbeat: false, minEnergy: 0.4 },

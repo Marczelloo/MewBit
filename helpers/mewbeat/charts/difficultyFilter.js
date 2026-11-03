@@ -1,10 +1,9 @@
-// Difficulty as a filter over pattern events: keep the levels the difficulty
-// allows, then enforce what is playable (chords, jacks, gaps, density).
-// Precedence when constraints collide: floors (minNoteGapMs / minLaneGapMs)
-// > never 3-note chords > repeat identity > jack limit at phrase seams.
+// Difficulty as a filter over pattern events: keep the levels the difficulty allows, then the gaps and the density.
+// This settles when a chart plays; its lanes only hold a place until chords.js and lanes.js lay the moments out. A final
+// pass over the whole song (enforceFloors) has the last word on what is playable.
 const { DENSITY_WINDOW_MS, ENERGY_EXPONENT, LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { beatPosition, gridSlot, timeAtPosition } = require("./grid");
-const { beatMsOf, holdBlocks, holdSafe, isSupport, planHolds, spacedBlocked } = require("./holds");
+const { beatMsOf, holdBlocks, isSupport, planHolds, spacedBlocked } = require("./holds");
 const { budgeted, cutToRhythm } = require("./rhythm");
 const { lowerBound, nearestIndex } = require("./util");
 
@@ -49,92 +48,6 @@ function capMoments(items, limit) {
   return out;
 }
 
-// --- jacks -----------------------------------------------------------------------------
-
-// Lanes in order of preference when a note has to leave `lane`: a drum hit (or secondary drum) first
-// takes its role partner (kick 0<->3, snare 1<->2), then the lane ^ 1 neighbour,
-// then the rest by distance.
-function alternatives(lane, source, hand) {
-  // A note of a mixed phrase (it has a hand) stays in its hand: the neighbour lane first.
-  const order = hand === undefined && (source === "drums" || source === "secondary") ? [LANES - 1 - lane, lane ^ 1] : [lane ^ 1];
-  const rest = [0, 1, 2, 3].sort((a, b) => Math.abs(a - lane) - Math.abs(b - lane) || a - b);
-  return [...new Set([...order, ...rest])].filter((l) => l !== lane);
-}
-
-// Same-lane run lengths at the end of `notes`, and the lanes of the last moment.
-function trailingRuns(notes) {
-  const runs = new Array(LANES).fill(0);
-  const moments = groupByTime(notes);
-  if (moments.length === 0) return { runs, last: new Set() };
-  const last = new Set(moments[moments.length - 1].map((n) => n.lane));
-  const alive = new Set(last);
-  for (const l of last) runs[l] = 1;
-  // Walk back moment by moment, extending the run of lanes present in every step.
-  for (let m = moments.length - 2; m >= 0 && alive.size > 0; m--) {
-    const lanes = new Set(moments[m].map((n) => n.lane));
-    for (const l of [...alive]) {
-      if (lanes.has(l)) runs[l]++;
-      else alive.delete(l);
-    }
-  }
-  return { runs, last };
-}
-
-// Is placing a note at (lane, t) clear of every other note in that lane by `gap`?
-function laneClear(lane, t, gap, pool, ignore) {
-  return pool.every((n) => n === ignore || n.lane !== lane || Math.abs(n.t - t) >= gap);
-}
-
-// Moves notes out of same-lane runs longer than diff.maxJack. `notes` are records
-// ({t, lane, source?}), time-ordered; `prevNotes` seed the run state. A note that
-// has no free lane keeps its lane (lenient) or is dropped (strict). Lane moves
-// respect minLaneGapMs on both sides.
-function limitJacks(notes, diff, prevNotes, { strict, timing = null }) {
-  const maxJack = diff.maxJack ?? LANES;
-  const minLane = diff.minLaneGapMs ?? 0;
-  const seed = trailingRuns(prevNotes);
-  let runs = seed.runs;
-  let last = seed.last;
-  const out = [...notes];
-  const dropped = new Set();
-
-  for (const moment of groupByTime(out)) {
-    const taken = new Set(moment.map((n) => n.lane));
-    const nextRuns = new Array(LANES).fill(0);
-    const nextLast = new Set();
-    for (const note of moment) {
-      const runOf = (l) => (last.has(l) ? runs[l] + 1 : 1);
-      let lane = note.lane;
-      if (runOf(lane) > maxJack) {
-        const pool = [...prevNotes, ...out.filter((n) => !dropped.has(n))];
-        const free = alternatives(lane, note.source, note.hand).filter((l) => !taken.has(l) && runOf(l) <= maxJack);
-        // A held note may only move where it (and the notes around it) keep the hold rules.
-        const clear = free.find(
-          (l) => laneClear(l, note.t, minLane, pool, note) && holdSafe({ t: note.t, lane: l, len: note.len }, pool.filter((n) => n !== note), diff, timing),
-        );
-        const choice = clear ?? (strict ? undefined : free[0]);
-        if (choice === undefined) {
-          if (strict) {
-            dropped.add(note);
-            taken.delete(note.lane);
-            continue;
-          }
-        } else {
-          taken.delete(note.lane);
-          taken.add(choice);
-          note.lane = choice;
-          lane = choice;
-        }
-      }
-      nextRuns[lane] = runOf(lane);
-      nextLast.add(lane);
-    }
-    runs = nextRuns;
-    last = nextLast;
-  }
-  return out.filter((n) => !dropped.has(n));
-}
-
 // --- floors and density ------------------------------------------------------------------
 
 // The gap diff.gapBeats asks of `candidate` to a note `n`: two notes of the sung or bass line may sit closer.
@@ -148,9 +61,8 @@ function beatGapMs(candidate, n, diff, beatMs) {
 // (with the note it clashes with). `accepted` is time-sorted. `timing` (optional) gives the beat for diff.gapBeats.
 function whyNotFits(candidate, accepted, diff, energy, powerFloor = 0, timing = null) {
   const noteGap = diff.minNoteGapMs ?? 0;
-  const laneGap = diff.minLaneGapMs ?? 0;
   const beatMs = beatMsOf(timing, candidate.t);
-  const reach = Math.max(noteGap, laneGap, (diff.gapBeats ?? 0) * beatMs);
+  const reach = Math.max(noteGap, (diff.gapBeats ?? 0) * beatMs);
   const at = lowerBound(accepted.map((n) => n.t), candidate.t - reach);
   for (let i = at; i < accepted.length && accepted[i].t < candidate.t + reach; i++) {
     const n = accepted[i];
@@ -158,7 +70,6 @@ function whyNotFits(candidate, accepted, diff, energy, powerFloor = 0, timing = 
     const clash = (rule, needMs) => ({ rule, t: n.t, lane: n.lane, dtMs: dt, needMs });
     if (n.t !== candidate.t && dt < noteGap) return clash("noteGap", noteGap);
     if (n.t !== candidate.t && dt < beatGapMs(candidate, n, diff, beatMs)) return clash("beatGap", beatGapMs(candidate, n, diff, beatMs));
-    if (n.lane === candidate.lane && dt < laneGap) return clash("laneGap", laneGap);
     if (n.lane === candidate.lane && n.t === candidate.t) return clash("sameSpot", 0);
   }
   return densityHolds(candidate, accepted, diff, energy, powerFloor) ? null : { rule: "density" };
@@ -314,7 +225,7 @@ function fastQuarterLevel(e, diff, timing) {
 // --- public API ----------------------------------------------------------------------------
 
 // applyDifficulty(events, diff, timing, energyAt, prevNotes, phraseEnergy, phraseEndMs, steadyPulse) -> [{ t, lane, len? }]
-// `prevNotes` is the previous phrase's tail (gaps, jacks and holds carry across the seam).
+// `prevNotes` is the previous phrase's tail (gaps and holds carry across the seam).
 // `phraseEnergy` (optional) is the phrase's mean energy for the chords;
 // without it the energy at the event's time is used. `phraseEndMs` (optional) keeps holds
 // inside their phrase. A sustained bass/lead event becomes a hold (see holds.js). `steadyPulse` (optional)
@@ -349,12 +260,10 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
 
   if (diff.thinChords) items = step("thinChords", items, thinChords(items, diff, timing, phraseEnergy, energy));
   items = step("capMoments", items, capMoments(items, diff.chord ? 2 : 1));
-  items = step("jacks", items, limitJacks(items, diff, prev, { strict: false, timing }));
   const onReject = trace ? (item, why) => trace.reject(item, "floors", why) : null;
   items = step("floors", items, selectByFloors(items, diff, energy, prev, steadyPulse ? pulsePowerFloor(diff, timing) : 0, timing, onReject));
   if (diff.thinChords) items = step("spaceChords", items, spaceChords(items, diff, timing));
   items = step("planHolds", items, planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs));
-  items = step("jacks", items, limitJacks(items, diff, prev, { strict: true, timing }));
   const bare = (n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane });
   return items.sort(byTime).map((n) => (trace ? { ...bare(n), tid: n.tid } : bare(n)));
 }
@@ -386,43 +295,21 @@ function enforceFloors(notes, diff, timing = null) {
   return out;
 }
 
-// spreadLanes(notes, diff, timing, prevNotes) -> notes (diff.spreadLanes): a note closer than laneGapBeats (beats)
-// after the last note of its lane moves to a free lane; only with none free is it dropped. The hand the last
-// note did not use comes first, then the lane nearest the mirror (which keeps a drum's kick or snare role). Whatever
-// made the repeat (a groove, a seam, a fill), a chart without one comes through untouched.
-function spreadLanes(notes, diff, timing, prevNotes = []) {
-  if (!diff.spreadLanes) return notes;
-  const out = [...notes].sort(byTime).map((n) => ({ ...n }));
-  const lastAt = new Array(LANES).fill(-Infinity);
-  for (const n of prevNotes) lastAt[n.lane] = Math.max(lastAt[n.lane], n.t);
-  const dropped = new Set();
-  let prevHand = null;
-  for (const moment of groupByTime(out)) {
-    const gap = (diff.laneGapBeats ?? 0) * beatMsOf(timing, moment[0].t) * GRID_SLACK;
-    const taken = new Set(moment.map((n) => n.lane));
-    for (const note of moment) {
-      if (moment[0].t - lastAt[note.lane] < gap) {
-        const mirror = LANES - 1 - note.lane;
-        const others = [...prevNotes, ...out].filter((o) => o !== note && !dropped.has(o));
-        const free = [0, 1, 2, 3]
-          .filter((l) => !taken.has(l) && moment[0].t - lastAt[l] >= gap)
-          .sort((a, b) => (handOf(a) === prevHand) - (handOf(b) === prevHand) || Math.abs(a - mirror) - Math.abs(b - mirror) || a - b)
-          .find((l) => holdSafe({ t: note.t, lane: l, len: note.len }, others, diff, timing));
-        if (free === undefined) {
-          dropped.add(note);
-          taken.delete(note.lane);
-          continue;
-        }
-        taken.delete(note.lane);
-        taken.add(free);
-        note.lane = free;
-      }
-      lastAt[note.lane] = note.t;
-    }
-    const kept = moment.filter((n) => !dropped.has(n));
-    if (kept.length > 0) prevHand = kept.length === 1 ? handOf(kept[0].lane) : null;
+// The moments a chart keeps before its lanes are known: only the gap between moments counts, and the earlier note wins.
+function spacedMoments(notes, diff) {
+  const noteGap = diff.minNoteGapMs ?? 0;
+  const seen = new Set();
+  let lastT = -Infinity;
+  const out = [];
+  for (const note of [...notes].sort(byTime)) {
+    if (note.t !== lastT && note.t - lastT < noteGap) continue;
+    const key = `${note.t}:${note.lane}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(note);
+    lastT = note.t;
   }
-  return out.filter((n) => !dropped.has(n));
+  return out;
 }
 
-module.exports = { applyDifficulty, capMoments, enforceFloors, groupByTime, limitJacks, pulsePowerFloor, selectByFloors, spreadLanes };
+module.exports = { applyDifficulty, capMoments, enforceFloors, groupByTime, pulsePowerFloor, selectByFloors, slotRank, spacedMoments };

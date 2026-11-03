@@ -12,8 +12,9 @@ import { fileURLToPath } from "node:url";
 const LEVELS = ["easy", "normal", "hard"];
 const WORK = "/work";
 // The saved runs of the generator, oldest first: their charts are shown beside the live one.
-const SNAPSHOTS = { v19: `${WORK}/data/algo_charts`, v20: `${WORK}/e1/data/algo_charts`, v21: `${WORK}/h21/data/algo_charts` };
-const RUN = `${WORK}/h21/run-train`;
+const SNAPSHOTS = { v19: `${WORK}/data/algo_charts`, v21: `${WORK}/h21/data/algo_charts`, v25: `${WORK}/s5/data/algo_charts` };
+const RUN = `${WORK}/s7/run-train`;
+const FEATURES = `${WORK}/p2run/data/features`; // v4: the first version with the one of the bar found phrase by phrase
 
 if (!process.env.MEWBEAT_EXPORT_INSIDE) {
   const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -71,7 +72,7 @@ for (const row of train) {
   mkdirSync("/out/audio", { recursive: true });
   mkdirSync("/out/features", { recursive: true });
   copyFileSync(audioFrom, `/out/audio/${audioName}`);
-  copyFileSync(`${WORK}/e1/data/features/${id}.json`, `/out/features/${id}.json`);
+  copyFileSync(`${FEATURES}/${id}.json`, `/out/features/${id}.json`);
 
   const levels = {};
   for (const level of LEVELS) {
@@ -98,7 +99,7 @@ for (const row of train) {
     phase: number(g?.phase),
     audio: audioName,
     humanLevels: Object.keys(levels),
-    // Distance of the saved v21 chart from the human one, per level (level_distance.py): where to look first.
+    // Distance of the saved v26 chart from the human one, per level (level_distance.py): where to look first.
     distance: Object.fromEntries(LEVELS.map((level) => [level, number(distance[id]?.[level])])),
   });
   console.log(`${songs.length}/${train.length} ${row.artist} - ${row.title}`);

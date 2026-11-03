@@ -32,6 +32,9 @@ export const STAGES = {
   finalFloors: "końcowe odstępy",
   oneHold: "jeden hold naraz",
   holdShare: "limit udziału holdów",
+  spacedMoments: "odstępy między chwilami",
+  chords: "plan akordów",
+  lanes: "układ torów wg wzorców ludzi",
 };
 
 export const RULES = {
@@ -53,6 +56,7 @@ export const KINDS = {
   accents: "nuta na początku sekcji",
   sustainHolds: "hold z długiego dźwięku",
   cut: "z rytmu trudniejszego poziomu",
+  chords: "druga nuta akordu",
 };
 
 export const KIND_SHORT = {
@@ -63,6 +67,7 @@ export const KIND_SHORT = {
   fillRests: "dźwięk w pauzie",
   accents: "początek sekcji",
   cut: "z wyższego poziomu",
+  chords: "akord",
 };
 
 export const SOURCES = { bass: "bas", drums: "perkusja", lead: "melodia (lead)", bands: "pasma", rhythm: "rytm" };

@@ -1,9 +1,7 @@
 // Phrase seams where the leading layer changes: a sung line handing over to an instrument, or back. A mapper keeps the
-// beat going through such a switch instead of letting the chart fall silent while the new part settles in, and starts
-// the new part where the hands already are:
+// beat going through such a switch instead of letting the chart fall silent while the new part settles in:
 //   bridgeSeam: a silence across the seam while the drums still play is filled with those drums;
-//   fillGaps: the same for any rest of a phrase (a sung line pausing while the band plays on);
-//   orientDrums: a drum pattern (symmetric: kicks outside, snares inside) is mirrored when that continues the hands.
+//   fillGaps: the same for any rest of a phrase (a sung line pausing while the band plays on).
 const { SILENCE_ENERGY } = require("./difficulty");
 const { gridSlot, snapToQuarterGrid } = require("./grid");
 const { beatMsOf } = require("./holds");
@@ -11,10 +9,8 @@ const { beatMsOf } = require("./holds");
 const BRIDGE_MIN_BEATS = 2; // a silence at least this long across the seam is bridged
 const BRIDGE_REACH_BEATS = 4; // ...up to this far on either side of the seam (a longer break is a break)
 const BRIDGE_CLEARANCE_BEATS = 1 / 2; // bridge hits keep this far from the notes on either side
-const SEAM_NOTES = 4; // the notes on either side whose lanes count as "where the hands are"
 const KICK_LANES = [0, 3];
 const SNARE_LANES = [1, 2];
-const LANES = 4;
 
 const endOf = (n) => n.t + (n.len > 0 ? n.len : 0);
 const firstMoment = (notes) => {
@@ -106,43 +102,4 @@ function fillGaps(before, notes, features, timing, energy, untilMs = null) {
   return out;
 }
 
-const centre = (notes) => notes.reduce((sum, n) => sum + n.lane, 0) / notes.length;
-
-// How far `after` starts from where `before` left the hands: the lane-centre jump, plus a lane the first moment
-// repeats from the last one.
-const HAND_TOLERANCE = 0.03; // a chart this close to 50/50 between the hands is balanced
-const MAX_SEAM_WORSENING = 1;
-
-function seamCost(before, after) {
-  const tail = [...before].sort((a, b) => a.t - b.t).slice(-SEAM_NOTES);
-  const head = [...after].sort((a, b) => a.t - b.t).slice(0, SEAM_NOTES);
-  const lanes = new Set(lastMoment(before).map((n) => n.lane));
-  const jack = firstMoment(after).some((n) => lanes.has(n.lane)) ? 1 : 0;
-  return Math.abs(centre(head) - centre(tail)) + jack;
-}
-
-// orientDrums(notes, before) -> notes
-// A drum-led phrase mirrored (lane l -> 3 - l keeps kicks outside and snares inside) when that starts it closer to
-// where `before` left the hands.
-function orientDrums(notes, before) {
-  if (notes.length === 0 || before.length === 0) return notes;
-  const mirrored = notes.map((n) => ({ ...n, lane: LANES - 1 - n.lane }));
-  return seamCost(before, mirrored) < seamCost(before, notes) ? mirrored : notes;
-}
-
-// balanceHands(notes, before, tail) -> notes
-// A phrase mirrored when the chart so far (`before`) plus this phrase leans to one hand and mirroring evens it out,
-// unless that makes the seam with `tail` clearly worse (more than a lane's jump).
-function balanceHands(notes, before, tail) {
-  if (notes.length === 0) return notes;
-  const left = (list) => list.filter((n) => n.lane < LANES / 2).length;
-  const total = before.length + notes.length;
-  const kept = (left(before) + left(notes)) / total - 0.5;
-  const flipped = (left(before) + notes.length - left(notes)) / total - 0.5;
-  if (Math.abs(kept) <= HAND_TOLERANCE || Math.abs(flipped) >= Math.abs(kept)) return notes;
-  const mirrored = notes.map((n) => ({ ...n, lane: LANES - 1 - n.lane }));
-  if (tail.length === 0) return mirrored;
-  return seamCost(tail, mirrored) > seamCost(tail, notes) + MAX_SEAM_WORSENING ? notes : mirrored;
-}
-
-module.exports = { BRIDGE_MIN_BEATS, balanceHands, bridgeSeam, fillGaps, orientDrums };
+module.exports = { BRIDGE_MIN_BEATS, bridgeSeam, fillGaps };

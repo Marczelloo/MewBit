@@ -101,24 +101,6 @@ function sectionStarts(features, timing, energy) {
     .map((b) => ({ t: downs[b], rise: meanOf(b, b + RISE_BARS) / Math.max(1e-6, meanOf(b - RISE_BARS, b)) }));
 }
 
-// The lane a new note at `t` takes: clear of its lane's notes on both sides by the floor, resting longest.
-function freeLane(notes, t, lanes, diff) {
-  const gap = diff.minLaneGapMs ?? 0;
-  const rested = lanes.map((lane) => {
-    let last = -Infinity;
-    for (const o of notes) {
-      if (o.lane !== lane) continue;
-      if (o.t >= t) {
-        if (o.t - t < gap) return null;
-      } else {
-        last = Math.max(last, o.t + (o.len > 0 ? o.len : 0));
-      }
-    }
-    return t - last < gap ? null : { lane, rest: t - last };
-  });
-  return rested.filter(Boolean).sort((a, b) => b.rest - a.rest || a.lane - b.lane)[0]?.lane;
-}
-
 // Would `more` notes at `t` break the density cap in a window around it?
 function crowded(notes, t, more, diff) {
   const allowed = ((diff.maxNps ?? Infinity) * DENSITY_WINDOW_MS) / 1000;
@@ -126,17 +108,22 @@ function crowded(notes, t, more, diff) {
   return starts.some((from) => notes.filter((n) => n.t >= from && n.t < from + DENSITY_WINDOW_MS).length + more > allowed);
 }
 
-// accentSections(notes, sections, diff, timing, energy) -> notes: a section opens on a note, and on a chord in both
-// hands when it is loud enough against the one before (diff.sectionChordRise) and the density cap leaves room. What
-// stands too near that moment gives way to it. Holds are settled afterwards, so one running over the moment lets go on it.
+// A section loud enough against the one before opens on a chord (chords.js).
+function opensOnChord({ t, rise }, diff, energy) {
+  return rise >= (diff.sectionChordRise ?? Infinity) && energy.at(t) >= (diff.sectionChordEnergy ?? 0);
+}
+
+// accentSections(notes, sections, diff, timing, energy) -> notes: a section opens on a note. What stands too near that
+// moment gives way to it, more so before a chord. Holds are settled afterwards, so one running over the moment lets go
+// on it. A new note's lane only holds its place until the moments are laid out (lanes.js).
 function accentSections(notes, sections, diff, timing, energy) {
   let out = [...notes];
   const noteGap = diff.minNoteGapMs ?? 0;
-  for (const { t, rise } of sections) {
+  for (const section of sections) {
+    const { t } = section;
     if (t < LEAD_IN_MS || energy.at(t) < SILENCE_ENERGY) continue;
     const beat = beatMsOf(timing, t);
-    const loudEnough = rise >= (diff.sectionChordRise ?? Infinity) && energy.at(t) >= (diff.chord?.minEnergy ?? 0);
-    const clear = Math.max(noteGap, (diff.gapBeats ?? 0) * beat * SNAPPED_FLOOR_SLACK, loudEnough ? (diff.chordGapBeats ?? 0) * beat * GAP_SLACK : 0);
+    const clear = Math.max(noteGap, (diff.gapBeats ?? 0) * beat * SNAPPED_FLOOR_SLACK, opensOnChord(section, diff, energy) ? (diff.chordGapBeats ?? 0) * beat * GAP_SLACK : 0);
     const near = out.filter((n) => n.t !== t && Math.abs(n.t - t) < clear);
     const at = out.filter((n) => n.t === t);
     let without = near.length > 0 ? out.filter((n) => !near.includes(n)) : out;
@@ -144,23 +131,9 @@ function accentSections(notes, sections, diff, timing, energy) {
       const nearest = without.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
       without = without.filter((n) => n !== nearest);
     }
-    const added = [];
-    if (at.length === 0) {
-      const lane = freeLane(without, t, [0, 1, 2, 3], diff);
-      if (lane === undefined) continue;
-      added.push({ t, lane });
-    }
-    const first = at[0] ?? added[0];
-    const blocked = diff.holdOtherHand === "blocked" && first.len > 0;
-    if (loudEnough && at.length < 2 && !blocked && !crowded(without, t, added.length + 1, diff)) {
-      const otherHand = first.lane < 2 ? [3, 2] : [0, 1];
-      const lanes = otherHand.includes(3 - first.lane) ? [3 - first.lane, otherHand.find((l) => l !== 3 - first.lane)] : otherHand;
-      const lane = lanes.find((l) => freeLane(without, t, [l], diff) !== undefined);
-      if (lane !== undefined) added.push({ t, lane });
-    }
-    out = [...without, ...added];
+    out = at.length === 0 ? [...without, { t, lane: 0 }] : without;
   }
   return out.sort((a, b) => a.t - b.t || a.lane - b.lane);
 }
 
-module.exports = { accentSections, sectionStarts };
+module.exports = { accentSections, opensOnChord, sectionStarts };

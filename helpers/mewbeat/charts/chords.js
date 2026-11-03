@@ -1,0 +1,142 @@
+// How many notes each moment plays. The moments are settled by now; a chord is a choice about one of them, not a new
+// one, so it never takes a place in the rhythm. People put chords on the strong beats of the loud bars and keep them
+// when they make an easier level: Hard plays a chord at a rate set by the place in the bar, the bar's loudness and how
+// strong the sound is, Normal keeps most of Hard's and adds few of its own, Easy keeps few of Normal's. A section opens
+// on one when it is loud enough, and a repeat of a phrase plays the chords of its source.
+const { beatPosition } = require("./grid");
+const { groupByTime, slotRank } = require("./difficultyFilter");
+const { beatMsOf } = require("./holds");
+const { isRepeatOf } = require("./phrases");
+const { sourceTime } = require("./repeats");
+const { strengthAt } = require("./rhythm");
+const { opensOnChord } = require("./sections");
+const { nearestIndex } = require("./util");
+
+const GRID_SLACK = 0.9; // as in the difficulty's other gaps in beats
+const BEATS_PER_BAR = 4;
+const FALLBACK_BAR_MS = 2000;
+const QUIET_BAR_SCALE = 0.4; // the rate of the quietest bar of a song, the loudest gets 2 - this
+const MIN_STRENGTH_SCALE = 0.5;
+const MAX_STRENGTH_SCALE = 1.5;
+const NO_SOUND_SCALE = 0.5; // a moment no sound is near
+const FAST_BEATS = 0.45; // a moment with a neighbour closer than this is in a fast run...
+const FAST_SCALE = 0.3; // ...where people play far fewer chords than elsewhere
+const SAME_MOMENT_MS = 3;
+
+const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
+const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+
+// Each moment's bar's loudness as a scale of the chord rate, averaging 1 over the bars: the quietest low, the loudest high.
+function barScales(moments, ctx) {
+  const { timing, energy } = ctx;
+  const barOf = (t) => (timing?.snapped ? Math.floor(beatPosition(timing, t) / BEATS_PER_BAR) : Math.floor(t / FALLBACK_BAR_MS));
+  const bars = new Map();
+  for (const moment of moments) {
+    const bar = barOf(moment[0].t);
+    const e = energy.at(moment[0].t);
+    const seen = bars.get(bar);
+    if (seen) {
+      seen.sum += e;
+      seen.n++;
+    } else {
+      bars.set(bar, { sum: e, n: 1 });
+    }
+  }
+  const ranked = [...bars.entries()].sort((a, b) => a[1].sum / a[1].n - b[1].sum / b[1].n);
+  const scale = new Map(ranked.map(([bar], i) => [bar, QUIET_BAR_SCALE + 2 * (1 - QUIET_BAR_SCALE) * (ranked.length > 1 ? i / (ranked.length - 1) : 0.5)]));
+  return (t) => scale.get(barOf(t));
+}
+
+// How strong the sound at each moment is against the song's mean, within limits.
+function strengthScales(moments, ctx) {
+  const heard = moments.map((m) => strengthAt(ctx, m[0].t));
+  const known = heard.filter((s) => s !== null);
+  const mean = known.length > 0 ? known.reduce((sum, s) => sum + s, 0) / known.length : 1;
+  return heard.map((s) => (s === null || !(mean > 0) ? NO_SOUND_SCALE : clamp(s / mean, MIN_STRENGTH_SCALE, MAX_STRENGTH_SCALE)));
+}
+
+// The first lanes a moment does not use yet: the notes added here only hold a place until lanes.js lays the moment out.
+function freeLanes(moment, count) {
+  const taken = new Set(moment.map((n) => n.lane));
+  return [0, 1, 2, 3].filter((l) => !taken.has(l)).slice(0, count);
+}
+
+// planChords(notes, ctx, diff, upper) -> notes with every moment at the size it plays.
+// `upper` (rhythm.js) is the level above, for a level cut from it.
+function planChords(notes, ctx, diff, upper = null) {
+  const { timing, phrases, sections, energy } = ctx;
+  const moments = groupByTime(notes);
+  const barScale = barScales(moments, ctx);
+  const strength = strengthScales(moments, ctx);
+  const opening = new Set(sections.filter((s) => opensOnChord(s, diff, energy)).map((s) => s.t));
+  const carry = [0, 0, 0, 0]; // what each place in the bar has saved towards its next chord
+  const carryNew = [0, 0, 0, 0];
+  const carryTriple = [0, 0, 0, 0];
+  const times = [];
+  const sizes = [];
+  const out = [];
+  let phraseAt = 0;
+  let running = [];
+
+  moments.forEach((moment, m) => {
+    const { t } = moment[0];
+    while (phraseAt + 1 < phrases.length && t >= phrases[phraseAt + 1].startMs) phraseAt++;
+    running = running.filter((h) => h.t + h.len > t);
+    const holds = moment.filter((n) => n.len > 0);
+
+    // A chord needs room around it, and what the holds leave of the hands.
+    const beatMs = beatMsOf(timing, t);
+    const nearest = Math.min(...[moments[m - 1], moments[m + 1]].map((o) => (o ? Math.abs(o[0].t - t) : Infinity)));
+    const tight = nearest < Math.max((diff.chordGapBeats ?? 0) * beatMs * GRID_SLACK, diff.chordMinGapMs ?? 0);
+    const handsFree = !(diff.holdOtherHand === "blocked" && holds.length > 0) && running.length < 2 && (running.length === 0 || diff.holdOtherHand === "free");
+    const canChord = !tight && handsFree;
+
+    const rank = slotRank(timing, t);
+    let want = 1;
+    const repeat = phrases.length > 0 && isRepeatOf(phrases[phraseAt], phraseAt);
+    const inSource = repeat ? nearestIndex(times, sourceTime(phrases[phraseAt], timing)(t)) : -1;
+    if (opening.has(t) && canChord) {
+      want = 2;
+    } else if (inSource >= 0 && Math.abs(times[inSource] - sourceTime(phrases[phraseAt], timing)(t)) <= SAME_MOMENT_MS) {
+      want = canChord ? sizes[inSource] : 1;
+    } else if (canChord) {
+      const scale = strength[m] * (nearest < FAST_BEATS * beatMs ? FAST_SCALE : 1);
+      if (diff.chordRates) {
+        carry[rank] += diff.chordRates[rank] * barScale(t) * scale;
+      } else if ((upper?.at.get(t)?.length ?? 0) >= 2) {
+        carry[rank] += (diff.chordKeep?.[rank] ?? 0) * scale;
+      } else {
+        carryNew[rank] += (diff.chordNew?.[rank] ?? 0) * scale;
+      }
+      if (carry[rank] >= 1) {
+        carry[rank] -= 1;
+        want = 2;
+      } else if (carryNew[rank] >= 1) {
+        carryNew[rank] -= 1;
+        want = 2;
+      }
+      if (want === 2 && diff.chordTriples) {
+        carryTriple[rank] += diff.chordTriples[rank];
+        if (carryTriple[rank] >= 1) {
+          carryTriple[rank] -= 1;
+          want = 3;
+        }
+      }
+    }
+
+    // Holds are kept first and at most two share a moment; a chord over a running hold or with a held note stays small.
+    if (holds.length > 0 || running.length > 0) want = Math.min(want, 2);
+    want = Math.max(want, Math.min(holds.length, 2));
+    if (running.length > 0 && diff.holdOtherHand !== "free") want = 1;
+
+    const kept = [...holds, ...moment.filter((n) => !(n.len > 0))].slice(0, want);
+    const added = freeLanes(kept, want - kept.length).map((lane) => ({ t, lane }));
+    out.push(...kept, ...added);
+    running.push(...kept.filter((n) => n.len > 0));
+    times.push(t);
+    sizes.push(kept.length + added.length);
+  });
+  return out.sort(byTime);
+}
+
+module.exports = { planChords };

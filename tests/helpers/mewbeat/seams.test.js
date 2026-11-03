@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { patternEvents } = require("../../../helpers/mewbeat/charts/patterns");
-const { BRIDGE_MIN_BEATS, bridgeSeam, fillGaps, orientDrums } = require("../../../helpers/mewbeat/charts/seams");
+const { BRIDGE_MIN_BEATS, bridgeSeam, fillGaps } = require("../../../helpers/mewbeat/charts/seams");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures } = require("./fixtures");
 
@@ -82,21 +82,6 @@ describe("fillGaps", () => {
   it("leaves a short rest and a silent stretch alone", () => {
     assert.deepEqual(fillGaps([], [{ t: 1500, lane: 0 }, { t: 2400, lane: 1 }], features, timing, energy), []);
     assert.deepEqual(fillGaps([], [{ t: 0, lane: 0 }, { t: 4000, lane: 1 }], features, timing, { at: () => 0 }), []);
-  });
-});
-
-describe("orientDrums", () => {
-  const before = [{ t: 0, lane: 3 }, { t: 500, lane: 3 }, { t: 1000, lane: 2 }, { t: 1500, lane: 3 }];
-
-  it("mirrors a drum pattern that would start on the other hand", () => {
-    const notes = [{ t: 2000, lane: 0 }, { t: 2500, lane: 1 }, { t: 3000, lane: 0 }, { t: 3500, lane: 1 }];
-    assert.deepEqual(orientDrums(notes, before).map((n) => n.lane), [3, 2, 3, 2]);
-  });
-
-  it("keeps a pattern that already continues the hands", () => {
-    const notes = [{ t: 2000, lane: 2 }, { t: 2500, lane: 3 }, { t: 3000, lane: 1 }, { t: 3500, lane: 2 }];
-    assert.equal(orientDrums(notes, before), notes);
-    assert.deepEqual(orientDrums(notes, []), notes);
   });
 });
 

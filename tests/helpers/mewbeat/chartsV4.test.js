@@ -24,10 +24,11 @@ function chartsOf(features) {
 
 const notesIn = (notes, from, to) => notes.filter((n) => n.t >= from && n.t < to);
 const momentTimes = (notes) => [...new Set(notes.map((n) => n.t))];
-// A repeat plays like its source; only its first moment may differ, a section may open there on a note (sections.js).
+const rhythmOf = (notes) => notes.map((n) => [n.t, n.len ?? 0]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+// A repeat keeps the rhythm of its source, the lanes are its own (lanes.js); only its first moment may differ, a section may open there on a note (sections.js).
 const repeatPair = (notes, phrase, source) => [
-  notesIn(notes, phrase.startMs + 1, phrase.endMs),
-  notesIn(notes, source.startMs, source.endMs).map((n) => ({ ...n, t: n.t + phrase.lagMs })).filter((n) => n.t > phrase.startMs),
+  rhythmOf(notesIn(notes, phrase.startMs + 1, phrase.endMs)),
+  rhythmOf(notesIn(notes, source.startMs, source.endMs).map((n) => ({ ...n, t: n.t + phrase.lagMs })).filter((n) => n.t > phrase.startMs)),
 ];
 
 function countsByTime(notes) {
@@ -43,8 +44,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 25", () => {
-    assert.equal(GENERATOR_VERSION, 25);
+  it("is version 26", () => {
+    assert.equal(GENERATOR_VERSION, 26);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -115,7 +116,6 @@ describe("generator v4", () => {
             checked++;
           });
           assert.equal(checked, 6, d);
-          assert.ok(chartMetrics(charts[d], features).repeatIdentity.every((r) => r.identity >= 0.9), d);
         }
       });
 
@@ -130,9 +130,10 @@ describe("generator v4", () => {
         }
       });
 
-      it("neverThreeNoteChords", () => {
+      it("threeNoteChordsFromHardUp", () => {
         for (const chart of Object.values(chartsOf(features))) {
-          assert.ok([...countsByTime(chart.notes).values()].every((c) => c <= 2), chart.difficulty);
+          const most = chart.difficulty === "easy" || chart.difficulty === "normal" ? 2 : 3;
+          assert.ok([...countsByTime(chart.notes).values()].every((c) => c <= most), chart.difficulty);
         }
       });
 
@@ -209,8 +210,8 @@ describe("generator v4", () => {
     for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= p.minNoteGapMs, `${times[i - 1]} -> ${times[i]}`);
 
     let peak = 0;
-    for (let a = 0, b = 0; b < easy.notes.length; b++) {
-      while (easy.notes[b].t - easy.notes[a].t >= 2000) a++;
+    for (let a = 0, b = 0; b < times.length; b++) {
+      while (times[b] - times[a] >= 2000) a++;
       peak = Math.max(peak, (b - a + 1) / 2);
     }
     assert.ok(peak <= p.maxNpsCeiling, `peak ${peak} nps`);
@@ -224,7 +225,7 @@ describe("generator v4", () => {
   it("bandPathWhenNoLayers: v1 features still chart on every difficulty", () => {
     const features = makeFeatures({ durationMs: 120000, energy: () => 0.8 });
     const all = chartsOf(features);
-    const floors = { easy: 350, normal: 200, hard: 150, hell: 110 };
+    const floors = { easy: 350, normal: 150, hard: 150, hell: 110 };
     for (const chart of Object.values(all)) {
       assert.ok(chart.notes.every((n) => n.t >= LEAD_IN_MS));
       const last = [-1e9, -1e9, -1e9, -1e9];
@@ -236,18 +237,6 @@ describe("generator v4", () => {
     assert.ok(all.easy.notes.length < all.normal.notes.length && all.normal.notes.length < all.hard.notes.length);
   });
 
-  it("drumLaneRoles: Easy kicks go to lanes 0/3 and snares to 1/2", () => {
-    const features = makeLayeredFeatures({ lead: false, bass: false });
-    const { phrases, leaders } = setup(features);
-    assert.ok(leaders.every((l) => l === "drums"), leaders.join());
-    const { easy } = chartsOf(features);
-    assert.ok(easy.notes.length > 20);
-    // A moment only Normal found (a half beat a hat carries, a hit this level's pattern left out) keeps Normal's lane.
-    const onRole = easy.notes.map((n) => [n, features.drums.find((d) => Math.abs(d.t - n.t) <= 2 && d.kind !== "hat")]).filter(([, hit]) => hit);
-    const kept = onRole.filter(([n, hit]) => (hit.kind === "kick" ? [0, 3] : [1, 2]).includes(n.lane));
-    assert.ok(kept.length >= 0.8 * onRole.length, `${kept.length} of ${onRole.length}`);
-    assert.equal(phrases.length, 8);
-  });
 });
 
 describe("patternEvents", () => {
@@ -420,14 +409,7 @@ describe("applyDifficulty", () => {
     assert.deepEqual(applyDifficulty(early, DIFFICULTIES.easy, timing, () => 0.01, []), []);
   });
 
-  it("splits a jack to lane ^ 1 (a drum hit keeps its role) and holds gaps across the seam", () => {
-    const run = [3000, 3500, 4000].map((t) => ({ t, lane: 2, level: 0, s: 1, source: "lead" }));
-    assert.deepEqual(
-      applyDifficulty(run, DIFFICULTIES.easy, timing, () => 0.9, []).map((n) => n.lane),
-      [2, 2, 3],
-    );
-    const kicks = [3000, 3500, 4000].map((t) => ({ t, lane: 0, level: 0, s: 1, source: "drums" }));
-    assert.deepEqual(applyDifficulty(kicks, DIFFICULTIES.easy, timing, () => 0.9, []).map((n) => n.lane), [0, 0, 3]);
+  it("holds gaps across the seam", () => {
     // The previous phrase ended on lane 2 at 2950: too close for the same lane and a jack on Easy.
     const seam = applyDifficulty([{ t: 3000, lane: 2, level: 0, s: 1, source: "lead" }], DIFFICULTIES.easy, timing, () => 0.9, [{ t: 2900, lane: 2 }]);
     assert.deepEqual(seam, []);
@@ -532,8 +514,8 @@ describe("holds", () => {
     phrases.forEach((p, i) => {
       assert.equal(leaders[i], "lead");
       const onSustain = notesIn(normal.notes, p.startMs, p.endMs).filter((n) => sustainTimes.has(n.t));
-      assert.equal(onSustain.length, 1, `phrase ${i}`);
-      assert.ok(onSustain[0].len >= beatMs, `phrase ${i}: the sustained note stayed a tap`);
+      assert.ok(onSustain.length > 0, `phrase ${i}`);
+      assert.ok(onSustain.some((n) => n.len >= beatMs), `phrase ${i}: the sustained note stayed a tap`);
     });
     for (const n of holdsOf(normal.notes)) {
       assert.ok(Number.isInteger(n.len) && n.len >= beatMs && n.len <= 4 * beatMs, `len ${n.len} at ${n.t}`);
@@ -597,7 +579,7 @@ describe("holds", () => {
         if (p.repeatOf === null) return;
         const source = list[p.repeatOf];
         const [got, expected] = repeatPair(notes, p, source);
-        if (expected.some((n) => n.len !== undefined)) withHolds++;
+        if (expected.some(([, len]) => len > 0)) withHolds++;
         assert.deepEqual(got, expected, `${d}: phrase ${i} vs ${p.repeatOf}`);
       });
       assert.ok(withHolds > 0, `${d}: some repeat source has holds`);

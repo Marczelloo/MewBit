@@ -1,7 +1,7 @@
 // A mapper writes the moments of the hardest level first and makes the easier ones by leaving moments out: beats stay,
 // half beats go with the tempo, quarter beats go first. Hard's rhythm is the music's beats and half beats wherever a
 // sound is heard on them, plus what the patterns found; Normal cuts Hard's moments and Easy cuts Normal's. Each level
-// still lays out its own lanes.
+// then lays out its own chords and lanes over them (chords.js, lanes.js).
 const { beatInBar, gridSlot } = require("./grid");
 const { lowerBound, nearestIndex } = require("./util");
 
@@ -11,6 +11,7 @@ const DEFAULT_STRENGTH = 0.3; // a moment no sound is near: a fill or an accent 
 const RUN_GAP_BEATS = 0.6; // moments no further apart than this are one run of half beats
 const POSITIONS_PER_BEAT = 4;
 const TONAL_BONUS = 0.25; // a note of the tune claims its place before a louder hit next to it
+const CHORD_BONUS = 0.3; // people keep nearly every chord of the level above and half of its single notes
 const QUIET_SCALE = 0.6; // a phrase's budget at its quietest and loudest
 const LOUD_SCALE = 1.3;
 const MID_ENERGY = 0.5; // a phrase this loud gets the budget as written
@@ -121,14 +122,14 @@ function cutToRhythm(events, { rhythm, fromMs, toMs }, timing) {
     const i = nearestIndex(moments, e.t);
     if (i < 0 || Math.abs(moments[i] - e.t) > SNAP_MS) continue;
     if (!e.chordOnly) covered.add(moments[i]);
-    own.push({ ...e, t: moments[i], level: metricLevel(timing, moments[i], e.level) });
+    own.push({ ...e, t: moments[i], level: metricLevel(timing, moments[i], e.level), upperChord: at.get(moments[i]).length > 1 });
   }
   const borrowed = [];
   for (let i = lowerBound(moments, fromMs); i < moments.length && moments[i] < toMs; i++) {
     const t = moments[i];
     if (covered.has(t)) continue;
     for (const n of at.get(t)) {
-      const event = { t, lane: n.lane, level: metricLevel(timing, t), s: strength.get(t), source: "rhythm", support: true };
+      const event = { t, lane: n.lane, level: metricLevel(timing, t), s: strength.get(t), source: "rhythm", support: true, upperChord: at.get(t).length > 1 };
       borrowed.push(n.len > 0 ? { ...event, sustainMs: n.len } : event);
     }
   }
@@ -149,7 +150,8 @@ function bestMoments(moments, count, byMoment, timing) {
   }
   const scoreOf = (t) => {
     const { sum, n } = sums.get(positionOf(t));
-    return 0.5 * strengthOf(t) + (0.5 * sum) / n + (byMoment.get(t).some((e) => TONAL_SOURCES.has(e.source)) ? TONAL_BONUS : 0);
+    const events = byMoment.get(t);
+    return 0.5 * strengthOf(t) + (0.5 * sum) / n + (events.some((e) => TONAL_SOURCES.has(e.source)) ? TONAL_BONUS : 0) + (events.some((e) => e.upperChord) ? CHORD_BONUS : 0);
   };
   return moments
     .map((t) => ({ t, score: scoreOf(t) }))

@@ -51,7 +51,8 @@ describe("quiet rhythmic passages", () => {
     const phrases = phrasesOf(features);
     assert.ok(phrases.every((p) => !hasSteadyPulse(p)));
     const normal = generateChart(features, "normal", "k");
-    assert.ok(normal.notes.length / phrases.length < PHRASE_BEATS * DIFFICULTIES.normal.pulseNotesPerBeat * 0.5);
+    const moments = new Set(normal.notes.map((n) => n.t)).size;
+    assert.ok(moments / phrases.length < PHRASE_BEATS * DIFFICULTIES.normal.pulseNotesPerBeat * 0.5);
   });
 
   it("a sung line keeps its lead even with a pulse under it", () => {

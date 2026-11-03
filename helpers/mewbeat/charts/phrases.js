@@ -1,4 +1,5 @@
 const { ENERGY_EXPONENT, FALLBACK_BEAT_MS, SILENCE_ENERGY } = require("./difficulty");
+const { findHeardRepeats } = require("./repeatFinder");
 const { clamp01, lowerBound, nearestIndex } = require("./util");
 const { energyLookup } = require("./timing");
 
@@ -197,8 +198,11 @@ function meanEnergy(lookup, startMs, endMs) {
   return sum / n;
 }
 
+// Does phrase `index` repeat an earlier one: the plugin is sure of it, or it sounds like it (repeatFinder.js).
+const isRepeatOf = (p, index) => Number.isInteger(p.repeatOf) && p.repeatOf >= 0 && p.repeatOf < index && (p.heard === true || finite(p.similarity) >= REPEAT_SIMILARITY);
+
 // buildPhrases(features, timing, durationMs) -> Phrase[]
-// Phrase = { index, startMs, endMs, repeatOf, similarity, lagMs, activity, confidence, rate, energy, pulse, sectionStart }
+// Phrase = { index, startMs, endMs, repeatOf, similarity, lagMs, heard, activity, confidence, rate, energy, pulse, sectionStart }
 function buildPhrases(features, timing, durationMs) {
   const duration = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : finite(features.durationMs);
   if (!(duration > 0)) return [];
@@ -211,14 +215,14 @@ function buildPhrases(features, timing, durationMs) {
   const plugin = validPluginList(features);
   let raw;
   if (plugin) {
-    raw = plugin.map((p) => ({
+    raw = findHeardRepeats(plugin.map((p) => ({
       startMs: p.startMs,
       endMs: p.endMs,
       repeatOf: Number.isInteger(p.repeatOf) && p.repeatOf >= 0 ? p.repeatOf : null,
       similarity: finite(p.similarity),
       lagMs: finite(p.lagMs),
       ...(p.activity || p.confidence ? { activity: layerValues(p.activity), confidence: layerValues(p.confidence) } : {}),
-    }));
+    })), features, timing);
   } else {
     const windows = clipToSections(fallbackWindows(timing ?? { snapped: false }, duration), cuts);
     raw = windows.map(([startMs, endMs]) => ({ startMs, endMs, repeatOf: null, similarity: 0, lagMs: 0 }));
@@ -233,6 +237,7 @@ function buildPhrases(features, timing, durationMs) {
       repeatOf: p.repeatOf,
       similarity: p.similarity,
       lagMs: p.lagMs,
+      heard: p.heard === true,
       activity: layers.activity,
       confidence: layers.confidence,
       rate: ratesOf(features, p.startMs, p.endMs),
@@ -313,10 +318,7 @@ function chooseLeaders(phrases) {
       }
     }
 
-    const source = p.repeatOf;
-    if (Number.isInteger(source) && source >= 0 && source < i && finite(p.similarity) >= REPEAT_SIMILARITY) {
-      leader = leaders[source];
-    }
+    if (isRepeatOf(p, i)) leader = leaders[p.repeatOf];
     leaders.push(leader);
   }
   return leaders;
@@ -340,4 +342,4 @@ function supportLayers(phrase, leader, vocal = false) {
     .sort((a, b) => score[b] - score[a]);
 }
 
-module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isVocalSong, supportLayers };
+module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers };

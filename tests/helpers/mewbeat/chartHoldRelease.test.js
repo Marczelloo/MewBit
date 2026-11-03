@@ -53,7 +53,7 @@ describe("settleHolds", () => {
 
   it("with no moment in reach a hold keeps its length, inside the song", () => {
     assert.equal(settleHolds([{ t: 1000, lane: 0, len: 1000 }], normal, timing)[0].len, 1000);
-    assert.equal(settleHolds([{ t: 1000, lane: 0, len: 1000 }], normal, timing, 1700)[0].len, 500);
+    assert.equal(settleHolds([{ t: 1000, lane: 0, len: 1000 }], normal, timing, 1650)[0].len, 500);
   });
 
   it("does not change its input", () => {
@@ -65,7 +65,7 @@ describe("settleHolds", () => {
 
 describe("clipHolds", () => {
   it("shortens a hold that keeps its minimum, and makes the others taps", () => {
-    assert.deepEqual(clipHolds([{ t: 1000, lane: 0, len: 1000 }], 1700, normal, timing), [{ t: 1000, lane: 0, len: 500 }]);
+    assert.deepEqual(clipHolds([{ t: 1000, lane: 0, len: 1000 }], 1650, normal, timing), [{ t: 1000, lane: 0, len: 500 }]);
     assert.deepEqual(clipHolds([{ t: 1000, lane: 0, len: 1000 }], 1500, normal, timing), [{ t: 1000, lane: 0 }]);
   });
 });
@@ -129,10 +129,9 @@ describe("accentSections", () => {
   const notes = [{ t: 3000, lane: 0 }, { t: 3950, lane: 1 }, { t: 5000, lane: 2 }];
   const at = (out, t) => out.filter((n) => n.t === t);
 
-  it("opens a louder section on a chord in both hands; what stands too near gives way", () => {
+  it("opens a louder section on a moment; what stands too near gives way", () => {
     const out = accentSections(notes, sections, normal, timing, loud);
-    assert.equal(at(out, 4000).length, 2);
-    assert.notEqual(at(out, 4000)[0].lane >> 1, at(out, 4000)[1].lane >> 1);
+    assert.equal(at(out, 4000).length, 1);
     assert.equal(at(out, 3950).length, 0);
     assert.equal(at(out, 3000).length, 1);
   });
@@ -142,9 +141,9 @@ describe("accentSections", () => {
     assert.equal(at(out, 4000).length, 1);
   });
 
-  it("a note already there is kept and gets its partner", () => {
+  it("a note already there is kept", () => {
     const out = accentSections([{ t: 4000, lane: 1 }], sections, normal, timing, loud);
-    assert.deepEqual(at(out, 4000).map((n) => n.lane), [1, 2]);
+    assert.deepEqual(at(out, 4000).map((n) => n.lane), [1]);
   });
 
   it("Easy adds no chord to the head of a hold", () => {

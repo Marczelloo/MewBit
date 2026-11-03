@@ -2,13 +2,12 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { applyDifficulty, spreadLanes } = require("../../../helpers/mewbeat/charts/difficultyFilter");
+const { applyDifficulty } = require("../../../helpers/mewbeat/charts/difficultyFilter");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { beatPosition } = require("../../../helpers/mewbeat/charts/grid");
 const { limitHoldShare, oneHoldAtATime } = require("../../../helpers/mewbeat/charts/holds");
 const { copyRepeat } = require("../../../helpers/mewbeat/charts/repeats");
 const { rhythmOf } = require("../../../helpers/mewbeat/charts/rhythm");
-const { balanceHands } = require("../../../helpers/mewbeat/charts/seams");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
@@ -130,51 +129,9 @@ describe("chords", () => {
     assert.equal(chart(backed, easy).length, 1);
   });
 
-  it("a chord right next to another note is one note", () => {
-    const beats = every(6000, 10000, 500).map((t) => event(t));
-    const chord = [event(4000, "lead", { s: 1 }), event(4000, "lead", { lane: 2, s: 1 })];
-    const notes = chart([...chord, event(4125, "lead", { lane: 0, level: 1 }), ...beats], normal);
-    assert.ok(notes.some((n) => n.t === 4125), "the neighbour stays");
-    assert.equal(notes.filter((n) => n.t === 4000).length, 1);
-  });
-
   it("a downbeat of a quiet phrase gets no chord on Easy", () => {
     const quiet = easy.chord.minEnergy - 0.1;
     assert.equal(applyDifficulty(pair(4000), easy, timing, LOUD, [], quiet, 32000).length, 1);
-  });
-});
-
-describe("spreadLanes", () => {
-  const repeat = [{ t: 3000, lane: 1 }, { t: 3250, lane: 1 }];
-
-  it("moves a same-lane repeat closer than laneGapBeats to a free lane", () => {
-    const out = spreadLanes(repeat, normal, timing);
-    assert.deepEqual(out.map((n) => n.t), [3000, 3250]);
-    assert.notEqual(out[1].lane, 1);
-  });
-
-  it("counts the notes before the phrase", () => {
-    const out = spreadLanes([{ t: 3000, lane: 1 }], normal, timing, [{ t: 2750, lane: 1 }]);
-    assert.notEqual(out[0].lane, 1);
-  });
-
-  it("leaves a repeat a beat apart, and Hard, alone", () => {
-    assert.deepEqual(spreadLanes([{ t: 3000, lane: 1 }, { t: 3500, lane: 1 }], normal, timing).map((n) => n.lane), [1, 1]);
-    assert.equal(spreadLanes(repeat, hard, timing), repeat);
-  });
-});
-
-describe("balanceHands", () => {
-  const left = (t, lane = 0) => ({ t, lane });
-  const before = every(0, 20, 1).map((i) => left(i * 500));
-
-  it("mirrors a phrase when the chart leans to its side", () => {
-    assert.deepEqual(balanceHands([left(20000, 1)], before, []), [{ t: 20000, lane: 2 }]);
-  });
-
-  it("leaves a phrase that already evens the chart out", () => {
-    const right = [{ t: 20000, lane: 3 }];
-    assert.equal(balanceHands(right, before, []), right);
   });
 });
 
