@@ -11,6 +11,17 @@ Klucze w plikach `shared/data/<poziom>/{human,algo}/<set>.json` odpowiadają naz
   tego samego utworu i poziomu (`TimingGrid`). Gdy zestaw nie ma ludzkiej dyfficulty na danym poziomie, chart algorytmu
   mierzę na siatce dyfficulty referencyjnej zestawu (`grid_from`). Czerwona linia zaczyna nową siatkę i nowy takt
   (tak liczy osu!). Pozycja w beatach jest skumulowana, więc odstępy w beatach mają sens także przy zmianach BPM.
+- **Oś czasu.** Mapy ludzi przesuwam na oś czasu zdekodowanego audio: jedno przesunięcie na utwór (`songs/<set>.json` →
+  `timeline_offset`), dopasowane na nutach wszystkich wybranych dyfficulty. Kryterium: najwięcej nut w ±15 ms od onsetu
+  perkusyjnego librosa (po korekcie detektora); środek plateau maksimum, doprecyzowany medianą odchyleń. Niezależna kontrola:
+  to samo na onsetach pasma lowmid z pluginu (`agreement_ms`).
+  - Powód: na pierwszych zestawach oś osu! wyprzedzała audio o 30–50 ms. Bez korekty 1–4% nut ludzi leżało na onsecie, a nuty
+    algorytmu wypadały na 1/16 siatki ludzkiej. Źródła: ffmpeg obcina opóźnienie enkodera MP3 (`start_time` ≈ 23–25 ms),
+    a mapperzy ustawiają offset różnie.
+  - Charty algorytmu i cechy audio zostają nietknięte, bo już są na osi audio.
+  - Na syntetycznym zestawie o znanym przesunięciu 0 estymator daje −2 ms.
+  - Skutek uboczny: jeden parametr dopasowany na nutach ludzi lekko zawyża udział nut ludzi na onsetach. Metryki siatki
+    (podziały, odstępy) się nie zmieniają, bo przesuwa się cała mapa razem z timing pointami.
 - **Spójność timingu.** Dla każdego zestawu sprawdzam, czy wybrane dyfficulty mają identyczne czerwone linie
   (`songs/<set>.json` → `timing_consistent`). Rozbieżności są wypisane w raporcie korpusu.
 - **Chwila** (moment): wszystkie nuty o tym samym czasie. Akord = chwila z ≥ 2 nutami. Tor 0–1 = lewa ręka, 2–3 = prawa.

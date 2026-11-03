@@ -3,34 +3,21 @@
 Zadanie: raport `REPORT.md`, czyli przyczyny nienaturalności map algorytmu, osobno dla Easy, Normal i Hard,
 oraz sprawdzenie hipotezy „Hard wypada lepiej niż Normal”. Kod algorytmu (`helpers/mewbeat/charts/`) nie jest tu zmieniany.
 
-## Stan na 2026-11-02
+## Stan na 2026-11-03
 
-**Etap 1 jest w połowie. Etapy 2 i 3 nie zostały rozpoczęte, bo brakuje danych.** Nic nie zostało zastąpione przypuszczeniami.
+Etap 1 jest w toku. Blokady z 2026-11-02 są zdjęte:
+- **osu! API.** Migawka 6103 zestawów Ranked 4K jest w cache `data/corpus/`.
+- **Zakresy SR.** Ustalone w `shared/levels.md` i `levels.json`.
+- **Korpus.** `shared/corpus.csv` i `corpus_selection.md`.
+- **Pliki `.osz`.** Pobrane za zgodą użytkownika z mirrora osu.direct
+  (`pipeline/corpus/download_mirror.py`). Każdy plik ma zweryfikowane MD5 wybranych dyfficulty względem oficjalnego API.
+  osu! wydaje pliki tylko zalogowanej przeglądarce. Logowanie skryptem blokuje pusty token CSRF i tego nie obchodzę.
 
-Gotowe:
-- `shared/algorithm.md`: jak generator dziś decyduje i czym różnią się ścieżki kodu Easy/Normal/Hard (z kodu, nie z danych).
-- `shared/metrics.md`: wspólne definicje metryk; `shared/levels.md`: metoda wyznaczenia zakresów SR (zakresy jeszcze nieustalone).
-- `shared/onset_bias.json`: kalibracja detektorów onsetów na sygnale o znanych onsetach. librosa jest o 10–14 ms za wcześnie,
-  stemy podobnie; plugin trafia stopę w +3 ms.
-- Pipeline (`pipeline/`), sprawdzony testem dymnym na syntetycznym utworze i syntetycznym `.osz`. Wyniki testu nie są danymi
-  do analizy i nie ma ich w `shared/`.
+Ważne odkrycie metodologiczne: oś czasu osu! wyprzedza zdekodowane audio o 30–50 ms. Mapy ludzi są przesuwane na oś audio
+(`shared/metrics.md`, „Oś czasu”).
 
-Zablokowane:
-
-| Czego brakuje | Dlaczego blokuje | Co trzeba zrobić |
-|---|---|---|
-| `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET` | nie są ustawione w środowisku tej sesji | dodać je w ustawieniach środowiska chmurowego (menu środowiska w pasku tytułu sesji → Edit → zmienne środowiskowe / sekrety); nowa sesja je zobaczy |
-| dostęp do `osu.ppy.sh` | polityka sieci środowiska odrzuca połączenie (proxy 403) | w tych samych ustawieniach dodać `osu.ppy.sh` do Allowed domains (poziom Limited, z zaznaczonym „Allow package managers”) |
-| pliki `.osz` (100 zestawów) | pobieranie wymaga zalogowania do osu!; mirrorów nieoficjalnych nie używam bez zgody | po selekcji powstanie `shared/download-list.md`; pliki trzeba pobrać ręcznie i dostarczyć do pipeline'u (opcje niżej) |
-| folder na mapy, ścieżka do kodu, polecenie generowania | pola w zadaniu nie zostały wypełnione | ustalone z kodu: algorytm `helpers/mewbeat/charts/`, mechanika 4 tory + holdy (spec. `docs/superpowers/specs/2026-10-31-…` i `2026-11-01-…`), porównanie z osu!mania 4K, generowanie `generateChart(features, level)`; do potwierdzenia |
-
-Jak dostarczyć `.osz` do pipeline'u (jedna z opcji):
-1. **Uruchomić pipeline lokalnie** (Windows/Linux: Java 17+, Node 20+, Python 3.11+, ffmpeg; stemy dodatkowo `uv`).
-   To najprostsze, bo pliki już są na dysku. Wyniki trafiają do `shared/`, a potem można je zacommitować.
-2. **Folder przez Remote Control** w tej lub nowej sesji chmurowej. Teraz żaden folder z komputerów DESKTOP-DN2ILGB
-   i DESKTOP-OKLNGL9 nie jest dostępny dla sesji w chmurze (status `not_available`, zwykle z powodu nieaktualnej
-   aplikacji Claude na Windows). Po aktualizacji trzeba dodać folder z mapami do listy Remote Control.
-3. Mirror nieoficjalny: tylko za wyraźną zgodą. Wymagałby też otwarcia jego domeny w polityce sieci.
+Gotowe wcześniej (2026-11-02): `shared/algorithm.md`, `shared/metrics.md`, kalibracja detektorów `shared/onset_bias.json`,
+pipeline sprawdzony testem dymnym na danych syntetycznych.
 
 ## Jak odtworzyć (kolejność kroków)
 
@@ -65,7 +52,11 @@ uv python install 3.10 && uv venv -p 3.10 .stemvenv && VIRTUAL_ENV=.stemvenv uv 
    .venv/bin/python -I mapping-analysis/pipeline/corpus/select_corpus.py --candidates mapping-analysis/data/corpus/candidates.json --levels mapping-analysis/shared/levels.json --snapshot mapping-analysis/data/corpus/snapshot.json --out mapping-analysis/shared
    ```
 
-4. Pobranie `.osz` z `download-list.md` do jednego folderu.
+4. Pobranie `.osz`: ręcznie z `download-list.md` albo (za zgodą na mirror) z weryfikacją MD5 względem API:
+
+   ```bash
+   python3 -I mapping-analysis/pipeline/corpus/download_mirror.py --mirror osudirect --corpus mapping-analysis/shared/corpus.csv --cache mapping-analysis/data/corpus/api-cache --out mapping-analysis/data/osz
+   ```
 5. Pipeline: cechy pluginu, cechy librosa, stemy, charty algorytmu dla testu i metryki per poziom.
    Bez `--stems-*` stemy są pomijane:
 
