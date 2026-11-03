@@ -228,6 +228,16 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const [addOpen, setAddOpen] = useState(false); // the room's "add songs" picker
   const [leaveConfirm, setLeaveConfirm] = useState(null); // { target } while "Leave round?" is up
   const [actionNotice, setActionNotice] = useState(null);
+  // The level picked on song select counts at once: it saves over HTTP while the song starts over the socket, and
+  // a song whose chart is ready would otherwise start on the old level. Once nothing is saving, a new saved value
+  // rules again (settings changed it); a save that failed leaves the pick in place for this session.
+  const [pickedLevel, setPickedLevel] = useState(null);
+  const levelSaves = useRef(0);
+  const savedLevel = settings?.liveDifficulty ?? "normal";
+  useEffect(() => {
+    if (levelSaves.current === 0) setPickedLevel(null);
+  }, [savedLevel]);
+  const savedDifficulty = pickedLevel ?? savedLevel;
   const soloStage = soloState?.stage ?? null;
   const pauseOpen = solo && soloStage === "paused";
   // Settings opens from the menu and covers it; closing it brings the menu back.
@@ -308,10 +318,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     () => ({
       ...settings,
       offsetMs: savedOffset,
+      ...(pickedLevel ? { liveDifficulty: pickedLevel } : null),
       ...(roomMode && me?.difficulty ? { liveDifficulty: me.difficulty } : null),
       ...(spectating ? { spectating: true, ...(targetDifficulty ? { liveDifficulty: targetDifficulty } : null) } : null),
     }),
-    [roomMode, settings, savedOffset, me?.difficulty, spectating, targetDifficulty]
+    [roomMode, settings, savedOffset, pickedLevel, me?.difficulty, spectating, targetDifficulty]
   );
   const roomRound = roomLinkState?.playedRound ?? room?.round ?? null;
   const submitExtra = useMemo(() => (roomMode ? { round: roomRound } : null), [roomMode, roomRound]);
@@ -387,10 +398,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
 
   // Song select's Play. The chosen difficulty becomes the live difficulty the game charts with. Rejects with
   // the server's reason when the song can't be prepared; begin() reports its own failures on the stage.
-  const savedDifficulty = settings?.liveDifficulty ?? "normal";
   const pickSong = useCallback(async (picked, pickedDifficulty) => {
     if (pickedDifficulty && pickedDifficulty !== savedDifficulty) {
-      onAction?.("mewbeat_settings", { settings: { liveDifficulty: pickedDifficulty } });
+      setPickedLevel(pickedDifficulty);
+      levelSaves.current += 1;
+      Promise.resolve(onAction?.("mewbeat_settings", { settings: { liveDifficulty: pickedDifficulty } }))
+        .catch(() => {})
+        .finally(() => { levelSaves.current -= 1; });
     }
     const { audioKey, track: prepared } = await link.prepare({ uri: picked.uri, source: picked.source });
     link.begin(audioKey, prepared);
@@ -553,7 +567,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
   const running = phase === "playing" || phase === "paused";
   // The card shows the difficulty of the chart on stage (it can differ from the saved default after a live change).
-  const difficulty = runDifficulty ?? settings?.liveDifficulty ?? "normal";
+  const difficulty = runDifficulty ?? savedDifficulty;
   // The highway readout shows the watched player's combo, not the autoplay's, and no judgements (it plays itself).
   const readoutHud = useMemo(() => {
     if (!watchingLive) return hud;
@@ -916,7 +930,6 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
             <SongSelect
               context={context}
               request={requests.request}
-              defaultDifficulty={savedDifficulty}
               onAddToRoom={addToRoom}
               onPreview={previewSong}
               onClose={() => { setAddOpen(false); backToGame(); }}

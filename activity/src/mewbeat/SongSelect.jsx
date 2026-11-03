@@ -130,9 +130,10 @@ function MiniDifficulties({ row }) {
 
 // The song-select screen: what the server has played (this server or anywhere) or a search over every source,
 // then a song's difficulties and Play. onPlay(row, difficulty) returns a promise that rejects with the reason
-// the song can't be played; onAddToRoom(row, difficulty), when given, adds an "Add to room queue" button.
+// the song can't be played; onAddToRoom(row), when given, adds an "Add to room queue" button.
 // Without onPlay (picking songs for a room) adding is the main action: Enter and a double click add, the
-// picker stays open for more, and a rejection's message is shown. onPreview(row), when given, previews the song
+// picker stays open for more, and a rejection's message is shown. The levels only inform there: each player
+// picks theirs in the lobby. onPreview(row), when given, previews the song
 // the player picked and resolves whether it plays; onPreview(null) stops it.
 export default function SongSelect({ context, request, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose }) {
   const [scope, setScope] = useState("server");
@@ -155,6 +156,11 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     inputRef.current?.focus();
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Settings can change the default while this screen is up.
+  useEffect(() => {
+    if (DIFFICULTIES.some((d) => d.id === defaultDifficulty)) setDifficulty(defaultDifficulty);
+  }, [defaultDifficulty]);
 
   const text = query.trim();
   const searching = text.length >= MIN_QUERY;
@@ -201,7 +207,8 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
 
   const list = searching ? found : played;
   const rows = list.rows;
-  const selected = useMemo(() => rows.find((row) => row.key === selectedKey) ?? rows[0] ?? null, [rows, selectedKey]);
+  // A list opens on its first row, but a search shows nothing until the player picks a result.
+  const selected = useMemo(() => rows.find((row) => row.key === selectedKey) ?? (text ? null : rows[0]) ?? null, [rows, selectedKey, text]);
 
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
@@ -239,8 +246,8 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
 
   const move = (step) => {
     if (!rows.length) return;
-    const index = Math.max(0, rows.findIndex((row) => row.key === selected?.key));
-    select(rows[Math.min(rows.length - 1, Math.max(0, index + step))]);
+    const index = rows.findIndex((row) => row.key === selected?.key);
+    select(rows[index < 0 ? 0 : Math.min(rows.length - 1, Math.max(0, index + step))]);
   };
 
   const play = useCallback(async () => {
@@ -262,14 +269,14 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     setPlayError(null);
     setAddedNote(null);
     try {
-      await onAddToRoom(selected, difficulty);
+      await onAddToRoom(selected);
       if (mountedRef.current) setAddedNote(`Added "${selected.title}" to the room queue.`);
     } catch (error) {
       if (mountedRef.current) setPlayError(describePrepareError(error));
     } finally {
       if (mountedRef.current) setPreparing(null);
     }
-  }, [selected, preparing, onAddToRoom, difficulty]);
+  }, [selected, preparing, onAddToRoom]);
   const primary = onPlay ? play : addToRoom;
 
   // The game's keys are paused while this screen is up, so typing reaches the search box.
@@ -287,6 +294,15 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     }
   };
 
+  // Typing leaves the picked song behind: its details and its preview go with it.
+  const changeQuery = (next) => {
+    setQuery(next);
+    if (next.trim() === text) return;
+    setSelectedKey(null);
+    setPlayError(null);
+    setAddedNote(null);
+  };
+
   const pickScope = (id) => {
     setQuery("");
     setScope(id);
@@ -302,6 +318,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   const selectedStars = starsOf(selected, difficulty);
   const selectedBest = selected?.bests?.[difficulty] ?? null;
   const busy = preparing !== null;
+  const Tile = onPlay ? "button" : "div";
 
   return (
     <div className="mb-ss" role="group" aria-label="Song select" onKeyDown={onKeyDown}>
@@ -331,35 +348,32 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
                 </div>
               </div>
             </div>
-            <div className="mb-ss-diffs" role="radiogroup" aria-label="Difficulty">
+            <div className="mb-ss-diffs" role={onPlay ? "radiogroup" : undefined} aria-label={onPlay ? "Difficulty" : undefined}>
               {DIFFICULTIES.map(({ id, label }) => {
                 const stars = starsOf(selected, id);
                 const best = selected.bests?.[id];
                 return (
-                  <button
+                  <Tile
                     key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={difficulty === id}
-                    className={`mb-ss-diff mb-ss-d-${id}${difficulty === id ? " mb-ss-diff-on" : ""}`}
-                    onClick={() => setDifficulty(id)}
+                    {...(onPlay ? { type: "button", role: "radio", "aria-checked": difficulty === id, disabled: busy, onClick: () => setDifficulty(id) } : null)}
+                    className={`mb-ss-diff mb-ss-d-${id}${!onPlay ? " mb-ss-diff-static" : difficulty === id ? " mb-ss-diff-on" : ""}`}
                   >
                     <b>{label}</b>
                     <small>{stars === null ? "—" : `★ ${stars.toFixed(1)}`}</small>
                     <span className="mb-ss-bar" aria-hidden="true"><i style={{ width: `${stars === null ? 0 : Math.min(100, (stars / STARS_FULL_BAR) * 100)}%` }} /></span>
                     <small className="mb-ss-best">{best ? <><b className={gradeClass(best.grade)}>{best.grade}</b> {best.score.toLocaleString("en-US")}</> : "no score yet"}</small>
-                  </button>
+                  </Tile>
                 );
               })}
             </div>
             <p className="mb-ss-note">
-              {selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
+              {!onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
             </p>
           </>
         ) : (
           <div className="mb-ss-placeholder">
-            <b>Pick a song</b>
-            <span>Search above, or choose one that was played.</span>
+            <b>{searching ? "Pick a result" : "Pick a song"}</b>
+            <span>{searching ? "Click a song to see its levels and hear a preview." : "Search above, or choose one that was played."}</span>
           </div>
         )}
       </section>
@@ -389,7 +403,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
             placeholder="Search YouTube, Spotify, Deezer…"
             aria-label="Search for a song"
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => changeQuery(event.target.value)}
           />
         </label>
 
