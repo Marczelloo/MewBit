@@ -66,7 +66,7 @@ function makeFeatures({
     durationMs,
     hopMs: 10,
     bands,
-    tempo: { bpm, confidence, beats, downbeats },
+    tempo: { bpm, confidence, beats, downbeats, fitted: true }, // the fixture's grid is the truth: the fit leaves it
     energy: { hopMs, values },
     sections: [],
     highlightMs,

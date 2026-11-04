@@ -1,4 +1,5 @@
 // Quality numbers of a finished chart, for tests and for tuning by ear.
+const { withFittedBeats } = require("./beatFit");
 const { DENSITY_WINDOW_MS } = require("./difficulty");
 const { REPEAT_SIMILARITY, buildPhrases } = require("./phrases");
 const { buildTiming } = require("./timing");
@@ -39,7 +40,7 @@ function chartMetrics(chart, features) {
   }).length;
 
   const durationMs = Number(chart?.durationMs) > 0 ? chart.durationMs : Number(features.durationMs) || 0;
-  const timing = buildTiming(features, durationMs);
+  const timing = buildTiming(withFittedBeats(features), durationMs); // the grid the chart was made on (generate.js)
   const phrases = buildPhrases(features, timing, durationMs);
   const times0 = notes.map((n) => n.t);
   const within = (p) => notes.slice(lowerBound(times0, p.startMs), lowerBound(times0, p.endMs));

@@ -1,5 +1,6 @@
 const { DENSITY_WINDOW_MS, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY, levelOf } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
+const { withFittedBeats } = require("./beatFit");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { planChords } = require("./chords");
 const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
@@ -28,7 +29,7 @@ const PLAYS_ON_ENERGY = 0.35; // a phrase at least this loud plays on, for a lev
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
 function analyse(raw) {
-  const features = withMergedLead(raw);
+  const features = withFittedBeats(withMergedLead(raw));
   const durationMs = Math.round(features.durationMs);
   const timing = buildTiming(features, durationMs);
   const phrases = buildPhrases(features, timing, durationMs);

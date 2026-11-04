@@ -256,8 +256,9 @@ function compressRuns(items) {
 function leaderSequence(chart, features) {
   const { buildPhrases, chooseLeaders } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "phrases.js"));
   const { buildTiming } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "timing.js"));
+  const { withFittedBeats } = require(join(repositoryRoot, "helpers", "mewbeat", "charts", "beatFit.js"));
   const durationMs = Math.round(features.durationMs ?? chart.durationMs);
-  return chooseLeaders(buildPhrases(features, buildTiming(features, durationMs), durationMs));
+  return chooseLeaders(buildPhrases(features, buildTiming(withFittedBeats(features), durationMs), durationMs));
 }
 
 export function describe(chart, features) {
