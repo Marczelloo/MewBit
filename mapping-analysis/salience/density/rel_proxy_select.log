@@ -1,0 +1,13 @@
+80 train songs; test songs not read
+easy rel_os {'f1_median': 0.6824, 'f1_mean': 0.6505, 'beats_kept_mean': 0.7701, 'beats_kept_median': 0.7807, 'no_sound_mean': 0.0003, 'no_sound_median': 0.0, 'songs': 79, 'songs_with_grid': 78}
+easy raw_strength {'f1_median': 0.7154, 'f1_mean': 0.6674, 'beats_kept_mean': 0.8742, 'beats_kept_median': 0.8948, 'no_sound_mean': 0.0, 'no_sound_median': 0.0, 'songs': 79, 'songs_with_grid': 78}
+easy no_strength_col {'f1_median': 0.6708, 'f1_mean': 0.6279, 'beats_kept_mean': 0.9038, 'beats_kept_median': 0.9422, 'no_sound_mean': 0.0009, 'no_sound_median': 0.0, 'songs': 79, 'songs_with_grid': 78}
+easy human {'beats_kept_mean': 0.7068, 'beats_kept_median': 0.7348}
+normal rel_os {'f1_median': 0.7427, 'f1_mean': 0.7425, 'beats_kept_mean': 0.8393, 'beats_kept_median': 0.8434, 'no_sound_mean': 0.0008, 'no_sound_median': 0.0, 'songs': 78, 'songs_with_grid': 77}
+normal raw_strength {'f1_median': 0.7584, 'f1_mean': 0.7644, 'beats_kept_mean': 0.9081, 'beats_kept_median': 0.9171, 'no_sound_mean': 0.0, 'no_sound_median': 0.0, 'songs': 78, 'songs_with_grid': 77}
+normal no_strength_col {'f1_median': 0.7232, 'f1_mean': 0.7172, 'beats_kept_mean': 0.9767, 'beats_kept_median': 0.9854, 'no_sound_mean': 0.0015, 'no_sound_median': 0.001, 'songs': 78, 'songs_with_grid': 77}
+normal human {'beats_kept_mean': 0.8495, 'beats_kept_median': 0.8868}
+hard rel_os {'f1_median': 0.7539, 'f1_mean': 0.7615, 'beats_kept_mean': 0.9079, 'beats_kept_median': 0.9221, 'no_sound_mean': 0.0012, 'no_sound_median': 0.0, 'songs': 75, 'songs_with_grid': 74}
+hard raw_strength {'f1_median': 0.7784, 'f1_mean': 0.7795, 'beats_kept_mean': 0.9581, 'beats_kept_median': 0.9688, 'no_sound_mean': 0.0002, 'no_sound_median': 0.0, 'songs': 75, 'songs_with_grid': 74}
+hard no_strength_col {'f1_median': 0.7538, 'f1_mean': 0.7501, 'beats_kept_mean': 0.9777, 'beats_kept_median': 0.9842, 'no_sound_mean': 0.0024, 'no_sound_median': 0.0012, 'songs': 75, 'songs_with_grid': 74}
+hard human {'beats_kept_mean': 0.9252, 'beats_kept_median': 0.9393}
