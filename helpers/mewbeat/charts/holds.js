@@ -6,6 +6,7 @@
 // (Normal) it lets go with its sound instead, and carries the notes of the other hand under it (underHoldFlagged).
 const { BEAT_TOLERANCE_MS, FALLBACK_BEAT_MS } = require("./difficulty");
 const { lowerBound, nearestIndex } = require("./util");
+const { sustainsOf } = require("./sustains");
 
 const MAX_HOLD_BEATS = 4;
 const MAX_HOLD_SHARE = 0.12; // holds are at most this share of a chart's notes: more reads as a held-note chart
@@ -27,6 +28,24 @@ const EARLY_RELEASE_BEATS = 1 / 4; // letting go before a note of the same hand
 const SHORT_HOLD_NOTE_GAPS = 2; // however short the beat, a hold is at least this many of the difficulty's note gaps long
 
 const FREE_SNAP_BEATS = 1 / 4; // a free hold whose sound ends this near a moment lets go on it
+// A free hold follows a dragged note (sustains.js), which the tracker dates less exactly than a short one.
+const DRAGGED_MATCH_MS = 160; // a note starting this near a tap is the one the tap holds
+const UNHEARD_HOLD_BEATS = 1; // a hold no lead note backs is at most this long: a drawn-out bass note is mostly the tracker's
+
+// draggedNear(sustains, t, least) -> the dragged note that starts near `t` and lasts at least `least` more (the lead
+// before the bass, then the nearest start), or null.
+function draggedNear(sustains, t, least) {
+  let best = null;
+  for (const e of sustains) {
+    if (e.t > t + DRAGGED_MATCH_MS) break;
+    if (e.t < t - DRAGGED_MATCH_MS || e.t + e.len - t < least) continue;
+    if (best === null || (e.source === "lead") > (best.source === "lead") || ((e.source === "lead") === (best.source === "lead") && Math.abs(e.t - t) < Math.abs(best.t - t))) best = e;
+  }
+  return best;
+}
+
+// Where a free hold on `c` follows dragged note `e` to: the whole note of the lead, a beat of the bass's.
+const draggedEnd = (e, beat) => (e.source === "lead" ? e.t + e.len : e.t + Math.min(e.len, UNHEARD_HOLD_BEATS * beat));
 
 // A support event backs the leader up: a backbone drum hit under a tonal leader ("secondary"), or an event of a
 // support layer in a mixed phrase (patterns.js mixedEvents).
@@ -244,17 +263,20 @@ function addSustainHolds(notes, features, diff, timing, limitMs = Infinity) {
   const dropped = new Set();
   const times = out.map((n) => n.t);
   const sustains = [];
-  for (const layer of HOLD_SOURCES) {
+  const free = diff.holdRelease === "free";
+  for (const layer of free ? [] : HOLD_SOURCES) {
     for (const e of Array.isArray(features?.[layer]) ? features[layer] : []) {
       if (Number.isFinite(e?.t) && Number(e.conf) >= SUSTAIN_MIN_CONF && Number(e.len) >= (diff.sustainMinBeats ?? SUSTAIN_MIN_BEATS) * beatMsOf(timing, e.t)) sustains.push(e);
     }
   }
-  sustains.sort((a, b) => a.t - b.t || b.len - a.len);
+  // A free hold follows the dragged notes (sustains.js), whatever the tracker is sure of, lead first.
+  if (free) sustains.push(...sustainsOf(features, timing).filter((e) => e.len >= (diff.sustainMinBeats ?? SUSTAIN_MIN_BEATS) * beatMsOf(timing, e.t)));
+  sustains.sort((a, b) => a.t - b.t || (a.source === "lead" ? 0 : 1) - (b.source === "lead" ? 0 : 1) || b.len - a.len);
   const isDownbeat = (t) => (timing?.downbeats ?? []).some((d) => Math.abs(d - t) <= 1);
 
   for (const e of sustains) {
     const i = nearestIndex(times, e.t);
-    if (i < 0 || Math.abs(times[i] - e.t) > SUSTAIN_MATCH_MS) continue;
+    if (i < 0 || Math.abs(times[i] - e.t) > (free ? DRAGGED_MATCH_MS : SUSTAIN_MATCH_MS)) continue;
     const at = out.filter((n) => n.t === times[i] && !dropped.has(n));
     if (at.some((n) => n.len > 0)) continue;
     // A chord's note in a hand of its own, so the other note stays playable.
@@ -262,10 +284,10 @@ function addSustainHolds(notes, features, diff, timing, limitMs = Infinity) {
     if (!c) continue;
     const beat = beatMsOf(timing, c.t);
     const minLen = diff.holdMinBeats * beat;
-    if (diff.holdRelease === "free") {
+    if (free) {
       // The lanes are placeholders yet and the hold lets go with the sound: notes under it are the other hand's (lanes.js),
       // and settleHolds fits its end to the moments and the rules of what sits under it. Nothing is dropped.
-      const len = Math.round(Math.min(e.len, MAX_HOLD_BEATS * beat, limitMs - laneGap - c.t));
+      const len = Math.round(Math.min(draggedEnd(e, beat) - c.t, MAX_HOLD_BEATS * beat, limitMs - laneGap - c.t));
       if (len >= minLen) c.len = len;
       continue;
     }
@@ -465,13 +487,7 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
   };
   // A free hold (diff.holdRelease) follows the sound it starts with: its length, not the rest. (The sustain to read it from.)
   const free = diff.holdRelease === "free";
-  const soundLen = (t, rest) => {
-    let len = 0;
-    for (let i = lowerBound(sustainTimes, t - SUSTAIN_MATCH_MS); i < sustains.length && sustains[i].t <= t + SUSTAIN_MATCH_MS; i++) {
-      if (sustains[i].len >= GAP_SUSTAIN_SHARE * rest) len = Math.max(len, sustains[i].len);
-    }
-    return len;
-  };
+  const dragged = free ? sustainsOf(features, timing) : [];
   const beats = timing?.beats ?? [];
   const onBeat = (t) => {
     const i = nearestIndex(beats, t);
@@ -487,7 +503,8 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
     const rest = next - c.t;
     if (rest < shortestHold(diff, beat) || rest > (GAP_MAX_BEATS * beat) / SPACING_SLACK) continue;
     if (![c.t, c.t + rest / 2, next].every(loud)) continue;
-    candidates.push({ c, next, rest, rank: 2 * sustained(c.t, rest) + onBeat(c.t), sound: free ? soundLen(c.t, rest) : 0 });
+    const sound = free ? draggedNear(dragged, c.t, GAP_SUSTAIN_SHARE * rest) : null;
+    candidates.push({ c, next, rest, rank: 2 * (free ? +(sound !== null) : sustained(c.t, rest)) + onBeat(c.t), sound });
   }
   candidates.sort((x, y) => y.rank - x.rank || y.rest - x.rest || x.c.t - y.c.t || x.c.lane - y.c.lane);
   for (const { c, next, sound } of candidates) {
@@ -495,10 +512,11 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
     const beat = beatMsOf(timing, c.t);
     if (free) {
       // The lanes are placeholders yet: settleHolds fits the end, lanes.js the hands. A tap is a hold where it can be one.
-      const len = Math.round(Math.min(sound > 0 ? sound : next - c.t, MAX_HOLD_BEATS * beat, limitMs - (diff.minLaneGapMs ?? 0) - c.t));
+      // It lets go with the dragged note it starts; with none, at the next moment but no later than UNHEARD_HOLD_BEATS on.
+      const len = Math.round(Math.min(sound ? draggedEnd(sound, beat) - c.t : Math.min(next - c.t, UNHEARD_HOLD_BEATS * beat), MAX_HOLD_BEATS * beat, limitMs - (diff.minLaneGapMs ?? 0) - c.t));
       if (len < shortestHold(diff, beat)) continue;
       c.len = len;
-      c.gapHold = true;
+      if (!sound) c.gapHold = true; // a hold on a dragged note is a sustain: the share cap keeps it before the gap holds
       budget--;
       continue;
     }

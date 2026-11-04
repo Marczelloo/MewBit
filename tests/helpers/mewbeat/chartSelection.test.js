@@ -458,11 +458,13 @@ describe("what Normal still guarantees", () => {
         }
       });
 
-      it("has no hold under another and no note on a lane while it is held", () => {
-        let heldUntil = -Infinity;
+      it("has at most two holds running and no note on a lane while it is held", () => {
+        // holds.js freeLength: a second hold takes the other hand, a third has none
+        const ends = [];
         for (const h of notes.filter((n) => n.len > 0)) {
-          assert.ok(h.t > heldUntil, `a hold at ${h.t} under another`);
-          heldUntil = h.t + h.len;
+          const running = ends.filter((e) => e > h.t);
+          assert.ok(running.length < 2, `a hold at ${h.t} under two others`);
+          ends.splice(0, ends.length, ...running, h.t + h.len);
           assert.ok(!notes.some((n) => n !== h && n.lane === h.lane && n.t > h.t && n.t < h.t + h.len), `a note on the held lane ${h.lane} at ${h.t}`);
         }
       });
