@@ -9,6 +9,9 @@ from common import load, rank_cols, auc_fast, LV, FEAT  # noqa: E402
 from extract import meter, candidates, TEST  # noqa: E402
 
 DATA = "/repo/.mewbeat-debug/data"
+# PH: generator phrases + timing per train song, one <id>.json each, made on the host by dump_phrases.js (this directory):
+#   node dump_phrases.js <train ids, comma-separated> <host cache dir>/phrases   (the cache dir is mounted as /cache in mewbeat-ma;
+#   the script refuses test ids and takes the charts and features dirs as optional 3rd/4th arguments)
 PH = "/cache/phrases"
 NFOLD = 5
 K_COLS = ["rel_os", "m_beat", "m_half", "m_quarter", "m_other", "m_down", "d_grid"]

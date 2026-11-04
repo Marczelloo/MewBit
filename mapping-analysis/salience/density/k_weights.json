@@ -11,7 +11,7 @@
  ],
  "model": "sklearn LogisticRegression(C=1, max_iter=400); score = intercept + sum(coef[i] * x[i]); probability = 1 / (1 + exp(-score)); rank candidates by score",
  "inputs": {
-  "rel_os": "librosa.onset.onset_strength (mel spectrogram, 22050 Hz, hop 256, n_fft 2048) divided by its uniform mean over 2 s (172 frames, edges repeated) plus 1e-6; then a maximum filter over 5 frames; sampled at the candidate time plus a per-song mel shift (extract.py build). The plugin has to supply it; Features v4 does not carry it.",
+  "rel_os": "librosa.onset.onset_strength (mel spectrogram, 22050 Hz, hop 256, n_fft 2048) divided by its uniform mean over 2 s (172 frames, edges repeated) plus 1e-6; then a maximum filter over 5 frames; sampled at the candidate time plus a per-song mel shift (extract.py build). Per-song mel shift: z-score the plain onset-strength series (before the 2 s division); for each lag L in -8..8 frames take the mean of that z-scored series at frame round(t_c / 11.61 ms) + L over all candidates c of the song (frame index clipped to the series); the shift is 11.61 ms times the L with the highest mean (ties: the first, i.e. the smallest L). Frame length = 1000 * 256 / 22050 = 11.61 ms. The plugin has to supply it; Features v4 does not carry it.",
   "m_beat": "1 if the candidate lies within 0.07 of a beat period of a grid beat, else 0.",
   "m_half": "1 if within 0.07 of the half-beat position (and m_beat is 0), else 0.",
   "m_quarter": "1 if within 0.07 of a quarter-beat position (0.25 or 0.75; and m_beat, m_half are 0), else 0.",

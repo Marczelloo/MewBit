@@ -1,5 +1,5 @@
 {
- "variant": "raw_strength + meter on the generator grid (ctx.timing); NOT the committed decision (A keeps rel_os); the best Features v4 proxy, AUC lower by .034/.042/.047 (E/N/H) but F1 higher when notes are picked by count (rel_proxy_select.log)",
+ "variant": "raw_strength + meter on the generator grid (ctx.timing); NOT the committed decision (A keeps rel_os); the best Features v4 proxy, AUC lower than rel_os by .034/.042/.047 (E/N/H, rel_proxy.log); how it compares when notes are picked by count: rel_proxy_select.log",
  "features": [
   "raw_strength",
   "m_beat",

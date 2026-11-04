@@ -23,12 +23,20 @@
 # CI when selection is greedy by score and skips any candidate within 70 ms (<=) of a pick already made in the song, with how often a phrase
 # runs out of candidates; (3) per-song AUC after keeping one positive candidate per human note (the best-scoring one by the variant's own
 # score, or the one nearest in time) and dropping the other positives, against the AUC over all candidates.
+# Gap sweep (fix round 2; phrase budget; rel_os and raw_strength; "sweep" lines): the greedy selection with a gap of 0, 35, 50, 70, 100 ms,
+# the generator's own minimum note gap ("real"; "tempo" adds the tempo-relative gap of the pattern path), and the same with the candidates
+# snapped to the generator grid first ("snap_*"); definitions next to sweep(). Per row: F1 median of both, paired median difference with a
+# bootstrap CI, notes the greedy could not fill (shortfall) and the share of human moves closer than the gap to the previous move (recall cap).
+# Mechanism test (fix round 2; "mechanism" lines): (a) share of candidate pairs under 35 ms apart whose rel_os (width 5, from the pkl) or
+# raw_strength is equal or nearly equal (reference: pairs 100-200 ms apart); (b) rel_os rebuilt from the audio at max-filter widths 1, 3 and 5
+# (width 5 checked against the pkl), K refitted with the same folds: duplicate share, F1 and AUC; (c) the share of candidates at
+# raw_strength = 1.0 (saturation), also among positives, negatives and the picks of the plain top-N.
 # In mewbeat-ma. Train songs only. Songs without the level are skipped.
 import sys, json, bisect
 import numpy as np
 sys.path.insert(0, "/density")
 from dcommon import *  # noqa: F401,F403
-from common import f1_topk, WIN, auc_fast  # noqa: E402
+from common import f1_topk, WIN, auc_fast, nearest_human  # noqa: E402
 from rel_proxy import proxies  # noqa: E402
 from sklearn.linear_model import LogisticRegression  # noqa: E402
 
@@ -108,19 +116,26 @@ def phrases_of(s, lv):
             if p["endMs"] - p["startMs"] >= MIN_PHRASE_MS and p["startMs"] >= lo and p["endMs"] <= hi]
 
 
-def sel_phrase(s, lv, p, seed, greedy=False):
-    """greedy: candidates in order of score, a candidate within GREEDY_GAP ms of a pick already made (anywhere in the song) is skipped."""
+def sel_phrase(s, lv, p, seed, greedy=False, gap=None, tt=None, hh=None, alive=None):
+    """greedy: candidates in order of score, a candidate within `gap` ms (<=; default GREEDY_GAP) of a pick already made (anywhere in
+    the song) is skipped. tt / hh / alive: candidate times, their nearest-human index and a mask of the candidates that exist (the
+    snapped variant of the sweep); by default the Features v4 candidates."""
     spans = phrases_of(s, lv)
     if not spans:
         return None
-    t, hm, hidx = s["t"], np.asarray(s["human"][lv], float), s["hidx"][lv]
+    gap = GREEDY_GAP if gap is None else gap
+    t = s["t"] if tt is None else tt
+    hm, hidx = np.asarray(s["human"][lv], float), (s["hidx"][lv] if hh is None else hh)
     sc = p + 1e-7 * np.random.default_rng(seed).random(len(p))
     kept, inh, acc, n_short, short_notes = [], np.zeros(len(hm), bool), [], 0, 0
     for a, b in spans:
         hin = (hm >= a) & (hm < b)
         inh |= hin
         N = int(hin.sum())
-        idx = np.where((t >= a) & (t < b))[0]
+        ok = (t >= a) & (t < b)
+        if alive is not None:
+            ok &= alive
+        idx = np.where(ok)[0]
         order = idx[np.argsort(-sc[idx])]
         if not greedy:
             pick = order[:N]
@@ -130,7 +145,7 @@ def sel_phrase(s, lv, p, seed, greedy=False):
                 if len(pick) >= N:
                     break
                 j = bisect.bisect_left(acc, t[c])
-                if (j < len(acc) and acc[j] - t[c] <= GREEDY_GAP) or (j > 0 and t[c] - acc[j - 1] <= GREEDY_GAP):
+                if (j < len(acc) and acc[j] - t[c] <= gap) or (j > 0 and t[c] - acc[j - 1] <= gap):
                     continue
                 pick.append(c)
                 bisect.insort(acc, t[c])
@@ -147,8 +162,9 @@ def sel_phrase(s, lv, p, seed, greedy=False):
     hit[hit] = inh[h[hit]]
     dist = len(np.unique(h[hit]))
     ns = max(len(sel), 1)
+    prev = np.concatenate([[np.inf], np.diff(hm)])  # time from each human moment to the previous one of the song
     return dict(f1=2 * dist / (len(sel) + nh), sel=sel, hum=hm[inh], spans=spans, prec=hit.sum() / ns, rec=dist / nh,
-                dup=(hit.sum() - dist) / ns, nph=len(spans), n_short=n_short, short_notes=short_notes, nh=nh)
+                dup=(hit.sum() - dist) / ns, nph=len(spans), n_short=n_short, short_notes=short_notes, nh=nh, dtprev=prev[inh])
 
 
 def dedupe_auc(s, lv, p, mode):
@@ -181,6 +197,253 @@ def boot(d):
             "mean": round(float(d.mean()), 4), "mean_ci": ci(mean)}
 
 
+# ---- gap sweep (fix round 2): greedy selection with a minimum gap between picks --------------------------------------------------------
+# The generator's own gaps (helpers/mewbeat/charts/difficulty.js, final pass enforceFloors / spacedMoments in difficultyFilter.js):
+# minNoteGapMs = easy 130, normal 100, hard 60 ms between any two distinct times, whatever the lane; on the pattern path also gapBeats
+# (easy 1/2, normal 1/4 beat, x GRID_SLACK 0.9; hard none). Rows: fixed gaps, "real" = minNoteGapMs, "tempo" = max(minNoteGapMs,
+# gapBeats * 0.9 * median beat of the generator grid) for easy and normal, "snap_*" = the candidates are first moved to the level's grid
+# like bandPath.snapToGrid (grid division 2 / 2 / 4 per beat, 8 for a candidate with strength >= 0.9 on hard; moved only if the grid point is
+# within 35 ms and the beat length there is within 25% of the median), candidates on the same grid time collapse into the one with the best
+# score, then greedy with the gap. Hits are counted against the snapped times (35 ms). Songs with no grid keep the raw times.
+REAL_GAP = {"easy": 130.0, "normal": 100.0, "hard": 60.0}
+GAP_BEATS = {"easy": 0.5, "normal": 0.25}
+GRID_SLACK = 0.9
+DIVS = {"easy": (2, None), "normal": (2, None), "hard": (4, 8)}
+FINE_MIN, SNAP_MAX, INTERVAL_TOL = 0.9, 35.0, 0.25
+SWEEP_GAPS = (0.0, 35.0, 50.0, 70.0, 100.0)
+
+
+def tempo_gap(s, lv):
+    tm = s["ph"]["timing"]
+    med = float(tm["medianMs"]) if tm["snapped"] else 500.0
+    return max(REAL_GAP[lv], GAP_BEATS[lv] * GRID_SLACK * med)
+
+
+def snap_cands(s, lv):
+    """candidate times after the snap of bandPath.snapToGrid (timing.gridPoints / intervalOk rebuilt from the dumped extended beats)."""
+    t, tm = s["t"], s["ph"]["timing"]
+    if not tm["snapped"]:
+        return t.copy()
+    ext, med = np.asarray(tm["beats"], float), float(tm["medianMs"])
+    base, fine = DIVS[lv]
+    divs = np.where(s["P"].max(1) >= FINE_MIN, fine, base) if fine else np.full(len(t), base)
+
+    def grid(div):
+        g = np.floor(ext[:-1, None] + np.arange(div)[None, :] * (np.diff(ext) / div)[:, None] + 0.5).ravel()
+        return np.append(g, ext[-1])
+
+    def ok(x):
+        i = np.clip(np.searchsorted(ext, x + 1 + 1e-9, side="left") - 1, 0, len(ext) - 2)
+        return np.abs((ext[i + 1] - ext[i]) - med) <= INTERVAL_TOL * med
+
+    out = t.copy()
+    for div in np.unique(divs):
+        g = grid(int(div))
+        i = np.clip(np.searchsorted(g, t), 1, len(g) - 1)
+        near = np.where(np.abs(t - g[i - 1]) <= np.abs(t - g[i]), g[i - 1], g[i])
+        use = (divs == div) & (np.abs(near - t) <= SNAP_MAX) & ok(t) & ok(near)
+        out = np.where(use, near, out)
+    return out
+
+
+def collapse(tt, p):
+    """True for the best-scored candidate of each snapped time."""
+    o = np.lexsort((-p, tt))
+    alive = np.zeros(len(tt), bool)
+    alive[o[0]] = True
+    alive[o[1:]] = tt[o][1:] != tt[o][:-1]
+    return alive
+
+
+def sweep(sl, lv, scores, sid):
+    m_ = len(sl)
+    rows = [(f"g{int(g)}", (lambda s, g=g: g), False) for g in SWEEP_GAPS]
+    rows.append(("real", lambda s: REAL_GAP[lv], False))
+    if lv in GAP_BEATS:
+        rows.append(("tempo", lambda s: tempo_gap(s, lv), False))
+    rows += [("snap_g0", lambda s: 0.0, True), ("snap_real", lambda s: REAL_GAP[lv], True)]
+    snapc = []
+    for _, s in sl:
+        tt = snap_cands(s, lv)
+        snapc.append((tt, nearest_human(tt, np.asarray(s["human"][lv], float))))
+    out = {}
+    for name, gfn, snap in rows:
+        res, cap = {}, dict(lt=0, le=0, n=0)
+        gaps = []
+        for vn in ("rel_os", "raw_strength"):
+            c = {q: np.full(m_, np.nan) for q in ("f1", "short", "nshort", "nh", "dup", "prec", "rec", "nph")}
+            for k, (_, s) in enumerate(sl):
+                p = scores[vn][sid == k]
+                g = gfn(s)
+                if snap:
+                    tt, hh = snapc[k]
+                    r = sel_phrase(s, lv, p, k, greedy=True, gap=g, tt=tt, hh=hh, alive=collapse(tt, p))
+                else:
+                    r = sel_phrase(s, lv, p, k, greedy=True, gap=g)
+                if r is None:
+                    continue
+                if name == "g0":
+                    assert abs(r["f1"] - sel_phrase(s, lv, p, k)["f1"]) < 1e-12
+                for q, v in (("f1", r["f1"]), ("short", r["n_short"]), ("nshort", r["short_notes"]), ("nh", r["nh"]), ("dup", r["dup"]),
+                             ("prec", r["prec"]), ("rec", r["rec"]), ("nph", r["nph"])):
+                    c[q][k] = v
+                if vn == "rel_os":
+                    gaps.append(g)
+                    cap["lt"] += int((r["dtprev"] < g).sum())
+                    cap["le"] += int((r["dtprev"] <= g).sum())
+                    cap["n"] += len(r["dtprev"])
+            res[vn] = c
+        a, b = res["rel_os"], res["raw_strength"]
+        o = {"gap_ms_mean": round(float(np.mean(gaps)), 1), "snap": snap, "songs": int((~np.isnan(a["f1"])).sum())}
+        for vn, c in res.items():
+            o[vn] = {"f1_median": round(float(np.nanmedian(c["f1"])), 4), "f1_mean": round(float(np.nanmean(c["f1"])), 4),
+                     "precision_mean": round(float(np.nanmean(c["prec"])), 4), "recall_mean": round(float(np.nanmean(c["rec"])), 4),
+                     "duplicate_share_mean": round(float(np.nanmean(c["dup"])), 4),
+                     "phrases": int(np.nansum(c["nph"])), "phrases_short": int(np.nansum(c["short"])),
+                     "notes_short": int(np.nansum(c["nshort"])), "human_notes": int(np.nansum(c["nh"])),
+                     "notes_short_share": round(float(np.nansum(c["nshort"]) / np.nansum(c["nh"])), 4)}
+        o["paired_rel_os_minus_raw_strength_f1"] = boot(a["f1"] - b["f1"])
+        o["human_closer_than_gap_share_lt"] = round(cap["lt"] / cap["n"], 4)
+        o["human_closer_than_gap_share_le"] = round(cap["le"] / cap["n"], 4)
+        o["human_moves"] = cap["n"]
+        out[name] = o
+        print("sweep", lv, name, json.dumps(o), flush=True)
+    return out
+
+
+# ---- mechanism test (fix round 2) --------------------------------------------------------------------------------------------------------
+WIDTHS = (1, 3, 5)
+SAT = 1.0 - 1e-6
+
+
+def mel_cols(s):
+    """rel_os with max-filter widths WIDTHS, rebuilt from the audio exactly as extract.build does (mel onset strength / 2 s mean, per-song
+    mel lag chosen on the z-scored onset strength at the candidates, max filter, lookup at candidate time + lag). Width 5 must equal the pkl."""
+    import glob as _g, librosa
+    import scipy.ndimage as ndi
+    sr, hop = 22050, 256
+    fms = 1000.0 * hop / sr
+    y, _ = librosa.load(_g.glob(f"{DATA}/audio/{s['id']}.*")[0], sr=sr, mono=True)
+    y = y / (np.abs(y).max() + 1e-9)
+    o = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop)
+    T = len(o)
+    rel = o / (ndi.uniform_filter1d(o, int(round(2000 / fms)), mode="nearest") + 1e-6)
+    z = (o - o.mean()) / (o.std() + 1e-9)
+    base = np.round(s["t"] / fms).astype(int)
+    lags = list(range(-8, 9))
+    shift = lags[int(np.argmax([z[np.clip(base + L, 0, T - 1)].mean() for L in lags]))] * fms
+    fr = np.clip(np.round((s["t"] + shift) / fms).astype(int), 0, T - 1)
+    return {w: (rel if w == 1 else ndi.maximum_filter1d(rel, w))[fr] for w in WIDTHS}, shift
+
+
+def pair_stats(ss, getters):
+    from scipy.stats import rankdata
+    out = {}
+    for name, fn in getters.items():
+        a_ = {q: 0 for q in ("pairs", "near", "eq", "c1", "c5", "rk", "far", "far_eq", "far_c1", "far_c5", "far_rk", "cand", "cand_nb")}
+        for s in ss:
+            o = np.argsort(s["t"], kind="stable")
+            t, v = s["t"][o], fn(s).astype(np.float64)[o]
+            rk = rankdata(v, method="average") / len(v)
+            dt = np.diff(t)
+            x, y_ = v[:-1], v[1:]
+            mx = np.maximum(np.maximum(np.abs(x), np.abs(y_)), 1e-12)
+            near, far = dt < 35, (dt >= 100) & (dt < 200)
+            tests = {"eq": x == y_, "c1": np.abs(x - y_) <= 0.01 * mx, "c5": np.abs(x - y_) <= 0.05 * mx, "rk": np.abs(rk[:-1] - rk[1:]) <= 0.01}
+            a_["pairs"] += len(dt)
+            a_["near"] += int(near.sum())
+            a_["far"] += int(far.sum())
+            for q, m in tests.items():
+                a_[q] += int((m & near).sum())
+                a_["far_" + q] += int((m & far).sum())
+            nb = np.zeros(len(t), bool)
+            nb[:-1] |= near
+            nb[1:] |= near
+            a_["cand"] += len(t)
+            a_["cand_nb"] += int(nb.sum())
+        out[name] = {"pairs_under_35ms": a_["near"], "candidates_with_neighbour_under_35ms": round(a_["cand_nb"] / a_["cand"], 4),
+                     "near_equal": round(a_["eq"] / a_["near"], 4), "near_within_1pct": round(a_["c1"] / a_["near"], 4),
+                     "near_within_5pct": round(a_["c5"] / a_["near"], 4), "near_rank_within_.01": round(a_["rk"] / a_["near"], 4),
+                     "ref_pairs_100_200ms": a_["far"], "ref_equal": round(a_["far_eq"] / a_["far"], 4),
+                     "ref_within_1pct": round(a_["far_c1"] / a_["far"], 4), "ref_within_5pct": round(a_["far_c5"] / a_["far"], 4),
+                     "ref_rank_within_.01": round(a_["far_rk"] / a_["far"], 4)}
+        print("mechanism pairs", name, json.dumps(out[name]), flush=True)
+    return out
+
+
+def mechanism(ss, keep):
+    names0 = ss[0]["names"]
+    R = {}
+    # ---- saturation of raw_strength
+    allst = np.concatenate([s["P"].max(1) for s in ss])
+    sat = allst >= SAT
+    per = np.array([(s["P"].max(1) >= SAT).mean() for s in ss])
+    R["saturation"] = {"candidates": int(len(allst)), "strength_max": round(float(allst.max()), 4), "share_at_1": round(float(sat.mean()), 4),
+                       "share_ge_.99": round(float((allst >= 0.99).mean()), 4), "share_ge_.9": round(float((allst >= 0.9).mean()), 4),
+                       "per_song_share_min": round(float(per.min()), 4), "per_song_share_median": round(float(np.median(per)), 4),
+                       "per_song_share_max": round(float(per.max()), 4), "quantiles_.5_.9_.99": [round(float(q), 4) for q in np.quantile(allst, [.5, .9, .99])]}
+    print("mechanism saturation", json.dumps(R["saturation"]), flush=True)
+    for lv, (sl, sid, fold, scores) in keep.items():
+        picks_sat, picks_n, pos_sat, neg_sat = 0, 0, [], []
+        for k, (_, s) in enumerate(sl):
+            st = s["P"].max(1)
+            r = sel_phrase(s, lv, scores["raw_strength"][sid == k], k)
+            if r is not None:
+                picks_sat += int((st[r["sel"]] >= SAT).sum())
+                picks_n += len(r["sel"])
+            lab = s["label"][lv] == 1
+            pos_sat.append(((st >= SAT) & lab).sum()), neg_sat.append(((st >= SAT) & ~lab).sum())
+        npos = sum(int((s["label"][lv] == 1).sum()) for _, s in sl)
+        nall = sum(len(s["t"]) for _, s in sl)
+        R["saturation"][lv] = {"share_of_raw_strength_picks_at_1": round(picks_sat / picks_n, 4), "share_of_positives_at_1": round(sum(pos_sat) / npos, 4),
+                               "share_of_negatives_at_1": round(sum(neg_sat) / (nall - npos), 4)}
+        print("mechanism saturation", lv, json.dumps(R["saturation"][lv]), flush=True)
+    # ---- rel_os rebuilt from the audio at max-filter widths 1, 3, 5
+    err = 0.0
+    for s in ss:
+        s["os_w"], _ = mel_cols(s)
+        pk = s["X"][:, names0.index("rel_os")].astype(np.float64)
+        err = max(err, float(np.max(np.abs(s["os_w"][5] - pk) / (np.abs(pk) + 1e-6))))
+    R["rebuild_width5_vs_pkl_max_rel_error"] = round(err, 6)
+    print("mechanism rebuild width 5 vs pkl rel_os: max relative error", err, flush=True)
+    getters = {"rel_os_width5_pkl": lambda s: s["X"][:, names0.index("rel_os")], "raw_strength": lambda s: s["P"].max(1)}
+    getters.update({f"rel_os_width{w}_audio": (lambda s, w=w: s["os_w"][w]) for w in WIDTHS})
+    R["pairs"] = pair_stats(ss, getters)
+    R["width"] = {}
+    for lv, (sl, sid, fold, scores) in keep.items():
+        y = np.concatenate([s["label"][lv] for _, s in sl])
+        m_ = len(sl)
+        res = {}
+        pw_all = {}
+        for w in WIDTHS:
+            X = np.concatenate([rank_cols(np.stack([s["os_w"][w]] + [s["gm"][c] for c in K_COLS[1:]], 1)) for _, s in sl])
+            pw_all[f"rel_os_width{w}"] = lr_oof(X, y, fold)
+        pw_all["raw_strength"] = scores["raw_strength"]
+        for vn, pv in pw_all.items():
+            c = {q: np.full(m_, np.nan) for q in ("f1", "dup", "f1g", "f1r", "auc")}
+            for k, (_, s) in enumerate(sl):
+                p = pv[sid == k]
+                r = sel_phrase(s, lv, p, k)
+                if r is None:
+                    continue
+                c["f1"][k], c["dup"][k] = r["f1"], r["dup"]
+                c["f1g"][k] = sel_phrase(s, lv, p, k, greedy=True)["f1"]
+                c["f1r"][k] = sel_phrase(s, lv, p, k, greedy=True, gap=REAL_GAP[lv])["f1"]
+                c["auc"][k] = auc_fast(p, s["label"][lv])
+            res[vn] = c
+        o = {}
+        for vn, c in res.items():
+            o[vn] = {"f1_median_plain": round(float(np.nanmedian(c["f1"])), 4), "duplicate_share_mean_plain": round(float(np.nanmean(c["dup"])), 4),
+                     "f1_median_greedy70": round(float(np.nanmedian(c["f1g"])), 4), "f1_median_greedy_real": round(float(np.nanmedian(c["f1r"])), 4),
+                     "auc_mean": round(float(np.nanmean(c["auc"])), 4)}
+            if vn != "raw_strength":
+                o[vn]["paired_minus_raw_strength_plain"] = boot(c["f1"] - res["raw_strength"]["f1"])
+                o[vn]["paired_minus_raw_strength_real"] = boot(c["f1r"] - res["raw_strength"]["f1r"])
+            print("mechanism width", lv, vn, json.dumps(o[vn]), flush=True)
+        R["width"][lv] = o
+    return R
+
+
 def main():
     ss = songs_train()
     n = len(ss)
@@ -191,6 +454,7 @@ def main():
         s["gm"] = gen_meter(s)
         s["px"] = proxies(s)
     R = {"songs": n, "budgets": {"song": {}, "window": {}, "phrase": {}}}
+    keep = {}
     for lv in LV:
         sl = [(i, s) for i, s in enumerate(ss) if lv in s["label"]]
         m_ = len(sl)
@@ -314,6 +578,9 @@ def main():
             if kk.startswith("auc"):
                 print("check", lv, kk, json.dumps(vv), flush=True)
         R.setdefault("check", {})[lv] = chk
+        keep[lv] = (sl, sid, fold, scores)
+        R.setdefault("sweep", {})[lv] = sweep(sl, lv, scores, sid)
+    R["mechanism"] = mechanism(ss, keep)
     json.dump(R, open(OUT, "w"), indent=1)
 
 

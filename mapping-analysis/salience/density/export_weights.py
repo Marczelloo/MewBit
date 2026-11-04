@@ -15,7 +15,10 @@ from rel_proxy import proxies  # noqa: E402
 DEFS = {
     "rel_os": ("librosa.onset.onset_strength (mel spectrogram, 22050 Hz, hop 256, n_fft 2048) divided by its uniform mean over 2 s "
                "(172 frames, edges repeated) plus 1e-6; then a maximum filter over 5 frames; sampled at the candidate time plus a per-song "
-               "mel shift (extract.py build). The plugin has to supply it; Features v4 does not carry it."),
+               "mel shift (extract.py build). Per-song mel shift: z-score the plain onset-strength series (before the 2 s division); for each lag L in "
+               "-8..8 frames take the mean of that z-scored series at frame round(t_c / 11.61 ms) + L over all candidates c of the song "
+               "(frame index clipped to the series); the shift is 11.61 ms times the L with the highest mean (ties: the first, i.e. the smallest L). "
+               "Frame length = 1000 * 256 / 22050 = 11.61 ms. The plugin has to supply it; Features v4 does not carry it."),
     "raw_strength": ("largest onset strength 's' among the Features v4 onsets of the candidate cluster, over the sources low, lowmid, "
                      "highmid, high, drums, bass, lead (extract.candidates, P.max(axis=1)). Not normalised. Needs nothing beyond Features v4."),
     "m_beat": "1 if the candidate lies within 0.07 of a beat period of a grid beat, else 0.",
@@ -97,7 +100,7 @@ def main():
     variants = {
         "rel_os": ("k_weights.json", "rel_os + meter on the generator grid (ctx.timing); chosen because no Features v4 proxy was within -.01 AUC of rel_os (rel_proxy.log)"),
         "raw_strength": ("k_weights_raw.json", "raw_strength + meter on the generator grid (ctx.timing); NOT the committed decision (A keeps rel_os); the best Features v4 proxy, "
-                         "AUC lower by .034/.042/.047 (E/N/H) but F1 higher when notes are picked by count (rel_proxy_select.log)"),
+                         "AUC lower than rel_os by .034/.042/.047 (E/N/H, rel_proxy.log); how it compares when notes are picked by count: rel_proxy_select.log"),
     }
     toy = toy_meter()
     for strength, (fn, variant) in variants.items():
