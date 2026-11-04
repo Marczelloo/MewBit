@@ -165,13 +165,13 @@ describe("holds follow the sound", () => {
   const gapNotes = [tap(1000, 0), tap(2000, 3), tap(4000, 1), tap(5000, 2)];
   const gapHolds = (features, energy) => addGapHolds(gapNotes, features, normal, grid, energy).filter((n) => n.len > 0);
 
-  it("a gap hold follows the sound that starts it, else a beat of the rest", () => {
+  it("a gap hold follows the sound that starts it, else the rest", () => {
     const loud = { at: () => 0.6 };
     const [held] = gapHolds({ lead: [{ t: 1000, len: 800, pitch: 60, conf: 0.9, s: 0.5 }] }, loud);
     assert.equal(held.t, 1000);
     assert.equal(held.len, 800, "the lead note lasts 800 ms, the rest is 1000");
     assert.equal(gapHolds({ bass: [{ t: 1000, len: 800, pitch: 40, conf: 0.9, s: 0.5 }] }, loud)[0].len, BEAT, "a bass note is followed for a beat: the tracker's drawn-out bass is mostly its own");
-    assert.equal(gapHolds({}, loud)[0].len, BEAT, "no sound to follow: a beat, not the whole rest");
+    assert.equal(gapHolds({}, loud)[0].len, 1000, "no sound to follow: the rest");
   });
 
   it("a gap hold needs the music to sound all through it", () => {

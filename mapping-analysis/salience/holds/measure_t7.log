@@ -1,0 +1,94 @@
+songs 80
+0 1127488 21
+1 1141872 38
+2 1196084 11
+3 1204419 10
+4 1224013 92
+5 1228135 6
+6 1230306 6
+7 126752 14
+8 1374931 4
+9 1539091 39
+10 1638266 17
+11 1649250 5
+12 1664904 19
+13 1681655 37
+14 1769310 25
+15 1802351 61
+16 1807942 21
+17 1864421 26
+18 187154 13
+19 1904207 7
+20 1905497 10
+21 1909971 25
+22 1957138 36
+23 1981845 9
+24 1982768 2
+25 2003639 18
+26 2006713 7
+27 2045473 17
+28 2056100 61
+29 2063918 23
+30 2078163 64
+31 2147831 3
+32 2162283 6
+33 2168317 17
+34 2181828 56
+35 2182334 43
+36 2184200 11
+37 2188045 13
+38 2199033 60
+39 2219350 5
+40 2236810 1
+41 2237062 26
+42 2258999 61
+43 2259286 42
+44 2273820 27
+45 2288990 8
+46 2306112 14
+47 2310596 29
+48 2314502 0
+49 2341138 22
+50 2367084 27
+51 2368620 14
+52 2391949 26
+53 2419084 13
+54 2433731 24
+55 2477633 11
+56 2493125 3
+57 2515787 14
+58 2523883 30
+59 2555699 9
+60 298006 12
+61 324288 13
+62 356253 9
+63 359196 31
+64 366126 10
+65 383929 3
+66 451567 15
+67 476691 2
+68 480769 26
+69 490357 7
+70 522660 8
+71 636272 34
+72 650415 46
+73 702775 13
+74 79038 11
+75 860047 12
+76 884441 73
+77 885596 26
+78 897547 21
+79 957917 17
+/opt/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py:3862: RuntimeWarning: Mean of empty slice
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/opt/venv/lib/python3.12/site-packages/numpy/_core/_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+easy {"human": {"share": 0.142, "len_beats": 1.207, "long_share": 0.271, "with_under": 0.054, "under_per_hold": 0.1, "under_other_hand": 0.76, "release_on_next": 0.888, "on_sound": 0.283, "on_sound_mix": 0.131, "placebo": 0.234, "head_on_start": 0.186, "end_on_end": 0.702, "kept": 0.889, "kept_placebo": 0.843, "long_on_sound": 0.165, "long_placebo": 0.083, "long_kept": 0.902, "long_kept_placebo": 0.872, "songs": 70, "by_stem": {"bass": 0.011, "other": 0.055, "vocals": 0.173, "guitar": 0.053, "piano": 0.026}, "long_sounds_held": 0.245, "long_sounds_placebo": 0.189, "long_sounds_note_at_start": 0.358, "drum": {"on_note": 0.533, "drum_only": 0.32, "strong_drum": 0.665}}, "v26": {"share": null, "len_beats": null, "long_share": null, "with_under": null, "under_per_hold": null, "under_other_hand": null, "release_on_next": null, "on_sound": null, "on_sound_mix": null, "placebo": null, "head_on_start": null, "end_on_end": null, "kept": null, "kept_placebo": null, "long_on_sound": null, "long_placebo": null, "long_kept": null, "long_kept_placebo": null, "songs": 0, "by_stem": {"bass": NaN, "other": NaN, "vocals": NaN, "guitar": NaN, "piano": NaN}, "long_sounds_held": 0.0, "long_sounds_placebo": 0.0, "long_sounds_note_at_start": 0.0, "drum": {"on_note": null, "drum_only": null, "strong_drum": null}}, "detector": {"holds_per_song": 0.1414790996784566, "single": {"mix_len": 0.522, "keep_db": 0.504, "chroma_stab": 0.546, "flux_after": 0.513, "lead_len": 0.498, "bass_len": 0.494, "on_beat": 0.544, "gap": 0.748, "stem_len": 0.534, "vocal_len": 0.505}, "models": {"przerwa": {"auc": 0.748, "precision_at_k": 0.399}, "tani": {"auc": 0.572, "precision_at_k": 0.226}, "tani+przerwa": {"auc": 0.745, "precision_at_k": 0.402}, "tani+przerwa+sciezki": {"auc": 0.752, "precision_at_k": 0.408}}, "songs": 70, "hears_long_sound": {"songs": 59, "base_rate": 0.041, "single": {"mix_len": 0.555, "keep_db": 0.551, "chroma_stab": 0.605, "flux_after": 0.565, "lead_len": 0.5, "bass_len": 0.488, "on_beat": 0.51}, "auc": 0.638, "precision_at_k": 0.115}}}
+normal {"human": {"share": 0.118, "len_beats": 0.918, "long_share": 0.171, "with_under": 0.147, "under_per_hold": 0.278, "under_other_hand": 0.775, "release_on_next": 0.771, "on_sound": 0.393, "on_sound_mix": 0.191, "placebo": 0.293, "head_on_start": 0.257, "end_on_end": 0.631, "kept": 0.811, "kept_placebo": 0.776, "long_on_sound": 0.219, "long_placebo": 0.066, "long_kept": 0.858, "long_kept_placebo": 0.878, "songs": 69, "by_stem": {"bass": 0.012, "other": 0.073, "vocals": 0.244, "guitar": 0.075, "piano": 0.035}, "long_sounds_held": 0.272, "long_sounds_placebo": 0.19, "long_sounds_note_at_start": 0.449, "drum": {"on_note": 0.509, "drum_only": 0.264, "strong_drum": 0.533}}, "v26": {"share": 0.122, "len_beats": 1.044, "long_share": 0.165, "with_under": 0.2, "under_per_hold": 0.354, "under_other_hand": 1.0, "release_on_next": 0.776, "on_sound": 0.322, "on_sound_mix": 0.186, "placebo": 0.232, "head_on_start": 0.202, "end_on_end": 0.665, "kept": 0.845, "kept_placebo": 0.842, "long_on_sound": 0.256, "long_placebo": 0.095, "long_kept": 0.884, "long_kept_placebo": 0.858, "songs": 79, "by_stem": {"bass": 0.021, "other": 0.059, "vocals": 0.182, "guitar": 0.061, "piano": 0.035}, "long_sounds_held": 0.332, "long_sounds_placebo": 0.249, "long_sounds_note_at_start": 0.471, "drum": {"on_note": 0.499, "drum_only": 0.254, "strong_drum": 0.51}}, "detector": {"holds_per_song": 0.11997906327543424, "single": {"mix_len": 0.528, "keep_db": 0.495, "chroma_stab": 0.521, "flux_after": 0.507, "lead_len": 0.499, "bass_len": 0.495, "on_beat": 0.556, "gap": 0.737, "stem_len": 0.558, "vocal_len": 0.526}, "models": {"przerwa": {"auc": 0.737, "precision_at_k": 0.395}, "tani": {"auc": 0.562, "precision_at_k": 0.22}, "tani+przerwa": {"auc": 0.756, "precision_at_k": 0.385}, "tani+przerwa+sciezki": {"auc": 0.759, "precision_at_k": 0.393}}, "songs": 69, "hears_long_sound": {"songs": 65, "base_rate": 0.032, "single": {"mix_len": 0.555, "keep_db": 0.559, "chroma_stab": 0.606, "flux_after": 0.558, "lead_len": 0.502, "bass_len": 0.492, "on_beat": 0.542}, "auc": 0.65, "precision_at_k": 0.102}}}
+/opt/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py:3862: RuntimeWarning: Mean of empty slice
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/opt/venv/lib/python3.12/site-packages/numpy/_core/_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+hard {"human": {"share": 0.104, "len_beats": 0.76, "long_share": 0.129, "with_under": 0.194, "under_per_hold": 0.436, "under_other_hand": 0.72, "release_on_next": 0.683, "on_sound": 0.412, "on_sound_mix": 0.215, "placebo": 0.328, "head_on_start": 0.27, "end_on_end": 0.589, "kept": 0.701, "kept_placebo": 0.687, "long_on_sound": 0.222, "long_placebo": 0.054, "long_kept": 0.853, "long_kept_placebo": 0.867, "songs": 64, "by_stem": {"bass": 0.013, "other": 0.075, "vocals": 0.242, "guitar": 0.101, "piano": 0.037}, "long_sounds_held": 0.28, "long_sounds_placebo": 0.202, "long_sounds_note_at_start": 0.554, "drum": {"on_note": 0.489, "drum_only": 0.212, "strong_drum": 0.422}}, "v26": {"share": null, "len_beats": null, "long_share": null, "with_under": null, "under_per_hold": null, "under_other_hand": null, "release_on_next": null, "on_sound": null, "on_sound_mix": null, "placebo": null, "head_on_start": null, "end_on_end": null, "kept": null, "kept_placebo": null, "long_on_sound": null, "long_placebo": null, "long_kept": null, "long_kept_placebo": null, "songs": 0, "by_stem": {"bass": NaN, "other": NaN, "vocals": NaN, "guitar": NaN, "piano": NaN}, "long_sounds_held": 0.0, "long_sounds_placebo": 0.0, "long_sounds_note_at_start": 0.0, "drum": {"on_note": null, "drum_only": null, "strong_drum": null}}, "detector": {"holds_per_song": 0.08992805755395683, "single": {"mix_len": 0.54, "keep_db": 0.468, "chroma_stab": 0.508, "flux_after": 0.555, "lead_len": 0.51, "bass_len": 0.499, "on_beat": 0.587, "gap": 0.767, "stem_len": 0.568, "vocal_len": 0.519}, "models": {"przerwa": {"auc": 0.767, "precision_at_k": 0.417}, "tani": {"auc": 0.629, "precision_at_k": 0.262}, "tani+przerwa": {"auc": 0.774, "precision_at_k": 0.39}, "tani+przerwa+sciezki": {"auc": 0.772, "precision_at_k": 0.4}}, "songs": 64, "hears_long_sound": {"songs": 66, "base_rate": 0.028, "single": {"mix_len": 0.537, "keep_db": 0.552, "chroma_stab": 0.59, "flux_after": 0.555, "lead_len": 0.502, "bass_len": 0.503, "on_beat": 0.548}, "auc": 0.639, "precision_at_k": 0.094}}}
+{"songs": 80, "long_sounds_per_min": 8.12, "detector_recall": {"lead_bass": 0.259, "lead": 0.104, "bass": 0.193, "mix": 0.234}, "long_sounds_total": 1748, "long_sounds_vocal": 1105}
+{"recall": {"lead_bass": 7, "lead": 6, "bass": 1, "mix": 11}, "long_sounds": 29, "parts": [{"part": "skrzypce", "long_sounds": 8, "by_stem": {"bass": 0, "other": 8, "vocals": 0, "guitar": 0, "piano": 0}, "easy": {"notes": 21, "holds": 3, "held_sounds": 0, "on_note": 0.333, "drum_only": 0.0}, "normal": {"notes": 35, "holds": 9, "held_sounds": 5, "on_note": 0.242, "drum_only": 0.0}, "hard": {"notes": 40, "holds": 2, "held_sounds": 0, "on_note": 0.303, "drum_only": 0.0}}, {"part": "szybka sekwencja", "long_sounds": 0, "by_stem": {"bass": 0, "other": 0, "vocals": 0, "guitar": 0, "piano": 0}, "easy": {"notes": 4, "holds": 0, "held_sounds": 0, "on_note": 0.667, "drum_only": 0.0}, "normal": {"notes": 6, "holds": 0, "held_sounds": 0, "on_note": 0.8, "drum_only": 0.0}, "hard": {"notes": 6, "holds": 0, "held_sounds": 0, "on_note": 0.8, "drum_only": 0.0}}, {"part": "melodia", "long_sounds": 2, "by_stem": {"bass": 0, "other": 0, "vocals": 0, "guitar": 2, "piano": 0}, "easy": {"notes": 85, "holds": 10, "held_sounds": 0, "on_note": 0.308, "drum_only": 0.526}, "normal": {"notes": 182, "holds": 5, "held_sounds": 0, "on_note": 0.341, "drum_only": 0.365}, "hard": {"notes": 255, "holds": 21, "held_sounds": 1, "on_note": 0.367, "drum_only": 0.245}}, {"part": "sama gitara", "long_sounds": 3, "by_stem": {"bass": 0, "other": 0, "vocals": 0, "guitar": 3, "piano": 0}, "easy": {"notes": 77, "holds": 10, "held_sounds": 0, "on_note": 0.507, "drum_only": 0.261}, "normal": {"notes": 91, "holds": 28, "held_sounds": 1, "on_note": 0.487, "drum_only": 0.231}, "hard": {"notes": 208, "holds": 16, "held_sounds": 0, "on_note": 0.459, "drum_only": 0.123}}, {"part": "gitara z melodia", "long_sounds": 0, "by_stem": {"bass": 0, "other": 0, "vocals": 0, "guitar": 0, "piano": 0}, "easy": {"notes": 46, "holds": 4, "held_sounds": 0, "on_note": 0.35, "drum_only": 0.5}, "normal": {"notes": 95, "holds": 4, "held_sounds": 0, "on_note": 0.369, "drum_only": 0.385}, "hard": {"notes": 119, "holds": 8, "held_sounds": 0, "on_note": 0.349, "drum_only": 0.277}}, {"part": "gitara z dzwonkiem", "long_sounds": 0, "by_stem": {"bass": 0, "other": 0, "vocals": 0, "guitar": 0, "piano": 0}, "easy": {"notes": 44, "holds": 4, "held_sounds": 0, "on_note": 0.395, "drum_only": 0.5}, "normal": {"notes": 90, "holds": 2, "held_sounds": 0, "on_note": 0.344, "drum_only": 0.41}, "hard": {"notes": 112, "holds": 8, "held_sounds": 0, "on_note": 0.346, "drum_only": 0.321}}, {"part": "melodia i flet", "long_sounds": 3, "by_stem": {"bass": 0, "other": 3, "vocals": 0, "guitar": 0, "piano": 0}, "easy": {"notes": 88, "holds": 8, "held_sounds": 0, "on_note": 0.307, "drum_only": 0.547}, "normal": {"notes": 180, "holds": 4, "held_sounds": 0, "on_note": 0.339, "drum_only": 0.455}, "hard": {"notes": 218, "holds": 16, "held_sounds": 0, "on_note": 0.331, "drum_only": 0.344}}], "longest": [{"t": 2.97, "beats": 2.0, "stem": "other"}, {"t": 4.83, "beats": 2.2, "stem": "other"}, {"t": 8.6, "beats": 2.0, "stem": "other"}, {"t": 13.35, "beats": 2.0, "stem": "other"}, {"t": 16.07, "beats": 2.2, "stem": "other"}, {"t": 22.87, "beats": 2.0, "stem": "guitar"}, {"t": 49.4, "beats": 2.5, "stem": "guitar"}, {"t": 55.02, "beats": 1.9, "stem": "guitar"}, {"t": 111.93, "beats": 2.0, "stem": "other"}, {"t": 138.02, "beats": 1.7, "stem": "guitar"}, {"t": 139.13, "beats": 2.3, "stem": "guitar"}, {"t": 140.75, "beats": 3.4, "stem": "guitar"}, {"t": 152.18, "beats": 2.0, "stem": "guitar"}, {"t": 155.56, "beats": 1.9, "stem": "vocals"}, {"t": 156.93, "beats": 3.0, "stem": "vocals"}, {"t": 163.28, "beats": 2.1, "stem": "guitar"}, {"t": 177.59, "beats": 2.2, "stem": "guitar"}, {"t": 181.25, "beats": 2.2, "stem": "guitar"}, {"t": 182.86, "beats": 5.7, "stem": "vocals"}, {"t": 183.04, "beats": 4.7, "stem": "guitar"}]}

@@ -41,6 +41,11 @@ describe("sustainsOf", () => {
     assert.deepEqual(sustainsOf({ lead, phrases }, grid), [], "a repeated phrase charts like its source: what comes before it does not count");
   });
 
+  it("a half-written note in a layer is skipped and the rest still glues", () => {
+    const lead = [null, note(1000, 200), { t: 1100 }, note(1200, 100), { t: Number.NaN, pitch: 60, len: 900 }, undefined, note(1600, 400)];
+    assert.deepEqual(sustainsOf({ lead, bass: [null, { len: 900 }], phrases: { list: [null, { startMs: 5000 }] } }, grid), [{ t: 1000, len: 1000, source: "lead", conf: 0.5 }]);
+  });
+
   it("no melodic layers means no sustains", () => {
     assert.deepEqual(sustainsOf({ lead: [], bass: [] }, grid), []);
     assert.deepEqual(sustainsOf({}, grid), []);
@@ -70,7 +75,7 @@ describe("a long hold follows a dragged sound", () => {
     const [late] = holdsOf(addSustainHolds([tap(1000), tap(4000)], { lead: [note(900, 1500)] }, normal, grid));
     assert.deepEqual(late, [1000, 1400], "the sound began 100 ms before the tap: the hold ends where it does");
     const [unheard] = holdsOf(addGapHolds(gapNotes, {}, normal, grid, loud));
-    assert.deepEqual(unheard, [1000, BEAT], "no dragged note under the tap: at most a beat, not the whole rest");
+    assert.deepEqual(unheard, [1000, 1000], "no dragged note under the tap: the rest, as before");
     const [bass] = holdsOf(addGapHolds(gapNotes, { bass: [note(1000, 950, 40)] }, normal, grid, loud));
     assert.deepEqual(bass, [1000, BEAT], "a bass note is dragged less often than it looks: a beat of it");
     const [both] = holdsOf(addGapHolds(gapNotes, { bass: [note(1000, 950, 40)], lead: [note(1100, 800)] }, normal, grid, loud));
@@ -78,6 +83,7 @@ describe("a long hold follows a dragged sound", () => {
   });
 
   it("a false sustain still respects the rules", () => {
+    // A guard, not a behaviour test: the old code passes it too. It fails if the sustains ever drop a moment or break a rule.
     // a sustain 3 beats long over a quarter-beat stream: nothing is dropped and the chart passes the checker
     const stream = Array.from({ length: 8 }, (_, i) => tap(1250 + i * 250, 3 - (i % 2)));
     const notes = [tap(1000, 0), ...stream, tap(4000, 1)];

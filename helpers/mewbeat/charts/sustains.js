@@ -24,7 +24,7 @@ function bridge(notes, timing, starts) {
     const end = last ? last.t + last.len : 0;
     if (last && lowerBound(starts, last.t + 1) === lowerBound(starts, n.t + 1) && n.t - end <= BRIDGE_GAP_BEATS * beatAt(timing, end) && Math.abs(n.pitch - last.pitch) <= BRIDGE_RANGE_SEMITONES) {
       const joined = Math.max(end, n.t + n.len) - last.t;
-      out[out.length - 1] = { ...last, len: joined, conf: (last.conf * last.len + n.conf * n.len) / (last.len + n.len), s: Math.max(last.s, n.s) };
+      out[out.length - 1] = { ...last, len: joined, conf: ((Number(last.conf) || 0) * last.len + (Number(n.conf) || 0) * n.len) / (last.len + n.len), s: Math.max(Number(last.s) || 0, Number(n.s) || 0) };
     } else {
       out.push(n);
     }
@@ -38,12 +38,13 @@ function bridge(notes, timing, starts) {
 // bass line: nothing.
 function sustainsOf(features, timing) {
   const out = [];
-  const starts = (Array.isArray(features?.phrases?.list) ? features.phrases.list : []).map((p) => p.startMs).filter(Number.isFinite).sort((a, b) => a - b);
+  const starts = (Array.isArray(features?.phrases?.list) ? features.phrases.list : []).map((p) => p?.startMs).filter(Number.isFinite).sort((a, b) => a - b);
   for (const source of SUSTAIN_LAYERS) {
     const line = features?.[source];
-    const glued = Array.isArray(line) ? mergeLegato(line) : [];
+    // A note without a time or a length (null, half-written) is skipped, not allowed to stop the rest being glued; one without a pitch has none to differ by.
+    const valid = Array.isArray(line) ? line.filter((n) => Number.isFinite(n?.t) && Number(n.len) > 0).map((n) => (Number.isFinite(n.pitch) ? n : { ...n, pitch: 0 })) : [];
+    const glued = mergeLegato(valid);
     for (const n of source === "lead" ? bridge(glued, timing, starts) : glued) {
-      if (!Number.isFinite(n?.t) || !(Number(n.len) > 0)) continue;
       if (n.len >= SUSTAIN_FLOOR_BEATS * beatAt(timing, n.t)) out.push({ t: n.t, len: n.len, source, conf: Number(n.conf) || 0 });
     }
   }

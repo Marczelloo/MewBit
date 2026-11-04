@@ -1,0 +1,9 @@
+human {"songs": 64, "holds": 6889, "long_holds": 885, "long_on_sound": 162, "on_rate": 0.183, "placebo_rate": 0.061, "ratio_pooled": 2.98, "ratio_per_song_mean": 4.86, "ratio_per_song_median": 2.78}
+  macro 3.63 k>=3 per-song mean 5.14 k>=3 macro 3.5 k>=5 macro 2.96 songs on>0 per-song mean 7.07
+t7base {"songs": 76, "holds": 6876, "long_holds": 973, "long_on_sound": 221, "on_rate": 0.227, "placebo_rate": 0.105, "ratio_pooled": 2.15, "ratio_per_song_mean": 2.31, "ratio_per_song_median": 1.75}
+  macro 2.1 k>=3 per-song mean 2.37 k>=3 macro 2.1 k>=5 macro 1.95 songs on>0 per-song mean 3.13
+t7f {"songs": 79, "holds": 7325, "long_holds": 1082, "long_on_sound": 280, "on_rate": 0.259, "placebo_rate": 0.104, "ratio_pooled": 2.48, "ratio_per_song_mean": 3.4, "ratio_per_song_median": 2.38}
+  macro 2.8 k>=3 per-song mean 2.77 k>=3 macro 2.47 k>=5 macro 2.41 songs on>0 per-song mean 4.33
+HD long sounds 16
+HD t7base lenient 3 strict 0 of 16
+HD t7f lenient 7 strict 2 of 16
