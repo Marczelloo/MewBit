@@ -35,7 +35,7 @@ Progi z a5331c9, bez zmian. 80 utworów `train`, testowych nie czytano. Utwory b
 
 ### A. Czy zastępnik z Features v4 zastąpi `rel_os` w K
 
-Nie. `rel_os` (librosa, siła onsetu / średnia z 2 s) jest potrzebny z pluginu. Siatka: `ctx.timing` generatora (metrum z surowych beatów trackera zgadza się z nią w 8 z 80 utworów; na siatce z pkl AUC różni się o mniej niż .002).
+Nie. `rel_os` (librosa, siła onsetu / średnia z 2 s) jest potrzebny z pluginu. Siatka: `ctx.timing` generatora (metrum z surowych beatów trackera zgadza się z nią w 8 z 80 utworów; na siatce z pkl AUC różni się o mniej niż .002 dla `rel_os` (do .0002) i `raw_strength` (do .001); dla wariantu bez kolumny siły o .0035–.0039).
 
 | Poziom | `rel_os` | zastępnik (`raw_strength`) | bez kolumny siły | różnica (średnia / mediana) |
 |---|---|---|---|---|
@@ -43,13 +43,14 @@ Nie. `rel_os` (librosa, siła onsetu / średnia z 2 s) jest potrzebny z pluginu.
 | Normal | .9101 | .8683 | .8350 | -.042 / -.040 |
 | Hard | .8932 | .8464 | .7954 | -.047 / -.053 |
 
-Próg to -.01 na każdym poziomie. Zastępniki względne wobec okna 0,5, 1 i 2 s nie dodają nic ponad surową siłę (średnia po poziomach: `raw_strength` .8619, `per_source_max_rel` .8599, skupienie/maksimum .8596, skupienie/średnia ±2 s .8539, energia .8257). Wagi K z `rel_os`: `k_weights.json`.
+Utworów z danym poziomem: Easy 79, Normal 78, Hard 75 z 80 (reszta nie ma tego poziomu). Po błędzie w rangowaniu (ranga liczona globalnie, a nie w obrębie utworu) pomiar powtórzono; AUC zmieniło się o mniej niż .003, werdykt bez zmian. Próg to -.01 na każdym poziomie. Zastępniki względne wobec okna 0,5, 1 i 2 s nie dodają nic ponad surową siłę (średnia po poziomach: `raw_strength` .8619, `per_source_max_rel` .8599, skupienie/maksimum .8596, skupienie/średnia ±2 s .8539, energia .8257). Wagi K z `rel_os`: `k_weights.json`.
 
 ### B. Co tłumaczy gęstość fraz Normal
 
 Części utworu nie wchodzą. 78 utworów (2 pominięte: brak poziomu Normal, brak użytecznej frazy), 1709 fraz, średnio 4,56 ruchu na sekundę.
 
 - Baza (wyraziste dźwięki + głośność): R² .243 (między utworami -.115, wewnątrz .357).
+- K jest dopasowany bez foldu f, ale wiersze uczące są oceniane przez K wytrenowane na nich samych (w próbie). Wpływu tego nie mierzono; dotyczy bazy i obu form tak samo.
 - Forma 1, z Features v4 (sekcje, powtórzenia): ΔR² -.0057, CI [-.016, .005]. Nie przechodzi.
 - Forma 2, etykieta struktury offline (15 s): ΔR² +.0157, CI [-.010, .040]. Poniżej .02, nie przechodzi. Przy 30 s -.0018.
 - Obie razem: +.0114 (15 s), -.0045 (30 s).
@@ -58,9 +59,9 @@ Gęstość ludzka między utworami prawie się nie zmienia (CV .155, korelacja z
 
 ### C. Tanie wykrywanie długich dźwięków
 
-Nie przechodzi żaden zestaw. Decyzja: `lead` + `bass` bez progu pewności, bez pluginu.
+Nie przechodzi żaden zestaw, i to już na dokładności: każdy ma AUC < .72 i precyzję < .15, więc koszt nie rozstrzyga. `pass` liczy się z dokładności ORAZ pokrycia ORAZ `cost_new_only` (koszt samych nowych detektorów); `pass_strict` używa `cost_with_shared_chain`. Decyzja: `lead` + `bass` bez progu pewności, bez pluginu.
 
-Wyjście: 1748 długich dźwięków (>= 1,5 beatu, udział >= .2). Odtworzenie wyniku bazowego zgadza się z `holds`: AUC .638 / .65 / .639, precyzja@k .115 / .102 / .094.
+Wyjście: 1748 długich dźwięków (>= 1,5 beatu, udział >= .2) w 80 utworach train. Do AUC wchodzą utwory, które mają co najmniej 5 kandydatów o długim celu i co najmniej 5 pozostałych: Easy 59, Normal 65, Hard 66. Odtworzenie wyniku bazowego zgadza się z `holds`: AUC .638 / .65 / .639, precyzja@k .115 / .102 / .094.
 
 | Zestaw | Easy AUC / prec | Normal AUC / prec | Hard AUC / prec |
 |---|---|---|---|
@@ -72,6 +73,16 @@ Wyjście: 1748 długich dźwięków (>= 1,5 beatu, udział >= .2). Odtworzenie w
 
 Żaden nie osiąga AUC .72 ani precyzji .15. Pokrycie: D1 .371, D2 .467, D3 .301 (obecny miks .234; D1+D2+D3 .682; z miksem i `lead`+`bass` .718). Koszt wobec `compute_series` (6,41 s na minutę audio): D1 .165, D2 .044, D3 .185, wszystkie trzy .395; z obecnym łańcuchem D1 .214 i D3 .225 (powyżej 20%).
 
-D3 w dosłownym czytaniu, (L+R)/2, to ten sam miks mono co dotąd, czyli D1. Zmierzono też wersję z wyciągniętym środkiem (maska na sygnale boku).
+D3 w tabeli to wariant z wyciągniętym środkiem (maska na sygnale boku), nie dosłowne (L+R)/2. Dosłowne D3 to ten sam miks mono co D1 i daje identyczne liczby, więc osobnego wiersza nie ma. Wiersz "D3 + CHEAP", pokrycie D3 .301, koszt D3 .185 i D3 w zestawie D1+D2+D3 dotyczą wariantu ze środkiem.
 
-Hopes and Dreams (3,08 min, 29 długich dźwięków, 16 w oknach `HD_PARTS`): widzi je obecny miks 11, D1 13, D2 16, D3 13. W częściach: skrzypce 8 z 8 (miks, D1, D3), D2 6; melodia 2 (D2 1), sama gitara 3 (D1, D2, D3 po 1), melodia i flet 3 (D2 1); pozostałe części 0. D1 i D2 dają tu 33–36 odcinków na minutę, więcej niż 30, więc zastosowano ograniczenie do 30 najpewniejszych na minutę.
+Hopes and Dreams (3,08 min, 29 długich dźwięków, 16 w oknach `HD_PARTS`): widzi je obecny miks 11, D1 13, D2 16, D3 13. W częściach: skrzypce 8 z 8 (miks, D1, D3), D2 6; melodia 2 (D2 1), sama gitara 3 (D1, D2, D3 po 1), melodia i flet 3 (D2 1); pozostałe części 0. D1 (33,4), D2 (36,4) i D3 (33,4) dają tu więcej niż 30 odcinków na minutę, więc zastosowano ograniczenie do 30 najpewniejszych na minutę. Na tym utworze ograniczenie jest bezwarunkowe.
+
+### D. Wybór nut: `rel_os` i siła surowa (informacja, decyzja A bez zmian)
+
+Wybór nut w budżecie fraz (E / N / H), `rel_os` (R) wobec `raw_strength` (W); szczegóły w `rel_proxy_select.log`.
+
+- Zwykły top-N: F1 R .706 / .766 / .770, W .734 / .794 / .799 (R gorsze o .018 / .025 / .018, przedział bez zera). Udział duplikatów wśród wybranych: R .084 / .105 / .133, W .040 / .048 / .081.
+- Zachłannie, odstęp 70 ms: F1 R .783 / .846 / .879, W .772 / .830 / .856 (R lepsze o +.019 / +.025 / +.024, przedział bez zera). Luka beatów do człowieka mniejsza u R na każdym poziomie. Brak kandydatów: Easy 0 z 1741 fraz, Normal 2 z 1709 (3 nuty), Hard 120 z 1673 (890 z 58143 nut).
+- AUC po jednym pozytywie na nutę: luka R minus W .034 / .042 / .047 maleje do .0055 / .013 / .012 (najlepszy z kandydatów nuty) albo .011 / .019 / .020 (najbliższy); przedziały bez zera. Odrzuca się 26% pozytywów.
+- Powód: sąsiedzi o 30 ms trafiają w tę samą nutę; `rel_os` jest filtrowane maksimum po 5 ramkach, więc sąsiedzi mają równe wyniki i oboje wchodzą do top-N. Wyższe F1 u W to artefakt liczenia. Ten sam efekt zawyża AUC R, ale przewaga R zostaje.
+- Decyzja A bez zmian.
