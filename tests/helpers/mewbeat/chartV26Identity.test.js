@@ -38,11 +38,6 @@ describe("v26 identity", () => {
     check("normal", "normalV26");
   });
 
-  // Holds only until Normal gets its own path: the task that gives it one removes this test.
-  it("public normal is still the Normal of v26", () => {
-    check("normal", "normal");
-  });
-
   it("generateAll exposes only public levels", () => {
     assert.deepStrictEqual(Object.keys(DIFFICULTIES), ["easy", "normal", "hard", "hell"]);
     const all = generateAll(FIXTURES.plain120(), KEY);

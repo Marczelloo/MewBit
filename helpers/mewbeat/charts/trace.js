@@ -17,6 +17,7 @@ function createTrace() {
       from: { t: note.t, lane: note.lane, level: note.level, len: note.len },
       now: { t: note.t, lane: note.lane, level: note.level, len: note.len },
       source: note.source,
+      reason: note.reason, // why the moment was chosen (selection.js)
       s: note.s,
       support: note.support,
       sustainMs: note.sustainMs,

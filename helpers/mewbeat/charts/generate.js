@@ -11,9 +11,10 @@ const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf,
 const { copyRepeat, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { fillRests } = require("./rests");
-const { nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
+const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
+const { phraseBudget, scoreMoments, selectMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -36,6 +37,7 @@ function analyse(raw) {
   const energy = withIntensity(energyLookup(features), features, phrases); // with each section's intensity (intensity.js)
   const onsets = sortedOnsets(features);
   return {
+    raw, // the features as measured: selection.js scores the candidates the scores were fitted on
     features,
     durationMs,
     timing,
@@ -85,6 +87,22 @@ function leadersOf(ctx, diff) {
   return ctx.leaders.map((leader, i) => (leader !== "bands" && heard(ctx.phrases[i]) ? "lead" : leader));
 }
 
+// Phrase i of a level that picks its notes from the music (diff.selector "music"): the moments selection.js chooses, those
+// the music plays (not the lead-in, not the silence), each with a lane to hold its place.
+function musicNotes(ctx, i, diff, trace) {
+  const { phrases, energy, timing } = ctx;
+  const phrase = phrases[i];
+  const scored = scoreMoments(ctx, diff.scoreLevel);
+  const times = scored.map((m) => m.t);
+  const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
+  const playable = (t) => t >= LEAD_IN_MS && energy.at(t) >= SILENCE_ENERGY;
+  const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(m.t));
+  const chosen = selectMoments(phrase, heard, phraseBudget(phrase, ctx, diff), diff, timing).filter((m) => playable(m.t));
+  const events = laneTheRest(chosen);
+  const made = trace ? trace.tagged(events) : events;
+  return made.map((n) => (trace ? { t: n.t, lane: n.lane, tid: n.tid } : { t: n.t, lane: n.lane }));
+}
+
 // One difficulty's rhythm charted from the music, phrase by phrase: { notes, sustained }. A difficulty with diff.cutFrom
 // takes its moments from that harder level (rhythm.js). The lanes here only hold a place: chords and lanes are laid out
 // over the finished moments (finish). `sustained` holds the keys ("t:lane") of the real sustain holds, which the hold
@@ -111,6 +129,7 @@ function chartNotes(ctx, diff, trace = null) {
   // A rest still left a hole while the music plays on (on Easy and Normal) gets a sound of the music there (rests.js).
   // `last` is the last phrase the notes cover (a band-path window spans several).
   const bridged = (notes, i, copy = false, last = i) => {
+    if (diff.selector === "music") return notes; // the music picks the moments: no rest is filled with another sound
     const end = last === phrases.length - 1;
     // Hard and Hell carry the beat through with every drum hit; Easy and Normal take single sounds (fillRests) instead.
     const fill = diff.fillRestBeats > 0
@@ -133,6 +152,14 @@ function chartNotes(ctx, diff, trace = null) {
     if (copied) {
       trace?.enter(i, { ...info, charted: "copy" });
       all.push(...bridged(trace ? trace.copied(copied) : copied, i, true));
+      i++;
+      continue;
+    }
+
+    if (diff.selector === "music") {
+      trace?.enter(i, { ...info, charted: "music" });
+      const charted = musicNotes(ctx, i, diff, trace);
+      all.push(...withGapHolds(charted, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
       i++;
       continue;
     }
@@ -278,4 +305,4 @@ function traceChart(features, difficulty, audioKey) {
   };
 }
 
-module.exports = { GENERATOR_VERSION, generateAll, generateChart, starsOf, traceChart };
+module.exports = { GENERATOR_VERSION, analyse, generateAll, generateChart, starsOf, traceChart };

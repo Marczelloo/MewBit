@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { applyDifficulty, enforceFloors } = require("../../../helpers/mewbeat/charts/difficultyFilter");
 const { generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { holdSafe } = require("../../../helpers/mewbeat/charts/holds");
@@ -15,6 +15,9 @@ const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
 const KEY = "youtube:fixture:v4";
 const DIFFS = ["easy", "normal", "hard"];
+// The machinery below (applyDifficulty, patternEvents, holds, floors) is run with Normal as v26 charted it: normalV26, the
+// level Easy is cut from. The public Normal picks its notes from the music (selection.js, chartSelection.test.js).
+const LEVELS = { ...DIFFICULTIES, normal: levelOf("normalV26") };
 
 function chartsOf(features) {
   const all = generateAll(features, KEY);
@@ -44,14 +47,14 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 26", () => {
-    assert.equal(GENERATOR_VERSION, 26);
+  it("is version 27", () => {
+    assert.equal(GENERATOR_VERSION, 27);
     for (const d of DIFFS) {
-      assert.ok(Number.isInteger(DIFFICULTIES[d].maxLevel));
+      assert.ok(Number.isInteger(LEVELS[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
       assert.ok(DIFFICULTIES[d].holdMinBeats > 0);
     }
-    assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].maxLevel), [0, 1, 2]);
+    assert.deepEqual(DIFFS.map((d) => LEVELS[d].maxLevel), [0, 1, 2]);
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].maxJack), [2, 2, 3]);
     assert.deepEqual(DIFFS.map((d) => DIFFICULTIES[d].holdMinBeats), [1, 1, 1]);
   });
@@ -332,7 +335,7 @@ describe("patternEvents", () => {
       assert.equal(events.length, 1);
       assert.equal(events[0].level, 1);
       assert.equal(events[0].t % 125 === 0, false, "stays on the 1/8 grid for Hard");
-      const normal = applyDifficulty(events, DIFFICULTIES.normal, timing, () => 0.3, [], 0.3, phrase.endMs);
+      const normal = applyDifficulty(events, LEVELS.normal, timing, () => 0.3, [], 0.3, phrase.endMs);
       assert.deepEqual(normal.map((n) => n.t), [2250]);
       const hard = applyDifficulty(events, DIFFICULTIES.hard, timing, () => 0.3, [], 0.3, phrase.endMs);
       assert.deepEqual(hard.map((n) => n.t), [events[0].t]);
@@ -344,7 +347,7 @@ describe("patternEvents", () => {
       const timing = buildTiming(features, 16000);
       const note = (source) => ({ t: 2125, lane: 1, level: 1, s: 0.8, source }); // a 1/4 slot off the beat and half beat
       const beats = [3000, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500].map((t) => ({ t, lane: 2, level: 0, s: 0.8, source: "lead" }));
-      const normal = (source) => applyDifficulty([note(source), ...beats], DIFFICULTIES.normal, timing, () => 0.3, [], 0.3, 8000).filter((n) => n.t === 2125);
+      const normal = (source) => applyDifficulty([note(source), ...beats], LEVELS.normal, timing, () => 0.3, [], 0.3, 8000).filter((n) => n.t === 2125);
       for (const source of ["lead", "bass", "drums"]) assert.equal(normal(source).length, 1, source);
     });
 
@@ -380,7 +383,7 @@ describe("drum backbone under a lead leader", () => {
     const events = patternEvents(phrase, "lead", sparse, s.timing);
     const secondary = events.filter((e) => e.source === "secondary" && e.level <= 1 && !e.chordOnly);
     assert.ok(secondary.length >= 4);
-    const times = (diff) => new Set(applyDifficulty(events, DIFFICULTIES[diff], s.timing, s.energy, [], 0.9, phrase.endMs).map((n) => n.t));
+    const times = (diff) => new Set(applyDifficulty(events, LEVELS[diff], s.timing, s.energy, [], 0.9, phrase.endMs).map((n) => n.t));
     const normal = times("normal");
     const easy = times("easy");
     assert.ok(secondary.filter((e) => normal.has(e.t)).length >= 4, "Normal plays the backbone");
@@ -396,7 +399,7 @@ describe("applyDifficulty", () => {
 
   it("keeps only the levels the difficulty allows, and fewer notes on easier ones", () => {
     const easy = applyDifficulty(events, DIFFICULTIES.easy, timing, energy, []);
-    const normal = applyDifficulty(events, DIFFICULTIES.normal, timing, energy, []);
+    const normal = applyDifficulty(events, LEVELS.normal, timing, energy, []);
     const hard = applyDifficulty(events, DIFFICULTIES.hard, timing, energy, []);
     assert.ok(easy.length > 0 && easy.length < normal.length && normal.length <= hard.length);
     assert.ok(easy.every((n) => Object.keys(n).join() === "t,lane"));
@@ -635,7 +638,7 @@ describe("holds", () => {
       for (const d of DIFFS) assert.deepEqual(noHoldPast(charts[d], endMs, last.startMs), [], d);
       const clipped = charts.normal.notes.find((n) => n.t === crossing.t);
       assert.ok(clipped, "the note stays");
-      assert.ok(!clipped.len || clipped.len + DIFFICULTIES.normal.minLaneGapMs + clipped.t <= endMs, "shortened");
+      assert.ok(!clipped.len || clipped.len + LEVELS.normal.minLaneGapMs + clipped.t <= endMs, "shortened");
     });
 
     it("a clipped hold below its minimum becomes a tap with no len key", () => {
@@ -658,7 +661,7 @@ describe("holds", () => {
   describe("applyDifficulty", () => {
     const lead = (t, lane, sustainMs, extra = {}) => ({ t, lane, level: 0, s: 1, source: "lead", sustainMs, ...extra });
     const run = (events, diff, prev = [], endMs = Infinity) =>
-      applyDifficulty(events, DIFFICULTIES[diff], timing, () => 0.9, prev, null, endMs);
+      applyDifficulty(events, LEVELS[diff], timing, () => 0.9, prev, null, endMs);
 
     it("a sustained tonal event becomes a hold, a short one or a drum hit does not", () => {
       assert.deepEqual(run([lead(3000, 0, 1000)], "normal"), [{ t: 3000, lane: 0, len: 1000 }]);
@@ -670,7 +673,7 @@ describe("holds", () => {
     it("len is capped at 4 beats and by the next note of the same lane", () => {
       assert.equal(run([lead(3000, 0, 5000)], "hard")[0].len, 2000);
       const out = run([lead(3000, 0, 1500), lead(4000, 0, 200)], "normal");
-      assert.equal(out[0].len, 1000 - DIFFICULTIES.normal.minLaneGapMs);
+      assert.equal(out[0].len, 1000 - LEVELS.normal.minLaneGapMs);
     });
 
     it("a hold is clipped to leave room before the next note of its hand", () => {
@@ -715,22 +718,22 @@ describe("holds", () => {
 
     it("a hold is clipped to the end of its phrase", () => {
       const out = run([lead(3000, 0, 1500)], "normal", [], 4000);
-      assert.equal(out[0].len, 1000 - DIFFICULTIES.normal.minLaneGapMs);
+      assert.equal(out[0].len, 1000 - LEVELS.normal.minLaneGapMs);
     });
   });
 
   describe("holdSafe", () => {
     const pool = [{ t: 2000, lane: 0, len: 1500 }, { t: 2300, lane: 2 }];
     it("refuses a slot enforceFloors would drop: too close to an other-hand note, or a chord, on Normal", () => {
-      assert.equal(holdSafe({ t: 2400, lane: 3 }, pool, DIFFICULTIES.normal, timing), false);
-      assert.equal(holdSafe({ t: 2300, lane: 3 }, pool, DIFFICULTIES.normal, timing), false);
-      assert.equal(holdSafe({ t: 2600, lane: 3 }, pool, DIFFICULTIES.normal, timing), true);
+      assert.equal(holdSafe({ t: 2400, lane: 3 }, pool, LEVELS.normal, timing), false);
+      assert.equal(holdSafe({ t: 2300, lane: 3 }, pool, LEVELS.normal, timing), false);
+      assert.equal(holdSafe({ t: 2600, lane: 3 }, pool, LEVELS.normal, timing), true);
       assert.equal(holdSafe({ t: 2400, lane: 3 }, pool, DIFFICULTIES.hard, timing), true);
     });
 
     it("refuses moving a hold over other-hand notes that are too close together", () => {
       const close = [{ t: 2300, lane: 2 }, { t: 2400, lane: 3 }];
-      assert.equal(holdSafe({ t: 2000, lane: 0, len: 1500 }, close, DIFFICULTIES.normal, timing), false);
+      assert.equal(holdSafe({ t: 2000, lane: 0, len: 1500 }, close, LEVELS.normal, timing), false);
       assert.equal(holdSafe({ t: 2000, lane: 0, len: 1500 }, close, DIFFICULTIES.hard, timing), true); // Hard leaves the other hand free
     });
   });
@@ -744,7 +747,7 @@ describe("holds", () => {
 
     it("a hold occupies its own lane until t + len + minLaneGapMs", () => {
       const notes = [{ t: 2000, lane: 0, len: 1000 }, { t: 3100, lane: 0 }, { t: 3200, lane: 0 }];
-      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.normal).map((n) => n.t), [2000, 3200]);
+      assert.deepEqual(enforceFloors(notes, LEVELS.normal).map((n) => n.t), [2000, 3200]);
     });
 
     it("a hold does not share its time with a note of its hand, nor (Easy) with any note", () => {
@@ -752,19 +755,19 @@ describe("holds", () => {
       assert.equal(enforceFloors(sameHand, DIFFICULTIES.hard).length, 1);
       const chord = [{ t: 2000, lane: 0, len: 500 }, { t: 2000, lane: 3 }];
       assert.equal(enforceFloors(chord, DIFFICULTIES.hard).length, 2);
-      assert.equal(enforceFloors(chord, DIFFICULTIES.normal).length, 2);
+      assert.equal(enforceFloors(chord, LEVELS.normal).length, 2);
       assert.equal(enforceFloors(chord, DIFFICULTIES.easy).length, 1);
     });
 
     it("Normal drops the later note of an other-hand chord during a hold, Hard keeps both", () => {
       const notes = [{ t: 2000, lane: 0, len: 1500 }, { t: 2500, lane: 2 }, { t: 2500, lane: 3 }];
-      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.normal, timing).map((n) => n.lane), [0, 2]);
+      assert.deepEqual(enforceFloors(notes, LEVELS.normal, timing).map((n) => n.lane), [0, 2]);
       assert.equal(enforceFloors(notes, DIFFICULTIES.hard, timing).length, 3);
     });
 
     it("Normal spaces the other hand by half a beat while a hold runs", () => {
       const notes = [{ t: 2000, lane: 0, len: 1500 }, { t: 2300, lane: 2 }, { t: 2400, lane: 3 }, { t: 2600, lane: 2 }];
-      assert.deepEqual(enforceFloors(notes, DIFFICULTIES.normal).map((n) => n.t), [2000, 2300, 2600]);
+      assert.deepEqual(enforceFloors(notes, LEVELS.normal).map((n) => n.t), [2000, 2300, 2600]);
     });
   });
 });

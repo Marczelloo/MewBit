@@ -1,9 +1,9 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { applyDifficulty } = require("../../../helpers/mewbeat/charts/difficultyFilter");
-const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { beatPosition } = require("../../../helpers/mewbeat/charts/grid");
 const { limitHoldShare, oneHoldAtATime } = require("../../../helpers/mewbeat/charts/holds");
 const { copyRepeat } = require("../../../helpers/mewbeat/charts/repeats");
@@ -11,7 +11,8 @@ const { rhythmOf } = require("../../../helpers/mewbeat/charts/rhythm");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
-const { easy, normal, hard } = DIFFICULTIES;
+const { easy, hard } = DIFFICULTIES;
+const normal = levelOf("normalV26"); // Normal as v26 charted it, cut from Hard; the public Normal picks its notes from the music (selection.js)
 const LOUD = () => 0.9;
 const features = makeFeatures({ durationMs: 32000 });
 const timing = buildTiming(features, 32000);
@@ -116,7 +117,7 @@ describe("chords", () => {
   });
 
   it("the same goes for a song charted from its frequency bands", () => {
-    const { notes } = generateAll(makeFeatures({ durationMs: 60000, energy: LOUD }), "key").normal;
+    const { notes } = generateChart(makeFeatures({ durationMs: 60000, energy: LOUD }), "normalV26", "key");
     const moments = new Set(notes.map((n) => n.t)).size;
     assert.ok(notes.length > moments);
     assert.ok(notes.length - moments <= Math.ceil(normal.maxChordShare * moments), `${notes.length - moments} of ${moments}`);

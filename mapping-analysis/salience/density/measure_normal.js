@@ -1,0 +1,99 @@
+// Measures a generator level on the 80 TRAIN songs against the human Normal maps: the numbers Task 3 reports.
+//   node measure_normal.js [--level normal] [--json out.json] [--songs id,id] [--set '{"foreground":0.5}'] [--budget '{"maxRate":10}'] [--k '{"1":1.2}']
+// --set merges into the level's parameters, --budget into BUDGET (momentWeights.js) and --k into the level's K coefficients (by index), for tuning without edits.
+// Beat share uses 70 ms (rel_proxy_select.py BEAT_TOL); "good grid" = human beat share >= .85 (the spec's .92 / .76 are on those songs).
+// Moments/s are counted in the phrases phrase_density.py used (>= 2 s, inside the first..last human moment), so the unit is the
+// one the budget was fitted on. Beat share = grid beats (inside that span) with a note within 35 ms. Notes with no sound = notes
+// with no onset of any layer within 35 ms. F1 is on moments, 35 ms. Test songs are never read: ids come from corpus.csv (train).
+const fs = require("fs"), path = require("path");
+const repo = path.resolve(__dirname, "../../..");
+const { analyse, generateChart } = require(path.join(repo, "helpers/mewbeat/charts/generate"));
+const { strengthAt } = require(path.join(repo, "helpers/mewbeat/charts/rhythm"));
+
+const arg = (name, dflt) => { const i = process.argv.indexOf("--" + name); return i < 0 ? dflt : process.argv[i + 1]; };
+const level = arg("level", "normal");
+const { levelOf } = require(path.join(repo, "helpers/mewbeat/charts/difficulty"));
+const weights = require(path.join(repo, "helpers/mewbeat/charts/momentWeights"));
+if (arg("set", null)) Object.assign(levelOf(level), JSON.parse(arg("set", "{}")));
+if (arg("budget", null)) Object.assign(weights.BUDGET, JSON.parse(arg("budget", "{}")));
+if (arg("k", null)) for (const [i, v] of Object.entries(JSON.parse(arg("k", "{}")))) weights.K[levelOf(level).scoreLevel ?? level].coef[+i] = v;
+const only = arg("songs", null)?.split(",");
+const rows = fs.readFileSync(path.join(repo, "mapping-analysis/shared/corpus.csv"), "utf8").split("\n").slice(1).map((l) => l.split(","));
+const trainIds = rows.filter((r) => r[1] === "train").map((r) => r[0]);
+const TOL = 35, BEAT_TOL = 70, MIN_PHRASE_MS = 2000;
+
+const median = (a) => { const s = [...a].sort((x, y) => x - y); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : NaN; };
+const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+const std = (a) => { const m = mean(a); return Math.sqrt(mean(a.map((x) => (x - m) ** 2))); };
+const near = (sorted, t, tol) => { let lo = 0, hi = sorted.length; while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < t) lo = m + 1; else hi = m; } return (lo < sorted.length && sorted[lo] - t <= tol) || (lo > 0 && t - sorted[lo - 1] <= tol); };
+
+function phraseDensities(times, phrases, lo, hi) {
+  const out = [];
+  for (const p of phrases) {
+    if (p.endMs - p.startMs < MIN_PHRASE_MS || p.startMs < lo || p.endMs > hi) continue;
+    out.push({ a: p.startMs, b: p.endMs, y: times.filter((t) => t >= p.startMs && t < p.endMs).length / ((p.endMs - p.startMs) / 1000) });
+  }
+  return out;
+}
+
+const songs = [];
+for (const id of trainIds) {
+  if (only && !only.includes(id)) continue;
+  const humanPath = path.join(repo, ".mewbeat-debug/data/human/normal", id + ".json");
+  if (!fs.existsSync(humanPath)) continue;
+  const human = JSON.parse(fs.readFileSync(humanPath, "utf8"));
+  const raw = JSON.parse(fs.readFileSync(path.join(repo, ".mewbeat-debug/data/features", id + ".json"), "utf8"));
+  const features = raw.features ?? raw;
+  const chart = generateChart(features, level, "measure");
+  if (!chart) { songs.push({ id, noChart: true }); continue; }
+  const ctx = analyse(features);
+  const hMom = [...new Set(human.map((n) => n[0]))].sort((a, b) => a - b);
+  const lo = hMom[0], hi = hMom[hMom.length - 1];
+  const cMom = [...new Set(chart.notes.map((n) => n.t))].sort((a, b) => a - b);
+  const beats = ctx.timing.snapped ? ctx.timing.beats.filter((t) => t >= lo && t <= hi) : [];
+  const share = (moms) => (beats.length ? beats.filter((b) => near(moms, b, BEAT_TOL)).length / beats.length : NaN);
+  const hp = phraseDensities(hMom, ctx.phrases, lo, hi), cp = phraseDensities(cMom, ctx.phrases, lo, hi);
+  const wsum = (ps) => ps.reduce((s, p) => s + p.y * (p.b - p.a), 0) / ps.reduce((s, p) => s + (p.b - p.a), 0);
+  const inSpan = (ts) => ts.filter((t) => t >= lo && t <= hi).length / ((hi - lo) / 1000);
+  let tp = 0; for (const t of cMom) if (near(hMom, t, TOL)) tp++;
+  let hit = 0; for (const t of hMom) if (near(cMom, t, TOL)) hit++;
+  const prec = tp / cMom.length, rec = hit / hMom.length;
+  songs.push({
+    id, stars: chart.stars, noteCount: chart.notes.length, momentCount: cMom.length,
+    humanDensity: hp.length ? wsum(hp) : NaN, chartDensity: cp.length ? wsum(cp) : NaN,
+    humanPhraseCv: hp.length > 1 ? std(hp.map((p) => p.y)) / mean(hp.map((p) => p.y)) : NaN,
+    chartPhraseCv: cp.length > 1 ? std(cp.map((p) => p.y)) / mean(cp.map((p) => p.y)) : NaN,
+    phraseCorr: hp.length > 2 ? corr(hp.map((p) => p.y), cp.map((p) => p.y)) : NaN,
+    humanBeatShare: share(hMom), chartBeatShare: share(cMom),
+    humanNps: inSpan(human.map((n) => n[0])), chartNps: inSpan(chart.notes.map((n) => n.t)),
+    noSound: chart.notes.filter((n) => strengthAt(ctx, n.t) === null).length / chart.notes.length,
+    precision: prec, recall: rec, f1: prec + rec ? (2 * prec * rec) / (prec + rec) : 0,
+    chordShare: 1 - cMom.length / chart.notes.length, holds: chart.notes.filter((n) => n.len > 0).length / chart.notes.length,
+    loud: ctx.energy && undefined,
+  });
+}
+function corr(x, y) { const mx = mean(x), my = mean(y); let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < x.length; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy); }
+
+const ok = songs.filter((s) => !s.noChart);
+const col = (k) => ok.map((s) => s[k]).filter(Number.isFinite);
+const r = (x, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
+const cd = col("chartDensity"), hd = col("humanDensity");
+const summary = {
+  level, songs: songs.length, noChart: songs.length - ok.length,
+  chartMomentsPerSec: { median: r(median(cd)), cv: r(std(cd) / mean(cd)) },
+  humanMomentsPerSec: { median: r(median(hd)), cv: r(std(hd) / mean(hd)) },
+  corrSongDensityWithHuman: r(corr(ok.filter((s) => Number.isFinite(s.chartDensity) && Number.isFinite(s.humanDensity)).map((s) => s.chartDensity), ok.filter((s) => Number.isFinite(s.chartDensity) && Number.isFinite(s.humanDensity)).map((s) => s.humanDensity))),
+  phraseCv: { chart: r(mean(col("chartPhraseCv"))), human: r(mean(col("humanPhraseCv"))) },
+  phraseCorrWithHuman: { mean: r(mean(col("phraseCorr"))), median: r(median(col("phraseCorr"))) },
+  beatShare: { chart: r(median(col("chartBeatShare")), 2), human: r(median(col("humanBeatShare")), 2), chartMean: r(mean(col("chartBeatShare")), 2), humanMean: r(mean(col("humanBeatShare")), 2) },
+  notesPerSec: { chart: r(median(col("chartNps")), 2), human: r(median(col("humanNps")), 2) },
+  stars: { median: r(median(col("stars")), 2), mean: r(mean(col("stars")), 2) },
+  noSoundShare: { median: r(median(col("noSound")), 3), mean: r(mean(col("noSound")), 3) },
+  chordShare: { median: r(median(col("chordShare")), 3) }, holdShare: { median: r(median(col("holds")), 3) },
+  f1: { median: r(median(col("f1"))), precision: r(median(col("precision"))), recall: r(median(col("recall"))) },
+};
+console.log(JSON.stringify(summary, null, 1));
+const out = arg("json", null);
+if (out) fs.writeFileSync(out, JSON.stringify({ summary, songs }));
+const good = ok.filter((s) => s.humanBeatShare >= 0.85);
+console.log(JSON.stringify({ goodGridSongs: good.length, beatShareGoodGrid: { chart: r(median(good.map((s) => s.chartBeatShare)), 2), human: r(median(good.map((s) => s.humanBeatShare)), 2) } }));

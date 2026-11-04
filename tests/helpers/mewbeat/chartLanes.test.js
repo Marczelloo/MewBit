@@ -2,14 +2,15 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { planChords } = require("../../../helpers/mewbeat/charts/chords");
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { assignLanes } = require("../../../helpers/mewbeat/charts/lanes");
 const { findHeardRepeats } = require("../../../helpers/mewbeat/charts/repeatFinder");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
-const { easy, normal, hard } = DIFFICULTIES;
+const { easy, hard } = DIFFICULTIES;
+const normal = levelOf("normalV26"); // a level cut from another, as Normal was in v26 (the public Normal picks its notes from the music)
 const BEAT_MS = 500; // the fixtures play at 120 BPM
 const features = makeFeatures({ durationMs: 64000 });
 const timing = buildTiming(features, 64000);
@@ -191,12 +192,13 @@ describe("findHeardRepeats", () => {
 });
 
 describe("a whole chart", () => {
+  // Easy is cut from the Normal of v26 and that from Hard; the public Normal picks its own moments (selection.js) and is no part of the nest.
   it("is the same every time, and its levels nest", () => {
     const song = makeLayeredFeatures({ durationMs: 96000, energy: () => 0.7 });
     assert.deepEqual(generateChart(song, "hard", "k"), generateChart(song, "hard", "k"));
     const momentsOf = (d) => new Set(generateChart(song, d, "k").notes.map((n) => n.t));
     const hardMoments = momentsOf("hard");
-    const normalMoments = momentsOf("normal");
+    const normalMoments = momentsOf("normalV26");
     assert.ok([...momentsOf("easy")].every((t) => normalMoments.has(t)));
     assert.ok([...normalMoments].every((t) => hardMoments.has(t)));
   });

@@ -1,0 +1,38 @@
+78 songs, 1709 phrases, mean 4.562 moments/s
+r2 of the salient rate by q 0.5: 0.072  0.6: 0.123  0.7: 0.190  0.8: 0.150  0.9: 0.078 -> q 0.7
+song-grouped cv r2 { pooled: 0.229, between: -0.115, within: 0.343 }
+{
+ "note": "Fitted by fit_budget.js on the train songs; momentWeights.js carries these numbers.",
+ "q": 0.7,
+ "coef": [
+  0.3355227280060715,
+  1.7205311854210712
+ ],
+ "intercept": 0.9550363855212618,
+ "refModel": 4.5389829867312494,
+ "gamma": 3.974178120140956,
+ "delta": 1.9956752149300376,
+ "humanTrain": {
+  "medianSongDensity": 4.551728565467211,
+  "cvBetween": 0.15526018368734823,
+  "cvWithinPhrase": 0.20509713796192253
+ },
+ "modelCv": {
+  "pooled": 0.22865259071764776,
+  "between": -0.11464205034254782,
+  "within": 0.3431544803730665
+ },
+ "r2SalientRate": {
+  "0.5": 0.07224590587632566,
+  "0.6": 0.12291160566911215,
+  "0.7": 0.18999915850658816,
+  "0.8": 0.15019646892034577,
+  "0.9": 0.07792831911434532
+ },
+ "afterSpread": {
+  "cvBetween": 0.15715176878484885,
+  "cvWithin": 0.2050971379619225,
+  "corrSongWithHuman": -0.026980163753866825,
+  "corrSongWithHumanRaw": -0.03076658791056765
+ }
+}

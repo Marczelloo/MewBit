@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 26;
+const GENERATOR_VERSION = 27;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -139,8 +139,33 @@ const DIFFICULTIES = {
     sectionChordEnergy: 0.35, // ...when it is at least this loud
     sustainMinBeats: 1,
   },
-  // Until Normal has parameters of its own, public Normal is the v26 one.
-  normal: structuredClone(INTERNAL_LEVELS.normalV26),
+  // Normal picks its notes from the music (selection.js): the moments the music puts in the foreground, as many as its
+  // phrase has budget for, and not cut from Hard's. Chords come over the finished moments like Hard's (chords.js).
+  normal: {
+    selector: "music",
+    scoreLevel: "normal", // the weights the moments are scored with (momentWeights.js K)
+    foreground: 0.5, // a moment scoring at least this (a logit) is in the foreground
+    budgetScale: 1.1, // the phrase budget as the music calls for it times this (selection.js phraseBudget)
+    grammar: "normal",
+    chordRates: [0.7, 0.6, 0.13, 0.14], // how often a moment is a chord, by place in the bar (chords.js)
+    chordGapBeats: 1 / 4,
+    maxNps: 6.5,
+    maxNpsCeiling: 7.5,
+    laneGapBeats: 1 / 2,
+    minLaneGapMs: 150,
+    minNoteGapMs: 100,
+    maxJack: 2,
+    holdMinBeats: 1, // a half-beat hold reads as noise
+    holdOtherHand: "spaced",
+    gapBeats: 1 / 4, // any-lane gap between two moments, in beats
+    maxHoldShare: 0.15,
+    gapHoldShare: 0.14,
+    sectionChordRise: 0.7,
+    sectionChordEnergy: 0.3,
+    motifPull: 6,
+    echoMirror: 0.3,
+    sustainMinBeats: 1,
+  },
   hard: {
     grammar: "hard",
     chordRates: [1.3, 1.15, 0.26, 0.3], // how often a moment is a chord, by place in the bar (chords.js)

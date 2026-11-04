@@ -219,4 +219,4 @@ function nested(notes, rhythm) {
   return out;
 }
 
-module.exports = { MID_ENERGY, budgeted, cutToRhythm, metricLevel, nested, rhythmOf, sortedOnsets, strengthAt, withBeats };
+module.exports = { MID_ENERGY, budgeted, cutToRhythm, laneTheRest, metricLevel, nested, rhythmOf, sortedOnsets, strengthAt, withBeats };

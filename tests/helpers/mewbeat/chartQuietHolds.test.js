@@ -1,13 +1,15 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { generateChart } = require("../../../helpers/mewbeat/charts/generate");
+const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
+const { generateChart, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { limitHoldShare } = require("../../../helpers/mewbeat/charts/holds");
 const { LEGATO_MAX_GAP_MS, mergeLegato, withMergedLead } = require("../../../helpers/mewbeat/charts/legato");
 const { buildPhrases, chooseLeaders, hasSteadyPulse } = require("../../../helpers/mewbeat/charts/phrases");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeLayeredFeatures } = require("./fixtures");
+
+const LEVEL_V26 = levelOf("normalV26");
 
 const BEAT_MS = 500; // the fixtures play at 120 BPM
 const PHRASE_BEATS = 16;
@@ -42,7 +44,7 @@ describe("quiet rhythmic passages", () => {
     const features = softKicks();
     const phrases = phrasesOf(features);
     const perPhrase = (chart) => chart.notes.length / phrases.length;
-    assert.ok(perPhrase(generateChart(features, "normal", "k")) >= PHRASE_BEATS * DIFFICULTIES.normal.pulseNotesPerBeat);
+    assert.ok(perPhrase(generateChart(features, "normal", "k")) >= PHRASE_BEATS * LEVEL_V26.pulseNotesPerBeat);
     assert.ok(perPhrase(generateChart(features, "easy", "k")) >= PHRASE_BEATS * DIFFICULTIES.easy.pulseNotesPerBeat * DIFFICULTIES.easy.quietBeats);
   });
 
@@ -50,9 +52,11 @@ describe("quiet rhythmic passages", () => {
     const features = quietPad();
     const phrases = phrasesOf(features);
     assert.ok(phrases.every((p) => !hasSteadyPulse(p)));
-    const normal = generateChart(features, "normal", "k");
-    const moments = new Set(normal.notes.map((n) => n.t)).size;
-    assert.ok(moments / phrases.length < PHRASE_BEATS * DIFFICULTIES.normal.pulseNotesPerBeat * 0.5);
+    // Normal picks from what sounds: no note is played for a pulse the music does not have, and a phrase stays under a note per beat.
+    const story = traceChart(features, "normal", "k");
+    assert.ok(!story.records.some((r) => r.reason === "puls"));
+    const moments = new Set(story.chart.notes.map((n) => n.t)).size;
+    assert.ok(moments / phrases.length < PHRASE_BEATS);
   });
 
   it("a sung line keeps its lead even with a pulse under it", () => {

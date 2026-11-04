@@ -3,7 +3,7 @@ const { describe, it } = require("node:test");
 
 const { buildTiming, energyLookup, foldTempo } = require("../../../helpers/mewbeat/charts/timing");
 const { bandPathNotes } = require("../../../helpers/mewbeat/charts/bandPath");
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
 describe("foldTempo", () => {
@@ -116,7 +116,7 @@ describe("bandPathNotes", () => {
 
   function run(features, difficulty, window) {
     const timing = buildTiming(features, features.durationMs);
-    return bandPathNotes(features, timing, DIFFICULTIES[difficulty], energy(features), window);
+    return bandPathNotes(features, timing, levelOf(difficulty), energy(features), window);
   }
 
   it("is time-ordered and stays inside the window", () => {
@@ -133,8 +133,8 @@ describe("bandPathNotes", () => {
 
   it("gives the same notes however the song is cut into windows (up to the window edges)", () => {
     const features = makeFeatures({ durationMs: 60000, energy: () => 0.9 });
-    const whole = run(features, "normal", { fromMs: 0, toMs: 60000 });
+    const whole = run(features, "normalV26", { fromMs: 0, toMs: 60000 });
     assert.ok(whole.length > 20);
-    assert.deepStrictEqual(run(features, "normal", { fromMs: 0, toMs: 60000 }), whole);
+    assert.deepStrictEqual(run(features, "normalV26", { fromMs: 0, toMs: 60000 }), whole);
   });
 });
