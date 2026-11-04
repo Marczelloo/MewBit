@@ -167,7 +167,7 @@ const DIFFICULTIES = {
     gapHoldShare: 0.35,
     sectionChordRise: 0.7,
     sectionChordEnergy: 0.3,
-    motifPull: 6,
+    motifPull: 2, // 6 narrowed a song to its favourites: distinct 4-block figures per 100 were 44 on the train songs, 50 at 2, 58 at 0, people 56
     echoMirror: 0.3,
     sustainMinBeats: 1,
   },
