@@ -1,6 +1,6 @@
 // What Normal's lanes answer to: the direction of the melody a moment plays (melodyDirection), and the rules of the
 // Ranking Criteria a Normal chart keeps (normalViolations). The pattern reference is mapping-analysis/shared/mania-patterns.md.
-const { beatMsOf } = require("./holds");
+const { SHORT_HOLD_CLASS, beatMsOf, underHoldFlagged } = require("./holds");
 const { groupByTime } = require("./difficultyFilter");
 const { lowerBound, nearestIndex } = require("./util");
 
@@ -118,8 +118,6 @@ const MAX_CHORD = 2;
 const STREAM_BEATS = 0.56; // notes this close are a stream, which an anchor lives in: a half beat plus 12% (an 8% tempo step and the rounding), well under a triplet third (.67)
 const MAX_ANCHOR = 2;
 const SHORT_HOLD_BEATS = 0.5; // the shortest hold
-const SHORT_HOLD_CLASS = 0.6; // a hold up to this long is a half-beat hold: nothing under it
-const BEAT_HOLD_CLASS = 1.1; // ...up to this long a beat hold: nothing faster than a half beat under it
 const SLACK = 0.98; // a length is met within this much: the grid rounds, and a bending grid stretches
 const TAIL = 8; // the moments the lane rules look back on
 
@@ -209,17 +207,9 @@ function normalViolations(notes, timing = null, { durationMs = Infinity } = {}) 
       if (n.lane === h.lane) flag("holdLane", n);
       else if (n.t > h.t && n.t < end) under.push(n);
     }
-    if (h.len <= SHORT_HOLD_CLASS * beat) {
-      for (const n of under) flag("underShortHold", n);
-    } else if (h.len <= BEAT_HOLD_CLASS * beat) {
-      const marks = [h.t, ...under.map((n) => n.t), end];
-      const flagged = new Set();
-      marks.forEach((t, k) => {
-        if (k === 0 || t - marks[k - 1] >= (beat / 2) * SLACK) return;
-        for (const at of [k - 1, k]) if (at > 0 && at < marks.length - 1) flagged.add(at - 1);
-      });
-      for (const at of [...flagged].sort((a, b) => a - b)) flag("underHold", under[at]);
-    }
+    // what may sit under it is holds.js's rule, which the generator keeps as well
+    const rule = h.len <= SHORT_HOLD_CLASS * beat ? "underShortHold" : "underHold";
+    for (const at of underHoldFlagged(h.len, under.map((n) => n.t - h.t), beat)) flag(rule, under[at]);
   }
   return out.sort((a, b) => a.t - b.t);
 }

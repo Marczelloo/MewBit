@@ -1,12 +1,14 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { addGapHolds, clipHolds, settleHolds } = require("../../../helpers/mewbeat/charts/holds");
 const { accentSections, sectionStarts } = require("../../../helpers/mewbeat/charts/sections");
 
 const BEAT = 500;
-const { easy, normal, hard } = DIFFICULTIES;
+// v26's Normal: its holds let go on the next moment. The free holds of the public Normal are in chartHoldsUnder.test.js.
+const { easy, hard } = DIFFICULTIES;
+const normal = levelOf("normalV26");
 
 function gridOf(bars) {
   const beats = Array.from({ length: bars * 4 + 1 }, (_, i) => i * BEAT);

@@ -2,7 +2,8 @@
 // hold runs its hand is busy: no note of that hand starts before it ends (plus a
 // gap), and depending on the difficulty the other hand is blocked (Easy), spaced
 // half a beat apart (Normal) or free (Hard). Taps carry no `len` key at all.
-// A hold lets go on the chart's next moment, the way a mapper draws one (settleHolds).
+// A hold lets go on the chart's next moment, the way a mapper draws one (settleHolds). Where diff.holdRelease is "free"
+// (Normal) it lets go with its sound instead, and carries the notes of the other hand under it (underHoldFlagged).
 const { BEAT_TOLERANCE_MS, FALLBACK_BEAT_MS } = require("./difficulty");
 const { lowerBound, nearestIndex } = require("./util");
 
@@ -25,6 +26,8 @@ const LONG_HOLD_NOTES_PER_BEAT = 1;
 const EARLY_RELEASE_BEATS = 1 / 4; // letting go before a note of the same hand
 const SHORT_HOLD_NOTE_GAPS = 2; // however short the beat, a hold is at least this many of the difficulty's note gaps long
 
+const FREE_SNAP_BEATS = 1 / 4; // a free hold whose sound ends this near a moment lets go on it
+
 // A support event backs the leader up: a backbone drum hit under a tonal leader ("secondary"), or an event of a
 // support layer in a mixed phrase (patterns.js mixedEvents).
 const SPACING_SLACK = 0.9; // a whole-beat spacing is met within this much: a bending grid stretches it
@@ -32,6 +35,26 @@ const isSupport = (e) => e.source === "secondary" || e.support === true;
 
 // Does note `o` give way to hold candidate `c`: a support event of another layer, or a less important note of one?
 const yields = (o, c) => o.source !== c.source && (isSupport(o) || o.level > c.level);
+
+// What may sit under a hold: the Ranking Criteria for Normal, shared with laneRules.js (normalViolations).
+const SHORT_HOLD_CLASS = 0.6; // a hold up to this long (in beats) is a half-beat hold: nothing under it
+const BEAT_HOLD_CLASS = 1.1; // ...up to this long a beat hold: nothing faster than a half beat under it
+const UNDER_SLACK = 0.98; // a length is met within this much: the grid rounds, and a bending grid stretches
+
+// underHoldFlagged(len, under, beat) -> the indices of `under` that break the rule. `under` are the offsets (ms, ascending)
+// from the hold's start of the notes strictly inside it, `len` its length. A half-beat hold carries nothing; a hold of
+// about a beat nothing closer than a half beat to either end or to another such note; a longer one anything.
+function underHoldFlagged(len, under, beat) {
+  if (len <= SHORT_HOLD_CLASS * beat) return under.map((_, i) => i);
+  if (len > BEAT_HOLD_CLASS * beat) return [];
+  const marks = [0, ...under, len];
+  const flagged = new Set();
+  marks.forEach((t, k) => {
+    if (k === 0 || t - marks[k - 1] >= (beat / 2) * UNDER_SLACK) return;
+    for (const at of [k - 1, k]) if (at > 0 && at < marks.length - 1) flagged.add(at - 1);
+  });
+  return [...flagged].sort((a, b) => a - b);
+}
 
 const hand = (lane) => lane >> 1;
 const beatMsOf = (timing, t) => (typeof timing?.beatMsAt === "function" ? timing.beatMsAt(t) : FALLBACK_BEAT_MS);
@@ -60,7 +83,7 @@ function holdBlocks(h, n, diff) {
 // note of that hand (inside the hold), or at the same time as one (a chord would be a
 // third key), is forbidden. `others` are the notes kept so far.
 function spacedBlocked(h, n, others, diff, halfBeatMs) {
-  if (diff.holdOtherHand !== "spaced" || !(h.len > 0)) return false;
+  if (diff.holdOtherHand !== "spaced" || diff.holdRelease === "free" || !(h.len > 0)) return false; // free: the rules of underHoldFlagged instead
   if (hand(n.lane) === hand(h.lane) || n.t <= h.t || n.t >= h.t + h.len) return false;
   return others.some((o) => o !== n && o !== h && hand(o.lane) !== hand(h.lane) && o.t > h.t && o.t <= n.t && n.t - o.t < halfBeatMs);
 }
@@ -237,6 +260,13 @@ function addSustainHolds(notes, features, diff, timing, limitMs = Infinity) {
     if (!c) continue;
     const beat = beatMsOf(timing, c.t);
     const minLen = diff.holdMinBeats * beat;
+    if (diff.holdRelease === "free") {
+      // The lanes are placeholders yet and the hold lets go with the sound: notes under it are the other hand's (lanes.js),
+      // and settleHolds fits its end to the moments and the rules of what sits under it. Nothing is dropped.
+      const len = Math.round(Math.min(e.len, MAX_HOLD_BEATS * beat, limitMs - laneGap - c.t));
+      if (len >= minLen) c.len = len;
+      continue;
+    }
     const later = out.filter((o) => !dropped.has(o) && o.t > c.t && o.t < c.t + MAX_HOLD_BEATS * beat + laneGap + (diff.minNoteGapMs ?? 0));
     let len = Math.min(e.len, MAX_HOLD_BEATS * beat, limitMs - laneGap - c.t);
     const sameLane = later.find((o) => o.lane === c.lane);
@@ -341,12 +371,57 @@ function onGridLen(h, diff, timing, limitMs) {
   return i >= 0 && grid[i] > h.t && grid[i] <= last ? grid[i] - h.t : Math.round(end - h.t);
 }
 
+// Where a free hold (diff.holdRelease "free") lets go, as a length (0: it stays a tap). The sound's end is where it
+// would: on a moment within FREE_SNAP_BEATS of it, else on the grid, and never past the song or MAX_HOLD_BEATS. Then the
+// rules of what sits under it (underHoldFlagged) shorten it to an earlier moment until they hold: a hold of about a
+// beat cannot run over a note closer than a half beat to it. `ends` are those of the holds already running: one more
+// takes the other hand, and no moment can sit under both (it would have no hand to play it).
+function freeLength(h, moments, ends, diff, timing, limitMs) {
+  const beat = beatMsOf(timing, h.t);
+  const noteGap = diff.minNoteGapMs ?? 0;
+  const last = limitMs - (diff.minLaneGapMs ?? 0);
+  const shortest = shortestHold(diff, beat);
+  const sound = Math.min(h.t + h.len, h.t + MAX_HOLD_BEATS * beat, last);
+  const running = ends.filter((e) => e > h.t);
+  if (running.length >= 2) return 0;
+
+  const near = moments.times[nearestIndex(moments.times, sound)];
+  let end = near !== undefined && near > h.t && near <= last && Math.abs(near - sound) <= FREE_SNAP_BEATS * beat ? near : h.t + onGridLen({ t: h.t, len: sound - h.t }, diff, timing, limitMs);
+  for (;;) {
+    if (end - h.t < shortest) return 0;
+    const inside = moments.times.slice(lowerBound(moments.times, h.t + 1), lowerBound(moments.times, end));
+    if (underHoldFlagged(end - h.t, inside.map((t) => t - h.t), beat).length === 0) {
+      if (running.length > 0 && moments.times.some((t) => t > h.t && t < Math.min(end, ...running) + noteGap)) return 0;
+      return end - h.t;
+    }
+    if (inside.length === 0) return 0;
+    end = inside[inside.length - 1];
+  }
+}
+
+// settleHolds for a level whose holds are free: each lets go as freeLength says, in the order they start.
+function settleFree(out, moments, diff, timing, limitMs) {
+  const ends = [];
+  for (const h of out) {
+    if (!(h.len > 0)) continue;
+    const len = freeLength(h, moments, ends, diff, timing, limitMs);
+    if (len > 0) {
+      h.len = Math.round(len);
+      ends.push(h.t + h.len);
+    } else {
+      delete h.len;
+    }
+  }
+  return out;
+}
+
 // settleHolds(notes, diff, timing, limitMs) -> notes: a hold lets go on the next moment of the chart, whichever hand
 // plays it, and stays empty. Only a long one of Normal or Hard (a real sustain) may run on, over a sparse other hand.
 // A next moment too near makes it a tap. No moment within MAX_HOLD_BEATS: it keeps its length, put on the grid.
 function settleHolds(notes, diff, timing, limitMs = Infinity) {
   const out = [...notes].sort((a, b) => a.t - b.t || a.lane - b.lane).map((n) => ({ ...n }));
   const moments = momentsOf(out);
+  if (diff.holdRelease === "free") return settleFree(out, moments, diff, timing, limitMs);
   for (const h of out) {
     if (!(h.len > 0)) continue;
     const beat = beatMsOf(timing, h.t);
@@ -386,6 +461,15 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
     }
     return 0;
   };
+  // A free hold (diff.holdRelease) follows the sound it starts with: its length, not the rest. (The sustain to read it from.)
+  const free = diff.holdRelease === "free";
+  const soundLen = (t, rest) => {
+    let len = 0;
+    for (let i = lowerBound(sustainTimes, t - SUSTAIN_MATCH_MS); i < sustains.length && sustains[i].t <= t + SUSTAIN_MATCH_MS; i++) {
+      if (sustains[i].len >= GAP_SUSTAIN_SHARE * rest) len = Math.max(len, sustains[i].len);
+    }
+    return len;
+  };
   const beats = timing?.beats ?? [];
   const onBeat = (t) => {
     const i = nearestIndex(beats, t);
@@ -394,19 +478,28 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
   const candidates = [];
   for (const c of own) {
     if (c.len > 0) continue;
-    if (moments.at.get(c.t).some((o) => o !== c && (hand(o.lane) === hand(c.lane) || diff.holdOtherHand === "blocked" || o.len > 0))) continue;
+    if (moments.at.get(c.t).some((o) => o !== c && (o.len > 0 || (!free && (hand(o.lane) === hand(c.lane) || diff.holdOtherHand === "blocked"))))) continue;
     const beat = beatMsOf(timing, c.t);
     const next = moments.times[lowerBound(moments.times, c.t + 1)];
     if (next === undefined || next > limitMs) continue;
     const rest = next - c.t;
     if (rest < shortestHold(diff, beat) || rest > (GAP_MAX_BEATS * beat) / SPACING_SLACK) continue;
     if (![c.t, c.t + rest / 2, next].every(loud)) continue;
-    candidates.push({ c, next, rest, rank: 2 * sustained(c.t, rest) + onBeat(c.t) });
+    candidates.push({ c, next, rest, rank: 2 * sustained(c.t, rest) + onBeat(c.t), sound: free ? soundLen(c.t, rest) : 0 });
   }
   candidates.sort((x, y) => y.rank - x.rank || y.rest - x.rest || x.c.t - y.c.t || x.c.lane - y.c.lane);
-  for (const { c, next } of candidates) {
+  for (const { c, next, sound } of candidates) {
     if (budget <= 0) break;
     const beat = beatMsOf(timing, c.t);
+    if (free) {
+      // The lanes are placeholders yet: settleHolds fits the end, lanes.js the hands. A tap is a hold where it can be one.
+      const len = Math.round(Math.min(sound > 0 ? sound : next - c.t, MAX_HOLD_BEATS * beat, limitMs - (diff.minLaneGapMs ?? 0) - c.t));
+      if (len < shortestHold(diff, beat)) continue;
+      c.len = len;
+      c.gapHold = true;
+      budget--;
+      continue;
+    }
     const { len, move } = letGo(c, next, moments, out, diff, timing);
     if (len < shortestHold(diff, beat)) continue;
     const reach = MAX_HOLD_BEATS * beat;
@@ -422,4 +515,4 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
   return out;
 }
 
-module.exports = { addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, spacedBlocked };
+module.exports = { BEAT_HOLD_CLASS, SHORT_HOLD_CLASS, UNDER_SLACK, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, spacedBlocked, underHoldFlagged };

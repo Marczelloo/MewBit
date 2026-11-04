@@ -9,7 +9,7 @@
 // the sound goes up, a repeated sound is a jack or a trill, a repeated phrase plays its source's lanes, and no lane
 // makes the chart break the rules of Normal. Where the melody gives no direction the grammar above decides alone.
 const grammar = require("./laneGrammar.json");
-const { beatMsOf, holdBlocks, spacedBlocked } = require("./holds");
+const { beatMsOf, holdBlocks, spacedBlocked, underHoldFlagged } = require("./holds");
 const { groupByTime } = require("./difficultyFilter");
 const { TAIL, breaksLaneRules, melodyDirection, melodyPull } = require("./laneRules");
 const { isRepeatOf } = require("./phrases");
@@ -157,6 +157,15 @@ function assignLanes(notes, ctx, diff, upper = null) {
     const holdsFirst = [...raw].sort((a, b) => (b.len > 0) - (a.len > 0) || a.lane - b.lane);
     let kept = freeTheHands(holdsFirst, running, nextT, noteGap);
 
+    // Under a running hold the notes keep the rules of what sits under one (holds.js underHoldFlagged), where a level asks for them.
+    const breaksUnder = (h, lanes) => {
+      if (!(t > h.t && t < h.t + h.len)) return false;
+      const under = placed.filter((o) => o !== h && o.lane !== h.lane && o.t > h.t && o.t < h.t + h.len).map((o) => o.t - h.t);
+      under.push(...lanes.filter((l) => l !== h.lane).map(() => t - h.t));
+      return underHoldFlagged(h.len, under, beatMsOf(timing, h.t)).length > 0;
+    };
+    const underBreaks = (lanes) => !!diff.underHold && active.some((h) => breaksUnder(h, lanes));
+
     const lonelyLanes = (mask) => lanesOf(mask).filter((l) => !lanesOf(mask).some((o) => o !== l && handOf(o) === handOf(l)));
     const legal = (mask, holds) => {
       const lanes = lanesOf(mask);
@@ -167,7 +176,7 @@ function assignLanes(notes, ctx, diff, upper = null) {
         const others = [...placed, ...lanes.filter((o) => o !== l).map((lane) => ({ t, lane }))];
         return active.every((h) => !holdBlocks(h, note, diff) && !spacedBlocked(h, note, others, diff, beat / 2));
       });
-      return playable && !(diff.melodyLanes && breaksLaneRules(tail, t, lanes, timing));
+      return playable && !underBreaks(lanes) && !(diff.melodyLanes && breaksLaneRules(tail, t, lanes, timing));
     };
 
     // What can be played of this moment: first its taps go, then a last hold becomes a tap.
@@ -176,6 +185,14 @@ function assignLanes(notes, ctx, diff, upper = null) {
       const holds = kept.filter((n) => n.len > 0).length;
       options = MASKS[kept.length].filter((mask) => legal(mask, holds));
       if (options.length > 0) break;
+      // A hold whose rules a note under it would break plays as a tap, before a moment is lost: the settle step keeps this from happening.
+      const broken = diff.underHold ? active.find((h) => breaksUnder(h, [-1])) : undefined;
+      if (broken) {
+        delete broken.len;
+        laneFree[broken.lane] = broken.t;
+        active = active.filter((h) => h !== broken);
+        continue;
+      }
       if (kept.length > 1) {
         kept = kept.slice(0, -1);
       } else if (kept[0].len > 0) {
