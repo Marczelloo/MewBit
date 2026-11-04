@@ -1,13 +1,55 @@
 80 train songs; test songs not read
-easy rel_os {'f1_median': 0.6824, 'f1_mean': 0.6505, 'beats_kept_mean': 0.7701, 'beats_kept_median': 0.7807, 'no_sound_mean': 0.0003, 'no_sound_median': 0.0, 'songs': 79, 'songs_with_grid': 78}
-easy raw_strength {'f1_median': 0.7154, 'f1_mean': 0.6674, 'beats_kept_mean': 0.8742, 'beats_kept_median': 0.8948, 'no_sound_mean': 0.0, 'no_sound_median': 0.0, 'songs': 79, 'songs_with_grid': 78}
-easy no_strength_col {'f1_median': 0.6708, 'f1_mean': 0.6279, 'beats_kept_mean': 0.9038, 'beats_kept_median': 0.9422, 'no_sound_mean': 0.0009, 'no_sound_median': 0.0, 'songs': 79, 'songs_with_grid': 78}
-easy human {'beats_kept_mean': 0.7068, 'beats_kept_median': 0.7348}
-normal rel_os {'f1_median': 0.7427, 'f1_mean': 0.7425, 'beats_kept_mean': 0.8393, 'beats_kept_median': 0.8434, 'no_sound_mean': 0.0008, 'no_sound_median': 0.0, 'songs': 78, 'songs_with_grid': 77}
-normal raw_strength {'f1_median': 0.7584, 'f1_mean': 0.7644, 'beats_kept_mean': 0.9081, 'beats_kept_median': 0.9171, 'no_sound_mean': 0.0, 'no_sound_median': 0.0, 'songs': 78, 'songs_with_grid': 77}
-normal no_strength_col {'f1_median': 0.7232, 'f1_mean': 0.7172, 'beats_kept_mean': 0.9767, 'beats_kept_median': 0.9854, 'no_sound_mean': 0.0015, 'no_sound_median': 0.001, 'songs': 78, 'songs_with_grid': 77}
-normal human {'beats_kept_mean': 0.8495, 'beats_kept_median': 0.8868}
-hard rel_os {'f1_median': 0.7539, 'f1_mean': 0.7615, 'beats_kept_mean': 0.9079, 'beats_kept_median': 0.9221, 'no_sound_mean': 0.0012, 'no_sound_median': 0.0, 'songs': 75, 'songs_with_grid': 74}
-hard raw_strength {'f1_median': 0.7784, 'f1_mean': 0.7795, 'beats_kept_mean': 0.9581, 'beats_kept_median': 0.9688, 'no_sound_mean': 0.0002, 'no_sound_median': 0.0, 'songs': 75, 'songs_with_grid': 74}
-hard no_strength_col {'f1_median': 0.7538, 'f1_mean': 0.7501, 'beats_kept_mean': 0.9777, 'beats_kept_median': 0.9842, 'no_sound_mean': 0.0024, 'no_sound_median': 0.0012, 'songs': 75, 'songs_with_grid': 74}
-hard human {'beats_kept_mean': 0.9252, 'beats_kept_median': 0.9393}
+song easy rel_os {'f1_median': 0.6824, 'f1_mean': 0.6505, 'beats_kept_mean': 0.7701, 'beats_kept_median': 0.7807, 'songs_with_grid': 78, 'no_sound_mean': 0.0003, 'no_sound_median': 0.0}
+song easy raw_strength {'f1_median': 0.7154, 'f1_mean': 0.6674, 'beats_kept_mean': 0.8742, 'beats_kept_median': 0.8948, 'songs_with_grid': 78, 'no_sound_mean': 0.0, 'no_sound_median': 0.0}
+song easy no_strength_col {'f1_median': 0.6708, 'f1_mean': 0.6279, 'beats_kept_mean': 0.9038, 'beats_kept_median': 0.9422, 'songs_with_grid': 78, 'no_sound_mean': 0.0009, 'no_sound_median': 0.0}
+song easy human {'beats_kept_mean': 0.7068, 'beats_kept_median': 0.7348, 'songs_with_grid': 78}
+song easy paired {'f1': {'n': 79, 'median': -0.024, 'median_ci': [-0.0332, -0.0138], 'mean': -0.0169, 'mean_ci': [-0.0252, -0.0074]}, 'beat_gap': {'n': 78, 'median': -0.0564, 'median_ci': [-0.0845, -0.0386], 'mean': -0.0556, 'mean_ci': [-0.0738, -0.0364]}, 'beat_gap_mean_rel_os': 0.1163, 'beat_gap_mean_raw_strength': 0.1719, 'beat_gap_median_rel_os': 0.0716, 'beat_gap_median_raw_strength': 0.1058}
+window easy rel_os {'f1_median': 0.7059, 'f1_mean': 0.6694, 'beats_kept_mean': 0.7745, 'beats_kept_median': 0.7937, 'songs_with_grid': 78}
+window easy raw_strength {'f1_median': 0.7232, 'f1_mean': 0.6831, 'beats_kept_mean': 0.8659, 'beats_kept_median': 0.8804, 'songs_with_grid': 78}
+window easy no_strength_col {'f1_median': 0.6869, 'f1_mean': 0.6526, 'beats_kept_mean': 0.8862, 'beats_kept_median': 0.9033, 'songs_with_grid': 78}
+window easy repro_pkl5_it300 {'f1_median': 0.7003, 'f1_mean': 0.6681, 'beats_kept_mean': 0.7756, 'beats_kept_median': 0.7953, 'songs_with_grid': 78}
+window easy diag_gen5_it300 {'f1_median': 0.7003, 'f1_mean': 0.6678, 'beats_kept_mean': 0.776, 'beats_kept_median': 0.7953, 'songs_with_grid': 78}
+window easy diag_pkl7_it400 {'f1_median': 0.7064, 'f1_mean': 0.67, 'beats_kept_mean': 0.7739, 'beats_kept_median': 0.7937, 'songs_with_grid': 78}
+window easy human {'beats_kept_mean': 0.7068, 'beats_kept_median': 0.7348, 'songs_with_grid': 78}
+window easy paired {'f1': {'n': 79, 'median': -0.0215, 'median_ci': [-0.0299, -0.0065], 'mean': -0.0137, 'mean_ci': [-0.0225, -0.0041]}, 'beat_gap': {'n': 78, 'median': -0.0482, 'median_ci': [-0.0733, -0.0261], 'mean': -0.0456, 'mean_ci': [-0.0629, -0.0277]}, 'beat_gap_mean_rel_os': 0.1177, 'beat_gap_mean_raw_strength': 0.1633, 'beat_gap_median_rel_os': 0.0643, 'beat_gap_median_raw_strength': 0.0895}
+phrase easy rel_os {'f1_median': 0.7059, 'f1_mean': 0.6737, 'beats_kept_mean': 0.7774, 'beats_kept_median': 0.7924, 'songs_with_grid': 78}
+phrase easy raw_strength {'f1_median': 0.7342, 'f1_mean': 0.6871, 'beats_kept_mean': 0.8649, 'beats_kept_median': 0.8758, 'songs_with_grid': 78}
+phrase easy no_strength_col {'f1_median': 0.7005, 'f1_mean': 0.6611, 'beats_kept_mean': 0.886, 'beats_kept_median': 0.9064, 'songs_with_grid': 78}
+phrase easy human {'beats_kept_mean': 0.7075, 'beats_kept_median': 0.7548, 'songs_with_grid': 78}
+phrase easy paired {'f1': {'n': 79, 'median': -0.0178, 'median_ci': [-0.027, -0.0134], 'mean': -0.0134, 'mean_ci': [-0.0227, -0.0032]}, 'beat_gap': {'n': 78, 'median': -0.0504, 'median_ci': [-0.073, -0.0195], 'mean': -0.0429, 'mean_ci': [-0.0597, -0.0255]}, 'beat_gap_mean_rel_os': 0.1193, 'beat_gap_mean_raw_strength': 0.1621, 'beat_gap_median_rel_os': 0.0696, 'beat_gap_median_raw_strength': 0.0907}
+song normal rel_os {'f1_median': 0.7427, 'f1_mean': 0.7425, 'beats_kept_mean': 0.8393, 'beats_kept_median': 0.8434, 'songs_with_grid': 77, 'no_sound_mean': 0.0008, 'no_sound_median': 0.0}
+song normal raw_strength {'f1_median': 0.7584, 'f1_mean': 0.7644, 'beats_kept_mean': 0.9081, 'beats_kept_median': 0.9171, 'songs_with_grid': 77, 'no_sound_mean': 0.0, 'no_sound_median': 0.0}
+song normal no_strength_col {'f1_median': 0.7232, 'f1_mean': 0.7172, 'beats_kept_mean': 0.9767, 'beats_kept_median': 0.9854, 'songs_with_grid': 77, 'no_sound_mean': 0.0015, 'no_sound_median': 0.001}
+song normal human {'beats_kept_mean': 0.8495, 'beats_kept_median': 0.8868, 'songs_with_grid': 77}
+song normal paired {'f1': {'n': 78, 'median': -0.0211, 'median_ci': [-0.0317, -0.0143], 'mean': -0.0219, 'mean_ci': [-0.0292, -0.0138]}, 'beat_gap': {'n': 77, 'median': -0.0027, 'median_ci': [-0.0305, 0.0104], 'mean': -0.0135, 'mean_ci': [-0.0284, 0.0009]}, 'beat_gap_mean_rel_os': 0.0595, 'beat_gap_mean_raw_strength': 0.0731, 'beat_gap_median_rel_os': 0.0473, 'beat_gap_median_raw_strength': 0.0469}
+window normal rel_os {'f1_median': 0.7603, 'f1_mean': 0.7607, 'beats_kept_mean': 0.8424, 'beats_kept_median': 0.845, 'songs_with_grid': 77}
+window normal raw_strength {'f1_median': 0.7862, 'f1_mean': 0.7798, 'beats_kept_mean': 0.909, 'beats_kept_median': 0.9258, 'songs_with_grid': 77}
+window normal no_strength_col {'f1_median': 0.7554, 'f1_mean': 0.7445, 'beats_kept_mean': 0.9565, 'beats_kept_median': 0.9739, 'songs_with_grid': 77}
+window normal repro_pkl5_it300 {'f1_median': 0.7641, 'f1_mean': 0.7619, 'beats_kept_mean': 0.8429, 'beats_kept_median': 0.8524, 'songs_with_grid': 77}
+window normal diag_gen5_it300 {'f1_median': 0.7606, 'f1_mean': 0.7606, 'beats_kept_mean': 0.8433, 'beats_kept_median': 0.8529, 'songs_with_grid': 77}
+window normal diag_pkl7_it400 {'f1_median': 0.7631, 'f1_mean': 0.762, 'beats_kept_mean': 0.8423, 'beats_kept_median': 0.8464, 'songs_with_grid': 77}
+window normal human {'beats_kept_mean': 0.8495, 'beats_kept_median': 0.8868, 'songs_with_grid': 77}
+window normal paired {'f1': {'n': 78, 'median': -0.0222, 'median_ci': [-0.0309, -0.0185], 'mean': -0.0191, 'mean_ci': [-0.0259, -0.0116]}, 'beat_gap': {'n': 77, 'median': -0.0158, 'median_ci': [-0.0341, 0.0071], 'mean': -0.0167, 'mean_ci': [-0.0307, -0.0032]}, 'beat_gap_mean_rel_os': 0.0554, 'beat_gap_mean_raw_strength': 0.0721, 'beat_gap_median_rel_os': 0.0417, 'beat_gap_median_raw_strength': 0.049}
+phrase normal rel_os {'f1_median': 0.7664, 'f1_mean': 0.7654, 'beats_kept_mean': 0.8424, 'beats_kept_median': 0.8497, 'songs_with_grid': 77}
+phrase normal raw_strength {'f1_median': 0.794, 'f1_mean': 0.7854, 'beats_kept_mean': 0.9085, 'beats_kept_median': 0.9239, 'songs_with_grid': 77}
+phrase normal no_strength_col {'f1_median': 0.7666, 'f1_mean': 0.7542, 'beats_kept_mean': 0.9542, 'beats_kept_median': 0.9728, 'songs_with_grid': 77}
+phrase normal human {'beats_kept_mean': 0.8502, 'beats_kept_median': 0.8858, 'songs_with_grid': 77}
+phrase normal paired {'f1': {'n': 78, 'median': -0.0252, 'median_ci': [-0.0334, -0.0167], 'mean': -0.02, 'mean_ci': [-0.027, -0.0122]}, 'beat_gap': {'n': 77, 'median': -0.0156, 'median_ci': [-0.0356, 0.0073], 'mean': -0.0153, 'mean_ci': [-0.0298, -0.0016]}, 'beat_gap_mean_rel_os': 0.0561, 'beat_gap_mean_raw_strength': 0.0715, 'beat_gap_median_rel_os': 0.0368, 'beat_gap_median_raw_strength': 0.0467}
+song hard rel_os {'f1_median': 0.7539, 'f1_mean': 0.7615, 'beats_kept_mean': 0.9079, 'beats_kept_median': 0.9221, 'songs_with_grid': 74, 'no_sound_mean': 0.0012, 'no_sound_median': 0.0}
+song hard raw_strength {'f1_median': 0.7784, 'f1_mean': 0.7795, 'beats_kept_mean': 0.9581, 'beats_kept_median': 0.9688, 'songs_with_grid': 74, 'no_sound_mean': 0.0002, 'no_sound_median': 0.0}
+song hard no_strength_col {'f1_median': 0.7538, 'f1_mean': 0.7501, 'beats_kept_mean': 0.9777, 'beats_kept_median': 0.9842, 'songs_with_grid': 74, 'no_sound_mean': 0.0024, 'no_sound_median': 0.0012}
+song hard human {'beats_kept_mean': 0.9252, 'beats_kept_median': 0.9393, 'songs_with_grid': 74}
+song hard paired {'f1': {'n': 75, 'median': -0.0166, 'median_ci': [-0.0217, -0.0129], 'mean': -0.018, 'mean_ci': [-0.0257, -0.0105]}, 'beat_gap': {'n': 74, 'median': -0.0089, 'median_ci': [-0.0163, 0.0], 'mean': -0.0053, 'mean_ci': [-0.0159, 0.005]}, 'beat_gap_mean_rel_os': 0.033, 'beat_gap_mean_raw_strength': 0.0383, 'beat_gap_median_rel_os': 0.025, 'beat_gap_median_raw_strength': 0.0305}
+window hard rel_os {'f1_median': 0.7665, 'f1_mean': 0.7793, 'beats_kept_mean': 0.9029, 'beats_kept_median': 0.9189, 'songs_with_grid': 74}
+window hard raw_strength {'f1_median': 0.7926, 'f1_mean': 0.7949, 'beats_kept_mean': 0.9466, 'beats_kept_median': 0.9632, 'songs_with_grid': 74}
+window hard no_strength_col {'f1_median': 0.7688, 'f1_mean': 0.7684, 'beats_kept_mean': 0.9662, 'beats_kept_median': 0.9777, 'songs_with_grid': 74}
+window hard repro_pkl5_it300 {'f1_median': 0.7746, 'f1_mean': 0.7807, 'beats_kept_mean': 0.9034, 'beats_kept_median': 0.92, 'songs_with_grid': 74}
+window hard diag_gen5_it300 {'f1_median': 0.7707, 'f1_mean': 0.7795, 'beats_kept_mean': 0.9028, 'beats_kept_median': 0.921, 'songs_with_grid': 74}
+window hard diag_pkl7_it400 {'f1_median': 0.7758, 'f1_mean': 0.7805, 'beats_kept_mean': 0.9028, 'beats_kept_median': 0.9152, 'songs_with_grid': 74}
+window hard human {'beats_kept_mean': 0.9252, 'beats_kept_median': 0.9393, 'songs_with_grid': 74}
+window hard paired {'f1': {'n': 75, 'median': -0.0185, 'median_ci': [-0.0241, -0.0088], 'mean': -0.0155, 'mean_ci': [-0.0223, -0.009]}, 'beat_gap': {'n': 74, 'median': 0.0021, 'median_ci': [-0.0085, 0.0108], 'mean': 0.0042, 'mean_ci': [-0.0037, 0.0125]}, 'beat_gap_mean_rel_os': 0.0318, 'beat_gap_mean_raw_strength': 0.0276, 'beat_gap_median_rel_os': 0.0258, 'beat_gap_median_raw_strength': 0.0238}
+phrase hard rel_os {'f1_median': 0.7702, 'f1_mean': 0.7847, 'beats_kept_mean': 0.902, 'beats_kept_median': 0.9194, 'songs_with_grid': 74}
+phrase hard raw_strength {'f1_median': 0.7985, 'f1_mean': 0.8006, 'beats_kept_mean': 0.946, 'beats_kept_median': 0.963, 'songs_with_grid': 74}
+phrase hard no_strength_col {'f1_median': 0.7798, 'f1_mean': 0.7779, 'beats_kept_mean': 0.9649, 'beats_kept_median': 0.9762, 'songs_with_grid': 74}
+phrase hard human {'beats_kept_mean': 0.9261, 'beats_kept_median': 0.9451, 'songs_with_grid': 74}
+phrase hard paired {'f1': {'n': 75, 'median': -0.0179, 'median_ci': [-0.024, -0.0134], 'mean': -0.0158, 'mean_ci': [-0.0227, -0.0091]}, 'beat_gap': {'n': 74, 'median': 0.0, 'median_ci': [-0.0078, 0.0166], 'mean': 0.0065, 'mean_ci': [-0.0015, 0.0149]}, 'beat_gap_mean_rel_os': 0.0336, 'beat_gap_mean_raw_strength': 0.0271, 'beat_gap_median_rel_os': 0.03, 'beat_gap_median_raw_strength': 0.0197}
