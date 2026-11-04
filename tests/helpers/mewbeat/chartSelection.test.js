@@ -190,13 +190,13 @@ describe("Normal picks its notes from the music", () => {
 
       const analysis = { getFeatures: async () => makeFeatures(), statusOf: () => null };
       const store = createChartStore({ dir, analysis, log: quietLog });
-      assert.strictEqual(GENERATOR_VERSION, 29);
+      assert.strictEqual(GENERATOR_VERSION, 30);
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
-      assert.strictEqual(charts.normal.version, 29);
+      assert.strictEqual(charts.normal.version, 30);
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file(29)));
+      assert.ok(fs.existsSync(file(30)));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -209,7 +209,9 @@ describe("Normal picks its notes from the music", () => {
   const featuresFile = path.join(__dirname, "../../../.mewbeat-debug/data/features", `${vector.song}.json`);
   it("reproduces test_vector from k_weights_raw.json", { skip: !fs.existsSync(featuresFile) && "the song's features are not in this checkout" }, () => {
     const raw = JSON.parse(fs.readFileSync(featuresFile, "utf8"));
-    const ctx = analyse(raw.features ?? raw);
+    const features = raw.features ?? raw;
+    // The weights were fitted on the tracker's beats: the vector is scored on them, whatever grid the charts now get.
+    const ctx = analyse({ ...features, tempo: { ...features.tempo, fitted: true } });
     const scored = scoreMoments(ctx, "normal");
 
     assert.strictEqual(scored.length, vector.n_candidates);
