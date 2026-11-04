@@ -56,7 +56,8 @@ function centreAt({ sounds, soundTimes }, t) {
 // melodyDirection(ctx, t) -> 1 | -1 | 0 | null
 // Where the sound a moment plays at t goes from the sound before it: 1 higher, -1 lower, 0 the same (a repeated sound).
 // The lead line says so when it is sure of its notes, then the bass line; failing both, where the bands sound
-// (the centre of their onsets, low to high). null when none of them is sure.
+// (the centre of their onsets, low to high). null when none of them is sure. A line that plays a note here but is not sure
+// of its step (between 0.5 and 1 semitone, or after a rest of over 2 s) answers null itself: bass and bands are not tried.
 function melodyDirection(ctx, t) {
   const features = ctx?.features;
   if (!features) return null;
@@ -109,10 +110,12 @@ function melodyPull(direction, lane, prev, before, gapMs, beatMs) {
 
 // --- the rules -----------------------------------------------------------------------------------------------
 
-const QUARTER_BEATS = 0.3; // a gap this short is a quarter beat (1/6 and faster included); a triplet third is not
+// A gap is measured against the larger beat of its two ends: beatMsAt moves by up to about 8% between neighbouring moments,
+// so a gap of a true half or quarter beat can read longer than that against the beat of the moment it ends at.
+const QUARTER_BEATS = 0.3; // a gap this short is a quarter beat (1/6 and faster included); a triplet third (.33) is not
 const MAX_QUARTER_GAPS = 5;
 const MAX_CHORD = 2;
-const STREAM_BEATS = 0.5 * 1.02; // notes this close are a stream, which an anchor lives in (a bending grid stretches it)
+const STREAM_BEATS = 0.56; // notes this close are a stream, which an anchor lives in: a half beat plus 12% (an 8% tempo step and the rounding), well under a triplet third (.67)
 const MAX_ANCHOR = 2;
 const SHORT_HOLD_BEATS = 0.5; // the shortest hold
 const SHORT_HOLD_CLASS = 0.6; // a hold up to this long is a half-beat hold: nothing under it
@@ -121,22 +124,22 @@ const SLACK = 0.98; // a length is met within this much: the grid rounds, and a 
 const TAIL = 8; // the moments the lane rules look back on
 
 const sameLanes = (a, b) => a.length === b.length && a.every((l, i) => l === b[i]);
+const hopBeat = (beatOf, a, b) => Math.max(beatOf(a.t), beatOf(b.t));
 
 // The rules a moment breaks that lanes decide, from `tail`: the moments before it and itself last ({ t, lanes }, lanes
 // ascending, TAIL of them are enough). [{ rule, lane }]
 function momentRules(tail, beatOf) {
   const out = [];
   const moment = tail[tail.length - 1];
-  const beat = beatOf(moment.t);
   if (moment.lanes.length > MAX_CHORD) out.push({ rule: "chord", lane: moment.lanes[MAX_CHORD] });
 
   let quarters = 0;
-  for (let k = tail.length - 1; k > 0 && tail[k].t - tail[k - 1].t <= QUARTER_BEATS * beatOf(tail[k].t); k--) quarters++;
+  for (let k = tail.length - 1; k > 0 && tail[k].t - tail[k - 1].t <= QUARTER_BEATS * hopBeat(beatOf, tail[k - 1], tail[k]); k--) quarters++;
   if (quarters > MAX_QUARTER_GAPS) out.push({ rule: "quarterRun", lane: moment.lanes[0] });
 
   for (const lane of moment.lanes) {
     const back = tail.slice(0, -1).reverse().find((m) => m.lanes.includes(lane));
-    if (back && moment.t - back.t <= QUARTER_BEATS * beat) out.push({ rule: "minijack", lane });
+    if (back && moment.t - back.t <= QUARTER_BEATS * hopBeat(beatOf, back, moment)) out.push({ rule: "minijack", lane });
     if (anchored(tail, lane, beatOf) > MAX_ANCHOR) out.push({ rule: "anchor", lane });
   }
   return out;
@@ -151,7 +154,7 @@ function anchored(tail, lane, beatOf) {
   for (let k = tail.length - 1; k >= 2; k -= 2) {
     const [a, x, b] = [tail[k - 2], tail[k - 1], tail[k]];
     if (!a.lanes.includes(lane) || x.lanes.includes(lane)) break;
-    if (x.t - a.t > STREAM_BEATS * beatOf(x.t) || b.t - x.t > STREAM_BEATS * beatOf(b.t)) break;
+    if (x.t - a.t > STREAM_BEATS * hopBeat(beatOf, a, x) || b.t - x.t > STREAM_BEATS * hopBeat(beatOf, x, b)) break;
     if (between && !sameLanes(between, x.lanes)) differs = true;
     between = x.lanes;
     presses++;

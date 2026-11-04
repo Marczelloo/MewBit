@@ -8,11 +8,16 @@
 // the human maps, not targets. Direction = the share of single-note moments the melody gives a direction for (melodyDirection),
 // and "follows" = among those with a direction up or down after a single note, the share whose step goes the way the melody does (up = right);
 // for a repeated sound (direction 0) the share that is a jack (the same lane) against a trill.
+// Anchors are also counted by brute force, apart from the checker: a lane played at three moments two apart (A x A y A), the
+// lane absent from the two in between, those two not the same lanes, every hop at most 0.6 of the larger beat of its ends.
+// Echo = of the moments of a repeated phrase that have a moment at the copied time in its source, the share on the source's lanes.
 // Test songs are never read: ids come from corpus.csv (train).
 const fs = require("fs"), path = require("path");
 const repo = path.resolve(__dirname, "../../..");
 const { analyse, generateChart } = require(path.join(repo, "helpers/mewbeat/charts/generate"));
 const { levelOf } = require(path.join(repo, "helpers/mewbeat/charts/difficulty"));
+const { isRepeatOf } = require(path.join(repo, "helpers/mewbeat/charts/phrases"));
+const { sourceTime } = require(path.join(repo, "helpers/mewbeat/charts/repeats"));
 const { melodyDirection, normalViolations } = require(path.join(repo, "helpers/mewbeat/charts/laneRules"));
 
 const arg = (name, dflt) => { const i = process.argv.indexOf("--" + name); return i < 0 ? dflt : process.argv[i + 1]; };
@@ -30,6 +35,40 @@ const momentsOf = (notes) => {
   for (const n of [...notes].sort((a, b) => a.t - b.t || a.lane - b.lane)) (by.get(n.t) ?? by.set(n.t, []).get(n.t)).push(n.lane);
   return [...by].map(([t, lanes]) => ({ t, lanes }));
 };
+
+function bruteAnchors(notes, timing) {
+  const ms = momentsOf(notes);
+  const beat = (a, b) => Math.max(timing.beatMsAt(a.t), timing.beatMsAt(b.t));
+  let found = 0;
+  for (let i = 0; i + 4 < ms.length; i++) {
+    const seq = ms.slice(i, i + 5);
+    for (const lane of seq[0].lanes) {
+      if (!seq[2].lanes.includes(lane) || !seq[4].lanes.includes(lane) || seq[1].lanes.includes(lane) || seq[3].lanes.includes(lane)) continue;
+      if (seq[1].lanes.join() === seq[3].lanes.join()) continue;
+      if (seq.slice(1).every((m, k) => m.t - seq[k].t <= 0.6 * beat(seq[k], m))) found++;
+    }
+  }
+  return found;
+}
+
+// Of the moments of the repeated phrases that have a moment at the copied time in the source: how many, and how many on its lanes.
+function echoOf(notes, ctx) {
+  const ms = momentsOf(notes), times = ms.map((m) => m.t);
+  let have = 0, same = 0;
+  ctx.phrases.forEach((p, i) => {
+    if (!isRepeatOf(p, i)) return;
+    const from = sourceTime(p, ctx.timing);
+    for (const m of ms) {
+      if (m.t < p.startMs || m.t >= p.endMs) continue;
+      const f = from(m.t);
+      const at = times.reduce((best, t, k) => (Math.abs(t - f) < Math.abs(times[best] - f) ? k : best), 0);
+      if (Math.abs(times[at] - f) > 3) continue;
+      have++;
+      if (ms[at].lanes.join() === m.lanes.join()) same++;
+    }
+  });
+  return { have, same };
+}
 
 // Hand balance, steps and (with a ctx) the melody's direction, of one chart's notes.
 function shape(notes, ctx) {
@@ -80,6 +119,8 @@ for (const { id, features, human } of named) {
     starsBefore: before.stars, starsAfter: after.stars,
     npsBefore: before.notes.length / span(before.notes), npsAfter: after.notes.length / span(after.notes),
     violationsBefore: count(viol(before.notes)), violationsAfter: count(viol(after.notes)),
+    bruteBefore: bruteAnchors(before.notes, ctx.timing), bruteAfter: bruteAnchors(after.notes, ctx.timing),
+    echoBefore: echoOf(before.notes, ctx), echoAfter: echoOf(after.notes, ctx),
     before: shape(before.notes, ctx), after: shape(after.notes, ctx), human: human ? shape(human, null) : null,
   });
 }
@@ -99,6 +140,8 @@ const shapeSummary = (key) => {
 const summary = {
   songs: ok.length, noChart: songs.length - ok.length,
   violationsBefore: sum("violationsBefore"), violationsAfter: sum("violationsAfter"),
+  bruteAnchors: { before: ok.reduce((t, s) => t + s.bruteBefore, 0), after: ok.reduce((t, s) => t + s.bruteAfter, 0) },
+  echo: Object.fromEntries(["echoBefore", "echoAfter"].map((k) => [k, { moments: ok.reduce((t, s) => t + s[k].have, 0), onSourceLanes: r(ok.reduce((t, s) => t + s[k].same, 0) / ok.reduce((t, s) => t + s[k].have, 0)) }])),
   songsWithViolationsAfter: ok.filter((s) => Object.keys(s.violationsAfter).length > 0).map((s) => s.id),
   notes: { before: ok.reduce((t, s) => t + s.notesBefore, 0), after: ok.reduce((t, s) => t + s.notesAfter, 0), removed: ok.reduce((t, s) => t + s.removed, 0) },
   songsWithRemoved: ok.filter((s) => s.removed > 0).length,

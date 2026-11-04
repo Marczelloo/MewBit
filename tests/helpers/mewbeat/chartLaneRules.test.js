@@ -35,6 +35,14 @@ describe("normalViolations", () => {
     assert.deepEqual(rules([tap(0, 0), tap(250, 1), tap(500, 0), tap(750, 1), tap(1000, 0), tap(1250, 1)]), []);
   });
 
+  it("sees a half-beat stream across a tempo step", () => {
+    // the beat shortens from 500 to 460 ms between moments: the hops of 250 ms are 0.54 of the later beat, and still a stream
+    const stepsDown = { beatMsAt: (t) => (t < 600 ? 500 : 460) };
+    const notes = [tap(0, 0), tap(250, 1), tap(500, 0), tap(750, 2), tap(1000, 0)];
+    assert.deepEqual(normalViolations(notes, stepsDown), [{ rule: "anchor", t: 1000, lane: 0 }]);
+    assert.deepEqual(normalViolations([tap(0, 0), tap(250, 1), tap(500, 0), tap(750, 2), tap(1000, 0)].map((n) => ({ ...n, t: n.t * 1.4 })), stepsDown), [], "a hop of 0.76 of a beat is no stream");
+  });
+
   it("flags a minijack at a quarter beat", () => {
     assert.deepEqual(rules([tap(0, 1), tap(125, 1)]), [{ rule: "minijack", t: 125, lane: 1 }]);
     assert.deepEqual(rules([tap(0, 1), tap(250, 1)]), []);
@@ -175,23 +183,33 @@ describe("assignLanes with a melody", () => {
         longest = Math.max(longest, run);
       });
       assert.ok(longest <= melodic.maxJack, `${stepMs} ms: a run of ${longest} on one lane`);
+      if (stepMs === 500) assert.ok(longest === 2, "slow enough for a jack: the repeated sound stays on its lane");
       const names = new Set(rules(out).map((v) => v.rule));
       assert.ok(!names.has("minijack") && !names.has("anchor"), `${stepMs} ms: ${[...names]}`);
       if (stepMs === 125) assert.ok(out.slice(1).every((n, i) => n.lane !== out[i].lane), "too fast for a jack: a trill");
     }
   });
 
-  it("null direction keeps the v26 grammar", () => {
+  // This covers the direction only: at 500 ms no rule has anything to bite on. The next test is where one does.
+  it("null direction, with no rule in reach, keeps the v26 grammar", () => {
     const flat = moments(BEAT_MS, 80);
     const without = ctxOf([]);
     assert.deepEqual(assignLanes(flat, without, melodic), assignLanes(flat, without, v26));
   });
 
+  it("null direction still keeps the rules where v26 would break them", () => {
+    const stream = moments(250, 400).flatMap((n, i) => (i % 2 === 0 ? [n, tap(n.t, 0)] : [n])); // chords on every second moment
+    const without = ctxOf([]);
+    assert.ok(rules(assignLanes(stream, without, v26)).some((v) => v.rule === "anchor"), "the fixture is one where v26 anchors");
+    assert.deepEqual(rules(assignLanes(stream, without, melodic)), []);
+  });
+
   it("same phrase repeated gets the same lanes", () => {
     const phrase = (i) => ({ index: i, startMs: i * 20000, endMs: (i + 1) * 20000, repeatOf: i === 0 ? null : 0, similarity: 1, heard: i > 0, lagMs: i === 0 ? 0 : i * 20000 });
-    const pitches = Array.from({ length: 30 }, (_, i) => 60 + ((i * 7) % 12));
-    const one = (offset) => pitches.map((_, i) => 2000 + offset + i * 600);
-    const lead = [0, 20000, 40000].flatMap((offset) => pitches.map((pitch, i) => ({ t: 2000 + offset + i * 600, len: 100, pitch, s: 0.8, conf: 0.9 })));
+    // each repeat sounds other pitches than its source, so the melody alone would lay other lanes: only the echo can match them
+    const pitches = (repeat) => Array.from({ length: 30 }, (_, i) => 60 + ((i * (7 + repeat * 4) + repeat * 3) % 12));
+    const one = (offset) => Array.from({ length: 30 }, (_, i) => 2000 + offset + i * 600);
+    const lead = [0, 20000, 40000].flatMap((offset, repeat) => pitches(repeat).map((pitch, i) => ({ t: 2000 + offset + i * 600, len: 100, pitch, s: 0.8, conf: 0.9 })));
     const notes = [0, 20000, 40000].flatMap((offset) => one(offset).map((t) => tap(t, 0)));
     const ctx = ctxOf(lead, { phrases: [phrase(0), phrase(1), phrase(2)] });
     const out = assignLanes(notes, ctx, melodic);
