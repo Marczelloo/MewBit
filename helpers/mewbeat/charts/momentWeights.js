@@ -21,18 +21,18 @@ const DOWNBEAT_MS = 2; // a beat this near a downbeat of the grid is one
 //   fitted = intercept + coef . [salient rate, loudness against the song]
 // The fit explains little of the spread between songs, so the rate is stretched round the median people play: the song's
 // fitted mean against the median song's (refModel) to the power gamma, the phrase's against its song's to the power delta.
-// gamma and delta are the exponents that give the train songs the CV between songs and within a song people have.
+// gamma and delta are the exponents that give the train songs the CV between songs and within a song people have. Rates are
+// per second the music plays in the phrase (not the lead-in, not the silence), and a level's maxNpsCeiling caps them.
 const BUDGET = {
   q: 0.7,
-  coef: [0.3355227280060715, 1.7205311854210712],
-  intercept: 0.9550363855212618,
-  refModel: 4.5389829867312494,
-  gamma: 3.974178120140956,
-  delta: 1.9956752149300376,
-  medianRate: 4.5517, // moments per second of the median human song
+  coef: [0.35670033628977343, 1.6057845715103989],
+  intercept: 0.9700834599670776,
+  refModel: 4.564733517120315,
+  gamma: 3.896767738433306,
+  delta: 2.0187978257457884,
+  medianRate: 4.586, // moments per second of the median human song
   minPhraseMs: 2000, // a shorter phrase says too little to enter its song's mean
   minRatio: 0.25, // a phrase's fitted rate counts for at least this share of its song's
-  maxRate: 12, // no phrase gets more moments per second than this
 };
 
 module.exports = { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE };

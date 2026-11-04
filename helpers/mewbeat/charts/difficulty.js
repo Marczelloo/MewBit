@@ -148,6 +148,7 @@ const DIFFICULTIES = {
     budgetScale: 1.1, // the phrase budget as the music calls for it times this (selection.js phraseBudget)
     grammar: "normal",
     chordRates: [0.7, 0.6, 0.13, 0.14], // how often a moment is a chord, by place in the bar (chords.js)
+    maxChordShare: 1 / 3, // chords may run up to this share of the moments (chords.js; v26's cap, which acts on this path as well)
     chordGapBeats: 1 / 4,
     maxNps: 6.5,
     maxNpsCeiling: 7.5,

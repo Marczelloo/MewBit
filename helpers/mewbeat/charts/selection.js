@@ -2,6 +2,7 @@
 // (momentWeights.js: its strength, its place in the bar), each phrase gets a budget from how much the music offers, and the
 // best moments of the phrase fill the budget. This file scores and budgets moments and selects them; generate.js charts
 // them.
+const { LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { beatMsOf } = require("./holds");
 const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE } = require("./momentWeights");
 const { hasSteadyPulse } = require("./phrases");
@@ -9,7 +10,6 @@ const { lowerBound, nearestIndex } = require("./util");
 
 const HOLE_BEATS = 2;
 const byTime = (a, b) => a.t - b.t;
-const sigmoid = (x) => 1 / (1 + Math.exp(-x));
 
 // Every onset of the features as { t, s, source }, time-ordered: the bands, then the drums, bass and lead layers.
 function onsetsOf(features) {
@@ -79,9 +79,9 @@ function rankColumn(values) {
   return ranked;
 }
 
-// scoreMoments(ctx, level) -> [{ t, s, score, metric, down, source }], time-ordered: the candidates of the whole song with
-// K's score (a logit; sigmoid(score) is how likely people put a note there), from the features as measured (the scores
-// were fitted on those, not on the lead merged). Kept on the ctx, as every phrase asks.
+// scoreMoments(ctx, level) -> [{ t, s, score, metric, down, grid, source }], time-ordered: the candidates of the whole song with
+// K's score (a logit: how likely people put a note there), from the features as measured (the scores were fitted on
+// those, not on the lead merged). Kept on the ctx, as every phrase asks.
 function scoreMoments(ctx, level) {
   ctx.scored ??= {};
   if (ctx.scored[level]) return ctx.scored[level];
@@ -103,6 +103,7 @@ function scoreMoments(ctx, level) {
     score: intercept + K_COLUMNS.reduce((sum, name, k) => sum + coef[k] * columns[name][i], 0),
     metric: meters[i].metric,
     down: meters[i].down,
+    grid: meters[i].grid,
     source: c.source,
   }));
   return ctx.scored[level];
@@ -113,8 +114,23 @@ function scoreMoments(ctx, level) {
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
-// What the music offers each phrase of the song (momentWeights.js BUDGET): [fitted rate], and the song's mean of those,
-// weighted by the length of the phrases long enough to say something. Kept on the ctx.
+// The part of a phrase the music plays: from the lead-in on, where the energy is not below SILENCE_ENERGY. { seconds, loudness }
+// with the loudness of that part against the song's mean. Without an energy curve the whole phrase counts.
+function audibleOf(ctx, p, songLoudness) {
+  const values = ctx.features.energy?.values ?? [];
+  const hop = ctx.energy.hopMs;
+  if (values.length === 0) return { seconds: Math.max(p.endMs - p.startMs, 1) / 1000, loudness: 1 };
+  const from = Math.min(Math.floor(p.startMs / hop), values.length - 1);
+  const heard = [];
+  for (let i = Math.max(from, 0); i < Math.max(Math.floor(p.endMs / hop), from + 1) && i < values.length; i++) {
+    if (i * hop >= LEAD_IN_MS && values[i] >= SILENCE_ENERGY) heard.push(values[i]);
+  }
+  return { seconds: (heard.length * hop) / 1000, loudness: heard.length > 0 && songLoudness > 0 ? mean(heard) / songLoudness : 1 };
+}
+
+// What the music offers each phrase of the song (momentWeights.js BUDGET): [fitted rate] over the audible part of the
+// phrase, that part's seconds, and the song's mean rate, weighted by the audible seconds of the phrases long enough to say
+// something. Kept on the ctx.
 function budgetModelOf(ctx, diff) {
   ctx.budgets ??= {};
   if (ctx.budgets[diff.scoreLevel]) return ctx.budgets[diff.scoreLevel];
@@ -123,37 +139,37 @@ function budgetModelOf(ctx, diff) {
   const salientFrom = ranked.length > 0 ? ranked[Math.min(ranked.length - 1, Math.floor(BUDGET.q * ranked.length))] : Infinity;
   const times = scored.map((m) => m.t);
   const values = ctx.features.energy?.values ?? [];
-  const hop = ctx.energy.hopMs;
   const songLoudness = values.length > 0 ? mean(values) : 1;
-  const fitted = ctx.phrases.map((p) => {
-    const seconds = Math.max(p.endMs - p.startMs, 1) / 1000;
+  const audible = ctx.phrases.map((p) => audibleOf(ctx, p, songLoudness));
+  const fitted = ctx.phrases.map((p, k) => {
     let salient = 0;
-    for (let i = lowerBound(times, p.startMs); i < scored.length && times[i] < p.endMs; i++) if (scored[i].score >= salientFrom) salient++;
-    const from = Math.min(Math.floor(p.startMs / hop), values.length - 1);
-    const heard = values.slice(Math.max(from, 0), Math.max(Math.floor(p.endMs / hop), from + 1));
-    const loudness = heard.length > 0 && songLoudness > 0 ? mean(heard) / songLoudness : 1;
-    return BUDGET.intercept + BUDGET.coef[0] * (salient / seconds) + BUDGET.coef[1] * loudness;
+    for (let i = lowerBound(times, p.startMs); i < scored.length && times[i] < p.endMs; i++) {
+      if (scored[i].score >= salientFrom && scored[i].t >= LEAD_IN_MS && ctx.energy.at(scored[i].t) >= SILENCE_ENERGY) salient++;
+    }
+    const { seconds, loudness } = audible[k];
+    return seconds > 0 ? BUDGET.intercept + BUDGET.coef[0] * (salient / seconds) + BUDGET.coef[1] * loudness : 0;
   });
-  const long = ctx.phrases.map((p, i) => i).filter((i) => ctx.phrases[i].endMs - ctx.phrases[i].startMs >= BUDGET.minPhraseMs);
-  const weights = (long.length > 0 ? long : ctx.phrases.map((p, i) => i)).map((i) => ({ rate: fitted[i], seconds: ctx.phrases[i].endMs - ctx.phrases[i].startMs }));
+  const long = ctx.phrases.map((p, i) => i).filter((i) => audible[i].seconds * 1000 >= BUDGET.minPhraseMs);
+  const weights = (long.length > 0 ? long : ctx.phrases.map((p, i) => i)).map((i) => ({ rate: fitted[i], seconds: audible[i].seconds }));
   const total = weights.reduce((sum, w) => sum + w.seconds, 0);
   const song = total > 0 ? weights.reduce((sum, w) => sum + w.rate * w.seconds, 0) / total : 0;
-  ctx.budgets[diff.scoreLevel] = { fitted, song };
+  ctx.budgets[diff.scoreLevel] = { fitted, song, seconds: audible.map((a) => a.seconds) };
   return ctx.budgets[diff.scoreLevel];
 }
 
-// phraseBudget(phrase, ctx, diff) -> the most moments the phrase gets: its seconds at the rate the music calls for (a
-// song and a phrase the music fills get more than the median, a thin one fewer), times diff.budgetScale. A budget is a
-// limit; selectMoments leaves it unused where the music has less to offer.
+// phraseBudget(phrase, ctx, diff) -> the most moments the phrase gets: the seconds the music plays in it at the rate the
+// music calls for (a song and a phrase the music fills get more than the median, a thin one fewer), times diff.budgetScale,
+// and never above diff.maxNpsCeiling moments per second. A budget is a limit; selectMoments leaves it unused where the music
+// has less to offer.
 function phraseBudget(phrase, ctx, diff) {
-  const { fitted, song } = budgetModelOf(ctx, diff);
+  const { fitted, song, seconds: played } = budgetModelOf(ctx, diff);
   const own = fitted[phrase.index];
-  const seconds = (phrase.endMs - phrase.startMs) / 1000;
-  if (!(song > 0) || !Number.isFinite(own)) return Math.round(BUDGET.medianRate * seconds * diff.budgetScale);
+  const seconds = played[phrase.index];
+  const most = Math.floor((diff.maxNpsCeiling ?? Infinity) * seconds);
+  if (!(song > 0) || !Number.isFinite(own)) return Math.min(most, Math.round(BUDGET.medianRate * seconds * diff.budgetScale));
   const bySong = Math.pow(song / BUDGET.refModel, BUDGET.gamma);
   const byPhrase = Math.pow(clamp(own / song, BUDGET.minRatio, Infinity), BUDGET.delta);
-  const rate = Math.min(BUDGET.maxRate, BUDGET.medianRate * bySong * byPhrase);
-  return Math.max(0, Math.round(rate * seconds * diff.budgetScale));
+  return Math.max(0, Math.min(most, Math.round(BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale)));
 }
 
 // --- choosing the moments --------------------------------------------------------------------
@@ -165,13 +181,15 @@ const PULSE_REST_BEATS = 0.75; // ...and one for the pulse this far
 const SOUND_MS = 35; // a beat with a candidate this near has a sound
 const PULSE_STRENGTH = 0.3; // what a note for the pulse reports as strength (rhythm.js DEFAULT_STRENGTH)
 
-// selectMoments(phrase, scored, budget, diff, timing) -> [{ t, s, reason, source }], time-ordered. `scored` is what the
-// phrase may play (scoreMoments, without the lead-in and silence). The best moments come first, a downbeat before the
+// selectMoments(phrase, scored, budget, diff, timing, edges) -> [{ t, s, reason, source }], time-ordered. `scored` is what
+// the phrase may play (scoreMoments, without the lead-in and silence). The best moments come first, a downbeat before the
 // rest, as long as the music puts them in the foreground (diff.foreground) and up to the budget. A stretch of more than
-// SILENT_GAP_BEATS between notes with a sound in it takes its best moment, for a spare place or for the weakest note. What
-// the foreground leaves of the budget goes to beats and half beats in the rests where something sounds; a beat nothing
-// sounds on is played only where the phrase has a steady pulse. The budget is never passed.
-function selectMoments(phrase, scored, budget, diff, timing) {
+// SILENT_GAP_BEATS between notes with a sound in it takes its best moment, for a spare place or for the weakest note; the
+// stretches count from the phrase's start to its first note and from its last note to its end too, and from the last note of
+// the phrase before (`edges.before`, its time) with the sounds that lie after that note in `edges.carry` (earlier moments,
+// they may be chosen too). What the foreground leaves of the budget goes to beats and half beats in the rests where something
+// sounds; a beat nothing sounds on is played only where the phrase has a steady pulse. The budget is never passed.
+function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   const snapped = !!timing?.snapped;
   const beatAt = (t) => beatMsOf(timing, t);
   const gapAt = (t) => Math.max(diff.minNoteGapMs ?? 0, (diff.gapBeats ?? 0) * beatAt(t) * GAP_SLACK);
@@ -180,9 +198,11 @@ function selectMoments(phrase, scored, budget, diff, timing) {
     const i = lowerBound(chosen.map((n) => n.t), t);
     return { before: chosen[i - 1], after: chosen[i], i };
   };
+  const lastBefore = Number.isFinite(edges.before) ? edges.before : null; // a note of the phrase before, which stays
   const fits = (t, restBeats = 0) => {
     const { before, after } = nearest(t);
-    return [before, after].every((n) => !n || Math.abs(n.t - t) >= Math.max(gapAt(t), restBeats * beatAt(t)));
+    const apart = Math.max(gapAt(t), restBeats * beatAt(t));
+    return [before?.t, after?.t, lastBefore].every((n) => n === undefined || n === null || Math.abs(n - t) >= apart);
   };
   const add = (c, reason) => {
     chosen.splice(nearest(c.t).i, 0, { t: c.t, s: c.s, reason, source: c.source, score: c.score, down: c.down });
@@ -195,14 +215,16 @@ function selectMoments(phrase, scored, budget, diff, timing) {
     if (fits(c.t)) add(c, "ocena");
   }
 
-  // A long stretch with a sound in it.
-  for (let rounds = 0; rounds < scored.length; rounds++) {
+  // A long stretch with a sound in it, between two notes and at the phrase's edges.
+  const pool = edges.carry?.length > 0 ? [...edges.carry, ...scored] : scored;
+  for (let rounds = 0; rounds < pool.length; rounds++) {
     let best = null;
-    for (let i = 1; i < chosen.length; i++) {
-      const from = chosen[i - 1].t;
-      const to = chosen[i].t;
+    const marks = [lastBefore ?? phrase.startMs, ...chosen.map((n) => n.t), phrase.endMs];
+    for (let i = 1; i < marks.length; i++) {
+      const from = marks[i - 1];
+      const to = marks[i];
       if (to - from <= SILENT_GAP_BEATS * beatAt(from)) continue;
-      for (const c of scored) {
+      for (const c of pool) {
         if (c.t > from && c.t < to && fits(c.t) && (!best || c.score > best.c.score)) best = { c, from, to };
       }
     }
@@ -240,4 +262,4 @@ function selectMoments(phrase, scored, budget, diff, timing) {
   return chosen.map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { candidatesOf, phraseBudget, scoreMoments, selectMoments, sigmoid };
+module.exports = { audibleOf, phraseBudget, scoreMoments, selectMoments };

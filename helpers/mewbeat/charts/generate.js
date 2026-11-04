@@ -89,7 +89,9 @@ function leadersOf(ctx, diff) {
 
 // Phrase i of a level that picks its notes from the music (diff.selector "music"): the moments selection.js chooses, those
 // the music plays (not the lead-in, not the silence), each with a lane to hold its place.
-function musicNotes(ctx, i, diff, trace) {
+// `before` is the time of the last note of the phrases before; the sounds after it that this phrase's start leaves are
+// the phrase's to take too, so no stretch with a sound in it is left open across the seam.
+function musicNotes(ctx, i, diff, trace, before = null) {
   const { phrases, energy, timing } = ctx;
   const phrase = phrases[i];
   const scored = scoreMoments(ctx, diff.scoreLevel);
@@ -97,7 +99,8 @@ function musicNotes(ctx, i, diff, trace) {
   const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
   const playable = (t) => t >= LEAD_IN_MS && energy.at(t) >= SILENCE_ENERGY;
   const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(m.t));
-  const chosen = selectMoments(phrase, heard, phraseBudget(phrase, ctx, diff), diff, timing).filter((m) => playable(m.t));
+  const carry = before === null ? [] : scored.slice(lowerBound(times, before + 1e-9), lowerBound(times, phrase.startMs)).filter((m) => playable(m.t));
+  const chosen = selectMoments(phrase, heard, phraseBudget(phrase, ctx, diff), diff, timing, { before, carry }).filter((m) => playable(m.t));
   const events = laneTheRest(chosen);
   const made = trace ? trace.tagged(events) : events;
   return made.map((n) => (trace ? { t: n.t, lane: n.lane, tid: n.tid } : { t: n.t, lane: n.lane }));
@@ -158,8 +161,10 @@ function chartNotes(ctx, diff, trace = null) {
 
     if (diff.selector === "music") {
       trace?.enter(i, { ...info, charted: "music" });
-      const charted = musicNotes(ctx, i, diff, trace);
-      all.push(...withGapHolds(charted, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
+      const before = all.reduce((last, n) => (n.t < phrase.startMs && n.t > last ? n.t : last), -Infinity);
+      const charted = musicNotes(ctx, i, diff, trace, i > 0 && before > -Infinity ? before : null);
+      // A sound the phrase takes from the end of the one before stays where it is (gap holds start with the phrase).
+      all.push(...charted.filter((n) => n.t < phrase.startMs), ...withGapHolds(charted.filter((n) => n.t >= phrase.startMs), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
       i++;
       continue;
     }

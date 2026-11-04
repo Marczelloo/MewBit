@@ -2,7 +2,8 @@
 // one, so it never takes a place in the rhythm. People put chords on the strong beats of the loud bars and keep them
 // when they make an easier level: Hard plays a chord at a rate set by the place in the bar, the bar's loudness and how
 // strong the sound is, Normal keeps most of Hard's and adds few of its own, Easy keeps few of Normal's. A section opens
-// on one when it is loud enough, and a repeat of a phrase plays the chords of its source.
+// on one when it is loud enough, and a repeat of a phrase plays the chords of its source. A level with diff.maxChordShare
+// keeps the chords it plans to that share of the moments so far (what is saved towards a chord waits for room).
 const { beatPosition } = require("./grid");
 const { groupByTime, slotRank } = require("./difficultyFilter");
 const { beatMsOf } = require("./holds");
@@ -77,6 +78,7 @@ function planChords(notes, ctx, diff, upper = null) {
   const out = [];
   let phraseAt = 0;
   let running = [];
+  let chords = 0; // moments so far with more than one note
 
   moments.forEach((moment, m) => {
     const { t } = moment[0];
@@ -108,7 +110,10 @@ function planChords(notes, ctx, diff, upper = null) {
       } else {
         carryNew[rank] += (diff.chordNew?.[rank] ?? 0) * scale;
       }
-      if (carry[rank] >= 1) {
+      // A level that caps its chords (diff.maxChordShare) plays a planned one only while the share so far has room for it.
+      const room = !(diff.chordRates && diff.maxChordShare) || chords + 1 <= diff.maxChordShare * (m + 1);
+      if (carry[rank] >= 1 && !room) carry[rank] = 1;
+      if (carry[rank] >= 1 && room) {
         carry[rank] -= 1;
         want = 2;
       } else if (carryNew[rank] >= 1) {
@@ -135,6 +140,7 @@ function planChords(notes, ctx, diff, upper = null) {
     running.push(...kept.filter((n) => n.len > 0));
     times.push(t);
     sizes.push(kept.length + added.length);
+    if (kept.length + added.length > 1) chords++;
   });
   return out.sort(byTime);
 }

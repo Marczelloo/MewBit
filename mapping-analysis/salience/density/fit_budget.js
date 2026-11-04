@@ -2,13 +2,15 @@
 // loudness of the phrase, Ridge alpha 1 on standardized columns) with K = raw_strength on the generator grid
 // (k_weights_raw.json), human Normal moments per second as the target. Writes budget_fit.json; momentWeights.js carries the numbers.
 //   node fit_budget.js
-// Target phrases are the generator's phrases (analyse) of at least 2 s inside the first..last human Normal moment.
+// Target phrases are the generator's phrases (analyse) inside the first..last human Normal moment with at least 2 s the music plays
+// (selection.js audibleOf: not the lead-in, not the silence); every rate is per such second, as the budget is spent.
 // Salient = a candidate whose K score lies in the song's top (1 - q): q is picked on train by the r2 of the salient rate
 // against the target. Test songs are never read: ids come from corpus.csv (split = train).
 const fs = require("fs"), path = require("path");
 const repo = path.resolve(__dirname, "../../..");
 const { analyse } = require(path.join(repo, "helpers/mewbeat/charts/generate"));
-const { scoreMoments } = require(path.join(repo, "helpers/mewbeat/charts/selection"));
+const { audibleOf, scoreMoments } = require(path.join(repo, "helpers/mewbeat/charts/selection"));
+const { LEAD_IN_MS, SILENCE_ENERGY } = require(path.join(repo, "helpers/mewbeat/charts/difficulty"));
 
 const QS = [0.5, 0.6, 0.7, 0.8, 0.9], MIN_PHRASE_MS = 2000, ALPHA = 1, NFOLD = 5;
 const rows = fs.readFileSync(path.join(repo, "mapping-analysis/shared/corpus.csv"), "utf8").split("\n").slice(1).map((l) => l.split(","));
@@ -31,14 +33,14 @@ trainIds.forEach((id, song) => {
   const songMean = values.length ? mean(values) : 1;
   const lo = human[0], hi = human[human.length - 1];
   for (const p of ctx.phrases) {
-    if (p.endMs - p.startMs < MIN_PHRASE_MS || p.startMs < lo || p.endMs > hi) continue;
-    const secs = (p.endMs - p.startMs) / 1000;
-    const i0 = Math.floor(p.startMs / hop), i1 = Math.max(i0 + 1, Math.floor(p.endMs / hop));
-    const seg = values.slice(Math.min(i0, values.length - 1), Math.max(i1, i0 + 1));
+    if (p.startMs < lo || p.endMs > hi) continue;
+    const played = audibleOf(ctx, p, songMean), secs = played.seconds;
+    if (secs * 1000 < MIN_PHRASE_MS) continue;
+    const heard = scored.filter((m) => m.t >= p.startMs && m.t < p.endMs && m.t >= LEAD_IN_MS && ctx.energy.at(m.t) >= SILENCE_ENERGY);
     table.push({
       song, id, secs, y: human.filter((t) => t >= p.startMs && t < p.endMs).length / secs,
-      sal: cut.map((c) => scored.filter((m) => m.t >= p.startMs && m.t < p.endMs && m.score >= c).length / secs),
-      loud: seg.length && songMean > 0 ? mean(seg) / songMean : 1,
+      sal: cut.map((c) => heard.filter((m) => m.score >= c).length / secs),
+      loud: played.loudness,
     });
   }
 });

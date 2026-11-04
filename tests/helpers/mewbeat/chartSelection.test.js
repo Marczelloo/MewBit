@@ -6,9 +6,12 @@ const { afterEach, beforeEach, describe, it } = require("node:test");
 
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 const { createChartStore } = require("../../../helpers/mewbeat/chartStore");
-const { levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
+const { LEAD_IN_MS, SILENCE_ENERGY, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { GENERATOR_VERSION, analyse, generateChart, traceChart } = require("../../../helpers/mewbeat/charts/generate");
-const { phraseBudget, scoreMoments, selectMoments } = require("../../../helpers/mewbeat/charts/selection");
+const { BUDGET, METER_TOLERANCE } = require("../../../helpers/mewbeat/charts/momentWeights");
+const selection = require("../../../helpers/mewbeat/charts/selection");
+
+const { audibleOf, phraseBudget, scoreMoments, selectMoments } = selection;
 const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 const NORMAL = levelOf("normal");
@@ -52,16 +55,29 @@ describe("Normal picks its notes from the music", () => {
     assert.ok(mean(beats.map((m) => m.score)) > mean(quarters.map((m) => m.score)));
   });
 
-  it("a stronger moment beats a weaker one on the same beat level", () => {
+  it("a stronger moment beats a weaker one at the same place in the bar", () => {
     const scored = scoreMoments(analyse(layered()), "normal");
     for (const metric of [0, 1, 2]) {
-      const level = scored.filter((m) => m.metric === metric && m.down === 0).sort((a, b) => a.s - b.s);
-      assert.ok(level.length > 5, `moments on metric ${metric}`);
-      // Within a beat level the score rises with the strength (ranked within the song, so ties share a score).
-      for (let i = 1; i < level.length; i++) assert.ok(level[i].s === level[i - 1].s || level[i].score >= level[i - 1].score - 1e-9 || level[i].t !== level[i - 1].t);
-      const weakest = level[0];
-      const strongest = level[level.length - 1];
-      assert.ok(strongest.score > weakest.score, `metric ${metric}`);
+      // Moments that differ only in strength: the same beat level, no downbeat, the same distance to the grid.
+      const places = new Map();
+      for (const m of scored.filter((c) => c.metric === metric && c.down === 0)) {
+        const key = m.grid.toFixed(6);
+        if (!places.has(key)) places.set(key, []);
+        places.get(key).push(m);
+      }
+      let compared = 0;
+      for (const same of places.values()) {
+        same.sort((x, y) => x.s - y.s);
+        for (let i = 1; i < same.length; i++) {
+          if (same[i].s === same[i - 1].s) {
+            assert.ok(Math.abs(same[i].score - same[i - 1].score) < 1e-9, "equal strength, equal score");
+          } else {
+            assert.ok(same[i].score > same[i - 1].score, `metric ${metric}: s ${same[i - 1].s} then ${same[i].s}`);
+            compared++;
+          }
+        }
+      }
+      assert.ok(compared > 5, `pairs compared on metric ${metric}: ${compared}`);
     }
   });
 
@@ -201,5 +217,227 @@ describe("Normal picks its notes from the music", () => {
       assert.ok(Math.abs(scored[c.index].t - c.t_ms) <= 1, `candidate ${c.index} time`);
       assert.ok(Math.abs(scored[c.index].score - c.score.normal) < 1e-3, `candidate ${c.index}: ${scored[c.index].score} vs ${c.score.normal}`);
     }
+  });
+
+  it("exports only what the generator and the measurements use", () => {
+    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "phraseBudget", "scoreMoments", "selectMoments"]);
+  });
+});
+
+describe("the grid of the candidates", () => {
+  // The beats are taken out between 19.5 s and 30.5 s; the grid goes on from the last beat at the median beat, without bars.
+  it("continues across a hole in the beats at the median beat, without bars", () => {
+    const ctx = analyse(layered());
+    const last = 19500;
+    const next = 30500;
+    const medianMs = ctx.timing.medianMs;
+    assert.strictEqual(medianMs, BEAT);
+    const real = scoreMoments(ctx, "normal");
+    assert.ok(real.some((m) => m.t > last && m.t < next && m.down === 1), "the whole grid has bars in that stretch");
+
+    ctx.timing = {
+      ...ctx.timing,
+      beats: ctx.timing.beats.filter((t) => t <= last || t >= next),
+      downbeats: ctx.timing.downbeats.filter((t) => t <= last || t >= next),
+    };
+    ctx.scored = {};
+    const holed = scoreMoments(ctx, "normal");
+
+    const inHole = holed.filter((m) => m.t > last + 5 && m.t < next - 5);
+    assert.ok(inHole.length > 30, `candidates in the hole: ${inHole.length}`);
+    // The place each candidate has on the grid that goes on from the last beat: beat 0, half beat 1, quarter beat 2, other 3.
+    const expected = (t) => {
+      const u = (((t - last) / medianMs) % 1 + 1) % 1;
+      if (Math.min(u, 1 - u) < METER_TOLERANCE) return 0;
+      if (Math.abs(u - 0.5) < METER_TOLERANCE) return 1;
+      return Math.min(Math.abs(u - 0.25), Math.abs(u - 0.75)) < METER_TOLERANCE ? 2 : 3;
+    };
+    for (const m of inHole) {
+      assert.strictEqual(m.metric, expected(m.t), `the place of ${m.t}`);
+      assert.strictEqual(m.down, 0, `no bar at ${m.t}`);
+    }
+    // The hole does not turn every candidate into "anything else": beats and half beats are found in it.
+    assert.ok(inHole.some((m) => m.metric === 0) && inHole.some((m) => m.metric === 1));
+    // Outside the hole nothing changes: the same places, the bars as well.
+    const same = (m) => m.t <= last || m.t >= next + BEAT;
+    assert.deepStrictEqual(holed.filter(same).map((m) => [m.t, m.metric, m.down]), real.filter(same).map((m) => [m.t, m.metric, m.down]));
+  });
+});
+
+describe("the edges of a phrase", () => {
+  const edgePhrase = { index: 1, startMs: 8000, endMs: 16000, pulse: 0 };
+  const opts = { ...diff, foreground: 5 };
+  const sound = (t) => moment(t, -1);
+  // A sound the phrase before left after its last note (6500), sounds in the phrase, one in the middle, and the tail.
+  const carry = [7000, 7500].map(sound);
+  const own = [8500, 9000, 9500, 10000, 13000, 14000, 14500, 15000, 15500].map(sound);
+
+  const marks = (picked, before, end) => [before, ...picked.map((n) => n.t), end];
+  const stretches = (picked, before, end, candidates) => {
+    const m = marks(picked, before, end);
+    const open = [];
+    for (let i = 1; i < m.length; i++) {
+      if (m[i] - m[i - 1] <= 2 * BEAT) continue;
+      for (const c of candidates) if (c.t > m[i - 1] + 100 && c.t < m[i] - 100) open.push([m[i - 1], m[i], c.t]);
+    }
+    return open;
+  };
+
+  it("takes a sound for the stretch from the last note before the phrase to its first note", () => {
+    const picked = selectMoments(edgePhrase, own, 20, opts, timing, { before: 6500, carry });
+    assert.ok(picked.length > 0);
+    assert.deepStrictEqual(stretches(picked, 6500, edgePhrase.endMs, [...carry, ...own]), []);
+    // Alone the phrase's start would have been the mark: the first own sound is at 8500, 2000 ms after 6500.
+    assert.ok(picked.some((n) => n.t < edgePhrase.startMs), "a sound the phrase before left");
+    assert.ok(picked.every((n) => Math.abs(n.t - 6500) >= 100));
+  });
+
+  it("takes a sound for the stretch from the last note to the end of the phrase", () => {
+    const picked = selectMoments(edgePhrase, own.slice(0, 4), 20, opts, timing, { before: 7900 });
+    const tail = selectMoments(edgePhrase, own, 20, opts, timing, { before: 7900 });
+    assert.deepStrictEqual(stretches(tail, 7900, edgePhrase.endMs, own), []);
+    assert.ok(tail.some((n) => n.t >= 13000), "the tail is not left open");
+    // Without the sounds of the tail it stays open, and nothing is made up.
+    assert.ok(picked.every((n) => own.slice(0, 4).some((c) => c.t === n.t)));
+  });
+
+  it("measures a phrase with no neighbour from its own start", () => {
+    const picked = selectMoments(edgePhrase, own, 20, opts, timing);
+    assert.deepStrictEqual(stretches(picked, edgePhrase.startMs, edgePhrase.endMs, own), []);
+    assert.ok(picked.every((n) => n.t >= edgePhrase.startMs));
+  });
+
+  it("keeps the budget while closing a stretch", () => {
+    for (const budget of [1, 3, 6]) {
+      const picked = selectMoments(edgePhrase, own, budget, opts, timing, { before: 6500, carry });
+      assert.ok(picked.length <= budget, `budget ${budget}: ${picked.length}`);
+    }
+  });
+
+  it("a real song has no stretch of more than two beats with a sound in it across the start of a phrase it charts itself", () => {
+    // Phrases that are told to repeat none, with bands that differ, so most are picked from the music (a copied repeat plays its source).
+    const features = layered({ energy: () => 0.7 });
+    for (const p of features.phrases.list) Object.assign(p, { repeatOf: null, similarity: 0, lagMs: 0 });
+    // A phrase is 64 sixteenths: dropping every fifth onset gives each phrase its own bands, so none is heard as a repeat.
+    for (const band of features.bands) band.onsets = band.onsets.filter((o) => Math.round(o.t / 125) % 5 !== 0);
+    const story = traceChart(features, "normal", KEY);
+    const ctx = analyse(features);
+    const times = [...new Set(story.chart.notes.map((n) => n.t))].sort((x, y) => x - y);
+    const heard = scoreMoments(ctx, "normal").filter((m) => m.t >= LEAD_IN_MS && ctx.energy.at(m.t) >= SILENCE_ENERGY);
+    let checked = 0;
+    for (const p of ctx.phrases.slice(1)) {
+      if (story.phrases[p.index].charted !== "music") continue; // a copy plays its source
+      checked++;
+      const before = times.filter((t) => t < p.startMs).pop();
+      const after = times.find((t) => t >= p.startMs);
+      assert.ok(before !== undefined && after !== undefined, `notes either side of ${p.startMs}`);
+      if (after - before <= 2 * BEAT) continue;
+      const open = heard.filter((c) => c.t > before + 100 && c.t < after - 100);
+      assert.deepStrictEqual(open.map((c) => c.t), [], `the seam at ${p.startMs}: ${before} to ${after}`);
+    }
+    assert.ok(checked >= 3, `seams checked: ${checked}`);
+  });
+});
+
+describe("the budget of a phrase", () => {
+  const loud = (extra = {}) => makeFeatures({ bpm: 120, durationMs: 64000, energy: () => 0.8, ...extra });
+
+  it("never passes the level's ceiling in moments per second", () => {
+    for (const features of [loud(), layered({ energy: () => 0.95 })]) {
+      const ctx = analyse(features);
+      for (const p of ctx.phrases) {
+        const seconds = audibleOf(ctx, p, 1).seconds;
+        assert.ok(phraseBudget(p, ctx, NORMAL) <= Math.floor(NORMAL.maxNpsCeiling * seconds), `phrase ${p.index}`);
+      }
+    }
+    // A ceiling below what the music calls for binds exactly; the constant of the model's own is gone.
+    const ctx = analyse(layered({ energy: () => 0.95 }));
+    const p = ctx.phrases[3];
+    const seconds = audibleOf(ctx, p, 1).seconds;
+    assert.strictEqual(phraseBudget(p, ctx, { ...NORMAL, maxNpsCeiling: 1 }), Math.floor(seconds));
+    assert.ok(phraseBudget(p, ctx, { ...NORMAL, maxNpsCeiling: Infinity }) > Math.floor(seconds));
+    assert.strictEqual(BUDGET.maxRate, undefined);
+  });
+
+  it("the chart's phrases stay under the ceiling in moments per second", () => {
+    for (const features of [loud(), layered({ energy: () => 0.95 })]) {
+      const ctx = analyse(features);
+      const times = [...new Set(generateChart(features, "normal", KEY).notes.map((n) => n.t))];
+      for (const p of ctx.phrases) {
+        const moments = times.filter((t) => t >= p.startMs && t < p.endMs).length;
+        assert.ok(moments / ((p.endMs - p.startMs) / 1000) <= NORMAL.maxNpsCeiling, `phrase ${p.index}: ${moments}`);
+      }
+    }
+  });
+
+  it("counts the seconds the music plays: the lead-in and the silence take none", () => {
+    const silent = (t) => (t >= 28000 && t < 32000 ? 0 : 0.8);
+    const whole = analyse(loud());
+    const gap = analyse(loud({ energy: silent }));
+    const at = (ctx, ms) => ctx.phrases.find((p) => p.startMs <= ms && ms < p.endMs);
+    const wholePhrase = at(whole, 30000);
+    const gapPhrase = at(gap, 30000);
+    const full = audibleOf(whole, wholePhrase, 1).seconds;
+    const less = audibleOf(gap, gapPhrase, 1).seconds;
+    assert.strictEqual(less, full - 4);
+    assert.ok(phraseBudget(gapPhrase, gap, NORMAL) < phraseBudget(wholePhrase, whole, NORMAL));
+
+    // The first second of the song is lead-in.
+    const first = whole.phrases[0];
+    assert.strictEqual(audibleOf(whole, first, 1).seconds, (first.endMs - first.startMs) / 1000 - LEAD_IN_MS / 1000);
+  });
+
+  it("a phrase wholly in the silence gets no budget", () => {
+    const ctx = analyse(loud({ energy: (t) => (t >= 24000 && t < 40000 ? 0 : 0.8) }));
+    const p = ctx.phrases.find((q) => q.startMs >= 24000 && q.endMs <= 40000);
+    assert.ok(p, "a phrase in the silence");
+    assert.strictEqual(phraseBudget(p, ctx, NORMAL), 0);
+  });
+});
+
+describe("what Normal still guarantees", () => {
+  // The limits v26 kept, on the public Normal, over a song with every layer and over one with the frequency bands alone
+  // (makeFeatures has no drums, bass or lead). A property that fails is a bug of the chart, not a number to widen.
+  const songs = {
+    layered: layered({ durationMs: 192000, energy: () => 0.75 }),
+    "layered with holds": layered({ durationMs: 192000, holdsEveryBeats: 4, sustainAtBeats: [6, 22], energy: () => 0.85 }),
+    "bands only": makeFeatures({ bpm: 120, durationMs: 120000, energy: () => 0.8 }),
+  };
+  for (const [name, features] of Object.entries(songs)) {
+    describe(name, () => {
+      const notes = generateChart(features, "normal", KEY).notes;
+      const moments = new Map();
+      for (const n of notes) moments.set(n.t, (moments.get(n.t) ?? 0) + 1);
+
+      it("has chords on at most maxChordShare of its moments, two notes each", () => {
+        const chords = [...moments.values()].filter((c) => c > 1).length;
+        assert.ok(chords / moments.size <= NORMAL.maxChordShare + 1e-9, `${chords} of ${moments.size}`);
+        assert.ok([...moments.values()].every((c) => c <= 2));
+      });
+
+      it("keeps minLaneGapMs on a lane and a jack of at most maxJack", () => {
+        const last = [-Infinity, -Infinity, -Infinity, -Infinity];
+        const run = [0, 0, 0, 0];
+        for (const n of notes) {
+          assert.ok(n.t - last[n.lane] >= NORMAL.minLaneGapMs, `lane ${n.lane} at ${n.t}`);
+          for (let l = 0; l < 4; l++) run[l] = l === n.lane ? run[l] + 1 : 0;
+          assert.ok(run[n.lane] <= NORMAL.maxJack, `a jack of ${run[n.lane]} at ${n.t}`);
+          last[n.lane] = n.t;
+        }
+      });
+
+      it("has no hold under another and no note on a lane while it is held", () => {
+        let heldUntil = -Infinity;
+        for (const h of notes.filter((n) => n.len > 0)) {
+          assert.ok(h.t > heldUntil, `a hold at ${h.t} under another`);
+          heldUntil = h.t + h.len;
+          assert.ok(!notes.some((n) => n !== h && n.lane === h.lane && n.t > h.t && n.t < h.t + h.len), `a note on the held lane ${h.lane} at ${h.t}`);
+        }
+      });
+    });
+  }
+
+  it("the song with holds has holds to test", () => {
+    assert.ok(generateChart(songs["layered with holds"], "normal", KEY).notes.some((n) => n.len > 0));
   });
 });

@@ -1,9 +1,10 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, LEAD_IN_MS, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateChart, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { limitHoldShare } = require("../../../helpers/mewbeat/charts/holds");
+const { BUDGET } = require("../../../helpers/mewbeat/charts/momentWeights");
 const { LEGATO_MAX_GAP_MS, mergeLegato, withMergedLead } = require("../../../helpers/mewbeat/charts/legato");
 const { buildPhrases, chooseLeaders, hasSteadyPulse } = require("../../../helpers/mewbeat/charts/phrases");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
@@ -52,11 +53,15 @@ describe("quiet rhythmic passages", () => {
     const features = quietPad();
     const phrases = phrasesOf(features);
     assert.ok(phrases.every((p) => !hasSteadyPulse(p)));
-    // Normal picks from what sounds: no note is played for a pulse the music does not have, and a phrase stays under a note per beat.
+    // Normal picks from what sounds: no note is played for a pulse the music does not have. The budget is song-relative
+    // (the quiet pad is the whole song), so what bounds the moments is the sound: the pad has little of it, and its rate
+    // stays well under what a median song gets (BUDGET.medianRate, moments per second).
     const story = traceChart(features, "normal", "k");
     assert.ok(!story.records.some((r) => r.reason === "puls"));
     const moments = new Set(story.chart.notes.map((n) => n.t)).size;
-    assert.ok(moments / phrases.length < PHRASE_BEATS);
+    const seconds = (features.durationMs - LEAD_IN_MS) / 1000;
+    assert.ok(moments > 0);
+    assert.ok(moments / seconds < 0.5 * BUDGET.medianRate, `${(moments / seconds).toFixed(2)} moments/s against a median of ${BUDGET.medianRate}`);
   });
 
   it("a sung line keeps its lead even with a pulse under it", () => {

@@ -1,10 +1,12 @@
 // Measures a generator level on the 80 TRAIN songs against the human Normal maps: the numbers Task 3 reports.
-//   node measure_normal.js [--level normal] [--json out.json] [--songs id,id] [--set '{"foreground":0.5}'] [--budget '{"maxRate":10}'] [--k '{"1":1.2}']
+//   node measure_normal.js [--level normal] [--json out.json] [--songs id,id] [--set '{"foreground":0.5}'] [--budget '{"q":0.7}'] [--k '{"1":1.2}']
 // --set merges into the level's parameters, --budget into BUDGET (momentWeights.js) and --k into the level's K coefficients (by index), for tuning without edits.
 // Beat share uses 70 ms (rel_proxy_select.py BEAT_TOL); "good grid" = human beat share >= .85 (the spec's .92 / .76 are on those songs).
 // Moments/s are counted in the phrases phrase_density.py used (>= 2 s, inside the first..last human moment), so the unit is the
 // one the budget was fitted on. Beat share = grid beats (inside that span) with a note within 35 ms. Notes with no sound = notes
 // with no onset of any layer within 35 ms. F1 is on moments, 35 ms. Test songs are never read: ids come from corpus.csv (train).
+// Local density: p50 / p95 / p99 / max over all phrases of all songs (moments/s) and over every 4-beat window (notes/s, a window
+// every quarter beat across the human span), chart against human. Chord share (moments) = moments with more than one note.
 const fs = require("fs"), path = require("path");
 const repo = path.resolve(__dirname, "../../..");
 const { analyse, generateChart } = require(path.join(repo, "helpers/mewbeat/charts/generate"));
@@ -36,6 +38,21 @@ function phraseDensities(times, phrases, lo, hi) {
   return out;
 }
 
+// Notes per second in every 4-beat window, one starting every quarter beat across [lo, hi].
+function windows(times, beatMs, lo, hi) {
+  const sorted = [...times].sort((a, b) => a - b), width = 4 * beatMs, out = [];
+  let a = 0, b = 0;
+  for (let w = lo; w + width <= hi; w += beatMs / 4) {
+    while (a < sorted.length && sorted[a] < w) a++;
+    if (b < a) b = a;
+    while (b < sorted.length && sorted[b] < w + width) b++;
+    out.push((b - a) / (width / 1000));
+  }
+  return out;
+}
+const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN; };
+const pool = { hp: [], cp: [], hw: [], cw: [] };
+
 const songs = [];
 for (const id of trainIds) {
   if (only && !only.includes(id)) continue;
@@ -53,6 +70,9 @@ for (const id of trainIds) {
   const beats = ctx.timing.snapped ? ctx.timing.beats.filter((t) => t >= lo && t <= hi) : [];
   const share = (moms) => (beats.length ? beats.filter((b) => near(moms, b, BEAT_TOL)).length / beats.length : NaN);
   const hp = phraseDensities(hMom, ctx.phrases, lo, hi), cp = phraseDensities(cMom, ctx.phrases, lo, hi);
+  pool.hp.push(...hp.map((p) => p.y)); pool.cp.push(...cp.map((p) => p.y));
+  const beatMs = ctx.timing.medianMs > 0 ? ctx.timing.medianMs : 500;
+  pool.hw.push(...windows(human.map((n) => n[0]), beatMs, lo, hi)); pool.cw.push(...windows(chart.notes.map((n) => n.t), beatMs, lo, hi));
   const wsum = (ps) => ps.reduce((s, p) => s + p.y * (p.b - p.a), 0) / ps.reduce((s, p) => s + (p.b - p.a), 0);
   const inSpan = (ts) => ts.filter((t) => t >= lo && t <= hi).length / ((hi - lo) / 1000);
   let tp = 0; for (const t of cMom) if (near(hMom, t, TOL)) tp++;
@@ -68,10 +88,11 @@ for (const id of trainIds) {
     humanNps: inSpan(human.map((n) => n[0])), chartNps: inSpan(chart.notes.map((n) => n.t)),
     noSound: chart.notes.filter((n) => strengthAt(ctx, n.t) === null).length / chart.notes.length,
     precision: prec, recall: rec, f1: prec + rec ? (2 * prec * rec) / (prec + rec) : 0,
-    chordShare: 1 - cMom.length / chart.notes.length, holds: chart.notes.filter((n) => n.len > 0).length / chart.notes.length,
+    chordShare: 1 - cMom.length / chart.notes.length, chordMomentShare: chordMoments(chart.notes), holds: chart.notes.filter((n) => n.len > 0).length / chart.notes.length,
     loud: ctx.energy && undefined,
   });
 }
+function chordMoments(notes) { const by = new Map(); for (const n of notes) by.set(n.t, (by.get(n.t) ?? 0) + 1); return [...by.values()].filter((c) => c > 1).length / by.size; }
 function corr(x, y) { const mx = mean(x), my = mean(y); let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < x.length; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy); }
 
 const ok = songs.filter((s) => !s.noChart);
@@ -89,7 +110,10 @@ const summary = {
   notesPerSec: { chart: r(median(col("chartNps")), 2), human: r(median(col("humanNps")), 2) },
   stars: { median: r(median(col("stars")), 2), mean: r(mean(col("stars")), 2) },
   noSoundShare: { median: r(median(col("noSound")), 3), mean: r(mean(col("noSound")), 3) },
-  chordShare: { median: r(median(col("chordShare")), 3) }, holdShare: { median: r(median(col("holds")), 3) },
+  chordShare: { median: r(median(col("chordShare")), 3) },
+  chordMomentShare: { median: r(median(col("chordMomentShare")), 3), max: r(Math.max(...col("chordMomentShare")), 3) },
+  phraseMomentsPerSec: Object.fromEntries(["cp", "hp"].map((k) => [k === "cp" ? "chart" : "human", { p50: r(pct(pool[k], 0.5), 2), p95: r(pct(pool[k], 0.95), 2), p99: r(pct(pool[k], 0.99), 2), max: r(Math.max(...pool[k]), 2), n: pool[k].length }])),
+  window4BeatNotesPerSec: Object.fromEntries(["cw", "hw"].map((k) => [k === "cw" ? "chart" : "human", { p50: r(pct(pool[k], 0.5), 2), p95: r(pct(pool[k], 0.95), 2), p99: r(pct(pool[k], 0.99), 2), max: r(Math.max(...pool[k]), 2), n: pool[k].length }])), holdShare: { median: r(median(col("holds")), 3) },
   f1: { median: r(median(col("f1"))), precision: r(median(col("precision"))), recall: r(median(col("recall"))) },
 };
 console.log(JSON.stringify(summary, null, 1));
