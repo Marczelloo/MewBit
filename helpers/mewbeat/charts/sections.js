@@ -17,7 +17,7 @@ const GAP_SLACK = 0.9; // a gap in beats is met within this much: a bending grid
 function barVectors(features, timing, energy) {
   const downs = timing.downbeats;
   const bars = downs.length - 1;
-  const barOf = (t) => (t < downs[0] || t >= downs[bars] ? -1 : lowerBound(downs, t + 1) - 1);
+  const barOf = (t) => (t < downs[0] || t >= downs[bars] ? -1 : Math.min(bars - 1, lowerBound(downs, t + 1) - 1)); // a time need not be whole: t + 1 can pass the last downbeat
   const bands = Array.isArray(features.bands) ? features.bands : [];
   const size = 1 + bands.length + 3 + PITCH_CLASSES;
   const vectors = Array.from({ length: bars }, () => new Array(size).fill(0));
