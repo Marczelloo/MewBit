@@ -150,7 +150,9 @@ Tor znów ma związek z dźwiękiem. Wiedza: `mania-patterns.md`.
 
 ### 5.7 Holdy, akordy, puls, profil
 
-- **Holdy z nutami pod spodem:** nuty drugiej ręki w trakcie holda (ludzie Normal ok. 10%, generator ok. 2,7%), bez nowych momentów ponad budżet.
+- **Holdy z nutami pod spodem:** nuty drugiej ręki w trakcie holda (pomiar: nut pod holdem ludzie Normal .278, v26 .053), bez nowych momentów ponad budżet.
+- **Koniec holda niezależny od następnego momentu:** dziś v26 puszcza na nim w .942 holdów na Normal, ludzie w .771. Długich holdów ≥1,5 beatu ludzie mają .171, v26 .104.
+- **Holdy zgrane z dźwiękiem (wymaganie użytkownika):** długie holdy leżą na przeciąganych nutach i ciągniętym wokalu, także jeśli ludzie robią to rzadziej. Sygnał z miksu jest słaby, więc działa jako preferencja przy wyborze długich holdów, nie reguła dla wszystkich. Pomiar: `mapping-analysis/salience/holds/REPORT.md`.
 - **Akordy:** według akcentu i startów części, z lokalnym limitem, tak by nie powtórzył się Mizuoto 0:12 (24 akordy wobec 9 u człowieka).
 - **Puls:** przesunięcie wagi na beaty (ludzie Normal .92 beatów z nutą przy dobrej siatce, generator .76), nie dodatkowa gęstość.
 - **Profil utworu:** map holdowa, akordowa lub gęsta, zależnie od muzyki. Osobny etap, po ocenie poprzednich.
@@ -176,13 +178,15 @@ Każdy etap kończy się commitem i raportem:
 |---|---|---|
 | 0 | Przygotowanie: migawka v26 w debuggerze, przeniesienie pomiarów i skryptów do `mapping-analysis/salience/`, commit tego projektu i `mania-patterns.md` | v26 widoczne w debuggerze obok nowych wersji |
 | 1 | **Próba słuchowa pierwszego planu** (poniżej) | **Stop: decyzja użytkownika** |
-| 2 | Części utworu w pluginie, Features v5, warstwa pierwszego planu | Wersja w Javie zgodna z wybraną w etapie 1 (poniżej); granice H&D; debugger pokazuje części i warstwę |
+| 2 | **Warunkowo.** Warstwa pierwszego planu odpada po próbie słuchowej. Części utworu i nowe sygnały wchodzą do pluginu (Features v5) tylko, jeśli pomiar z planu rytmu i gęstości pokaże, że bez nich się nie da | Wersja w Javie zgodna z wzorcem z Pythona; granice H&D; debugger pokazuje części |
 | 3 | Normal: ocena, wybór nut, gęstość, powtórki | **Stop: gra użytkownik**, tory jeszcze stare; słucha rytmu |
 | 4 | Normal: tory, figury, reguły grywalności | Zero naruszeń na `train` |
-| 5 | Normal: holdy, akordy, puls | **Stop: gra użytkownik** |
+| 5 | Normal: budowa holdów, holdy na przeciąganych dźwiękach i wokalu, akordy, puls | **Stop: gra użytkownik** |
 | 6 | Przeniesienie na Easy i Hard; A/B z Easy v26 | **Stop: gra użytkownik.** Easy nie może być gorszy słuchowo; jeśli jest, Easy zostaje na v26, a problem wraca do użytkownika |
 | 7 | Profil utworu | Do uzgodnienia po etapie 6 |
 | 8 | Siatka i śledzenie tempa | Osobny projekt; najpierw krótki plan do akceptacji |
+
+**Zmiany po etapie 1 (4 listopada).** Żaden tani detektor pierwszego planu nie pokonał rankingu, a rozdzielanie instrumentów nie przeszło progu (`mapping-analysis/salience/listening/`, `stems/REPORT.md`). Dlatego premia pierwszego planu z 5.2 i warstwa z 5.1 odpadają, a ocena momentu to ranking K. Powód wyboru w 5.3 to `ocena`, `dopełnienie` albo `puls`, nie `melodia`. Melodii pilnuje kontrola: udział nut na samej perkusji w częściach melodyjnych H&D nie może wzrosnąć. Użytkownik wybór między kolejną próbą z melodią a rytmem oddał wykonawcy; wybrany został rytm, gęstość i holdy. Plan: `docs/superpowers/plans/2026-11-04-mewbeat-rhythm-density-holds.md`.
 
 ### Etap 1: próba słuchowa (bramka)
 
