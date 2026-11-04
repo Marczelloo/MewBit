@@ -209,7 +209,7 @@ function normalViolations(notes, timing = null, { durationMs = Infinity } = {}) 
     }
     // what may sit under it is holds.js's rule, which the generator keeps as well
     const rule = h.len <= SHORT_HOLD_CLASS * beat ? "underShortHold" : "underHold";
-    for (const at of underHoldFlagged(h.len, under.map((n) => n.t - h.t), beat)) flag(rule, under[at]);
+    for (const at of underHoldFlagged(h.t, h.len, under.map((n) => n.t - h.t), beatOf)) flag(rule, under[at]);
   }
   return out.sort((a, b) => a.t - b.t);
 }

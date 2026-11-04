@@ -159,11 +159,11 @@ describe("holds", () => {
       assert.ok(n.t > heldUntil, `a hold starts at ${n.t} under another`);
       heldUntil = n.t + n.len;
     }
-    for (const d of ["easy", "normal"]) {
-      const { notes } = charts[d];
-      const share = notes.filter((n) => n.len > 0).length / notes.length;
-      assert.ok(share > 0 && share <= DIFFICULTIES[d].maxHoldShare + 0.02, `${d}: ${share}`);
-    }
+    const shareOf = (d) => charts[d].notes.filter((n) => n.len > 0).length / charts[d].notes.length;
+    assert.ok(shareOf("easy") > 0 && shareOf("easy") <= DIFFICULTIES.easy.maxHoldShare + 0.02, `easy: ${shareOf("easy")}`);
+    // Normal's cap (.35) is no bound on a chart: its holds are planned by the sound, and the cap only trims the excess.
+    // This song rests every other beat, so its share (.29) is far above real music (.11); .30 pins it where the data is.
+    assert.ok(shareOf("normal") > 0 && shareOf("normal") <= 0.3, `normal: ${shareOf("normal")}`);
   });
 });
 

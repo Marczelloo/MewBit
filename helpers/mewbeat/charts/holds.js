@@ -39,18 +39,20 @@ const yields = (o, c) => o.source !== c.source && (isSupport(o) || o.level > c.l
 // What may sit under a hold: the Ranking Criteria for Normal, shared with laneRules.js (normalViolations).
 const SHORT_HOLD_CLASS = 0.6; // a hold up to this long (in beats) is a half-beat hold: nothing under it
 const BEAT_HOLD_CLASS = 1.1; // ...up to this long a beat hold: nothing faster than a half beat under it
-const UNDER_SLACK = 0.98; // a length is met within this much: the grid rounds, and a bending grid stretches
 
-// underHoldFlagged(len, under, beat) -> the indices of `under` that break the rule. `under` are the offsets (ms, ascending)
-// from the hold's start of the notes strictly inside it, `len` its length. A half-beat hold carries nothing; a hold of
-// about a beat nothing closer than a half beat to either end or to another such note; a longer one anything.
-function underHoldFlagged(len, under, beat) {
+// underHoldFlagged(start, len, under, beatOf) -> the indices of `under` that break the rule. `start` is the hold's time,
+// `len` its length, `under` the offsets (ms, ascending) from `start` of the notes strictly inside it, beatOf(t) the beat
+// length at t. A half-beat hold carries nothing; a hold of about a beat nothing closer than a half beat to either end or
+// to another such note; a longer one anything. A gap is measured against the larger beat of its two ends, as the other
+// rules of laneRules.js do: beatOf moves by up to about 8% between neighbouring moments.
+function underHoldFlagged(start, len, under, beatOf) {
+  const beat = beatOf(start);
   if (len <= SHORT_HOLD_CLASS * beat) return under.map((_, i) => i);
   if (len > BEAT_HOLD_CLASS * beat) return [];
   const marks = [0, ...under, len];
   const flagged = new Set();
   marks.forEach((t, k) => {
-    if (k === 0 || t - marks[k - 1] >= (beat / 2) * UNDER_SLACK) return;
+    if (k === 0 || t - marks[k - 1] >= Math.max(beatOf(start + marks[k - 1]), beatOf(start + t)) / 2) return;
     for (const at of [k - 1, k]) if (at > 0 && at < marks.length - 1) flagged.add(at - 1);
   });
   return [...flagged].sort((a, b) => a - b);
@@ -390,7 +392,7 @@ function freeLength(h, moments, ends, diff, timing, limitMs) {
   for (;;) {
     if (end - h.t < shortest) return 0;
     const inside = moments.times.slice(lowerBound(moments.times, h.t + 1), lowerBound(moments.times, end));
-    if (underHoldFlagged(end - h.t, inside.map((t) => t - h.t), beat).length === 0) {
+    if (underHoldFlagged(h.t, end - h.t, inside.map((t) => t - h.t), (at) => beatMsOf(timing, at)).length === 0) {
       if (running.length > 0 && moments.times.some((t) => t > h.t && t < Math.min(end, ...running) + noteGap)) return 0;
       return end - h.t;
     }
@@ -515,4 +517,4 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
   return out;
 }
 
-module.exports = { BEAT_HOLD_CLASS, SHORT_HOLD_CLASS, UNDER_SLACK, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, spacedBlocked, underHoldFlagged };
+module.exports = { SHORT_HOLD_CLASS, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, spacedBlocked, underHoldFlagged };

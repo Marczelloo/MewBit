@@ -158,13 +158,14 @@ function assignLanes(notes, ctx, diff, upper = null) {
     let kept = freeTheHands(holdsFirst, running, nextT, noteGap);
 
     // Under a running hold the notes keep the rules of what sits under one (holds.js underHoldFlagged), where a level asks for them.
-    const breaksUnder = (h, lanes) => {
+    // `now` is how many notes this moment puts under h.
+    const breaksUnder = (h, now) => {
       if (!(t > h.t && t < h.t + h.len)) return false;
       const under = placed.filter((o) => o !== h && o.lane !== h.lane && o.t > h.t && o.t < h.t + h.len).map((o) => o.t - h.t);
-      under.push(...lanes.filter((l) => l !== h.lane).map(() => t - h.t));
-      return underHoldFlagged(h.len, under, beatMsOf(timing, h.t)).length > 0;
+      under.push(...Array(now).fill(t - h.t));
+      return underHoldFlagged(h.t, h.len, under, (at) => beatMsOf(timing, at)).length > 0;
     };
-    const underBreaks = (lanes) => !!diff.underHold && active.some((h) => breaksUnder(h, lanes));
+    const underBreaks = (lanes) => !!diff.underHold && active.some((h) => breaksUnder(h, lanes.filter((l) => l !== h.lane).length));
 
     const lonelyLanes = (mask) => lanesOf(mask).filter((l) => !lanesOf(mask).some((o) => o !== l && handOf(o) === handOf(l)));
     const legal = (mask, holds) => {
@@ -186,7 +187,7 @@ function assignLanes(notes, ctx, diff, upper = null) {
       options = MASKS[kept.length].filter((mask) => legal(mask, holds));
       if (options.length > 0) break;
       // A hold whose rules a note under it would break plays as a tap, before a moment is lost: the settle step keeps this from happening.
-      const broken = diff.underHold ? active.find((h) => breaksUnder(h, [-1])) : undefined;
+      const broken = diff.underHold ? active.find((h) => breaksUnder(h, 1)) : undefined;
       if (broken) {
         delete broken.len;
         laneFree[broken.lane] = broken.t;

@@ -162,7 +162,7 @@ const DIFFICULTIES = {
     holdRelease: "free", // a hold lets go with its sound, not on the next moment, and may run over moments (holds.js settleHolds)
     underHold: true, // what sits under a hold keeps the Ranking Criteria (holds.js underHoldFlagged), instead of v26's half-beat spacing
     gapBeats: 1 / 4, // any-lane gap between two moments, in beats
-    maxHoldShare: 0.35, // free holds ask for room only where the sound is long: the share the music fills is measured, not this cap (people .118)
+    maxHoldShare: 0.35, // both hold caps are set to what gets the share of holds to the people's (.118): .35 gives about .116 on the train songs, .25 .10, .5 .13; with a lower cap it is the cap that holds the share back
     gapHoldShare: 0.35,
     sectionChordRise: 0.7,
     sectionChordEnergy: 0.3,

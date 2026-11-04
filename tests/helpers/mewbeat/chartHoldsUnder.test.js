@@ -3,7 +3,7 @@ const { describe, it } = require("node:test");
 
 const { levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateChart } = require("../../../helpers/mewbeat/charts/generate");
-const { settleHolds, underHoldFlagged } = require("../../../helpers/mewbeat/charts/holds");
+const { addGapHolds, addSustainHolds, settleHolds, underHoldFlagged } = require("../../../helpers/mewbeat/charts/holds");
 const { assignLanes } = require("../../../helpers/mewbeat/charts/lanes");
 const { normalViolations } = require("../../../helpers/mewbeat/charts/laneRules");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
@@ -111,11 +111,73 @@ describe("notes under a hold", () => {
 describe("the rule the generator and the checker share", () => {
   it("flags what sits under a hold by its length", () => {
     const beat = 500;
-    assert.deepEqual(underHoldFlagged(250, [100], beat), [0], "half beat: nothing under");
-    assert.deepEqual(underHoldFlagged(500, [125], beat), [0], "one beat: nothing faster than a half beat");
-    assert.deepEqual(underHoldFlagged(500, [250], beat), []);
-    assert.deepEqual(underHoldFlagged(550, [250, 300], beat), [0, 1], "...also between two notes under it");
-    assert.deepEqual(underHoldFlagged(1000, [100, 150, 200], beat), [], "a longer hold: free");
+    const flagged = (len, under, at = () => beat) => underHoldFlagged(0, len, under, at);
+    assert.deepEqual(flagged(250, [100]), [0], "half beat: nothing under");
+    assert.deepEqual(flagged(500, [125]), [0], "one beat: nothing faster than a half beat");
+    assert.deepEqual(flagged(500, [250]), []);
+    assert.deepEqual(flagged(550, [250, 300]), [0, 1], "...also between two notes under it");
+    assert.deepEqual(flagged(1000, [100, 150, 200]), [], "a longer hold: free");
+  });
+
+  it("measures a gap against the larger beat of its two ends", () => {
+    // the tempo slows from a 500 ms beat to a 600 ms beat at 300 ms; a note at 275 splits a 550 ms hold in two gaps of 275
+    const slowing = (at) => (at < 300 ? 500 : 600);
+    assert.deepEqual(underHoldFlagged(0, 550, [275], slowing), [0], "275 ms is under half of the 600 ms beat at the hold's end");
+    assert.deepEqual(underHoldFlagged(0, 550, [275], () => 500), [], "...but a half of the 500 ms beat all along");
+  });
+});
+
+describe("running holds", () => {
+  const settled = (notes) => settleHolds(notes, normal, grid).map((n) => ("len" in n ? n.len : 0));
+
+  it("at most two run at once: a third starting with them becomes a tap", () => {
+    // the second hold's start is a moment under the first, so a third can only join at the second's own time
+    const three = [{ t: 1000, lane: 0, len: 2000 }, { t: 1250, lane: 2, len: 1000 }, { t: 1250, lane: 3, len: 1000 }];
+    assert.deepEqual(settled(three), [2000, 1000, 0]);
+    assert.deepEqual(settled(three.slice(0, 2)), [2000, 1000], "two are fine");
+    assert.deepEqual(settled([...three.slice(0, 2), { t: 2750, lane: 3, len: 1000 }]), [2000, 1000, 1000], "...and one that starts after the second let go");
+  });
+
+  it("no moment sits under two holds at once", () => {
+    const two = [{ t: 1000, lane: 0, len: 2000 }, { t: 1250, lane: 3, len: 1000 }];
+    assert.deepEqual(settled(two), [2000, 1000], "nothing under the second hold: it stays");
+    assert.deepEqual(settled([...two, tap(1750, 2)]), [2000, 0, 0], "a moment under both would have no hand to play it: the second is a tap");
+    assert.deepEqual(settled([...two, tap(2500, 2)]), [2000, 1000, 0], "a moment under only the first is the second hand's");
+  });
+});
+
+describe("holds follow the sound", () => {
+  it("a sustain makes a hold of its own length, and the taps under it stay", () => {
+    const notes = [tap(1000, 0), tap(1500, 1), tap(1750, 3), tap(4000, 2)];
+    const sustain = [{ t: 1000, len: 1200, conf: 0.9 }];
+    const free = addSustainHolds(notes, { lead: sustain }, normal, grid);
+    assert.equal(free.length, notes.length, "nothing is dropped");
+    assert.equal(free[0].len, 1200, "the hold has the sustain's length, not the distance to the next note");
+    const old = addSustainHolds(notes, { lead: sustain }, v26, grid);
+    assert.ok(old.length < notes.length || old[0].len < 1200, "v26 drops the taps under it or shortens it");
+  });
+
+  it("a sustain shorter than the hold minimum stays a tap", () => {
+    const [first] = addSustainHolds([tap(1000), tap(4000)], { lead: [{ t: 1000, len: 450, conf: 0.9 }] }, normal, grid);
+    assert.ok(!("len" in first));
+  });
+
+  const gapNotes = [tap(1000, 0), tap(2000, 3), tap(4000, 1), tap(5000, 2)];
+  const gapHolds = (features, energy) => addGapHolds(gapNotes, features, normal, grid, energy).filter((n) => n.len > 0);
+
+  it("a gap hold follows the sound that starts it, else the rest", () => {
+    const loud = { at: () => 0.6 };
+    const [held] = gapHolds({ bass: [{ t: 1000, len: 800, conf: 0.9 }] }, loud);
+    assert.equal(held.t, 1000);
+    assert.equal(held.len, 800, "the bass note lasts 800 ms, the rest is 1000");
+    assert.equal(gapHolds({}, loud)[0].len, 1000, "no sound to follow: the rest");
+  });
+
+  it("a gap hold needs the music to sound all through it", () => {
+    const hole = { at: (t) => (t >= 1400 && t <= 1600 ? 0.1 : 0.6) };
+    const held = gapHolds({}, hole);
+    assert.ok(!held.some((n) => n.t === 1000), "the middle of the rest at 1000 is quiet: no hold");
+    assert.ok(held.some((n) => n.t === 4000), "the rest at 4000 is loud");
   });
 });
 
@@ -136,16 +198,20 @@ describe("under holds adds no moments", () => {
     layeredSustain: () => makeLayeredFeatures({ bpm: 140, durationMs: 80000, structure: "AABB", sustainAtBeats: [4, 10] }),
   };
 
+  // What is checked: holds on Normal bring no moment the chart lacks without them, lose at most 1% of the moments it has
+  // without them (lanes.js may give one up when no lane is playable), and the chart still passes the checker.
   for (const [name, make] of Object.entries(songs)) {
-    it(`${name}: every moment with holds is one the chart has without them`, () => {
+    it(`${name}: holds add no moment and lose at most 1% of them`, () => {
       const features = make();
       const without = chartWith(features, { gapHoldShare: 0, maxHoldShare: 0, sustainMinBeats: Infinity });
       const free = chartWith(features, {});
       assert.ok(free.notes.some((n) => n.len > 0), "the fixture has holds");
       const bare = moments(without.notes);
-      const extra = [...moments(free.notes)].filter((t) => !bare.has(t));
+      const withHolds = moments(free.notes);
+      const extra = [...withHolds].filter((t) => !bare.has(t));
       assert.deepEqual(extra, [], "a moment under a hold was added");
-      assert.ok(free.notes.length <= without.notes.length + free.notes.filter((n) => n.len > 0).length * 0, "no more notes than without holds");
+      const lost = [...bare].filter((t) => !withHolds.has(t));
+      assert.ok(lost.length <= Math.ceil(bare.size / 100), `holds cost ${lost.length} of ${bare.size} moments`);
       assert.deepEqual(normalViolations(free.notes, buildTiming(features, features.durationMs), { durationMs: free.durationMs }), []);
     });
   }
