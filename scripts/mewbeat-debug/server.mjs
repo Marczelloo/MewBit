@@ -150,10 +150,35 @@ function audioPath(id) {
   return existsSync(path) ? path : null;
 }
 
+// The blind listening test: only songs listed in listening/index.json are reachable, by exact name.
+// The answer key (.mewbeat-debug/listening-key.json) lives outside this folder and is never served.
+const LISTENING = join(DATA, "listening");
+const LISTENING_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
+
+function listeningIndex() {
+  const path = join(LISTENING, "index.json");
+  if (!existsSync(path)) return [];
+  const list = readJson(path);
+  if (!Array.isArray(list)) return [];
+  return list.filter((e) => typeof e?.song === "string" && LISTENING_NAME.test(e.song)).map((e) => ({ song: e.song, title: String(e.title ?? e.song) }));
+}
+
+function listeningRoute(res, parts) {
+  if (parts.length === 2) return sendJson(res, listeningIndex());
+  if (parts.length === 3) {
+    const name = parts[2];
+    const path = join(LISTENING, `${name}.json`);
+    if (!listeningIndex().some((e) => e.song === name) || !path.startsWith(LISTENING + sep) || !existsSync(path)) return notFound(res, "no such song");
+    return sendJson(res, readJson(path));
+  }
+  return notFound(res);
+}
+
 function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "api") {
+    if (parts[1] === "listening") return listeningRoute(res, parts);
     if (parts[1] === "songs") return sendJson(res, allSongs());
     if (parts[1] === "song" && parts[2]) {
       const payload = songPayload(parts[2]);
