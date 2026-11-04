@@ -182,22 +182,24 @@ function budgetModelOf(ctx, diff) {
   const weights = (long.length > 0 ? long : ctx.phrases.map((p, i) => i)).map((i) => ({ rate: fitted[i], seconds: audible[i].seconds }));
   const total = weights.reduce((sum, w) => sum + w.seconds, 0);
   const song = total > 0 ? weights.reduce((sum, w) => sum + w.rate * w.seconds, 0) / total : 0;
-  ctx.budgets[diff.scoreLevel] = { fitted, song, seconds: audible.map((a) => a.seconds) };
+  const firstLoud = audible.findIndex((a) => a.seconds > 0 && a.loudness >= BUDGET.openingLoudness);
+  ctx.budgets[diff.scoreLevel] = { fitted, song, seconds: audible.map((a) => a.seconds), openingEnd: Math.max(firstLoud, 0) };
   return ctx.budgets[diff.scoreLevel];
 }
 
 // phraseBudget(phrase, ctx, diff) -> the most moments the phrase gets: the seconds the music plays in it at the rate the
 // music calls for (a song and a phrase the music fills get more than the median, a thin one fewer), times diff.budgetScale,
-// and never above diff.maxNpsCeiling moments per second. A budget is a limit; selectMoments leaves it unused where the music
-// has less to offer.
+// and never above diff.maxNpsCeiling moments per second. A quiet phrase before the song's first loud one keeps a higher floor
+// than one later on. A budget is a limit; selectMoments leaves it unused where the music has less to offer.
 function phraseBudget(phrase, ctx, diff) {
-  const { fitted, song, seconds: played } = budgetModelOf(ctx, diff);
+  const { fitted, song, seconds: played, openingEnd } = budgetModelOf(ctx, diff);
   const own = fitted[phrase.index];
   const seconds = played[phrase.index];
   const most = Math.floor((diff.maxNpsCeiling ?? Infinity) * seconds);
   if (!(song > 0) || !Number.isFinite(own)) return Math.min(most, Math.round(BUDGET.medianRate * seconds * diff.budgetScale));
   const bySong = Math.pow(song / BUDGET.refModel, BUDGET.gamma);
-  const byPhrase = Math.pow(clamp(own / song, BUDGET.minRatio, Infinity), BUDGET.delta);
+  const floor = phrase.index < openingEnd ? BUDGET.openingMinRatio : BUDGET.minRatio;
+  const byPhrase = Math.pow(clamp(own / song, floor, Infinity), BUDGET.delta);
   return Math.max(0, Math.min(most, Math.round(BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale)));
 }
 

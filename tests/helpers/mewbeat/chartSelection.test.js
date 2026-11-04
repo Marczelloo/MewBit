@@ -387,6 +387,38 @@ describe("the budget of a phrase", () => {
     assert.strictEqual(audibleOf(whole, first, 1).seconds, (first.endMs - first.startMs) / 1000 - LEAD_IN_MS / 1000);
   });
 
+  it("a quiet opening gets more than the same quiet after the song's first loud phrase", () => {
+    const quiet = (t) => t < 16000 || (t >= 40000 && t < 48000);
+    const ctx = analyse(loud({ energy: (t) => (quiet(t) ? SILENCE_ENERGY + 0.02 : 0.8) }));
+    const wide = { ...NORMAL, budgetScale: 100, maxNpsCeiling: Infinity }; // the rates, without the rounding of a small budget
+    const rate = (p) => phraseBudget(p, ctx, wide) / audibleOf(ctx, p, 1).seconds;
+    const inside = (a, b) => ctx.phrases.find((p) => p.startMs >= a && p.endMs <= b);
+    const opening = inside(0, 16000);
+    const later = inside(40000, 48000);
+    assert.ok(opening && later, "a quiet phrase in each place");
+    const floor = BUDGET.openingMinRatio;
+    BUDGET.openingMinRatio = 0.9; // the fixture's quiet phrases lie just above the real floor, this one binds
+    try {
+      assert.ok(rate(opening) > rate(later), `${rate(opening)} against ${rate(later)}`);
+      assert.ok(rate(opening) < rate(inside(16000, 40000)), "the opening stays below the loud phrases");
+    } finally {
+      BUDGET.openingMinRatio = floor;
+    }
+  });
+
+  it("a song that starts loud has no opening, and silence does not end one", () => {
+    const quietAt = (t) => t >= 40000 && t < 48000;
+    const startsLoud = analyse(loud({ energy: (t) => (quietAt(t) ? 0.2 : 0.8) }));
+    phraseBudget(startsLoud.phrases[0], startsLoud, NORMAL);
+    assert.strictEqual(startsLoud.budgets[NORMAL.scoreLevel].openingEnd, 0);
+
+    // A silent phrase reports the loudness of the song, and it is not the first loud one.
+    const silence = analyse(loud({ energy: (t) => (t < 8000 ? 0 : t < 16000 ? 0.2 : 0.8) }));
+    phraseBudget(silence.phrases[0], silence, NORMAL);
+    const end = silence.budgets[NORMAL.scoreLevel].openingEnd;
+    assert.ok(silence.phrases[end].startMs >= 8000, `the opening ends at phrase ${end}`);
+  });
+
   it("a phrase wholly in the silence gets no budget", () => {
     const ctx = analyse(loud({ energy: (t) => (t >= 24000 && t < 40000 ? 0 : 0.8) }));
     const p = ctx.phrases.find((q) => q.startMs >= 24000 && q.endMs <= 40000);

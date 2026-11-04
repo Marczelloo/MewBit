@@ -33,6 +33,11 @@ const BUDGET = {
   medianRate: 4.586, // moments per second of the median human song
   minPhraseMs: 2000, // a shorter phrase says too little to enter its song's mean
   minRatio: 0.25, // a phrase's fitted rate counts for at least this share of its song's
+  // A quiet opening is played denser than the same quiet later on: on the train songs people give the phrases before the
+  // first loud one 2.61 moments per second, the plain floor 1.68, this one 1.81. Set by play, not to reach the people's rate:
+  // higher floors (.7 and up) fill the rests the player liked in the violin opening of Hopes and Dreams.
+  openingLoudness: 0.8, // the first phrase at this loudness against the song ends the opening
+  openingMinRatio: 0.6, // the floor of minRatio inside the opening
 };
 
 // How a repeat of Normal is charted (selection.js repeatPlan).
