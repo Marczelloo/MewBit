@@ -22,8 +22,9 @@ const SNAPSHOTS = {
   v25: `${WORK}/s5/data/algo_charts`,
   v26: `${WORK}/s7/data/algo_charts`,
   v27: `${WORK}/s8/data/algo_charts`,
+  v29: `${WORK}/s9/data/algo_charts`,
 };
-const RUN = `${WORK}/s8/run-train`;
+const RUN = `${WORK}/s9/run-train`;
 const FEATURES = `${WORK}/p2run/data/features`; // v4: the first version with the one of the bar found phrase by phrase
 
 if (!process.env.MEWBEAT_EXPORT_INSIDE) {
@@ -109,7 +110,7 @@ for (const row of train) {
     phase: number(g?.phase),
     audio: audioName,
     humanLevels: Object.keys(levels),
-    // Distance of the saved v27 chart from the human one, per level (level_distance.py): where to look first.
+    // Distance of the saved v29 chart from the human one, per level (level_distance.py): where to look first.
     distance: Object.fromEntries(LEVELS.map((level) => [level, number(distance[id]?.[level])])),
   });
   console.log(`${songs.length}/${train.length} ${row.artist} - ${row.title}`);

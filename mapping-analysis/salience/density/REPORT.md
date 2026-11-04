@@ -111,3 +111,20 @@ Train, 77 utworów z zaufaną siatką, przed i po poprawce: momenty na siatce 1/
 - Udział akordów nie jest twardym limitem: mediana .326, najwyższy utwór .380 (2391949). Downbeaty, otwarcia i kopie omijają bramkę. Limit akordów jest w Tasku 8.
 - Korelacja gęstości utworu z ludzką mapą ok. −.06 do −.12: model nie przewiduje różnic między utworami, choć rozrzut jest podobny.
 - Easy nie jest już prawie podzbiorem Normala: normal→easy .938 (v26 1,000), bo Easy jest cięty z wewnętrznego `normalV26`.
+
+## v29: wynik etapu po Taskach 6–8
+
+Kod zamrożony przed kontrolą na 20 testowych (użycie nr 10). Migawka: `synthesis/out/v29_normal`, holdy: `salience/holds/measure_v29.log` (wiersz chartu jest tam podpisany „v26” niezależnie od `--charts`). Easy, Hard i Hell bez zmian na 81 utworach. Dalej liczby Normala.
+
+Train, człowiek / v26 / v29: nuty/beat 2,031 / 2,147 / 2,053; akordy .343 / .357 / .285; holdy .097 / .091 / .125; holdy z nutą w środku .101 / .030 / .145; pauzy od 2 beatów na minutę .636 / .649 / 1,384; bez dźwięku .069 / .118 / .073. Per-song .582 i .582, mediana .512 i .519 (v27 .502), P .753 i .782, R .781 i .827, in-band 16 i 16.
+
+Test, człowiek / v26 / v29: nuty/beat 2,016 / 2,135 / 1,960; akordy .317 / .392 / .284; holdy .082 / .097 / .164; holdy z nutą w środku .130 / .015 / .092; pauzy .570 / .684 / .913; bez dźwięku .055 / .114 / .068. Per-song .612 i .529, mediana .524 i .500, P .782 i .841, R .789 i .834, in-band 16 i 16.
+
+Rozjazdy:
+
+- Holdów jest za dużo względem ludzi: train .125 wobec .097, test .164 wobec .082. Na testowych odległość wzrosła z .61 do .94. Nie stroiłem tego na testowych.
+- Zagnieżdżenie algo spadło: hard→normal 1,000 do .939 (test .938), normal→easy 1,000 do .942 (test .940). Ludzie ok. .995. To skutek wyboru z muzyki, a nie cięcia z wyższego poziomu.
+- Długie holdy na dźwięku wobec losowego ułożenia, średnie: v27 .207 i .094, v29 .256 i .090, ludzie .219 i .051. Próg 3× z Tasku 7 nie jest spełniony: 2,80 na utwór, 2,48 łącznie.
+- `maxChordsPer8Beats` 6 pochodzi z ucha użytkownika, a nie z rozkładu ludzi (p50/p90/p95/p99 na 8 beatów: 4 / 8 / 8 / 10). H&D 22–45 s: mediana akordów na 8 beatów z 7 do 4,5–5, maksimum z 9 do 6. Mizuoto 12–20 s bez zmian (7 akordów, 26 momentów, 33 nuty); przyczyna raczej gęstość nut, nie akordy.
+- `motifPull` 2 na publicznym Normalu. Różne figury 4-blokowe na 100: 44 przy 6, 50 przy 2, ludzie 56. Koszt: kroki zgodne z melodią .648 do .621, echo na tych samych torach .944 do .90, przejścia akordów między rękami .372 do .388 (ludzie .556, v27 .571). Próg testu opadającego przebiegu obniżony z .7 do .65, bo .7 trzymało się samowzmacnianiem; bez torów melodii wynik to .446.
+- Końcowa recenzja: 0 krytycznych, 0 ważnych, 6 drobnych. Niezmierzone: czas `generateAll` na Pi.
