@@ -1,4 +1,4 @@
-const { DENSITY_WINDOW_MS, DIFFICULTIES, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY } = require("./difficulty");
+const { DENSITY_WINDOW_MS, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY, levelOf } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { planChords } = require("./chords");
@@ -193,7 +193,7 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   return step("finalFloors", laid, enforceFloors(laid, diff, ctx.timing));
 }
 
-const diffOf = (ctx, difficulty) => effectiveDifficulty(DIFFICULTIES[difficulty], ctx.busy);
+const diffOf = (ctx, difficulty) => effectiveDifficulty(levelOf(difficulty), ctx.busy);
 
 const notesFor = (ctx, difficulty, trace = null) => {
   const diff = diffOf(ctx, difficulty);
@@ -238,7 +238,7 @@ function usable(features) {
 }
 
 function generateChart(features, difficulty, audioKey) {
-  if (!DIFFICULTIES[difficulty]) throw new Error(`Unknown difficulty: ${difficulty}`);
+  if (!levelOf(difficulty)) throw new Error(`Unknown difficulty: ${difficulty}`);
   if (!usable(features)) return null;
   return chartFrom(analyse(features), difficulty, audioKey);
 }
@@ -257,7 +257,7 @@ function generateAll(features, audioKey) {
 // (trace.js), the grid and phrases it was charted on, and the difficulty's parameters for this song. `chart` is null
 // when too few notes survive; the story is there all the same.
 function traceChart(features, difficulty, audioKey) {
-  if (!DIFFICULTIES[difficulty]) throw new Error(`Unknown difficulty: ${difficulty}`);
+  if (!levelOf(difficulty)) throw new Error(`Unknown difficulty: ${difficulty}`);
   if (!usable(features)) return null;
   const ctx = analyse(features);
   const trace = createTrace();

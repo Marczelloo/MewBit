@@ -1,0 +1,128 @@
+{
+  "plain120": {
+    "easy": {
+      "count": 340,
+      "sha1": "d705bd10c8e04602b465329ef6a93ee981ff69be"
+    },
+    "normal": {
+      "count": 717,
+      "sha1": "caba7301621be6f6211e2d2760c963ec330d8058"
+    },
+    "hard": {
+      "count": 1061,
+      "sha1": "d635d9455e6888e260b42c09de506fd7cd07384e"
+    },
+    "hell": {
+      "count": 1295,
+      "sha1": "fc45c43a61c034f32ce675f03986c082939a43c1"
+    }
+  },
+  "plain90": {
+    "easy": {
+      "count": 216,
+      "sha1": "3271780923a5ab5c5d41a2d686c09ff6892e3f00"
+    },
+    "normal": {
+      "count": 441,
+      "sha1": "98a6c612bcdffc59124e7599aff4a9305737fa0c"
+    },
+    "hard": {
+      "count": 685,
+      "sha1": "eefddaf724bf12c03db267c6fafbe1d3dc39ecd4"
+    },
+    "hell": {
+      "count": 760,
+      "sha1": "82bd4b1fb5fcc4d05da00d8f1036990fa0202123"
+    }
+  },
+  "plain170": {
+    "easy": {
+      "count": 342,
+      "sha1": "a027a9a3538cfd802dfa21d50af628d4c15b58fe"
+    },
+    "normal": {
+      "count": 664,
+      "sha1": "960b7a25b974667fde0bdc8db8e575421c816f86"
+    },
+    "hard": {
+      "count": 1070,
+      "sha1": "24d9f287e428e6a128e4947929920fafe277cac7"
+    },
+    "hell": {
+      "count": 1335,
+      "sha1": "6c5d6165c3045adfc5bae882aace0e3ce1488531"
+    }
+  },
+  "layered": {
+    "easy": {
+      "count": 148,
+      "sha1": "9dc1d58ec2a5a588c5409377ed796b7d7bd21a0d"
+    },
+    "normal": {
+      "count": 204,
+      "sha1": "06df930ac3cd610405d60f9bc41766e472413209"
+    },
+    "hard": {
+      "count": 268,
+      "sha1": "1e692103b2bf8e0c897008ab1aeded5b07c9bc37"
+    },
+    "hell": {
+      "count": 316,
+      "sha1": "5b7cb2a469fa3f201c456f813df37f8d866cbbf8"
+    }
+  },
+  "layeredHolds": {
+    "easy": {
+      "count": 111,
+      "sha1": "58933a1f134ae4b39344bf718bbc37239a74f503"
+    },
+    "normal": {
+      "count": 276,
+      "sha1": "86d75c71a30a2b434e97c483267c182704d31e03"
+    },
+    "hard": {
+      "count": 376,
+      "sha1": "ee62113a2454bdccfe9a5e9b7776c4576e106702"
+    },
+    "hell": {
+      "count": 396,
+      "sha1": "3db828b6cbc9f6cdae4ba758b46d0ed6fdf86343"
+    }
+  },
+  "layeredSustain": {
+    "easy": {
+      "count": 148,
+      "sha1": "62357b201bf5389bb9451c94bbff0fac610420f9"
+    },
+    "normal": {
+      "count": 197,
+      "sha1": "c75cab55ad738cbd286afa84a7f72ecbdfe84221"
+    },
+    "hard": {
+      "count": 252,
+      "sha1": "e56af49218c31a673f5455fee9fe914d8cb42966"
+    },
+    "hell": {
+      "count": 351,
+      "sha1": "945e76e53e6b1f7ca8db46c873b5966b54d0013e"
+    }
+  },
+  "layeredNoLead": {
+    "easy": {
+      "count": 84,
+      "sha1": "764e0605a0c5602a94cbb84a9cdf84ab925fd8a2"
+    },
+    "normal": {
+      "count": 150,
+      "sha1": "1dd347d4438435f58955bdce45b027c2d21a7c6c"
+    },
+    "hard": {
+      "count": 270,
+      "sha1": "83fd0c0cc0c15f8efe41643d882a6340764a922c"
+    },
+    "hell": {
+      "count": 302,
+      "sha1": "941b18e64d69d76df466fbef8a83a3002169e800"
+    }
+  }
+}

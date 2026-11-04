@@ -34,61 +34,10 @@ const SNAPPED_FLOOR_SLACK = 0.98; // snapped notes may sit this much under the t
 
 // --- Per-difficulty parameters ---------------------------------------------
 
-const DIFFICULTIES = {
-  easy: {
-    grammar: "easy", // which human lane patterns the level draws from (lanes.js)
-    chordKeep: [0.5, 0.14, 0, 0], // how many of the level above's chords stay chords, by place in the bar (downbeat, beat, half, finer)
-    chordNew: [0.08, 0, 0, 0], // ...and how many of its single notes become one
-    chordGapBeats: 1 / 2,
-    maxNps: 3.5, // the busy factor spreads it 2.8-4.5; a mapper plays about 3.5 notes/s at 185 BPM and up
-    maxNpsCeiling: 4.5, // the busy factor never lifts the density cap above this
-    // Grid divisions per beat: baseDiv normally, energyDiv at energy >= highEnergyFrom,
-    // fineDiv for onsets with strength >= fineMinStrength (null = never).
-    baseDiv: 2,
-    energyDiv: 2,
-    highEnergyFrom: 0.6,
-    fineDiv: null,
-    fineMinStrength: 0.9,
-    laneGapBeats: 1, // same-lane gap, in beats
-    minLaneGapMs: 350, // ...never below this, whatever the tempo
-    minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
-    minNoteGapMs: 130, // any-lane gap between distinct times, never below this (Normal 100, Hard 60)
-    maxJack: 2, // longest same-lane run of consecutive notes (1 = no jacks)
-    cutFrom: "normal", // the level whose moments this one is cut from (rhythm.js)
-    cutLevel: 1, // cut from a harder level, moments kept up to this place (0 = a beat, 1 = a half beat, 2 = a quarter beat)
-    maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
-    halfBudget: [[110, 0.45], [Infinity, 0.19]], // half beats a mapper plays per beat, up to a tempo in BPM
-    maxHalfRun: 5, // longest run of half beats; the next beat ends it
-    quietBeats: 0.62, // share of its beats a phrase keeps at its quietest; a loud one keeps them all
-    fillRestBeats: 2, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
-    holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
-    pulseNotesPerBeat: 1, // density floor in a phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
-    holdOtherHand: "blocked", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
-    // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
-    // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
-    // raw onset strength across all bands, so its note choice differs from Normal.
-    bandBias: [1, 1, 0.85, 0.7],
-    beatBias: 0.35,
-    // Second note only on a strong downbeat (Easy has no 1/8s or fills to accent a bar with).
-    chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.7 },
-    alternation: null,
-    // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
-    gapBeats: 1 / 2, // any-lane gap on the pattern path, in beats
-    tonalGapBeats: 1 / 2, // ...between two notes of the sung or bass line
-    leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
-    thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
-    densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
-    vocalLeads: true, // in a sung song the voice leads every phrase it is heard in: it is what a beginner follows
-    oneLayer: true, // the leading layer alone: a second layer in the other hand is a skill Easy does not ask for
-    longNotesOnBeats: true, // a long sung note off the half-beat grid starts on the nearest beat (its hold carries the voice)
-    oneHoldAtATime: true, // a hold starting under another stays a tap: two held keys are a skill Easy does not ask for
-    maxHoldShare: 0.2,
-    gapHoldShare: 0.13, // holds are brought up to this share where a bass or lead line plays
-    sectionChordRise: 0.9, // a section this much louder than the last one opens on a chord (sections.js)...
-    sectionChordEnergy: 0.35, // ...when it is at least this loud
-    sustainMinBeats: 1,
-  },
-  normal: {
+// Levels the generator charts but does not offer: DIFFICULTIES (and generateAll) stay the public ones.
+// normalV26 is the Normal of generator v26, kept as what Easy is cut from.
+const INTERNAL_LEVELS = {
+  normalV26: {
     grammar: "normal",
     chordKeep: [0.66, 0.64, 0.38, 0.38],
     chordNew: [0.04, 0.04, 0.04, 0],
@@ -134,6 +83,64 @@ const DIFFICULTIES = {
     echoMirror: 0.3,
     sustainMinBeats: 1,
   },
+};
+
+const DIFFICULTIES = {
+  easy: {
+    grammar: "easy", // which human lane patterns the level draws from (lanes.js)
+    chordKeep: [0.5, 0.14, 0, 0], // how many of the level above's chords stay chords, by place in the bar (downbeat, beat, half, finer)
+    chordNew: [0.08, 0, 0, 0], // ...and how many of its single notes become one
+    chordGapBeats: 1 / 2,
+    maxNps: 3.5, // the busy factor spreads it 2.8-4.5; a mapper plays about 3.5 notes/s at 185 BPM and up
+    maxNpsCeiling: 4.5, // the busy factor never lifts the density cap above this
+    // Grid divisions per beat: baseDiv normally, energyDiv at energy >= highEnergyFrom,
+    // fineDiv for onsets with strength >= fineMinStrength (null = never).
+    baseDiv: 2,
+    energyDiv: 2,
+    highEnergyFrom: 0.6,
+    fineDiv: null,
+    fineMinStrength: 0.9,
+    laneGapBeats: 1, // same-lane gap, in beats
+    minLaneGapMs: 350, // ...never below this, whatever the tempo
+    minGapBeats: 1 / 2, // any-lane gap on the unsnapped path, in 120-BPM beats
+    minNoteGapMs: 130, // any-lane gap between distinct times, never below this (Normal 100, Hard 60)
+    maxJack: 2, // longest same-lane run of consecutive notes (1 = no jacks)
+    cutFrom: "normalV26", // the level whose moments this one is cut from (rhythm.js)
+    cutLevel: 1, // cut from a harder level, moments kept up to this place (0 = a beat, 1 = a half beat, 2 = a quarter beat)
+    maxLevel: 0, // patterns keep events up to this level (0 = strong, 1 = grid, 2 = fine)
+    halfBudget: [[110, 0.45], [Infinity, 0.19]], // half beats a mapper plays per beat, up to a tempo in BPM
+    maxHalfRun: 5, // longest run of half beats; the next beat ends it
+    quietBeats: 0.62, // share of its beats a phrase keeps at its quietest; a loud one keeps them all
+    fillRestBeats: 2, // a rest this long while the music plays gets a note of the music there (rests.js; null = never)
+    holdMinBeats: 1, // shortest sustained note that becomes a hold, in beats
+    pulseNotesPerBeat: 1, // density floor in a phrase with a steady pulse (phrases.js hasSteadyPulse), notes per beat
+    holdOtherHand: "blocked", // while a hold runs: "blocked" = no note in any lane, "spaced" = other hand >= 1/2 beat apart, "free"
+    // Selection ranking = strength * bandBias[band] + beatBias * (1 downbeat, 0.5 beat, 0 off-beat).
+    // Easy/Normal lean on the backbone (kick/snare, downbeats); Hard follows the
+    // raw onset strength across all bands, so its note choice differs from Normal.
+    bandBias: [1, 1, 0.85, 0.7],
+    beatBias: 0.35,
+    // Second note only on a strong downbeat (Easy has no 1/8s or fills to accent a bar with).
+    chord: { minStrength: 0.8, onDownbeat: true, minEnergy: 0.7 },
+    alternation: null,
+    // What makes a chart readable rather than merely playable (Hard and Hell have none of these).
+    gapBeats: 1 / 2, // any-lane gap on the pattern path, in beats
+    tonalGapBeats: 1 / 2, // ...between two notes of the sung or bass line
+    leaderFirst: true, // the leading layer picks its notes before the layers backing it, on-beat moments before off-beat ones
+    thinChords: true, // a chord only where diff.chord allows it, in both hands and clear of its neighbours
+    densityByMoment: true, // the density cap counts moments (a chord is one thing to read)
+    vocalLeads: true, // in a sung song the voice leads every phrase it is heard in: it is what a beginner follows
+    oneLayer: true, // the leading layer alone: a second layer in the other hand is a skill Easy does not ask for
+    longNotesOnBeats: true, // a long sung note off the half-beat grid starts on the nearest beat (its hold carries the voice)
+    oneHoldAtATime: true, // a hold starting under another stays a tap: two held keys are a skill Easy does not ask for
+    maxHoldShare: 0.2,
+    gapHoldShare: 0.13, // holds are brought up to this share where a bass or lead line plays
+    sectionChordRise: 0.9, // a section this much louder than the last one opens on a chord (sections.js)...
+    sectionChordEnergy: 0.35, // ...when it is at least this loud
+    sustainMinBeats: 1,
+  },
+  // Until Normal has parameters of its own, public Normal is the v26 one.
+  normal: structuredClone(INTERNAL_LEVELS.normalV26),
   hard: {
     grammar: "hard",
     chordRates: [1.3, 1.15, 0.26, 0.3], // how often a moment is a chord, by place in the bar (chords.js)
@@ -211,6 +218,9 @@ const DIFFICULTIES = {
   },
 };
 
+// A level by name, public or internal.
+const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
+
 module.exports = {
   BANDS,
   BEAT_INTERVAL_TOLERANCE,
@@ -226,7 +236,9 @@ module.exports = {
   FALLBACK_BEAT_MS,
   GAP_TOLERANCE_MS,
   GENERATOR_VERSION,
+  INTERNAL_LEVELS,
   LEAD_IN_MS,
+  levelOf,
   MAX_SNAP_DISTANCE_MS,
   MERGE_WINDOW_MS,
   MIN_NOTES,

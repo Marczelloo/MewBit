@@ -1,6 +1,6 @@
 # Do holds follow the sounds that last? People against v26, plus what a detector without separation could see. Train songs only.
 # In mewbeat-ma: /scripts = the salience dir with feat/, /out = .mewbeat-debug, /repo = the repository, read-only, /listening = listening dir.
-import os, sys, csv, glob, json, pickle
+import os, sys, csv, glob, json, pickle, argparse
 import numpy as np
 from scipy.stats import rankdata
 from sklearn.linear_model import LogisticRegression
@@ -14,6 +14,7 @@ DATA = "/out/data"
 STEM_FEAT = f"{DATA}/stems/_feat"
 SUST = f"{DATA}/stems/_sust"
 OUTFILE = f"{SUST}/_measure.json"
+CHARTS = "v26"
 STEMS = ("bass", "other", "vocals", "guitar", "piano")
 PITCHED = ("other", "vocals", "guitar", "piano")
 MIN_SHARE = .1      # an instrument under this share of the energy is not what the player hears
@@ -339,6 +340,10 @@ def load_song(sid):
 
 
 def main():
+    global CHARTS
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--charts", default="v26", help="the snapshot under /out/data/charts to measure (its Hopes and Dreams charts are <charts>-hd)")
+    CHARTS = ap.parse_args().charts
     ids = train_ids()
     print("songs", len(ids), flush=True)
     rng = np.random.default_rng(5)
@@ -358,7 +363,7 @@ def main():
         per_min.append(len(ls) / (r["dur"] / 60000 if r["dur"] > 1000 else r["dur"] / 60))
         for lv in LV:
             for src, human in (("human", True), ("v26", False)):
-                base = f"{DATA}/human/{lv}" if human else f"{DATA}/charts/v26/{lv}"
+                base = f"{DATA}/human/{lv}" if human else f"{DATA}/charts/{CHARTS}/{lv}"
                 c = chart(f"{base}/{sid}.json", human)
                 if c is None or len(c["t"]) == 0:
                     continue
@@ -407,7 +412,7 @@ def hopes_and_dreams():
     beat = 60000.0 / r["bpm"]
     sounds = stack(x["stems"])
     ls = long_sounds(sounds, beat)
-    charts = {lv: chart(f"{DATA}/charts/v26-hd/{lv}.json", False) for lv in LV}
+    charts = {lv: chart(f"{DATA}/charts/{CHARTS}-hd/{lv}.json", False) for lv in LV}
     out = {"recall": detector_recall(ls, lead, bass, x["mix"].astype(np.float64), beat), "long_sounds": len(ls), "parts": []}
     for a, b, name in HD_PARTS:
         m = (ls[:, 0] >= a * 1000) & (ls[:, 0] < b * 1000)
