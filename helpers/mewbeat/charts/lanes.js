@@ -5,9 +5,13 @@
 // limited by what is playable. A mapper also has favourite figures, so what this song has already played after the same
 // few moments counts too (diff.motifPull). People repeat a rhythm far more than its lanes: a repeated phrase mostly gets
 // lanes of its own, sometimes its source's, as they were or mirrored.
+// Where diff.melodyLanes is set (Normal) the lanes follow the melody instead (laneRules.js): a note goes a lane up where
+// the sound goes up, a repeated sound is a jack or a trill, a repeated phrase plays its source's lanes, and no lane
+// makes the chart break the rules of Normal. Where the melody gives no direction the grammar above decides alone.
 const grammar = require("./laneGrammar.json");
 const { beatMsOf, holdBlocks, spacedBlocked } = require("./holds");
 const { groupByTime } = require("./difficultyFilter");
+const { TAIL, breaksLaneRules, melodyDirection, melodyPull } = require("./laneRules");
 const { isRepeatOf } = require("./phrases");
 const { sourceTime } = require("./repeats");
 const { nearestIndex } = require("./util");
@@ -34,6 +38,7 @@ const RECENT_NOTES = 16; // what a hold's half-beat spacing can still see
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const handOf = (lane) => lane >> 1;
 const lanesOf = (mask) => [0, 1, 2, 3].filter((l) => (mask >> l) & 1);
+const laneOfSingle = (mask) => (mask === undefined || !isSingle(mask) ? null : 31 - Math.clz32(mask));
 const leftOf = (mask) => (mask & 1) + ((mask >> 1) & 1);
 const isSingle = (mask) => (mask & (mask - 1)) === 0;
 const mirrorMask = (mask) => lanesOf(mask).reduce((m, l) => m | (1 << (LANES - 1 - l)), 0);
@@ -112,7 +117,7 @@ function assignLanes(notes, ctx, diff, upper = null) {
   const echoes = phrases.map((p, i) => {
     const r = random();
     if (!isRepeatOf(p, i)) return null;
-    if (r < ECHO_SAME) return "same";
+    if (diff.melodyLanes || r < ECHO_SAME) return "same";
     return r < ECHO_SAME + (diff.echoMirror ?? ECHO_MIRROR) ? "mirror" : null;
   });
 
@@ -126,6 +131,7 @@ function assignLanes(notes, ctx, diff, upper = null) {
   const masksSoFar = [];
   const recent = []; // the notes of the last BALANCE_BEATS beats
   const placed = [];
+  const tail = []; // the last moments laid out, { t, lanes }, for the rules of Normal
   const out = [];
   let active = [];
   let left = 0;
@@ -155,12 +161,13 @@ function assignLanes(notes, ctx, diff, upper = null) {
     const legal = (mask, holds) => {
       const lanes = lanesOf(mask);
       if (holds > 0 && (lonelyLanes(mask).length < holds || (diff.holdOtherHand === "blocked" && lanes.length > 1))) return false;
-      return lanes.every((l) => {
+      const playable = lanes.every((l) => {
         if (t - laneFree[l] < laneGap || (lastT !== null && jackRun[l] >= maxJack)) return false;
         const note = { t, lane: l };
         const others = [...placed, ...lanes.filter((o) => o !== l).map((lane) => ({ t, lane }))];
         return active.every((h) => !holdBlocks(h, note, diff) && !spacedBlocked(h, note, others, diff, beat / 2));
       });
+      return playable && !(diff.melodyLanes && breaksLaneRules(tail, t, lanes, timing));
     };
 
     // What can be played of this moment: first its taps go, then a last hold becomes a tap.
@@ -190,9 +197,11 @@ function assignLanes(notes, ctx, diff, upper = null) {
       if (!isSingle(mask) || prev === undefined || !isSingle(prev) || mask === prev) return 1;
       return history[history.length - 2] === mask && t - lastT <= beat ? trill + 1 : 2;
     };
+    const direction = diff.melodyLanes && size === 1 ? melodyDirection(ctx, t) : null;
     const weightOf = (mask) => {
       const lanes = lanesOf(mask);
       let w = odds[MASKS[size].indexOf(mask)] + Number.EPSILON;
+      if (direction !== null) w *= melodyPull(direction, lanes[0], laneOfSingle(prev), laneOfSingle(history[history.length - 2]), t - lastT, beat);
       w *= Math.exp(-HAND_PULL * Math.abs((left + leftOf(mask) + 2) / (total + size + 4) - 0.5));
       for (const l of lanes) w *= Math.exp(-LANE_PULL * Math.max(0, (laneCount[l] + 1) / (total + 4) - 1 / LANES));
       const run = trillAfter(mask);
@@ -247,6 +256,8 @@ function assignLanes(notes, ctx, diff, upper = null) {
       seen.total++;
     }
     history.push(mask);
+    tail.push({ t, lanes });
+    if (tail.length > TAIL) tail.shift();
     times.push(t);
     masksSoFar.push(mask);
     lastT = t;
