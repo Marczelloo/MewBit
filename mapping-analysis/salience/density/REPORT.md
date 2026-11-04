@@ -88,3 +88,26 @@ Wybór nut w budżecie fraz (E / N / H), `rel_os` (R) wobec `raw_strength` (W); 
 - Mechanizm (pomiar): 42,6% kandydatów ma sąsiada bliżej niż 35 ms; w takich parach `rel_os` (filtr maksimum po 5 ramkach) jest identyczne w 41,5% (raw_strength 0,8%; pary 100–200 ms: 0%). Po przeliczeniu `rel_os` z audio bez filtra duplikaty w zwykłym top-N spadają do .045 / .059 / .087 (W .040 / .048 / .081), a sparowana mediana R minus W wynosi +.004 / +.007 / +.014 (E i N: przedział dotyka zera). Cena: AUC R spada z .905 / .910 / .893 do .866 / .869 / .852, czyli do poziomu W. Drugie, niezależne wyjaśnienie to nasycenie: 8,8% kandydatów ma `raw_strength` równe 1,0 (24 / 20 / 16% pozytywów, 36 / 28 / 22% wyborów W w zwykłym top-N). Wynik zwykłego top-N bez reguły odstępu zależy od remisów `rel_os` (usunięcie filtra zmienia znak różnicy), ale nie rozstrzygnięto, ile różnicy F1 daje każdy z dwóch mechanizmów.
 - Proxy post-hoc z filtrem maksimum (wybrane po zobaczeniu, że `rel_os` bez filtra spada do AUC `raw_strength`; progi i decyzja A bez zmian; `rel_proxy_mf.log`): `W_mf` = maksimum `raw_strength` po kandydatach w ±23,22 ms (5 ramek po 11,61 ms, jak filtr `rel_os`), `W_mf_rel` = `W_mf` / średnia ±1 s, `W_rel_mf` = to samo w kolejności `rel_os`; żaden nie przechodzi progu −.01 (AUC średnia proxy minus R: `W_mf` −.033 / −.039 / −.043, `W_mf_rel` −.038 / −.047 / −.057, `W_rel_mf` −.038 / −.047 / −.057 dla E / N / H; mediany podobnie), `W_mf` zamyka 4 / 7 / 9% luki AUC R minus W. W budżecie fraz (wyrocznia) przy realnym odstępie generatora (130 / 100 / 60 ms) sparowana mediana F1 R minus `W_mf` to +.019 / +.017 / +.030 (R minus W +.018 / +.017 / +.030), więc proxy nie zamyka luki F1; przy odstępie 0 `W_mf` zamyka 47–61% (równe pary sąsiadów 26% wobec 41% u `rel_os`; związek z remisami nie jest osobno sprawdzony).
 - Decyzja A bez zmian.
+
+## Głośniejsze powtórki: skąd `REPEAT`
+
+`REPEAT = { louder: 1.1, gain: 1.15, sparse: 0.5 }` w `momentWeights.js`. Powtórka liczy się jako głośniejsza od 1,1 raza słyszalnej głośności źródła. Dostaje wtedy kopię źródła i momenty z własnego rankingu do 1,15 raza momentów źródła, ale nigdy ponad swój budżet. Gdy źródło ma mniej momentów niż połowa budżetu powtórki, powtórka jest pisana od nowa. Pomiar na 80 utworach treningowych, `measure_normal.js`.
+
+- Ludzie, powtórki głośniejsze: mediana nut wobec źródła 1,034, średnia 1,366 (51 fraz). Rozkład jest skośny: połowa fraz dokłada najwyżej ok. 3%, a kilka dokłada dużo więcej. Średnią ciągną głównie kopie z dodatkami (49 fraz, średnia 1,321), a nie 2 frazy pisane od nowa.
+- `gain` 1,15 to wybór estymatora (średnia ucięta), a nie mediana. Mediana dałaby 1,03, średnia 1,37. Wybór zapadł po obejrzeniu danych, wpływ na gęstość Normala jest poniżej 1%.
+- Wykres po wdrożeniu: mediana 1,103, średnia 1,160 (57 fraz). Powtórki pisane od nowa: wykres 3 frazy, mediana 2,417; ludzie 2 frazy, mediana 2,455. Powtórki tej samej głośności: mediana 1,000 po obu stronach.
+
+## Siatka Normala: defekt z Tasku 3 i poprawka
+
+Ścieżka wyboru z muzyki z Tasku 3 brała surowe czasy onsetów zamiast czasów na siatce. Dwie recenzje tego nie wykryły, bo `measure_normal.js` liczył beat z tolerancją 70 ms i pokazywał .92. Wyszło dopiero w przebiegu korpusu `s8`. Poprawka: `29dfd12`. Podział siatki to stałe 1/4 beatu. Kandydat dalej niż 35 ms od zaufanej siatki odpada (13,5% kandydatów). Surowy czas zostaje tylko tam, gdzie siatka jest niezaufana. Miary ścisłe w `measure_normal.js` stoją teraz obok tych z tolerancją.
+
+Train, 77 utworów z zaufaną siatką, przed i po poprawce: momenty na siatce 1/4 .593 i 1,000; ścisły udział beatów (5 ms) .76 i .92; momenty/s 4,646 i 4,648.
+
+## Rozbieżności wobec planu
+
+- Plan zakładał CV gęstości ok. .2 i korelację z głośnością ok. .4. Pomiar ludzi: CV między utworami .155, CV fraz .205, korelacja .009. Budżet strojono do pomiaru.
+- Pauzy od 2 beatów: ludzie .64 na minutę, v26 .65, v27 1,61 (mediana po utworach w korpusie). Poprawka siatki zmieniła to o ok. 3%, więc przyczyną nie jest siatka. Luk jest ok. dwa razy więcej, a udział luk z mocnymi dźwiękami w środku jest podobny (.68, ludzie .72). Nie stroiłem tego przed grą.
+- Okna 4 beatów są gęstsze niż u ludzi przy p95 i p99 (9,20 i 10,03 wobec 8,78 i 9,68 nut/s).
+- Udział akordów nie jest twardym limitem: mediana .326, najwyższy utwór .380 (2391949). Downbeaty, otwarcia i kopie omijają bramkę. Limit akordów jest w Tasku 8.
+- Korelacja gęstości utworu z ludzką mapą ok. −.06 do −.12: model nie przewiduje różnic między utworami, choć rozrzut jest podobny.
+- Easy nie jest już prawie podzbiorem Normala: normal→easy .938 (v26 1,000), bo Easy jest cięty z wewnętrznego `normalV26`.

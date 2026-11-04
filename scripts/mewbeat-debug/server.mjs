@@ -18,7 +18,7 @@ const PREVIEW = join(REPO, ".mewbeat-preview");
 const PUBLIC = join(HERE, "public");
 const CHARTS = join(REPO, "helpers/mewbeat/charts") + sep;
 const LEVELS = ["easy", "normal", "hard", "hell"];
-const SNAPSHOTS = ["v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26"];
+const SNAPSHOTS = ["v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27"];
 const PREVIEW_PREFIX = "preview:";
 
 const require = createRequire(import.meta.url);
