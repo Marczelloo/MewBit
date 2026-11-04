@@ -148,6 +148,57 @@ describe("planChords", () => {
     const out = planChords([{ t: 4000, lane: 0, len: 1000 }, { t: 4000, lane: 1 }], context(), { ...hard, chordRates: [0, 0, 0, 0] });
     assert.ok(out.some((n) => n.len > 0));
   });
+
+  describe("the local limit", () => {
+    // Every moment wants a chord, the downbeats more than the other beats; the limit is on 8 beats (4 s at 120 BPM).
+    const eager = { ...hard, chordTriples: undefined, chordRates: [3, 2, 2, 2], maxChordsPer8Beats: 3 };
+    const chordTimes = (out) => [...sizes(out)].filter(([, size]) => size >= 2).map(([t]) => t);
+    const mostIn = (times) => Math.max(...times.map((from) => times.filter((t) => t >= from && t < from + 8 * BEAT_MS).length));
+    const downbeats = features.tempo.downbeats;
+
+    it("chords stay under the local limit", () => {
+      const notes = beats();
+      const free = planChords(notes, context(), { ...eager, maxChordsPer8Beats: undefined });
+      assert.ok(mostIn(chordTimes(free)) > 5, "without the limit the fixture is over it"); // control: the check below can fail
+      const out = planChords(notes, context(), eager);
+      assert.ok(mostIn(chordTimes(out)) <= 3, `${mostIn(chordTimes(out))}`);
+      assert.deepEqual([...sizes(out).keys()], notes.map((n) => n.t)); // a chord given back is a note, not a lost moment
+    });
+
+    it("the weakest chords of a window go first, not the latest", () => {
+      const out = chordTimes(planChords(beats(), context(), { ...eager, maxChordsPer8Beats: 2 }));
+      assert.ok(out.length > 0);
+      assert.ok(out.every((t) => downbeats.includes(t)), `${out.filter((t) => !downbeats.includes(t))}`);
+    });
+
+    it("a section start keeps its chord", () => {
+      const section = { t: 16000, rise: 1 };
+      const limited = { ...eager, maxChordsPer8Beats: 1 };
+      const free = planChords(beats(), context({ sections: [section] }), { ...limited, maxChordsPer8Beats: undefined });
+      assert.ok(chordTimes(free).some((t) => t !== 16000 && Math.abs(t - 16000) < 8 * BEAT_MS), "control: chords stand near the section start");
+      const out = planChords(beats(), context({ sections: [section] }), limited);
+      assert.equal(sizes(out).get(16000), 2);
+      assert.equal(mostIn(chordTimes(out).filter((t) => Math.abs(t - 16000) < 8 * BEAT_MS)), 1);
+    });
+
+    it("a hold keeps its moment: two holds at once stay a chord", () => {
+      const notes = [...beats().filter((n) => n.t !== 20000), { t: 20000, lane: 0, len: 600 }, { t: 20000, lane: 1, len: 600 }].sort((a, b) => a.t - b.t || a.lane - b.lane);
+      const out = planChords(notes, context(), { ...eager, maxChordsPer8Beats: 1 });
+      assert.equal(sizes(out).get(20000), 2);
+      assert.equal(out.filter((n) => n.len > 0).length, 2);
+    });
+
+    it("a repeat plays the chords its source was left with", () => {
+      const phrases = [
+        { startMs: 0, endMs: 24000 },
+        { startMs: 24000, endMs: 48000, repeatOf: 0, lagMs: 24000, similarity: 0.9, heard: true },
+      ];
+      const out = planChords(beats(0, 48000), context({ phrases }), eager);
+      const at = sizes(out);
+      for (const t of every(1000, 23000, BEAT_MS)) assert.equal(at.get(t + 24000), at.get(t), `${t}`);
+      assert.ok(mostIn(chordTimes(out)) <= 3);
+    });
+  });
 });
 
 describe("findHeardRepeats", () => {

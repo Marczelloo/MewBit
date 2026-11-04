@@ -3,7 +3,9 @@
 // when they make an easier level: Hard plays a chord at a rate set by the place in the bar, the bar's loudness and how
 // strong the sound is, Normal keeps most of Hard's and adds few of its own, Easy keeps few of Normal's. A section opens
 // on one when it is loud enough, and a repeat of a phrase plays the chords of its source. A level with diff.maxChordShare
-// keeps the chords it plans to that share of the moments so far (what is saved towards a chord waits for room).
+// keeps the chords it plans to that share of the moments so far (what is saved towards a chord waits for room). A level
+// with diff.maxChordsPer8Beats also keeps them to that many in any 8 beats: the share counts from the start of the song,
+// so a quiet opening saves up room that a loud part spends at once.
 const { beatPosition } = require("./grid");
 const { groupByTime, slotRank } = require("./difficultyFilter");
 const { beatMsOf } = require("./holds");
@@ -23,6 +25,7 @@ const NO_SOUND_SCALE = 0.5; // a moment no sound is near
 const FAST_BEATS = 0.45; // a moment with a neighbour closer than this is in a fast run...
 const FAST_SCALE = 0.3; // ...where people play far fewer chords than elsewhere
 const SAME_MOMENT_MS = 3;
+const LIMIT_WINDOW_BEATS = 8; // diff.maxChordsPer8Beats counts the chords in this many beats
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -62,6 +65,25 @@ function freeLanes(moment, count) {
   return [0, 1, 2, 3].filter((l) => !taken.has(l)).slice(0, count);
 }
 
+// A chord of `plan` (the moments so far, { m, t, kept, added, score, firm }) given back for `m`, the moment just planned: while
+// the chords in the 8 beats that end at m are more than `limit`, the weakest of them plays one note instead (its first,
+// a hold before a tap); a chord with `firm` (a section's opening, two holds at one moment) never does. The window is
+// measured against the larger beat of its two ends, like the gaps of laneRules.js. Returns the plan entries that gave way.
+function giveBack(plan, m, limit, timing) {
+  const gone = [];
+  const chord = (e) => e.kept.length + e.added.length > 1;
+  const inWindow = (e) => plan[m].t - e.t < LIMIT_WINDOW_BEATS * Math.max(beatMsOf(timing, e.t), beatMsOf(timing, plan[m].t));
+  for (;;) {
+    const window = [];
+    for (let k = m; k >= 0 && inWindow(plan[k]); k--) if (chord(plan[k])) window.push(plan[k]);
+    const weakest = window.filter((e) => !e.firm).sort((a, b) => a.score - b.score || b.t - a.t)[0];
+    if (window.length <= limit || !weakest) return gone;
+    weakest.kept = weakest.kept.slice(0, 1);
+    weakest.added = [];
+    gone.push(weakest);
+  }
+}
+
 // planChords(notes, ctx, diff, upper) -> notes with every moment at the size it plays.
 // `upper` (rhythm.js) is the level above, for a level cut from it.
 function planChords(notes, ctx, diff, upper = null) {
@@ -74,11 +96,12 @@ function planChords(notes, ctx, diff, upper = null) {
   const carryNew = [0, 0, 0, 0];
   const carryTriple = [0, 0, 0, 0];
   const times = [];
-  const sizes = [];
-  const out = [];
+  const sizes = []; // what each moment plays, after the window
+  const planned = []; // ...and what it would play without it: a repeat is planned from this, and counts as a chord for the share when its source was
+  const plan = []; // per moment: what it plays and how strong its chord is against the others (giveBack)
   let phraseAt = 0;
   let running = [];
-  let chords = 0; // moments so far with more than one note
+  let chords = 0; // chords planned so far; one the window gives back still counts, so the share spends as it would without the window
 
   moments.forEach((moment, m) => {
     const { t } = moment[0];
@@ -95,12 +118,16 @@ function planChords(notes, ctx, diff, upper = null) {
 
     const rank = slotRank(timing, t);
     let want = 1;
+    let opens = false;
+    let cap = Infinity; // a repeat plays no more than its source was left with
     const repeat = phrases.length > 0 && isRepeatOf(phrases[phraseAt], phraseAt);
     const inSource = repeat ? nearestIndex(times, sourceTime(phrases[phraseAt], timing)(t)) : -1;
     if (opening.has(t) && canChord) {
       want = 2;
+      opens = true;
     } else if (inSource >= 0 && Math.abs(times[inSource] - sourceTime(phrases[phraseAt], timing)(t)) <= SAME_MOMENT_MS) {
-      want = canChord ? sizes[inSource] : 1;
+      want = canChord ? planned[inSource] : 1;
+      cap = sizes[inSource];
     } else if (canChord) {
       const scale = strength[m] * (nearest < FAST_BEATS * beatMs ? FAST_SCALE : 1);
       if (diff.chordRates) {
@@ -133,16 +160,24 @@ function planChords(notes, ctx, diff, upper = null) {
     if (holds.length > 0 || running.length > 0) want = Math.min(want, 2);
     want = Math.max(want, Math.min(holds.length, 2));
     if (running.length > 0 && diff.holdOtherHand !== "free") want = 1;
+    const asked = want;
+    want = Math.min(want, Math.max(cap, Math.min(holds.length, 2)));
 
     const kept = [...holds, ...moment.filter((n) => !(n.len > 0))].slice(0, want);
     const added = freeLanes(kept, want - kept.length).map((lane) => ({ t, lane }));
-    out.push(...kept, ...added);
     running.push(...kept.filter((n) => n.len > 0));
     times.push(t);
     sizes.push(kept.length + added.length);
-    if (kept.length + added.length > 1) chords++;
+    planned.push(want < asked ? asked : kept.length + added.length);
+    // How much a chord is wanted here, as the rates above weigh it: a downbeat of a loud bar on a strong sound first.
+    const score = (diff.chordRates?.[rank] ?? 1) * barScale(t) * strength[m];
+    plan.push({ m, t, kept, added, score, firm: opens || holds.length > 1 });
+    if (planned[m] > 1) chords++;
+    if (diff.maxChordsPer8Beats > 0 && kept.length + added.length > 1) {
+      for (const e of giveBack(plan, m, diff.maxChordsPer8Beats, timing)) sizes[e.m] = 1;
+    }
   });
-  return out.sort(byTime);
+  return plan.flatMap((e) => [...e.kept, ...e.added]).sort(byTime);
 }
 
 module.exports = { planChords };

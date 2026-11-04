@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 28;
+const GENERATOR_VERSION = 29;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -150,6 +150,7 @@ const DIFFICULTIES = {
     melodyLanes: true, // the lanes follow the melody and keep the rules of Normal (laneRules.js, lanes.js)
     chordRates: [0.7, 0.6, 0.13, 0.14], // how often a moment is a chord, by place in the bar (chords.js)
     maxChordShare: 1 / 3, // chords may run up to this share of the moments (chords.js; v26's cap, which acts on this path as well)
+    maxChordsPer8Beats: 6, // ...and at most this many in any 8 beats: the weakest give way, a section's opening chord never (chords.js)
     chordGapBeats: 1 / 4,
     maxNps: 6.5,
     maxNpsCeiling: 7.5,
