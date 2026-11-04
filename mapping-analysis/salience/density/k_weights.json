@@ -1,0 +1,66 @@
+{
+ "variant": "rel_os + meter on the generator grid (ctx.timing); chosen because no Features v4 proxy was within -.01 AUC of rel_os (rel_proxy.log)",
+ "features": [
+  "rel_os",
+  "m_beat",
+  "m_half",
+  "m_quarter",
+  "m_other",
+  "m_down",
+  "d_grid"
+ ],
+ "model": "sklearn LogisticRegression(C=1, max_iter=400); score = intercept + sum(coef[i] * x[i]); probability = 1 / (1 + exp(-score)); rank candidates by score",
+ "rank": "Every column is turned into a within-song rank before scoring. Columns with more than 2 distinct values in the song: average rank (ties get the mean of their ranks, 1-based) divided by the number of candidates n of that song, so the values lie in (0, 1]. Columns with at most 2 distinct values (the binary meter flags) stay raw. Same as common.rank_cols; scipy.stats.rankdata(method='average') / n.",
+ "candidates": "30 ms clusters of Features v4 onsets (extract.candidates); label = a human note of that level within 35 ms",
+ "train_songs": 80,
+ "levels": {
+  "easy": {
+   "songs": 79,
+   "skipped_without_level": 1,
+   "candidates": 179448,
+   "positive_rate": 0.2253,
+   "coef": [
+    5.214656,
+    0.384122,
+    -0.688822,
+    -2.572609,
+    -0.940716,
+    0.527942,
+    0.150438
+   ],
+   "intercept": -3.835923
+  },
+  "normal": {
+   "songs": 78,
+   "skipped_without_level": 2,
+   "candidates": 175168,
+   "positive_rate": 0.3428,
+   "coef": [
+    5.414394,
+    0.228984,
+    -0.041502,
+    -2.035941,
+    -0.875755,
+    0.340097,
+    -0.645733
+   ],
+   "intercept": -2.735024
+  },
+  "hard": {
+   "songs": 75,
+   "skipped_without_level": 5,
+   "candidates": 169186,
+   "positive_rate": 0.4842,
+   "coef": [
+    5.019572,
+    0.156419,
+    0.333998,
+    -1.086587,
+    -0.867225,
+    0.237637,
+    -1.060352
+   ],
+   "intercept": -1.468758
+  }
+ }
+}

@@ -1,0 +1,142 @@
+80 train songs; test songs not read
+[src/libmpg123/id3.c:process_extra():684] error: No extra frame text / valid description?
+[src/libmpg123/id3.c:process_extra():684] error: No extra frame text / valid description?
+detectors ready 424 s
+moments 0 1127488
+moments 10 1638266
+moments 20 1905497
+moments 30 2078163
+moments 40 2236810
+moments 50 2367084
+moments 60 298006
+moments 70 522660
+easy current (CHEAP) {'songs': 59, 'base_rate': 0.041, 'auc': 0.638, 'precision_at_k': 0.115}
+easy D1 + CHEAP {'songs': 59, 'base_rate': 0.041, 'auc': 0.639, 'precision_at_k': 0.125}
+easy D2 + CHEAP {'songs': 59, 'base_rate': 0.041, 'auc': 0.652, 'precision_at_k': 0.132}
+easy D3 + CHEAP {'songs': 59, 'base_rate': 0.041, 'auc': 0.648, 'precision_at_k': 0.116}
+easy D1+D2+D3 + CHEAP {'songs': 59, 'base_rate': 0.041, 'auc': 0.647, 'precision_at_k': 0.138}
+easy D1 alone {'songs': 59, 'base_rate': 0.041, 'auc': 0.608, 'precision_at_k': 0.11}
+easy D2 alone {'songs': 59, 'base_rate': 0.041, 'auc': 0.588, 'precision_at_k': 0.086}
+easy D3 alone {'songs': 59, 'base_rate': 0.041, 'auc': 0.599, 'precision_at_k': 0.114}
+easy single AUC {'mix_len': 0.555, 'keep_db': 0.551, 'chroma_stab': 0.605, 'flux_after': 0.565, 'lead_len': 0.5, 'bass_len': 0.488, 'on_beat': 0.51, 'mix_len_d1': 0.567, 'keep_db_d1': 0.584, 'chroma_stab_d1': 0.574, 'flux_after_d1': 0.511, 'stab_vib': 0.596, 'stab_run': 0.594, 'mix_len_d3': 0.549, 'keep_db_d3': 0.559, 'chroma_stab_d3': 0.553, 'flux_after_d3': 0.548}
+normal current (CHEAP) {'songs': 65, 'base_rate': 0.032, 'auc': 0.65, 'precision_at_k': 0.102}
+normal D1 + CHEAP {'songs': 65, 'base_rate': 0.032, 'auc': 0.653, 'precision_at_k': 0.098}
+normal D2 + CHEAP {'songs': 65, 'base_rate': 0.032, 'auc': 0.667, 'precision_at_k': 0.112}
+normal D3 + CHEAP {'songs': 65, 'base_rate': 0.032, 'auc': 0.649, 'precision_at_k': 0.104}
+normal D1+D2+D3 + CHEAP {'songs': 65, 'base_rate': 0.032, 'auc': 0.657, 'precision_at_k': 0.124}
+normal D1 alone {'songs': 65, 'base_rate': 0.032, 'auc': 0.611, 'precision_at_k': 0.097}
+normal D2 alone {'songs': 65, 'base_rate': 0.032, 'auc': 0.585, 'precision_at_k': 0.064}
+normal D3 alone {'songs': 65, 'base_rate': 0.032, 'auc': 0.594, 'precision_at_k': 0.088}
+normal single AUC {'mix_len': 0.555, 'keep_db': 0.559, 'chroma_stab': 0.606, 'flux_after': 0.558, 'lead_len': 0.502, 'bass_len': 0.492, 'on_beat': 0.542, 'mix_len_d1': 0.567, 'keep_db_d1': 0.566, 'chroma_stab_d1': 0.587, 'flux_after_d1': 0.508, 'stab_vib': 0.595, 'stab_run': 0.584, 'mix_len_d3': 0.548, 'keep_db_d3': 0.536, 'chroma_stab_d3': 0.564, 'flux_after_d3': 0.55}
+hard current (CHEAP) {'songs': 66, 'base_rate': 0.028, 'auc': 0.639, 'precision_at_k': 0.094}
+hard D1 + CHEAP {'songs': 66, 'base_rate': 0.028, 'auc': 0.634, 'precision_at_k': 0.095}
+hard D2 + CHEAP {'songs': 66, 'base_rate': 0.028, 'auc': 0.651, 'precision_at_k': 0.106}
+hard D3 + CHEAP {'songs': 66, 'base_rate': 0.028, 'auc': 0.631, 'precision_at_k': 0.104}
+hard D1+D2+D3 + CHEAP {'songs': 66, 'base_rate': 0.028, 'auc': 0.651, 'precision_at_k': 0.117}
+hard D1 alone {'songs': 66, 'base_rate': 0.028, 'auc': 0.615, 'precision_at_k': 0.084}
+hard D2 alone {'songs': 66, 'base_rate': 0.028, 'auc': 0.589, 'precision_at_k': 0.053}
+hard D3 alone {'songs': 66, 'base_rate': 0.028, 'auc': 0.588, 'precision_at_k': 0.087}
+hard single AUC {'mix_len': 0.537, 'keep_db': 0.552, 'chroma_stab': 0.59, 'flux_after': 0.555, 'lead_len': 0.502, 'bass_len': 0.503, 'on_beat': 0.548, 'mix_len_d1': 0.557, 'keep_db_d1': 0.563, 'chroma_stab_d1': 0.57, 'flux_after_d1': 0.499, 'stab_vib': 0.58, 'stab_run': 0.582, 'mix_len_d3': 0.541, 'keep_db_d3': 0.538, 'chroma_stab_d3': 0.544, 'flux_after_d3': 0.543}
+long sounds 1748 segments per minute {'cur_mix': 10.1, 'd1': 25.8, 'd2': 29.1, 'd3': 25.0} guard {'cur_mix': False, 'd1': False, 'd2': False, 'd3': False}
+coverage {'segments_per_min_median': {'cur_mix': 10.1, 'd1': 25.8, 'd2': 29.1, 'd3': 25.0}, 'guard_applied': {'cur_mix': False, 'd1': False, 'd2': False, 'd3': False}, 'cur_mix': 0.234, 'd1': 0.371, 'd2': 0.467, 'd3': 0.301, 'd1+d2+d3': 0.682, 'd1+cur_mix': 0.396, 'd2+cur_mix': 0.557, 'd3+cur_mix': 0.395, 'all+cur_mix': 0.691, 'all+cur_mix+lead_bass': 0.718}
+cost {"audio_minutes": 6.22, "compute_series_s_per_min": 6.41, "components_s_per_min": {"load": 0.676, "stft_mid(not counted)": 0.058, "onset_peaks": 0.06, "cur_hpss": 4.531, "cur_rest": 0.252, "d1": 1.06, "d2": 0.281, "d3": 1.189}, "share_of_analysis": {"d1": 0.165, "d2": 0.044, "d3": 0.185, "d1+d2+d3": 0.395, "shared_chain(cur_rest+onset_peaks)": 0.049, "d1+shared": 0.214, "d2+shared": 0.093, "d3+shared": 0.225, "all+shared": 0.443}}
+verdict {
+ "D1 + CHEAP|easy": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": true,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D1 + CHEAP|normal": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": true,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D1 + CHEAP|hard": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": true,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D2 + CHEAP|easy": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": true,
+  "cost_with_shared_chain": true,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D2 + CHEAP|normal": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": true,
+  "cost_with_shared_chain": true,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D2 + CHEAP|hard": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": true,
+  "cost_with_shared_chain": true,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D3 + CHEAP|easy": {
+  "accuracy": false,
+  "coverage": false,
+  "cost_new_only": true,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D3 + CHEAP|normal": {
+  "accuracy": false,
+  "coverage": false,
+  "cost_new_only": true,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D3 + CHEAP|hard": {
+  "accuracy": false,
+  "coverage": false,
+  "cost_new_only": true,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D1+D2+D3 + CHEAP|easy": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": false,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D1+D2+D3 + CHEAP|normal": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": false,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ },
+ "D1+D2+D3 + CHEAP|hard": {
+  "accuracy": false,
+  "coverage": true,
+  "cost_new_only": false,
+  "cost_with_shared_chain": false,
+  "pass": false,
+  "pass_strict": false
+ }
+}
+any set passes on Normal: False | on any level: False
+hd {"long_sounds": 29, "minutes": 3.08, "parts": [{"part": "skrzypce", "long_sounds": 8, "cur_mix": 8, "d1": 8, "d2": 6, "d3": 8}, {"part": "szybka sekwencja", "long_sounds": 0, "cur_mix": 0, "d1": 0, "d2": 0, "d3": 0}, {"part": "melodia", "long_sounds": 2, "cur_mix": 0, "d1": 0, "d2": 1, "d3": 0}, {"part": "sama gitara", "long_sounds": 3, "cur_mix": 0, "d1": 1, "d2": 1, "d3": 1}, {"part": "gitara z melodia", "long_sounds": 0, "cur_mix": 0, "d1": 0, "d2": 0, "d3": 0}, {"part": "gitara z dzwonkiem", "long_sounds": 0, "cur_mix": 0, "d1": 0, "d2": 0, "d3": 0}, {"part": "melodia i flet", "long_sounds": 3, "cur_mix": 0, "d1": 0, "d2": 1, "d3": 0}], "segments_per_min": {"cur_mix": 13.3, "d1": 33.4, "d2": 36.4, "d3": 33.4}, "seen": {"cur_mix": 11, "d1": 13, "d2": 16, "d3": 13}}

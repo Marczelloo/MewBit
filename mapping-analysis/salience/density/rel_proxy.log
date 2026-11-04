@@ -1,0 +1,154 @@
+80 train songs; test songs not read
+meter pkl (raw tracker beats) == meter on generator grid in 8 of 80 songs; 1 songs have no generator grid (all m_other, d_grid 0)
+easy rel_os gen {'mean': 0.9048, 'median': 0.9155}
+easy no_strength_col gen {'mean': 0.8406, 'median': 0.852}
+easy cluster/mean+-0.5s gen {'mean': 0.8643, 'median': 0.8781}
+easy cluster/mean+-1s gen {'mean': 0.8652, 'median': 0.8793}
+easy cluster/mean+-2s gen {'mean': 0.8659, 'median': 0.8807}
+easy cluster/sum+-1s gen {'mean': 0.8624, 'median': 0.8737}
+easy cluster/max+-1s gen {'mean': 0.8693, 'median': 0.8801}
+easy sources_sum/mean+-1s gen {'mean': 0.8554, 'median': 0.8661}
+easy per_source_max_rel+-1s gen {'mean': 0.8727, 'median': 0.8859}
+easy raw_strength gen {'mean': 0.8709, 'median': 0.8811}
+easy energy/mean+-1s gen {'mean': 0.8431, 'median': 0.8547}
+easy rel_os pkl {'mean': 0.9049, 'median': 0.9154}
+easy no_strength_col pkl {'mean': 0.8441, 'median': 0.852}
+easy cluster/mean+-0.5s pkl {'mean': 0.865, 'median': 0.8779}
+easy cluster/mean+-1s pkl {'mean': 0.8659, 'median': 0.8793}
+easy cluster/mean+-2s pkl {'mean': 0.8667, 'median': 0.8807}
+easy cluster/sum+-1s pkl {'mean': 0.8633, 'median': 0.8736}
+easy cluster/max+-1s pkl {'mean': 0.8702, 'median': 0.88}
+easy sources_sum/mean+-1s pkl {'mean': 0.8562, 'median': 0.8661}
+easy per_source_max_rel+-1s pkl {'mean': 0.8734, 'median': 0.8863}
+easy raw_strength pkl {'mean': 0.8717, 'median': 0.881}
+easy energy/mean+-1s pkl {'mean': 0.8466, 'median': 0.8546}
+normal rel_os gen {'mean': 0.9101, 'median': 0.9193}
+normal no_strength_col gen {'mean': 0.835, 'median': 0.8525}
+normal cluster/mean+-0.5s gen {'mean': 0.8592, 'median': 0.8703}
+normal cluster/mean+-1s gen {'mean': 0.8604, 'median': 0.8718}
+normal cluster/mean+-2s gen {'mean': 0.8615, 'median': 0.8728}
+normal cluster/sum+-1s gen {'mean': 0.8576, 'median': 0.8699}
+normal cluster/max+-1s gen {'mean': 0.8663, 'median': 0.877}
+normal sources_sum/mean+-1s gen {'mean': 0.8538, 'median': 0.865}
+normal per_source_max_rel+-1s gen {'mean': 0.8678, 'median': 0.8786}
+normal raw_strength gen {'mean': 0.8683, 'median': 0.8795}
+normal energy/mean+-1s gen {'mean': 0.8366, 'median': 0.8581}
+normal rel_os pkl {'mean': 0.9103, 'median': 0.9196}
+normal no_strength_col pkl {'mean': 0.8389, 'median': 0.8524}
+normal cluster/mean+-0.5s pkl {'mean': 0.8602, 'median': 0.8704}
+normal cluster/mean+-1s pkl {'mean': 0.8615, 'median': 0.8719}
+normal cluster/mean+-2s pkl {'mean': 0.8625, 'median': 0.8728}
+normal cluster/sum+-1s pkl {'mean': 0.8586, 'median': 0.8704}
+normal cluster/max+-1s pkl {'mean': 0.8673, 'median': 0.877}
+normal sources_sum/mean+-1s pkl {'mean': 0.8547, 'median': 0.8648}
+normal per_source_max_rel+-1s pkl {'mean': 0.8689, 'median': 0.8786}
+normal raw_strength pkl {'mean': 0.8693, 'median': 0.8795}
+normal energy/mean+-1s pkl {'mean': 0.8405, 'median': 0.8579}
+hard rel_os gen {'mean': 0.8932, 'median': 0.8997}
+hard no_strength_col gen {'mean': 0.7954, 'median': 0.801}
+hard cluster/mean+-0.5s gen {'mean': 0.8303, 'median': 0.8331}
+hard cluster/mean+-1s gen {'mean': 0.8324, 'median': 0.8382}
+hard cluster/mean+-2s gen {'mean': 0.8342, 'median': 0.8409}
+hard cluster/sum+-1s gen {'mean': 0.8284, 'median': 0.8342}
+hard cluster/max+-1s gen {'mean': 0.8432, 'median': 0.8459}
+hard sources_sum/mean+-1s gen {'mean': 0.8275, 'median': 0.8298}
+hard per_source_max_rel+-1s gen {'mean': 0.8392, 'median': 0.8426}
+hard raw_strength gen {'mean': 0.8464, 'median': 0.8466}
+hard energy/mean+-1s gen {'mean': 0.7973, 'median': 0.7991}
+hard rel_os pkl {'mean': 0.8932, 'median': 0.8999}
+hard no_strength_col pkl {'mean': 0.799, 'median': 0.8004}
+hard cluster/mean+-0.5s pkl {'mean': 0.8312, 'median': 0.8337}
+hard cluster/mean+-1s pkl {'mean': 0.8333, 'median': 0.8383}
+hard cluster/mean+-2s pkl {'mean': 0.8351, 'median': 0.8415}
+hard cluster/sum+-1s pkl {'mean': 0.8293, 'median': 0.835}
+hard cluster/max+-1s pkl {'mean': 0.8439, 'median': 0.8452}
+hard sources_sum/mean+-1s pkl {'mean': 0.8285, 'median': 0.8303}
+hard per_source_max_rel+-1s pkl {'mean': 0.84, 'median': 0.843}
+hard raw_strength pkl {'mean': 0.847, 'median': 0.8466}
+hard energy/mean+-1s pkl {'mean': 0.801, 'median': 0.8013}
+{
+ "chosen": "raw_strength",
+ "ranking_by_mean_auc_over_levels": [
+  [
+   "raw_strength",
+   0.8619
+  ],
+  [
+   "per_source_max_rel+-1s",
+   0.8599
+  ],
+  [
+   "cluster/max+-1s",
+   0.8596
+  ],
+  [
+   "cluster/mean+-2s",
+   0.8539
+  ],
+  [
+   "cluster/mean+-1s",
+   0.8527
+  ],
+  [
+   "cluster/mean+-0.5s",
+   0.8513
+  ],
+  [
+   "cluster/sum+-1s",
+   0.8495
+  ],
+  [
+   "sources_sum/mean+-1s",
+   0.8456
+  ],
+  [
+   "energy/mean+-1s",
+   0.8257
+  ]
+ ],
+ "per_level": {
+  "easy": {
+   "mean": {
+    "proxy": 0.8709,
+    "rel_os": 0.9048,
+    "diff": -0.0339,
+    "pass": false
+   },
+   "median": {
+    "proxy": 0.8811,
+    "rel_os": 0.9155,
+    "diff": -0.0344,
+    "pass": false
+   }
+  },
+  "normal": {
+   "mean": {
+    "proxy": 0.8683,
+    "rel_os": 0.9101,
+    "diff": -0.0418,
+    "pass": false
+   },
+   "median": {
+    "proxy": 0.8795,
+    "rel_os": 0.9193,
+    "diff": -0.0398,
+    "pass": false
+   }
+  },
+  "hard": {
+   "mean": {
+    "proxy": 0.8464,
+    "rel_os": 0.8932,
+    "diff": -0.0468,
+    "pass": false
+   },
+   "median": {
+    "proxy": 0.8466,
+    "rel_os": 0.8997,
+    "diff": -0.0531,
+    "pass": false
+   }
+  }
+ },
+ "rel_os_not_needed": false
+}
