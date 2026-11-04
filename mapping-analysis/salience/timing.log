@@ -1,0 +1,12 @@
+audio minutes 6.22
+load       0.79 s per audio minute
+stft       0.17 s per audio minute
+flux_full  0.16 s per audio minute
+os_mel     0.09 s per audio minute
+hpss       4.44 s per audio minute
+flux_hp    0.31 s per audio minute
+dist       0.12 s per audio minute
+chroma     0.02 s per audio minute
+cqt        0.18 s per audio minute
+tv         0.17 s per audio minute
+_wall      6.45 s per audio minute

@@ -20,6 +20,7 @@ const SNAPSHOTS = {
   v23: `${WORK}/s3/data/algo_charts`,
   v24: `${WORK}/s4/data/algo_charts`,
   v25: `${WORK}/s5/data/algo_charts`,
+  v26: `${WORK}/s7/data/algo_charts`,
 };
 const RUN = `${WORK}/s7/run-train`;
 const FEATURES = `${WORK}/p2run/data/features`; // v4: the first version with the one of the bar found phrase by phrase

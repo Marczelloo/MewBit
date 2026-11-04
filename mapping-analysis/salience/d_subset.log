@@ -1,0 +1,21 @@
+easy   rel_os                                               AUC 0.8876 F1 0.5896
+easy   rel_os+meter(m_beat,m_half,m_quarter,d_grid)         AUC 0.9155 F1 0.7003
+easy   noHPSS: rel_os+meter+flux_full_low                   AUC 0.9204 F1 0.7011
+easy   noHPSS: rel_os+meter+flux_full_low+dist_low          AUC 0.9175 F1 0.7011
+easy   noHPSS: rel_os+meter+flux_full_all+flux_full_low     AUC 0.9206 F1 0.7018
+easy   HPSS: rel_os+meter+flux_P_low                        AUC 0.9240 F1 0.7052
+easy   HPSS: rel_os+meter+flux_P_low+dist_Pall              AUC 0.9320 F1 0.7156
+normal rel_os                                               AUC 0.8998 F1 0.6671
+normal rel_os+meter(m_beat,m_half,m_quarter,d_grid)         AUC 0.9195 F1 0.7641
+normal noHPSS: rel_os+meter+flux_full_low                   AUC 0.9259 F1 0.7607
+normal noHPSS: rel_os+meter+flux_full_low+dist_low          AUC 0.9263 F1 0.7602
+normal noHPSS: rel_os+meter+flux_full_all+flux_full_low     AUC 0.9252 F1 0.7619
+normal HPSS: rel_os+meter+flux_P_low                        AUC 0.9269 F1 0.7618
+normal HPSS: rel_os+meter+flux_P_low+dist_Pall              AUC 0.9315 F1 0.7712
+hard   rel_os                                               AUC 0.8777 F1 0.6948
+hard   rel_os+meter(m_beat,m_half,m_quarter,d_grid)         AUC 0.8996 F1 0.7746
+hard   noHPSS: rel_os+meter+flux_full_low                   AUC 0.8994 F1 0.7779
+hard   noHPSS: rel_os+meter+flux_full_low+dist_low          AUC 0.9013 F1 0.7741
+hard   noHPSS: rel_os+meter+flux_full_all+flux_full_low     AUC 0.8993 F1 0.7766
+hard   HPSS: rel_os+meter+flux_P_low                        AUC 0.9023 F1 0.7790
+hard   HPSS: rel_os+meter+flux_P_low+dist_Pall              AUC 0.9018 F1 0.7830

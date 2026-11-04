@@ -1,0 +1,124 @@
+{'fluxfull': 7, 'fluxH': 6, 'fluxP': 6, 'dist': 8, 'tv_chroma': 6, 'plugin': 9, 'meter': 7, 'rc': 34}
+easy done 454
+   best_single ('rel_os', 0.8876222372055054, 0.5895765472312704)
+   best_single_f1 ('p_highmid', 0.6778846153846154)
+   lr_all {'auc': 0.9346143798730006, 'f1': 0.7065573770491803}
+   hgb_all {'auc': 0.9414208953160904, 'f1': 0.7100977198697068}
+   lr_no_rc {'auc': 0.9348445132848803, 'f1': 0.7051671732522796}
+   hgb_no_rc {'auc': 0.9401147319286306, 'f1': 0.7084870848708487}
+   only_fluxfull {'auc': 0.8910258882768148}
+   drop_fluxfull {'auc': 0.934794228759746}
+   only_fluxH {'auc': 0.7237427784629121}
+   drop_fluxH {'auc': 0.934717868338558}
+   only_fluxP {'auc': 0.8866603316420454}
+   drop_fluxP {'auc': 0.9344255133245959}
+   only_dist {'auc': 0.9085292474319853}
+   drop_dist {'auc': 0.9358512177477695}
+   only_tv_chroma {'auc': 0.5985407669153252}
+   drop_tv_chroma {'auc': 0.9345482087191913}
+   only_plugin {'auc': 0.8289052840575787}
+   drop_plugin {'auc': 0.9353558797524315}
+   only_meter {'auc': 0.8622980139336591}
+   drop_meter {'auc': 0.9159640309998502}
+   only_rc {'auc': 0.9071591858663787}
+   drop_rc {'auc': 0.9348445132848803}
+   lr_audio_only {'auc': 0.9353558797524315, 'f1': 0.70625}
+normal done 721
+   best_single ('rel_os', 0.8997803330421448, 0.6670962199312714)
+   best_single_f1 ('p_highmid', 0.7734001275645795)
+   lr_all {'auc': 0.9347446814417728, 'f1': 0.7721072155079574}
+   hgb_all {'auc': 0.9395435441076048, 'f1': 0.763973063973064}
+   lr_no_rc {'auc': 0.9336336472584452, 'f1': 0.7701198512191763}
+   hgb_no_rc {'auc': 0.9405699841827593, 'f1': 0.7645540896037913}
+   only_fluxfull {'auc': 0.8979245733648791}
+   drop_fluxfull {'auc': 0.9346537228753901}
+   only_fluxH {'auc': 0.7160873380234626}
+   drop_fluxH {'auc': 0.9346958148601}
+   only_fluxP {'auc': 0.9020565067145411}
+   drop_fluxP {'auc': 0.9349919198983867}
+   only_dist {'auc': 0.9084715282572162}
+   drop_dist {'auc': 0.9343070285666365}
+   only_tv_chroma {'auc': 0.5829289995886088}
+   drop_tv_chroma {'auc': 0.9346716064999879}
+   only_plugin {'auc': 0.8405733401774675}
+   drop_plugin {'auc': 0.9330754614184675}
+   only_meter {'auc': 0.8585981162690843}
+   drop_meter {'auc': 0.9203919688889564}
+   only_rc {'auc': 0.9098056330795522}
+   drop_rc {'auc': 0.9336336472584452}
+   lr_audio_only {'auc': 0.9330754614184675, 'f1': 0.7703597947631834}
+hard done 1056
+   best_single ('os_broad', 0.8818609118461609, 0.6907356948228883)
+   best_single_f1 ('p_highmid', 0.8212877792378449)
+   lr_all {'auc': 0.9133336970953602, 'f1': 0.7908787541713015}
+   hgb_all {'auc': 0.9203907230014825, 'f1': 0.7895608947804474}
+   lr_no_rc {'auc': 0.9119009951778607, 'f1': 0.7923784494086727}
+   hgb_no_rc {'auc': 0.9184571982979816, 'f1': 0.7913223140495868}
+   only_fluxfull {'auc': 0.8873153592427936}
+   drop_fluxfull {'auc': 0.9131536348920536}
+   only_fluxH {'auc': 0.7006612301182862}
+   drop_fluxH {'auc': 0.9130651357522412}
+   only_fluxP {'auc': 0.8962119373011884}
+   drop_fluxP {'auc': 0.9131936487150106}
+   only_dist {'auc': 0.8808270833855905}
+   drop_dist {'auc': 0.9127942759532618}
+   only_tv_chroma {'auc': 0.5720112545953543}
+   drop_tv_chroma {'auc': 0.9133155089940161}
+   only_plugin {'auc': 0.845759444171623}
+   drop_plugin {'auc': 0.9098636797777199}
+   only_meter {'auc': 0.8003655808370165}
+   drop_meter {'auc': 0.9077402348430386}
+   only_rc {'auc': 0.8875174903695002}
+   drop_rc {'auc': 0.9119009951778607}
+   lr_audio_only {'auc': 0.9098636797777199, 'f1': 0.7805519053876478}
+easy step 1 rel_os 0.8876
+easy step 2 m_beat 0.9068
+easy step 3 rc_dist_Pall 0.921
+easy step 4 m_quarter 0.9286
+easy step 5 dist_low 0.9322
+easy step 1 rel_os 0.8876
+easy step 2 m_beat 0.9068
+easy step 3 dist_Pall 0.9203
+easy step 4 m_quarter 0.9303
+normal step 1 rel_os 0.8998
+normal step 2 m_quarter 0.9103
+normal step 3 d_grid 0.9188
+normal step 4 rc_flux_full_low 0.927
+normal step 5 p_max 0.928
+normal step 1 rel_os 0.8998
+normal step 2 m_quarter 0.9103
+normal step 3 d_grid 0.9188
+normal step 4 flux_P_low 0.9268
+hard step 1 os_broad 0.8819
+hard step 2 d_grid 0.8932
+hard step 3 rc_flux_P_low 0.8995
+hard step 4 flux_P_all 0.9028
+hard step 5 m_quarter 0.9054
+hard step 1 os_broad 0.8819
+hard step 2 d_grid 0.8932
+hard step 3 flux_P_low 0.8975
+hard step 4 flux_P_all 0.9024
+songs with all 3 levels 73
+train easy test easy AUC 0.9355
+train easy test normal AUC 0.9187
+train easy test hard AUC 0.8609
+train normal test easy AUC 0.9291
+train normal test normal AUC 0.9334
+train normal test hard AUC 0.8966
+train hard test easy AUC 0.8985
+train hard test normal AUC 0.9186
+train hard test hard AUC 0.9118
+train easy test easy F1 0.7011
+train easy test normal F1 0.7109
+train easy test hard F1 0.6887
+train normal test easy F1 0.7345
+train normal test normal F1 0.7737
+train normal test hard F1 0.7484
+train hard test easy F1 0.7232
+train hard test normal F1 0.7929
+train hard test hard F1 0.7921
+coef cosine easy [1.0, 0.879, 0.588]
+coef cosine normal [0.879, 1.0, 0.763]
+coef cosine hard [0.588, 0.763, 1.0]
+hgb perm importance (AUC drop) normal {'fluxfull': 0.011444056717361003, 'fluxH': 0.0019069172371404264, 'fluxP': 0.01210888185723713, 'dist': 0.030530425176947002, 'tv_chroma': 0.0004237374204718221, 'plugin': 0.009097720139636908, 'meter': 0.07439551010221652, 'rc': 0.007819641569198529} base 0.9350220836172131
+DONE 2039

@@ -1,0 +1,151 @@
+songs 80 features 83
+easy {'n': 79, 'pos_rate_pooled': np.float64(0.22534104587401363), 'pos_rate_med': 0.23234916559691912, 'cand_recall_med': 1.0, 'human_per_s': 2.890274147060795, 'cand_per_s': 16.86181864212751}
+normal {'n': 78, 'pos_rate_pooled': np.float64(0.3428365911582024), 'pos_rate_med': 0.3480244532940986, 'cand_recall_med': 0.998576301739155, 'human_per_s': 4.288124656959164, 'cand_per_s': 16.832957763867697}
+hard {'n': 75, 'pos_rate_pooled': np.float64(0.4841712671261216), 'pos_rate_med': 0.48044132397191575, 'cand_recall_med': 0.9946666666666667, 'human_per_s': 5.9569653699123, 'cand_per_s': 16.804096885607883}
+matched human-minus-candidate offset ms: mean 2.1 median 3.0 std 8.9
+easy random F1 median 0.2397003745318352
+normal random F1 median 0.3457900238081412
+hard random F1 median 0.4520367936925099
+signal                   aucE   aucN   aucH |    f1E    f1N    f1H
+rel_os                 0.888 0.900 0.878 | 0.590 0.667 0.695
+os_broad               0.873 0.898 0.882 | 0.578 0.658 0.691
+rc_rel_os              0.881 0.894 0.870 | 0.583 0.657 0.682
+rc_os_broad            0.871 0.889 0.875 | 0.575 0.651 0.678
+flux_full_mid          0.862 0.875 0.860 | 0.572 0.645 0.677
+flux_P_all             0.856 0.875 0.875 | 0.558 0.648 0.691
+rc_flux_full_mid       0.862 0.871 0.849 | 0.560 0.638 0.665
+flux_P_mid             0.858 0.870 0.864 | 0.573 0.659 0.693
+rc_flux_P_all          0.851 0.869 0.861 | 0.558 0.635 0.681
+flux_full_all          0.851 0.867 0.866 | 0.538 0.626 0.680
+rc_flux_P_mid          0.856 0.864 0.847 | 0.570 0.647 0.683
+flux_P_highmid         0.844 0.860 0.844 | 0.557 0.632 0.684
+rc_flux_full_all       0.846 0.858 0.851 | 0.543 0.621 0.664
+flux_full_highmid      0.847 0.856 0.839 | 0.548 0.625 0.671
+rc_flux_P_highmid      0.842 0.854 0.830 | 0.553 0.620 0.668
+rc_flux_full_highmid   0.846 0.851 0.827 | 0.543 0.609 0.657
+flux_full_lowmid       0.846 0.851 0.829 | 0.546 0.619 0.660
+rc_flux_full_lowmid    0.844 0.842 0.825 | 0.538 0.606 0.653
+flux_P_high            0.823 0.840 0.838 | 0.513 0.602 0.664
+flux_P_lowmid          0.834 0.839 0.829 | 0.546 0.629 0.676
+rc_flux_P_lowmid       0.831 0.837 0.823 | 0.534 0.615 0.665
+rc_flux_P_high         0.815 0.834 0.826 | 0.502 0.590 0.652
+flux_full_high         0.818 0.829 0.829 | 0.505 0.589 0.653
+rc_flux_full_high      0.812 0.824 0.813 | 0.498 0.577 0.639
+flux_P_low             0.812 0.804 0.769 | 0.515 0.592 0.624
+dist_Pall              0.855 0.803 0.731 | 0.520 0.542 0.567
+rc_flux_P_low          0.816 0.801 0.769 | 0.522 0.587 0.623
+rc_dist_Pall           0.853 0.799 0.722 | 0.512 0.532 0.559
+p_max                  0.785 0.796 0.788 | 0.540 0.649 0.701
+flux_full_low          0.790 0.757 0.726 | 0.475 0.557 0.582
+rc_flux_full_low       0.790 0.755 0.722 | 0.469 0.548 0.586
+p_highmid              0.745 0.753 0.754 | 0.678 0.773 0.821
+p_high                 0.739 0.743 0.748 | 0.602 0.721 0.803
+p_n                    0.708 0.730 0.752 | 0.485 0.667 0.778
+p_lowmid               0.717 0.723 0.721 | 0.607 0.708 0.765
+p_drums                0.708 0.719 0.721 | 0.572 0.688 0.749
+flux_H_all             0.714 0.715 0.696 | 0.414 0.495 0.566
+rc_flux_H_all          0.716 0.709 0.694 | 0.412 0.493 0.563
+dist_lowmid            0.732 0.699 0.664 | 0.418 0.474 0.523
+flux_H_high            0.698 0.698 0.694 | 0.396 0.492 0.551
+rc_flux_H_high         0.699 0.697 0.686 | 0.396 0.492 0.552
+rc_dist_lowmid         0.730 0.694 0.659 | 0.412 0.464 0.519
+m_beat                 0.745 0.691 0.655 | 0.642 0.598 0.602
+dist_high              0.691 0.677 0.660 | 0.328 0.424 0.511
+rc_dist_high           0.695 0.672 0.650 | 0.332 0.428 0.509
+rc_rel_fluxHmid        0.662 0.667 0.625 | 0.356 0.429 0.519
+rc_flux_H_mid          0.668 0.666 0.645 | 0.360 0.434 0.522
+flux_H_mid             0.663 0.665 0.648 | 0.356 0.434 0.518
+rel_fluxHmid           0.661 0.663 0.626 | 0.343 0.440 0.520
+rc_flux_H_highmid      0.653 0.650 0.636 | 0.354 0.421 0.511
+flux_H_highmid         0.650 0.649 0.636 | 0.357 0.422 0.510
+rc_flux_H_lowmid       0.640 0.641 0.621 | 0.328 0.407 0.493
+flux_H_lowmid          0.633 0.638 0.619 | 0.316 0.405 0.495
+rc_dist_highmid        0.635 0.624 0.607 | 0.287 0.395 0.472
+dist_highmid           0.640 0.624 0.613 | 0.291 0.395 0.473
+m_half                 0.532 0.609 0.617 | 0.273 0.479 0.564
+p_low                  0.593 0.603 0.591 | 0.426 0.544 0.607
+rc_flux_H_low          0.615 0.595 0.585 | 0.315 0.386 0.490
+flux_H_low             0.601 0.593 0.578 | 0.310 0.384 0.490
+rc_dist_low            0.622 0.588 0.558 | 0.283 0.383 0.462
+dist_low               0.621 0.587 0.551 | 0.287 0.384 0.462
+hcqt_flux              0.597 0.582 0.561 | 0.269 0.348 0.424
+rc_hcqt_flux           0.595 0.581 0.557 | 0.269 0.343 0.423
+rc_tv_rise             0.572 0.558 0.538 | 0.265 0.342 0.421
+tv_rise                0.573 0.558 0.542 | 0.267 0.343 0.422
+m_down                 0.568 0.549 0.540 | 0.339 0.400 0.496
+chroma_change          0.532 0.518 0.505 | 0.234 0.299 0.397
+rc_tv_new              0.525 0.517 0.512 | 0.243 0.349 0.456
+tv_new                 0.525 0.517 0.512 | 0.243 0.350 0.458
+rc_chroma_change       0.531 0.515 0.502 | 0.229 0.301 0.396
+p_bass                 0.498 0.514 0.516 | 0.231 0.372 0.483
+has_repeat             0.503 0.512 0.509 | 0.236 0.342 0.456
+tv_jump                0.521 0.511 0.510 | 0.221 0.315 0.409
+rc_tv_jump             0.519 0.509 0.506 | 0.215 0.309 0.405
+p_lead                 0.506 0.506 0.504 | 0.255 0.364 0.473
+tv_strength            0.497 0.493 0.484 | 0.199 0.294 0.391
+rc_tv_strength         0.497 0.492 0.483 | 0.204 0.294 0.395
+rc_dist_Hmid           0.449 0.481 0.490 | 0.164 0.273 0.399
+dist_Hmid              0.444 0.478 0.488 | 0.158 0.272 0.393
+d_beat                 0.306 0.445 0.475 | 0.267 0.406 0.456
+m_other                0.410 0.395 0.383 | 0.136 0.218 0.355
+m_quarter              0.323 0.310 0.344 | 0.012 0.074 0.295
+d_grid                 0.305 0.306 0.287 | 0.116 0.196 0.341
+
+--- positive rate by metrical class
+all  easy 79 m_beat share 0.18 pos 0.660 | m_half share 0.17 pos 0.301 | m_quarter share 0.30 pos 0.021 | m_other share 0.35 pos 0.137
+all  normal 78 m_beat share 0.18 pos 0.794 | m_half share 0.17 pos 0.603 | m_quarter share 0.30 pos 0.075 | m_other share 0.35 pos 0.209
+all  hard 75 m_beat share 0.18 pos 0.877 | m_half share 0.17 pos 0.793 | m_quarter share 0.30 pos 0.261 | m_other share 0.35 pos 0.314
+good easy 43 m_beat share 0.18 pos 0.685 | m_half share 0.17 pos 0.322 | m_quarter share 0.30 pos 0.017 | m_other share 0.34 pos 0.115
+good normal 42 m_beat share 0.18 pos 0.830 | m_half share 0.17 pos 0.640 | m_quarter share 0.30 pos 0.082 | m_other share 0.34 pos 0.180
+good hard 40 m_beat share 0.18 pos 0.905 | m_half share 0.18 pos 0.832 | m_quarter share 0.30 pos 0.273 | m_other share 0.34 pos 0.275
+AUC all  easy 79 {'m_beat': 0.745, 'm_half': 0.532, 'm_quarter': 0.323, 'm_other': 0.41, 'm_down': 0.568, 'd_grid': 0.305}
+AUC all  normal 78 {'m_beat': 0.691, 'm_half': 0.609, 'm_quarter': 0.31, 'm_other': 0.395, 'm_down': 0.549, 'd_grid': 0.306}
+AUC all  hard 75 {'m_beat': 0.655, 'm_half': 0.617, 'm_quarter': 0.344, 'm_other': 0.383, 'm_down': 0.54, 'd_grid': 0.287}
+AUC good easy 43 {'m_beat': 0.767, 'm_half': 0.534, 'm_quarter': 0.31, 'm_other': 0.383, 'm_down': 0.572, 'd_grid': 0.27}
+AUC good normal 42 {'m_beat': 0.699, 'm_half': 0.627, 'm_quarter': 0.307, 'm_other': 0.373, 'm_down': 0.55, 'd_grid': 0.261}
+AUC good hard 40 {'m_beat': 0.66, 'm_half': 0.635, 'm_quarter': 0.343, 'm_other': 0.353, 'm_down': 0.541, 'd_grid': 0.249}
+
+--- repeat consensus (rows in phrases with repeat links)
+songs with >=1 repeat link: 64 share of candidates with link 0.298
+signal             | easy base rc n | normal base rc n | hard base rc n
+rel_os             | 0.881 0.869 58 | 0.906 0.891 58 | 0.900 0.858 56
+os_broad           | 0.878 0.866 58 | 0.905 0.885 58 | 0.899 0.858 56
+flux_P_mid         | 0.880 0.864 58 | 0.886 0.866 58 | 0.880 0.847 56
+flux_full_mid      | 0.884 0.868 58 | 0.884 0.868 58 | 0.877 0.832 56
+flux_P_all         | 0.858 0.850 58 | 0.883 0.858 58 | 0.891 0.857 56
+flux_full_all      | 0.847 0.834 58 | 0.880 0.848 58 | 0.881 0.840 56
+flux_full_highmid  | 0.867 0.850 58 | 0.867 0.857 58 | 0.857 0.824 56
+flux_P_highmid     | 0.860 0.852 58 | 0.866 0.857 58 | 0.864 0.833 56
+flux_full_high     | 0.823 0.809 58 | 0.850 0.824 58 | 0.856 0.826 56
+flux_P_high        | 0.827 0.818 58 | 0.846 0.834 58 | 0.859 0.832 56
+flux_full_lowmid   | 0.848 0.845 58 | 0.841 0.823 58 | 0.823 0.799 56
+flux_P_lowmid      | 0.834 0.837 58 | 0.837 0.836 58 | 0.829 0.806 56
+dist_Pall          | 0.872 0.857 58 | 0.807 0.788 58 | 0.738 0.715 56
+flux_P_low         | 0.805 0.813 58 | 0.793 0.789 58 | 0.756 0.750 56
+flux_full_low      | 0.794 0.779 58 | 0.747 0.740 58 | 0.712 0.701 56
+flux_H_all         | 0.712 0.726 58 | 0.715 0.709 58 | 0.690 0.691 56
+flux_H_high        | 0.694 0.710 58 | 0.703 0.698 58 | 0.684 0.683 56
+dist_lowmid        | 0.768 0.774 58 | 0.701 0.696 58 | 0.669 0.654 56
+dist_high          | 0.703 0.706 58 | 0.697 0.683 58 | 0.681 0.663 56
+flux_H_mid         | 0.640 0.651 58 | 0.650 0.655 58 | 0.620 0.616 56
+rel_fluxHmid       | 0.644 0.651 58 | 0.645 0.659 58 | 0.617 0.607 56
+dist_highmid       | 0.654 0.648 58 | 0.642 0.634 58 | 0.613 0.610 56
+flux_H_highmid     | 0.628 0.645 58 | 0.636 0.641 58 | 0.603 0.608 56
+flux_H_lowmid      | 0.604 0.623 58 | 0.615 0.628 58 | 0.579 0.582 56
+dist_low           | 0.612 0.609 58 | 0.568 0.567 58 | 0.555 0.559 56
+flux_H_low         | 0.572 0.590 58 | 0.558 0.585 58 | 0.550 0.570 56
+hcqt_flux          | 0.565 0.552 58 | 0.556 0.541 58 | 0.543 0.533 56
+tv_rise            | 0.557 0.552 58 | 0.542 0.540 58 | 0.533 0.526 56
+tv_new             | 0.518 0.519 58 | 0.509 0.513 58 | 0.503 0.501 56
+chroma_change      | 0.530 0.529 58 | 0.504 0.504 58 | 0.501 0.495 56
+tv_jump            | 0.514 0.506 58 | 0.501 0.500 58 | 0.503 0.499 56
+tv_strength        | 0.498 0.504 58 | 0.499 0.498 58 | 0.487 0.482 56
+dist_Hmid          | 0.413 0.425 58 | 0.458 0.471 58 | 0.483 0.498 56
+
+--- nesting (share of lower-level moments with an upper-level moment within 35 ms)
+easy in normal: median 0.991 (chance-shifted 0.349) over 77 songs
+normal in hard: median 0.996 (chance-shifted 0.477) over 74 songs
+easy in hard: median 0.998 (chance-shifted 0.446) over 74 songs
+normal in easy: median 0.645 (chance-shifted 0.210) over 77 songs
+hard in normal: median 0.720 (chance-shifted 0.321) over 74 songs
+hard in easy: median 0.474 (chance-shifted 0.219) over 74 songs
