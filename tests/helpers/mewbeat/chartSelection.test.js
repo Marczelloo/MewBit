@@ -11,7 +11,7 @@ const { GENERATOR_VERSION, analyse, generateChart, traceChart } = require("../..
 const { BUDGET, METER_TOLERANCE } = require("../../../helpers/mewbeat/charts/momentWeights");
 const selection = require("../../../helpers/mewbeat/charts/selection");
 
-const { audibleOf, phraseBudget, scoreMoments, selectMoments } = selection;
+const { audibleOf, phraseBudget, repeatPlan, scoreMoments, selectMoments } = selection;
 const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 const NORMAL = levelOf("normal");
@@ -220,7 +220,7 @@ describe("Normal picks its notes from the music", () => {
   });
 
   it("exports only what the generator and the measurements use", () => {
-    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "phraseBudget", "scoreMoments", "selectMoments"]);
+    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "extraMoments", "phraseBudget", "repeatPlan", "scoreMoments", "selectMoments"]);
   });
 });
 
@@ -439,5 +439,83 @@ describe("what Normal still guarantees", () => {
 
   it("the song with holds has holds to test", () => {
     assert.ok(generateChart(songs["layered with holds"], "normal", KEY).notes.some((n) => n.len > 0));
+  });
+});
+
+describe("the repeats of Normal", () => {
+  // Eight phrases of 8 s, ABAB: phrase 3 plays phrase 1 again, 16 s later. Phrase 3 is as loud as the rest unless told otherwise.
+  const QUIET = 0.4;
+  const song = (repeatEnergy = QUIET) => layered({ energy: (ms) => (ms >= 24000 && ms < 32000 ? repeatEnergy : QUIET) });
+  const momentsIn = (notes, p) => [...new Set(notes.filter((n) => n.t >= p.startMs && n.t < p.endMs).map((n) => n.t))].sort((a, b) => a - b);
+
+  it("same loudness copies rhythm and lanes", () => {
+    const features = song();
+    const ctx = analyse(features);
+    const [source, repeat] = [ctx.phrases[1], ctx.phrases[3]];
+    assert.strictEqual(repeat.repeatOf, 1);
+    assert.deepStrictEqual(repeatPlan(repeat, source, ctx, NORMAL), { copy: true, extra: 0 });
+
+    const story = traceChart(features, "normal", KEY);
+    assert.strictEqual(story.phrases[3].charted, "copy");
+    // The rhythm is the source's, moment for moment, nothing added and nothing lost.
+    const lag = repeat.startMs - source.startMs;
+    assert.deepStrictEqual(momentsIn(story.chart.notes, repeat), momentsIn(story.chart.notes, source).map((t) => t + lag));
+    // Every note of the repeat remembers the note of the source it copies (the lanes are laid over them by lanes.js, which echoes the source's).
+    const copies = story.records.filter((r) => r.kind === "copy" && r.phrase === 3 && r.final);
+    assert.ok(copies.length >= 10);
+    assert.ok(copies.every((r) => r.copyOf !== null && r.copyOfT !== null));
+  });
+
+  it("a louder repeat adds notes above the copy", () => {
+    const features = song(0.48);
+    const ctx = analyse(features);
+    const [source, repeat] = [ctx.phrases[1], ctx.phrases[3]];
+    const plan = repeatPlan(repeat, source, ctx, NORMAL);
+    assert.strictEqual(plan.copy, true);
+    assert.ok(plan.extra >= 1, `extra ${plan.extra}`);
+
+    const story = traceChart(features, "normal", KEY);
+    assert.strictEqual(story.phrases[3].charted, "copy");
+    const lag = repeat.startMs - source.startMs;
+    const own = momentsIn(story.chart.notes, source);
+    const played = momentsIn(story.chart.notes, repeat);
+    // Everything the source plays comes again, and the extra moments are on top of it, within the repeat's budget.
+    for (const t of own) assert.ok(played.includes(t + lag), `the source's ${t} comes again`);
+    assert.ok(played.length > own.length);
+    assert.ok(played.length <= phraseBudget(repeat, ctx, NORMAL), `${played.length} of ${phraseBudget(repeat, ctx, NORMAL)}`);
+    assert.ok(played.length <= Math.ceil(own.length * 1.3), `${played.length} against ${own.length}`);
+    // The extras come from the ranking and keep Normal's gap.
+    const added = played.filter((t) => !own.map((o) => o + lag).includes(t));
+    const ranked = story.records.filter((r) => r.kind === "event" && r.phrase === 3 && r.final);
+    assert.deepStrictEqual(ranked.map((r) => r.from.t).sort((a, b) => a - b), added);
+    assert.ok(ranked.every((r) => r.reason === "ocena"));
+    for (let i = 1; i < played.length; i++) assert.ok(played[i] - played[i - 1] >= NORMAL.minNoteGapMs);
+  });
+
+  it("a sparse phrase is not copied onto a loud section", () => {
+    const features = song(0.95);
+    const ctx = analyse(features);
+    const [source, repeat] = [ctx.phrases[1], ctx.phrases[3]];
+    assert.deepStrictEqual(repeatPlan(repeat, source, ctx, NORMAL), { copy: false, extra: 0 });
+
+    const story = traceChart(features, "normal", KEY);
+    assert.strictEqual(story.phrases[3].charted, "music");
+    // Charted fresh it is as full as the music is loud, not the thin copy of a quiet source.
+    const played = momentsIn(story.chart.notes, repeat).length;
+    assert.ok(played > momentsIn(story.chart.notes, source).length * 1.5, `${played} moments`);
+    assert.ok(played <= phraseBudget(repeat, ctx, NORMAL));
+  });
+
+  it("a quieter repeat and a phrase that is no repeat get no extra", () => {
+    const ctx = analyse(song(0.3));
+    assert.deepStrictEqual(repeatPlan(ctx.phrases[3], ctx.phrases[1], ctx, NORMAL), { copy: true, extra: 0 });
+    assert.deepStrictEqual(repeatPlan(ctx.phrases[4], ctx.phrases[0], ctx, NORMAL), { copy: true, extra: 0 });
+  });
+
+  it("the other levels copy their repeats as before", () => {
+    const ctx = analyse(song(0.95));
+    for (const level of ["easy", "hard", "hell"]) {
+      assert.deepStrictEqual(repeatPlan(ctx.phrases[3], ctx.phrases[1], ctx, levelOf(level)), { copy: true, extra: 0 }, level);
+    }
   });
 });

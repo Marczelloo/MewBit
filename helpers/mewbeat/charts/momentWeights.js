@@ -35,4 +35,11 @@ const BUDGET = {
   minRatio: 0.25, // a phrase's fitted rate counts for at least this share of its song's
 };
 
-module.exports = { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE };
+// How a repeat of Normal is charted (selection.js repeatPlan).
+const REPEAT = {
+  louder: 1.1, // a repeat is louder than its source when its audible loudness is this many times the source's
+  gain: 1.15, // a louder repeat plays this many times the moments of its source (human mappers: density/REPORT.md)
+  sparse: 0.5, // a source with fewer moments than this share of a louder repeat's budget is too thin to copy
+};
+
+module.exports = { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE, REPEAT };

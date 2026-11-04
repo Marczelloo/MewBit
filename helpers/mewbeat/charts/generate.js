@@ -14,7 +14,7 @@ const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
-const { phraseBudget, scoreMoments, selectMoments } = require("./selection");
+const { extraMoments, phraseBudget, repeatPlan, scoreMoments, selectMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -62,9 +62,10 @@ function phraseEventTimes(ctx, phrase) {
   return eventTimes.slice(lowerBound(eventTimes, phrase.startMs), lowerBound(eventTimes, phrase.endMs));
 }
 
-// The notes of repeat phrase i copied from its source in `all` (the notes so far), or null when phrase i is no
-// repeat or the copy lost most of its source (the music differs, or the source overlaps this phrase): then it is
-// charted fresh.
+// The notes of repeat phrase i copied from its source in `all` (the notes so far) as { notes, extra }, `extra` being the
+// moments a louder repeat of Normal takes on top (repeatPlan); or null when phrase i is no repeat, the plan has it charted
+// fresh (a sparse source on a loud section) or the copy lost most of its source (the music differs, or the source overlaps
+// this phrase): then it is charted fresh.
 function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
   const phrase = phrases[i];
@@ -72,12 +73,14 @@ function copiedRepeat(ctx, all, i, diff) {
   const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf]);
   const sourceNotes = inWindow(all, from, to);
   if (sourceNotes.length === 0) return null;
+  const plan = repeatPlan(phrase, phrases[phrase.repeatOf], ctx, diff, new Set(sourceNotes.map((n) => n.t)).size);
+  if (!plan.copy) return null;
   // A copy may end sooner than its source (or the song): its holds are clipped to fit.
   const fitted = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing), Math.min(phrase.endMs, durationMs), diff, timing)
     .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
   const upper = upperRhythm(ctx, diff);
   const copied = upper ? nested(fitted, upper) : fitted;
-  return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? copied : null;
+  return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? { notes: copied, extra: plan.extra } : null;
 }
 
 // The layer each phrase of this difficulty follows (diff.vocalLeads puts the voice over drums and bass).
@@ -87,23 +90,45 @@ function leadersOf(ctx, diff) {
   return ctx.leaders.map((leader, i) => (leader !== "bands" && heard(ctx.phrases[i]) ? "lead" : leader));
 }
 
-// Phrase i of a level that picks its notes from the music (diff.selector "music"): the moments selection.js chooses, those
-// the music plays (not the lead-in, not the silence), each with a lane to hold its place.
-// `before` is the time of the last note of the phrases before; the sounds after it that this phrase's start leaves are
-// the phrase's to take too, so no stretch with a sound in it is left open across the seam.
-function musicNotes(ctx, i, diff, trace, before = null) {
-  const { phrases, energy, timing } = ctx;
+// Whether the music plays at t: not in the lead-in, not in the silence.
+const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENERGY;
+
+// What phrase i of a level that picks its notes from the music may play: the moments the music plays, and `carry`, the sounds after `before` (the time of the last note of the phrases before) that this phrase's
+// start leaves. The phrase takes those too, so no stretch with a sound in it is left open across the seam.
+function momentsAround(ctx, i, diff, before) {
+  const { phrases } = ctx;
   const phrase = phrases[i];
   const scored = scoreMoments(ctx, diff.scoreLevel);
   const times = scored.map((m) => m.t);
   const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
-  const playable = (t) => t >= LEAD_IN_MS && energy.at(t) >= SILENCE_ENERGY;
-  const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(m.t));
-  const carry = before === null ? [] : scored.slice(lowerBound(times, before + 1e-9), lowerBound(times, phrase.startMs)).filter((m) => playable(m.t));
-  const chosen = selectMoments(phrase, heard, phraseBudget(phrase, ctx, diff), diff, timing, { before, carry }).filter((m) => playable(m.t));
+  const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(ctx, m.t));
+  const carry = before === null ? [] : scored.slice(lowerBound(times, before + 1e-9), lowerBound(times, phrase.startMs)).filter((m) => playable(ctx, m.t));
+  return { heard, carry };
+}
+
+// Moments selection.js chose as notes, each with a lane to hold its place (finish lays the lanes over the finished moments).
+function placed(chosen, trace) {
   const events = laneTheRest(chosen);
   const made = trace ? trace.tagged(events) : events;
   return made.map((n) => (trace ? { t: n.t, lane: n.lane, tid: n.tid } : { t: n.t, lane: n.lane }));
+}
+
+// Phrase i of a level that picks its notes from the music (diff.selector "music"): the moments selection.js chooses.
+// `before` is the time of the last note of the phrases before.
+function musicNotes(ctx, i, diff, trace, before = null) {
+  const phrase = ctx.phrases[i];
+  const { heard, carry } = momentsAround(ctx, i, diff, before);
+  const chosen = selectMoments(phrase, heard, phraseBudget(phrase, ctx, diff), diff, ctx.timing, { before, carry });
+  return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
+}
+
+// The moments a copied repeat of Normal takes besides its copy (selection.js extraMoments): at most `extra`, and no more than
+// its budget leaves above the copy; the sound the stretch from the phrase before to the copy may need is one of them.
+function repeatNotes(ctx, i, diff, trace, copied, extra, before = null) {
+  const phrase = ctx.phrases[i];
+  const { heard, carry } = momentsAround(ctx, i, diff, before);
+  const room = Math.max(0, phraseBudget(phrase, ctx, diff) - new Set(copied.map((n) => n.t)).size);
+  return placed(extraMoments(phrase, heard, copied.map((n) => n.t), Math.min(extra, room), diff, ctx.timing, { before, carry }), trace);
 }
 
 // One difficulty's rhythm charted from the music, phrase by phrase: { notes, sustained }. A difficulty with diff.cutFrom
@@ -150,18 +175,21 @@ function chartNotes(ctx, diff, trace = null) {
     const tail = all.filter((n) => n.t < phrase.startMs && Math.max(n.t, n.t + (n.len ?? 0)) >= phrase.startMs - DENSITY_WINDOW_MS);
 
     // A repeat plays like its source.
-    const copied = copiedRepeat(ctx, all, i, diff);
+    const copy = copiedRepeat(ctx, all, i, diff);
     const info = { leader: leaders[i], supports: supports[i], repeat: isRepeatOf(phrase, i) };
-    if (copied) {
+    const before = all.reduce((last, n) => (n.t < phrase.startMs && n.t > last ? n.t : last), -Infinity);
+    if (copy) {
       trace?.enter(i, { ...info, charted: "copy" });
-      all.push(...bridged(trace ? trace.copied(copied) : copied, i, true));
+      const notes = bridged(trace ? trace.copied(copy.notes) : copy.notes, i, true);
+      // Normal picks its moments from the music: a louder repeat takes more of them above the copy.
+      const added = diff.selector === "music" ? repeatNotes(ctx, i, diff, trace, copy.notes, copy.extra, i > 0 && before > -Infinity ? before : null) : [];
+      all.push(...notes, ...added);
       i++;
       continue;
     }
 
     if (diff.selector === "music") {
       trace?.enter(i, { ...info, charted: "music" });
-      const before = all.reduce((last, n) => (n.t < phrase.startMs && n.t > last ? n.t : last), -Infinity);
       const charted = musicNotes(ctx, i, diff, trace, i > 0 && before > -Infinity ? before : null);
       // A sound the phrase takes from the end of the one before stays where it is (gap holds start with the phrase).
       all.push(...charted.filter((n) => n.t < phrase.startMs), ...withGapHolds(charted.filter((n) => n.t >= phrase.startMs), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));

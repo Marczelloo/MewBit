@@ -7,10 +7,16 @@
 // with no onset of any layer within 35 ms. F1 is on moments, 35 ms. Test songs are never read: ids come from corpus.csv (train).
 // Local density: p50 / p95 / p99 / max over all phrases of all songs (moments/s) and over every 4-beat window (notes/s, a window
 // every quarter beat across the human span), chart against human. Chord share (moments) = moments with more than one note.
+// Repeats: for every repeat phrase, its loudness against its source's (the budget's measure, audibleOf), what repeatPlan makes of it
+// (copy / extra / fresh) and the moments it plays against the moments in the window it copies (sourceWindow), chart and human; the
+// ratios are of pairs whose source plays at least 4 moments. --repeat merges into REPEAT (momentWeights.js).
 const fs = require("fs"), path = require("path");
 const repo = path.resolve(__dirname, "../../..");
 const { analyse, generateChart } = require(path.join(repo, "helpers/mewbeat/charts/generate"));
 const { strengthAt } = require(path.join(repo, "helpers/mewbeat/charts/rhythm"));
+const { isRepeatOf } = require(path.join(repo, "helpers/mewbeat/charts/phrases"));
+const { sourceWindow } = require(path.join(repo, "helpers/mewbeat/charts/repeats"));
+const { audibleOf, phraseBudget, repeatPlan } = require(path.join(repo, "helpers/mewbeat/charts/selection"));
 
 const arg = (name, dflt) => { const i = process.argv.indexOf("--" + name); return i < 0 ? dflt : process.argv[i + 1]; };
 const level = arg("level", "normal");
@@ -18,6 +24,7 @@ const { levelOf } = require(path.join(repo, "helpers/mewbeat/charts/difficulty")
 const weights = require(path.join(repo, "helpers/mewbeat/charts/momentWeights"));
 if (arg("set", null)) Object.assign(levelOf(level), JSON.parse(arg("set", "{}")));
 if (arg("budget", null)) Object.assign(weights.BUDGET, JSON.parse(arg("budget", "{}")));
+if (arg("repeat", null)) Object.assign(weights.REPEAT, JSON.parse(arg("repeat", "{}")));
 if (arg("k", null)) for (const [i, v] of Object.entries(JSON.parse(arg("k", "{}")))) weights.K[levelOf(level).scoreLevel ?? level].coef[+i] = v;
 const only = arg("songs", null)?.split(",");
 const rows = fs.readFileSync(path.join(repo, "mapping-analysis/shared/corpus.csv"), "utf8").split("\n").slice(1).map((l) => l.split(","));
@@ -52,7 +59,28 @@ function windows(times, beatMs, lo, hi) {
 }
 const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN; };
 const pool = { hp: [], cp: [], hw: [], cw: [] };
+const inside = (times, a, b) => times.filter((t) => t >= a && t < b).length;
+const MIN_SOURCE = 4;
+// The repeats of one song: loudness against the source, the plan and the moments, chart and human.
+function repeatsOf(ctx, diff, cMom, hMom) {
+  const out = [];
+  ctx.phrases.forEach((p, i) => {
+    if (!isRepeatOf(p, i)) return;
+    const source = ctx.phrases[p.repeatOf];
+    const { from, to } = sourceWindow(p, source);
+    const was = audibleOf(ctx, source, 1).loudness;
+    const nSource = inside(cMom, from, to);
+    out.push({
+      i, loud: was > 0 ? audibleOf(ctx, p, 1).loudness / was : 1,
+      plan: repeatPlan(p, source, ctx, diff, nSource), budget: phraseBudget(p, ctx, diff),
+      chartSource: nSource, chart: inside(cMom, p.startMs, p.endMs),
+      humanSource: inside(hMom, from, to), human: inside(hMom, p.startMs, p.endMs),
+    });
+  });
+  return out;
+}
 
+const r = (x, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
 const songs = [];
 for (const id of trainIds) {
   if (only && !only.includes(id)) continue;
@@ -78,8 +106,9 @@ for (const id of trainIds) {
   let tp = 0; for (const t of cMom) if (near(hMom, t, TOL)) tp++;
   let hit = 0; for (const t of hMom) if (near(cMom, t, TOL)) hit++;
   const prec = tp / cMom.length, rec = hit / hMom.length;
+  const repeats = repeatsOf(ctx, levelOf(level), cMom, hMom);
   songs.push({
-    id, stars: chart.stars, noteCount: chart.notes.length, momentCount: cMom.length,
+    id, repeats, stars: chart.stars, noteCount: chart.notes.length, momentCount: cMom.length,
     humanDensity: hp.length ? wsum(hp) : NaN, chartDensity: cp.length ? wsum(cp) : NaN,
     humanPhraseCv: hp.length > 1 ? std(hp.map((p) => p.y)) / mean(hp.map((p) => p.y)) : NaN,
     chartPhraseCv: cp.length > 1 ? std(cp.map((p) => p.y)) / mean(cp.map((p) => p.y)) : NaN,
@@ -96,8 +125,11 @@ function chordMoments(notes) { const by = new Map(); for (const n of notes) by.s
 function corr(x, y) { const mx = mean(x), my = mean(y); let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < x.length; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy); }
 
 const ok = songs.filter((s) => !s.noChart);
+const allRepeats = ok.flatMap((s) => s.repeats);
+const threshold = weights.REPEAT.louder;
+const ratios = (rs, own, source) => rs.filter((x) => x[source] >= MIN_SOURCE).map((x) => x[own] / x[source]);
+const ratioSummary = (rs) => ({ n: rs.filter((x) => x.chartSource >= MIN_SOURCE).length, chartMedian: r(median(ratios(rs, "chart", "chartSource"))), chartMean: r(mean(ratios(rs, "chart", "chartSource"))), humanN: rs.filter((x) => x.humanSource >= MIN_SOURCE).length, humanMedian: r(median(ratios(rs, "human", "humanSource"))), humanMean: r(mean(ratios(rs, "human", "humanSource"))) });
 const col = (k) => ok.map((s) => s[k]).filter(Number.isFinite);
-const r = (x, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
 const cd = col("chartDensity"), hd = col("humanDensity");
 const summary = {
   level, songs: songs.length, noChart: songs.length - ok.length,
@@ -115,6 +147,16 @@ const summary = {
   phraseMomentsPerSec: Object.fromEntries(["cp", "hp"].map((k) => [k === "cp" ? "chart" : "human", { p50: r(pct(pool[k], 0.5), 2), p95: r(pct(pool[k], 0.95), 2), p99: r(pct(pool[k], 0.99), 2), max: r(Math.max(...pool[k]), 2), n: pool[k].length }])),
   window4BeatNotesPerSec: Object.fromEntries(["cw", "hw"].map((k) => [k === "cw" ? "chart" : "human", { p50: r(pct(pool[k], 0.5), 2), p95: r(pct(pool[k], 0.95), 2), p99: r(pct(pool[k], 0.99), 2), max: r(Math.max(...pool[k]), 2), n: pool[k].length }])), holdShare: { median: r(median(col("holds")), 3) },
   f1: { median: r(median(col("f1"))), precision: r(median(col("precision"))), recall: r(median(col("recall"))) },
+  repeats: {
+    n: allRepeats.length, louder: allRepeats.filter((x) => x.loud >= threshold).length,
+    copied: allRepeats.filter((x) => x.plan.copy && x.plan.extra === 0).length, withExtra: allRepeats.filter((x) => x.plan.extra > 0).length, fresh: allRepeats.filter((x) => !x.plan.copy).length,
+    notesAgainstSource: {
+      louder: ratioSummary(allRepeats.filter((x) => x.loud >= threshold)),
+      louderCopiedWithExtra: ratioSummary(allRepeats.filter((x) => x.loud >= threshold && x.plan.copy)),
+      louderFresh: ratioSummary(allRepeats.filter((x) => x.loud >= threshold && !x.plan.copy)),
+      sameLoudness: ratioSummary(allRepeats.filter((x) => x.loud < threshold)),
+    },
+  },
 };
 console.log(JSON.stringify(summary, null, 1));
 const out = arg("json", null);

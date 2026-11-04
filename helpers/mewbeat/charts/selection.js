@@ -4,7 +4,7 @@
 // them.
 const { LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
 const { beatMsOf } = require("./holds");
-const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE } = require("./momentWeights");
+const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE, REPEAT } = require("./momentWeights");
 const { hasSteadyPulse } = require("./phrases");
 const { lowerBound, nearestIndex } = require("./util");
 
@@ -181,6 +181,11 @@ const PULSE_REST_BEATS = 0.75; // ...and one for the pulse this far
 const SOUND_MS = 35; // a beat with a candidate this near has a sound
 const PULSE_STRENGTH = 0.3; // what a note for the pulse reports as strength (rhythm.js DEFAULT_STRENGTH)
 
+// The least distance in ms between two notes at t.
+function gapOf(diff, timing) {
+  return (t) => Math.max(diff.minNoteGapMs ?? 0, (diff.gapBeats ?? 0) * beatMsOf(timing, t) * GAP_SLACK);
+}
+
 // selectMoments(phrase, scored, budget, diff, timing, edges) -> [{ t, s, reason, source }], time-ordered. `scored` is what
 // the phrase may play (scoreMoments, without the lead-in and silence). The best moments come first, a downbeat before the
 // rest, as long as the music puts them in the foreground (diff.foreground) and up to the budget. A stretch of more than
@@ -192,7 +197,7 @@ const PULSE_STRENGTH = 0.3; // what a note for the pulse reports as strength (rh
 function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   const snapped = !!timing?.snapped;
   const beatAt = (t) => beatMsOf(timing, t);
-  const gapAt = (t) => Math.max(diff.minNoteGapMs ?? 0, (diff.gapBeats ?? 0) * beatAt(t) * GAP_SLACK);
+  const gapAt = gapOf(diff, timing);
   const chosen = []; // time-ordered
   const nearest = (t) => {
     const i = lowerBound(chosen.map((n) => n.t), t);
@@ -262,4 +267,58 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   return chosen.map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { audibleOf, phraseBudget, scoreMoments, selectMoments };
+// --- repeats ------------------------------------------------------------------------------------
+
+// repeatPlan(phrase, source, ctx, diff, sourceMoments) -> { copy, extra }: how a repeat of Normal is charted. A repeat as loud
+// as its source (the loudness of the audible part, as the budget counts it) copies the source's rhythm; a louder one
+// (REPEAT.louder times the source's loudness) copies it and takes `extra` moments of its own ranking on top (REPEAT.gain of the
+// source's, never past the repeat's budget); a source with fewer moments than REPEAT.sparse of that louder repeat's budget is
+// not copied, the repeat is charted fresh. Only levels
+// that pick from the music plan: the others copy every repeat. `sourceMoments`, the moments the source plays, defaults to the
+// source's own budget.
+function repeatPlan(phrase, source, ctx, diff, sourceMoments = null) {
+  const copy = { copy: true, extra: 0 };
+  if (diff.selector !== "music") return copy;
+  const was = audibleOf(ctx, source, 1).loudness;
+  if (!(was > 0) || audibleOf(ctx, phrase, 1).loudness / was < REPEAT.louder) return copy;
+  const budget = phraseBudget(phrase, ctx, diff);
+  const had = sourceMoments ?? phraseBudget(source, ctx, diff);
+  if (had < REPEAT.sparse * budget) return { copy: false, extra: 0 };
+  return { copy: true, extra: Math.max(0, Math.min(Math.round((REPEAT.gain - 1) * had), budget - had)) };
+}
+
+// extraMoments(phrase, scored, kept, extra, diff, timing, edges) -> [{ t, s, reason, source }], time-ordered: the moments a
+// copied repeat takes besides its copy. `kept` holds the times of the copy's notes, `scored` what the phrase may play and
+// `edges` the phrase before as selectMoments has it. The stretch from the last note before the phrase to the copy's first
+// note, when it is over SILENT_GAP_BEATS with a sound in it, takes its best moment first ("dopełnienie"; the copy was cut from
+// a source whose own start the phrase before did not know of), then the best moments of the ranking ("ocena"), up to `extra`
+// in all. The gap of the level holds against the copy and the phrase before.
+function extraMoments(phrase, scored, kept, extra, diff, timing, edges = {}) {
+  const gapAt = gapOf(diff, timing);
+  const chosen = [];
+  const lastBefore = Number.isFinite(edges.before) ? edges.before : null;
+  const fits = (t) => [...kept, ...chosen.map((n) => n.t), lastBefore].every((n) => n === null || Math.abs(n - t) >= gapAt(t));
+  const add = (c, reason) => chosen.push({ t: c.t, s: c.s, reason, source: c.source, score: c.score });
+  const first = Math.min(...kept);
+
+  const pool = edges.carry?.length > 0 ? [...edges.carry, ...scored] : scored;
+  for (let rounds = 0; rounds < pool.length; rounds++) {
+    let best = null;
+    const marks = [lastBefore ?? phrase.startMs, ...chosen.map((n) => n.t).sort((a, b) => a - b), first];
+    for (let i = 1; i < marks.length; i++) {
+      if (marks[i] - marks[i - 1] <= SILENT_GAP_BEATS * beatMsOf(timing, marks[i - 1])) continue;
+      for (const c of pool) {
+        if (c.t > marks[i - 1] && c.t < marks[i] && fits(c.t) && (!best || c.score > best.score)) best = c;
+      }
+    }
+    if (!best) break;
+    add(best, "dopełnienie");
+  }
+  for (const c of [...scored].sort((a, b) => b.score - a.score || a.t - b.t)) {
+    if (chosen.length >= extra) break;
+    if (fits(c.t)) add(c, "ocena");
+  }
+  return chosen.sort(byTime).map(({ t, s, reason, source }) => ({ t, s, reason, source }));
+}
+
+module.exports = { audibleOf, extraMoments, phraseBudget, repeatPlan, scoreMoments, selectMoments };
