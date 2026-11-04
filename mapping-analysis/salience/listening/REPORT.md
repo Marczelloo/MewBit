@@ -107,3 +107,24 @@ Pokrycie par (ile momentów wiersza ma odpowiednik w kolumnie):
 | K |83%|65%|76%|100%|66%|
 | V26 |78%|62%|71%|86%|100%|
 
+## Wynik próby (ocena użytkownika, pewność niska)
+
+Użytkownik ocenił wszystkie cztery utwory jako „mega ciężkie” do porównania i nie jest pewien, czy problemem jest analiza, czy forma próby.
+
+| utwór | wybrany numer | wariant | uwaga |
+|---|---|---|---|
+| Hopes and Dreams | 2 | K | „ciężko dalej” |
+| Flower Dance | 3 albo 4 | K albo A | najbardziej podobała się ścieżka człowieka |
+| Yoru ni Kakeru | 4 | V26 | V26 ma tu 1156 momentów wobec 838 u pozostałych, więc wybór mógł dotyczyć też gęstości |
+| Mizuoto to Curtain | 5 | A | A i K mają 83% wspólnych momentów |
+
+Numeracja na stronie:
+
+| utwór | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Hopes and Dreams | A | K | V26 | C | B |
+| Flower Dance | C | B | K | A | V26 |
+| Yoru ni Kakeru | K | C | B | V26 | A |
+| Mizuoto to Curtain | B | V26 | C | K | A |
+
+Wniosek: tani detektor nie wygrał z rankingiem K, a B i C nie zostały wybrane ani razu. Tych tanich detektorów nie przenosimy do generatora. Próba nie rozstrzyga jednak, czy cięższa analiza pomogłaby, bo pięć ścieżek klików naraz okazało się trudne do oceny.
