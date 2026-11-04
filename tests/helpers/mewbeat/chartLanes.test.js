@@ -198,6 +198,71 @@ describe("planChords", () => {
       for (const t of every(1000, 23000, BEAT_MS)) assert.equal(at.get(t + 24000), at.get(t), `${t}`);
       assert.ok(mostIn(chordTimes(out)) <= 3);
     });
+
+    // A phrase, its repeat, then new moments (the repeat would be their source, so they are a phrase of their own).
+    const repeating = (lagMs) => [
+      { startMs: 0, endMs: lagMs },
+      { startMs: lagMs, endMs: 2 * lagMs, repeatOf: 0, lagMs, similarity: 0.9, heard: true },
+      { startMs: 2 * lagMs, endMs: 64000 },
+    ];
+
+    it("the share gate spends as if a chord given back stood, also on its repeat", () => {
+      // Dense moments in the phrase and its repeat, where the limit bites; sparse ones after, where only the gate keeps the chords down.
+      const gated = { ...eager, maxChordShare: 0.15, maxChordsPer8Beats: 2 };
+      const notes = [...every(0, 24000, 250), ...every(24000, 62000, 1000)].map((t) => ({ t, lane: 0 }));
+      const run = (diff) => chordTimes(planChords(notes, context({ phrases: repeating(12000) }), diff));
+      const free = run({ ...gated, maxChordsPer8Beats: undefined });
+      const limited = run(gated);
+      const after = (times) => times.filter((t) => t >= 24000).length;
+      assert.ok(limited.filter((t) => t < 12000).length < free.filter((t) => t < 12000).length, "control: the limit gave chords back in the first phrase");
+      assert.ok(after(free) > 0, "control: the gate lets chords through after the repeat");
+      // The chords given back were spent all the same: the limit must not make room for more of them than the gate allows.
+      assert.ok(after(limited) <= after(free), `${after(limited)} against ${after(free)}`);
+    });
+
+    it("a repeat of a chord that was given back stays a single note, though its own window has room", () => {
+      // A section start makes the chords near it give way in the first phrase. At the repeat its moment has a neighbour 30 ms away, so it
+      // cannot be a chord there and the window around the repeat is emptier than the source's was.
+      const sections = [{ t: 4000, rise: 1 }];
+      const notes = [...beats(0, 48000), { t: 28030, lane: 0 }].sort((a, b) => a.t - b.t);
+      const limited = { ...eager, maxChordsPer8Beats: 1 };
+      const run = (diff) => sizes(planChords(notes, context({ phrases: repeating(24000), sections }), diff));
+      const free = run({ ...limited, maxChordsPer8Beats: undefined });
+      const out = run(limited);
+      assert.equal(out.get(28000), 1, "control: the repeat of the section start is not a chord");
+      const gone = every(0, 24000, BEAT_MS).filter((t) => free.get(t) >= 2 && out.get(t) === 1);
+      assert.ok(gone.length > 0, "control: the first phrase gave chords back");
+      assert.deepEqual(gone.filter((t) => out.get(t + 24000) >= 2), []);
+    });
+
+    it("chords more than 8 beats apart do not count against each other, closer ones do", () => {
+      const run = (stepMs, diff) => chordTimes(planChords(every(2000, 40000, stepMs).map((t) => ({ t, lane: 0 })), context(), diff));
+      const limited = { ...eager, maxChordsPer8Beats: 1 };
+      const free = { ...limited, maxChordsPer8Beats: undefined };
+      assert.ok(run(8 * BEAT_MS, free).length > 3, "control: the moments are chords without the limit");
+      assert.deepEqual(run(8 * BEAT_MS, limited), run(8 * BEAT_MS, free));
+      assert.ok(run(7 * BEAT_MS, limited).length < run(7 * BEAT_MS, free).length);
+    });
+
+    it("a chord given back keeps the hold of its moment, not the tap", () => {
+      const notes = [...beats().filter((n) => n.t !== 21000), { t: 21000, lane: 0, len: 300 }, { t: 21000, lane: 1 }].sort((a, b) => a.t - b.t || a.lane - b.lane);
+      const free = planChords(notes, context(), { ...eager, maxChordsPer8Beats: undefined });
+      assert.equal(sizes(free).get(21000), 2, "control: the moment is a chord of a hold and a tap");
+      const out = planChords(notes, context(), { ...eager, maxChordsPer8Beats: 1 });
+      const at = out.filter((n) => n.t === 21000);
+      assert.deepEqual(at.map((n) => [n.lane, n.len > 0]), [[0, true]]);
+    });
+
+    it("the weakest chord is the one in the quieter bar when the place in the bar is the same", () => {
+      // One moment on the second beat of every bar, 4 beats apart: a window holds two, every other bar is loud. All of them want a chord.
+      const onBeat2 = every(2500, 40000, 4 * BEAT_MS).map((t) => ({ t, lane: 0 }));
+      const loud = (t) => Math.floor(t / 2000) % 2 === 0;
+      const run = (diff) => chordTimes(planChords(onBeat2, context({ energy: { at: (t) => (loud(t) ? 0.9 : 0.3) } }), { ...eager, chordRates: [9, 9, 9, 9], ...diff }));
+      assert.ok(run({ maxChordsPer8Beats: undefined }).some((t) => !loud(t)), "control: the quiet bars have chords without the limit");
+      const out = run({ maxChordsPer8Beats: 1 });
+      assert.ok(out.length > 0);
+      assert.ok(out.every(loud), `${out.filter((t) => !loud(t))}`);
+    });
   });
 });
 
