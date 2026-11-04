@@ -1,9 +1,12 @@
 // Measures a generator level on the 80 TRAIN songs against the human Normal maps: the numbers Task 3 reports.
 //   node measure_normal.js [--level normal] [--json out.json] [--songs id,id] [--set '{"foreground":0.5}'] [--budget '{"q":0.7}'] [--k '{"1":1.2}']
 // --set merges into the level's parameters, --budget into BUDGET (momentWeights.js) and --k into the level's K coefficients (by index), for tuning without edits.
-// Beat share uses 70 ms (rel_proxy_select.py BEAT_TOL); "good grid" = human beat share >= .85 (the spec's .92 / .76 are on those songs).
+// Beat share uses 70 ms (rel_proxy_select.py BEAT_TOL), which hides a note that is 30 ms off its beat; "good grid" = human beat share >= .85
+// (the spec's .92 / .76 are on those songs). The strict lines ask the grid itself, on songs with a trusted grid (timing.snapped): onGrid =
+// the share of moments within GRID_TOL (1.5 ms, the rounding of the grid points) of a quarter beat of the song's grid, beatShareStrict = the
+// share of its beats (as beatShare) with a moment within STRICT_MS (5 ms), chart against human.
 // Moments/s are counted in the phrases phrase_density.py used (>= 2 s, inside the first..last human moment), so the unit is the
-// one the budget was fitted on. Beat share = grid beats (inside that span) with a note within 35 ms. Notes with no sound = notes
+// one the budget was fitted on. Beat share = grid beats (inside that span) with a note within 70 ms (BEAT_TOL). Notes with no sound = notes
 // with no onset of any layer within 35 ms. F1 is on moments, 35 ms. Test songs are never read: ids come from corpus.csv (train).
 // Local density: p50 / p95 / p99 / max over all phrases of all songs (moments/s) and over every 4-beat window (notes/s, a window
 // every quarter beat across the human span), chart against human. Chord share (moments) = moments with more than one note.
@@ -29,7 +32,7 @@ if (arg("k", null)) for (const [i, v] of Object.entries(JSON.parse(arg("k", "{}"
 const only = arg("songs", null)?.split(",");
 const rows = fs.readFileSync(path.join(repo, "mapping-analysis/shared/corpus.csv"), "utf8").split("\n").slice(1).map((l) => l.split(","));
 const trainIds = rows.filter((r) => r[1] === "train").map((r) => r[0]);
-const TOL = 35, BEAT_TOL = 70, MIN_PHRASE_MS = 2000;
+const TOL = 35, BEAT_TOL = 70, STRICT_MS = 5, GRID_TOL = 1.5, MIN_PHRASE_MS = 2000;
 
 const median = (a) => { const s = [...a].sort((x, y) => x - y); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : NaN; };
 const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
@@ -96,7 +99,9 @@ for (const id of trainIds) {
   const lo = hMom[0], hi = hMom[hMom.length - 1];
   const cMom = [...new Set(chart.notes.map((n) => n.t))].sort((a, b) => a - b);
   const beats = ctx.timing.snapped ? ctx.timing.beats.filter((t) => t >= lo && t <= hi) : [];
-  const share = (moms) => (beats.length ? beats.filter((b) => near(moms, b, BEAT_TOL)).length / beats.length : NaN);
+  const share = (moms, tol = BEAT_TOL) => (beats.length ? beats.filter((b) => near(moms, b, tol)).length / beats.length : NaN);
+  const quarters = ctx.timing.snapped ? ctx.timing.gridPoints(4) : [];
+  const onGrid = (moms) => (quarters.length ? moms.filter((t) => near(quarters, t, GRID_TOL)).length : NaN);
   const hp = phraseDensities(hMom, ctx.phrases, lo, hi), cp = phraseDensities(cMom, ctx.phrases, lo, hi);
   pool.hp.push(...hp.map((p) => p.y)); pool.cp.push(...cp.map((p) => p.y));
   const beatMs = ctx.timing.medianMs > 0 ? ctx.timing.medianMs : 500;
@@ -114,6 +119,8 @@ for (const id of trainIds) {
     chartPhraseCv: cp.length > 1 ? std(cp.map((p) => p.y)) / mean(cp.map((p) => p.y)) : NaN,
     phraseCorr: hp.length > 2 ? corr(hp.map((p) => p.y), cp.map((p) => p.y)) : NaN,
     humanBeatShare: share(hMom), chartBeatShare: share(cMom),
+    humanBeatStrict: share(hMom, STRICT_MS), chartBeatStrict: share(cMom, STRICT_MS),
+    chartOnGrid: onGrid(cMom) / cMom.length, humanOnGrid: onGrid(hMom) / hMom.length, chartOnGridN: onGrid(cMom), chartMomentsOnGridSong: quarters.length ? cMom.length : 0,
     humanNps: inSpan(human.map((n) => n[0])), chartNps: inSpan(chart.notes.map((n) => n.t)),
     noSound: chart.notes.filter((n) => strengthAt(ctx, n.t) === null).length / chart.notes.length,
     precision: prec, recall: rec, f1: prec + rec ? (2 * prec * rec) / (prec + rec) : 0,
@@ -139,6 +146,8 @@ const summary = {
   phraseCv: { chart: r(mean(col("chartPhraseCv"))), human: r(mean(col("humanPhraseCv"))) },
   phraseCorrWithHuman: { mean: r(mean(col("phraseCorr"))), median: r(median(col("phraseCorr"))) },
   beatShare: { chart: r(median(col("chartBeatShare")), 2), human: r(median(col("humanBeatShare")), 2), chartMean: r(mean(col("chartBeatShare")), 2), humanMean: r(mean(col("humanBeatShare")), 2) },
+  beatShareStrict: { chart: r(median(col("chartBeatStrict")), 2), human: r(median(col("humanBeatStrict")), 2), chartMean: r(mean(col("chartBeatStrict")), 2), humanMean: r(mean(col("humanBeatStrict")), 2) },
+  onGrid: { trustedSongs: col("chartOnGrid").length, chart: { median: r(median(col("chartOnGrid"))), mean: r(mean(col("chartOnGrid"))), min: r(Math.min(...col("chartOnGrid"))), pooled: r(col("chartOnGridN").reduce((a, b) => a + b, 0) / col("chartMomentsOnGridSong").reduce((a, b) => a + b, 0)) }, human: { median: r(median(col("humanOnGrid"))), mean: r(mean(col("humanOnGrid"))) } },
   notesPerSec: { chart: r(median(col("chartNps")), 2), human: r(median(col("humanNps")), 2) },
   stars: { median: r(median(col("stars")), 2), mean: r(mean(col("stars")), 2) },
   noSoundShare: { median: r(median(col("noSound")), 3), mean: r(mean(col("noSound")), 3) },

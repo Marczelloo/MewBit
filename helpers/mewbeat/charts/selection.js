@@ -2,13 +2,14 @@
 // (momentWeights.js: its strength, its place in the bar), each phrase gets a budget from how much the music offers, and the
 // best moments of the phrase fill the budget. This file scores and budgets moments and selects them; generate.js charts
 // them.
-const { LEAD_IN_MS, SILENCE_ENERGY } = require("./difficulty");
+const { LEAD_IN_MS, MAX_SNAP_DISTANCE_MS, SILENCE_ENERGY } = require("./difficulty");
 const { beatMsOf } = require("./holds");
 const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE, REPEAT } = require("./momentWeights");
 const { hasSteadyPulse } = require("./phrases");
 const { lowerBound, nearestIndex } = require("./util");
 
 const HOLE_BEATS = 2;
+const GRID_DIVISION = 4; // the notes of Normal sit on quarter beats, as v26's did (Hard's grid, cut to its quarter beats)
 const byTime = (a, b) => a.t - b.t;
 
 // Every onset of the features as { t, s, source }, time-ordered: the bands, then the drums, bass and lead layers.
@@ -107,6 +108,34 @@ function scoreMoments(ctx, level) {
     source: c.source,
   }));
   return ctx.scored[level];
+}
+
+// snappedMoments(ctx, level) -> the moments of scoreMoments on the quarter-beat grid, time-ordered: what a chart may play. A
+// moment keeps its score (K was fitted on the candidates as measured, not on the grid) and moves to the nearest grid point,
+// `raw` being the time it had. Two moments on one grid point leave the higher score (ties: the one that moved less). Under a
+// trusted grid a moment that cannot move is not played: it is further than MAX_SNAP_DISTANCE_MS from the grid point. Without a
+// grid, or where the beats are too irregular for it to be trusted (timing.intervalOk; a stretch with no beats at all), the
+// moments keep their times: there is no grid there to be on, and dropping them would empty the stretch. Kept on the ctx. The
+// budget is counted on scoreMoments, as it was fitted.
+function snappedMoments(ctx, level) {
+  ctx.snappedMoments ??= {};
+  if (ctx.snappedMoments[level]) return ctx.snappedMoments[level];
+  const scored = scoreMoments(ctx, level);
+  const { timing } = ctx;
+  if (!timing?.snapped) return (ctx.snappedMoments[level] = scored);
+  const grid = timing.gridPoints(GRID_DIVISION);
+  const onGrid = new Map();
+  for (const c of scored) {
+    const i = nearestIndex(grid, c.t);
+    const trusted = i >= 0 && timing.intervalOk(c.t) && timing.intervalOk(grid[i]);
+    if (trusted && Math.abs(grid[i] - c.t) > MAX_SNAP_DISTANCE_MS) continue;
+    const t = trusted ? grid[i] : c.t;
+    const kept = onGrid.get(t);
+    if (!kept || c.score > kept.score || (c.score === kept.score && Math.abs(c.t - t) < Math.abs((kept.raw ?? kept.t) - t))) {
+      onGrid.set(t, trusted ? { ...c, t, raw: c.t } : c);
+    }
+  }
+  return (ctx.snappedMoments[level] = [...onGrid.values()].sort(byTime));
 }
 
 // --- the budget of a phrase ----------------------------------------------------------------
@@ -253,7 +282,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
 
   // The pulse: a beat nothing sounds on, in a phrase whose beats are carried by drums or bass.
   if (snapped && hasSteadyPulse(phrase)) {
-    const sounding = scored.map((c) => c.t);
+    const sounding = scored.map((c) => c.raw ?? c.t); // a beat is heard where the music sounded, not where its moment moved to
     const beats = timing.beats.filter((t) => t >= phrase.startMs && t < phrase.endMs);
     const isDown = (t) => timing.downbeats.some((d) => Math.abs(d - t) < DOWNBEAT_MS);
     for (const t of [...beats].sort((a, b) => Number(isDown(b)) - Number(isDown(a)) || a - b)) {
@@ -321,4 +350,4 @@ function extraMoments(phrase, scored, kept, extra, diff, timing, edges = {}) {
   return chosen.sort(byTime).map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { audibleOf, extraMoments, phraseBudget, repeatPlan, scoreMoments, selectMoments };
+module.exports = { audibleOf, extraMoments, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments };

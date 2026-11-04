@@ -14,7 +14,7 @@ const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
-const { extraMoments, phraseBudget, repeatPlan, scoreMoments, selectMoments } = require("./selection");
+const { extraMoments, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -98,7 +98,7 @@ const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENER
 function momentsAround(ctx, i, diff, before) {
   const { phrases } = ctx;
   const phrase = phrases[i];
-  const scored = scoreMoments(ctx, diff.scoreLevel);
+  const scored = snappedMoments(ctx, diff.scoreLevel);
   const times = scored.map((m) => m.t);
   const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
   const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(ctx, m.t));

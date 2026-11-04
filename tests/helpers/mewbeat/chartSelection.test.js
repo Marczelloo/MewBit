@@ -11,7 +11,7 @@ const { GENERATOR_VERSION, analyse, generateChart, traceChart } = require("../..
 const { BUDGET, METER_TOLERANCE } = require("../../../helpers/mewbeat/charts/momentWeights");
 const selection = require("../../../helpers/mewbeat/charts/selection");
 
-const { audibleOf, phraseBudget, repeatPlan, scoreMoments, selectMoments } = selection;
+const { audibleOf, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments } = selection;
 const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 const NORMAL = levelOf("normal");
@@ -220,7 +220,7 @@ describe("Normal picks its notes from the music", () => {
   });
 
   it("exports only what the generator and the measurements use", () => {
-    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "extraMoments", "phraseBudget", "repeatPlan", "scoreMoments", "selectMoments"]);
+    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "extraMoments", "phraseBudget", "repeatPlan", "scoreMoments", "selectMoments", "snappedMoments"]);
   });
 });
 
@@ -517,5 +517,110 @@ describe("the repeats of Normal", () => {
     for (const level of ["easy", "hard", "hell"]) {
       assert.deepStrictEqual(repeatPlan(ctx.phrases[3], ctx.phrases[1], ctx, levelOf(level)), { copy: true, extra: 0 }, level);
     }
+  });
+});
+
+describe("Normal's notes sit on the grid", () => {
+  // Every onset of the music moved off the grid by up to 20 ms, as real onsets are: the candidates are off the grid, the chart's notes must not be.
+  const loose = (features) => {
+    const out = structuredClone(features);
+    let i = 0;
+    const move = (e) => ({ ...e, t: e.t + ((i++ * 7) % 41) - 20 });
+    out.bands = out.bands.map((band) => ({ ...band, onsets: band.onsets.map(move) }));
+    for (const layer of ["drums", "bass", "lead"]) if (out[layer]) out[layer] = out[layer].map(move);
+    return out;
+  };
+  const rawTimes = (features) => new Set([...features.bands.flatMap((b) => b.onsets), ...["drums", "bass", "lead"].flatMap((l) => features[l] ?? [])].map((o) => o.t));
+  const distance = (points, t) => Math.min(...points.filter((p) => Math.abs(p - t) < 200).map((p) => Math.abs(p - t)));
+  const TIGHT_MS = 1.5; // the rounding of the grid points and of the shifted copies, not a window for the onsets
+
+  const songs = {
+    layered: loose(layered({ durationMs: 192000, energy: () => 0.75 })),
+    "layered with a louder repeat": loose(layered({ energy: (ms) => (ms >= 24000 && ms < 32000 ? 0.48 : 0.4) })),
+    "a sparse source on a loud section": loose(layered({ energy: (ms) => (ms >= 24000 && ms < 32000 ? 0.95 : 0.4) })),
+    "bands only": loose(makeFeatures({ bpm: 120, durationMs: 120000, energy: () => 0.8 })),
+    "an odd tempo": loose(layered({ bpm: 137, durationMs: 96000, energy: () => 0.7 })),
+  };
+  for (const [name, features] of Object.entries(songs)) {
+    it(`with a trusted grid every note of ${name} is on it`, () => {
+      const ctx = analyse(features);
+      assert.strictEqual(ctx.timing.snapped, true);
+      const grid = ctx.timing.gridPoints(4);
+      // The test has something to move: the music itself is off the grid.
+      const raw = [...rawTimes(features)].filter((t) => t > LEAD_IN_MS);
+      assert.ok(raw.filter((t) => distance(grid, t) > 5).length > raw.length / 2);
+
+      const chart = generateChart(features, "normal", KEY);
+      assert.ok(chart.notes.length > 50);
+      const off = chart.notes.filter((n) => distance(grid, n.t) > TIGHT_MS);
+      assert.deepStrictEqual(off.slice(0, 5).map((n) => [n.t, distance(grid, n.t)]), [], `${off.length} of ${chart.notes.length} notes off the grid`);
+    });
+  }
+
+  it("the louder repeat's extra notes and the seam fill are on the grid too", () => {
+    const features = songs["layered with a louder repeat"];
+    const story = traceChart(features, "normal", KEY);
+    const grid = analyse(features).timing.gridPoints(4);
+    const picked = story.records.filter((r) => r.kind === "event" && r.final);
+    assert.ok(picked.some((r) => r.phrase === 3 && r.reason === "ocena"), "the repeat has extra notes");
+    for (const r of picked) assert.ok(distance(grid, r.from.t) <= TIGHT_MS, `${r.reason} at ${r.from.t}`);
+  });
+
+  it("two candidates for one grid time leave the higher score; one too far from the grid is not a moment", () => {
+    const features = makeFeatures({ bpm: 120, durationMs: 20000 });
+    const g = 5000; // a beat of the grid, 125 ms between its quarter beats
+    features.bands = features.bands.map((band, b) => ({
+      name: band.name,
+      onsets: [
+        // the filler the strengths are ranked against
+        ...Array.from({ length: 60 }, (_, i) => ({ t: 3000 + i * 250, s: 0.3 + (i % 7) / 10 })).filter(() => b === 0),
+        ...(b === 1 ? [{ t: g - 34, s: 0.4 }, { t: g + 1, s: 0.9 }] : []), // 35 ms apart: two candidates, one grid time
+        ...(b === 2 ? [{ t: g + 125 + 62, s: 0.9 }] : []), // 62 ms from the nearest grid point: no grid time
+      ],
+    }));
+    const ctx = analyse(features);
+    const raw = scoreMoments(ctx, "normal");
+    const snapped = snappedMoments(ctx, "normal");
+    const grid = ctx.timing.gridPoints(4);
+
+    const pair = raw.filter((m) => m.t === g - 34 || m.t === g + 1);
+    assert.strictEqual(pair.length, 2);
+    const kept = snapped.filter((m) => m.t === g);
+    assert.strictEqual(kept.length, 1);
+    assert.strictEqual(kept[0].raw, g + 1);
+    assert.strictEqual(kept[0].score, Math.max(...pair.map((m) => m.score)));
+    assert.strictEqual(kept[0].s, 0.9);
+    assert.ok(!snapped.some((m) => m.raw === g - 34));
+    assert.ok(!snapped.some((m) => m.raw === g + 125 + 62), "too far to snap");
+    assert.ok(snapped.every((m) => grid.includes(m.t) && Math.abs(m.t - m.raw) <= 35));
+    assert.ok(snapped.every((m, i) => i === 0 || snapped[i - 1].t < m.t));
+  });
+
+  it("a stretch with no beats keeps its moments at the time of the music, the rest sits on the grid", () => {
+    const features = loose(layered({ durationMs: 192000, energy: () => 0.75 }));
+    features.tempo.beats = features.tempo.beats.filter((t) => t < 60000 || t >= 120000);
+    features.tempo.downbeats = features.tempo.downbeats.filter((t) => t < 60000 || t >= 120000);
+    const ctx = analyse(features);
+    const grid = ctx.timing.gridPoints(4);
+    const snapped = snappedMoments(ctx, "normal");
+    const inGap = snapped.filter((m) => m.t >= 66000 && m.t < 114000);
+    assert.ok(inGap.length > 50, "the stretch is not emptied");
+    assert.ok(inGap.every((m) => m.raw === undefined), "its moments are not moved");
+    const outside = snapped.filter((m) => m.t < 54000 || m.t >= 126000);
+    assert.ok(outside.length > 100);
+    assert.ok(outside.every((m) => distance(grid, m.t) <= TIGHT_MS), "the rest sits on the grid");
+  });
+
+  it("without a trusted grid the notes keep the time of the music", () => {
+    const features = loose(makeFeatures({ confidence: 0.1, durationMs: 120000, energy: threeSectionEnergy }));
+    const ctx = analyse(features);
+    assert.strictEqual(ctx.timing.snapped, false);
+    assert.deepStrictEqual(snappedMoments(ctx, "normal"), scoreMoments(ctx, "normal"));
+
+    const raw = rawTimes(features);
+    const notes = generateChart(features, "normal", KEY).notes;
+    assert.ok(notes.length > 50);
+    assert.ok(notes.every((n) => raw.has(n.t)), "every note is on an onset");
+    assert.ok(notes.some((n) => n.t % 125 !== 0), "and not moved");
   });
 });
