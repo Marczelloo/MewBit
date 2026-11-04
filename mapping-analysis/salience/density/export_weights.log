@@ -1,3 +1,8 @@
-easy {'songs': 79, 'skipped_without_level': 1, 'candidates': 179448, 'positive_rate': 0.2253, 'coef': [5.214656, 0.384122, -0.688822, -2.572609, -0.940716, 0.527942, 0.150438], 'intercept': -3.835923}
-normal {'songs': 78, 'skipped_without_level': 2, 'candidates': 175168, 'positive_rate': 0.3428, 'coef': [5.414394, 0.228984, -0.041502, -2.035941, -0.875755, 0.340097, -0.645733], 'intercept': -2.735024}
-hard {'songs': 75, 'skipped_without_level': 5, 'candidates': 169186, 'positive_rate': 0.4842, 'coef': [5.019572, 0.156419, 0.333998, -1.086587, -0.867225, 0.237637, -1.060352], 'intercept': -1.468758}
+rel_os easy {'songs': 79, 'skipped_without_level': 1, 'candidates': 179448, 'positive_rate': 0.2253, 'coef': [5.214656, 0.384122, -0.688822, -2.572609, -0.940716, 0.527942, 0.150438], 'intercept': -3.835923}
+rel_os normal {'songs': 78, 'skipped_without_level': 2, 'candidates': 175168, 'positive_rate': 0.3428, 'coef': [5.414394, 0.228984, -0.041502, -2.035941, -0.875755, 0.340097, -0.645733], 'intercept': -2.735024}
+rel_os hard {'songs': 75, 'skipped_without_level': 5, 'candidates': 169186, 'positive_rate': 0.4842, 'coef': [5.019572, 0.156419, 0.333998, -1.086587, -0.867225, 0.237637, -1.060352], 'intercept': -1.468758}
+wrote k_weights.json
+raw_strength easy {'songs': 79, 'skipped_without_level': 1, 'candidates': 179448, 'positive_rate': 0.2253, 'coef': [2.728315, 1.103038, -0.143434, -2.741593, -0.718213, 0.464883, 0.130978], 'intercept': -2.511861}
+raw_strength normal {'songs': 78, 'skipped_without_level': 2, 'candidates': 175168, 'positive_rate': 0.3428, 'coef': [2.94142, 0.929129, 0.392415, -2.187861, -0.661454, 0.304963, -0.604858], 'intercept': -1.532559}
+raw_strength hard {'songs': 75, 'skipped_without_level': 5, 'candidates': 169186, 'positive_rate': 0.4842, 'coef': [2.920554, 0.798861, 0.670303, -1.370092, -0.690628, 0.238263, -0.967896], 'intercept': -0.593304}
+wrote k_weights_raw.json

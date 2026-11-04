@@ -1,0 +1,527 @@
+{
+ "variant": "raw_strength + meter on the generator grid (ctx.timing); NOT the committed decision (A keeps rel_os); the best Features v4 proxy, AUC lower by .034/.042/.047 (E/N/H) but F1 higher when notes are picked by count (rel_proxy_select.log)",
+ "features": [
+  "raw_strength",
+  "m_beat",
+  "m_half",
+  "m_quarter",
+  "m_other",
+  "m_down",
+  "d_grid"
+ ],
+ "model": "sklearn LogisticRegression(C=1, max_iter=400); score = intercept + sum(coef[i] * x[i]); probability = 1 / (1 + exp(-score)); rank candidates by score",
+ "inputs": {
+  "raw_strength": "largest onset strength 's' among the Features v4 onsets of the candidate cluster, over the sources low, lowmid, highmid, high, drums, bass, lead (extract.candidates, P.max(axis=1)). Not normalised. Needs nothing beyond Features v4.",
+  "m_beat": "1 if the candidate lies within 0.07 of a beat period of a grid beat, else 0.",
+  "m_half": "1 if within 0.07 of the half-beat position (and m_beat is 0), else 0.",
+  "m_quarter": "1 if within 0.07 of a quarter-beat position (0.25 or 0.75; and m_beat, m_half are 0), else 0.",
+  "m_other": "1 if none of m_beat, m_half, m_quarter, else 0.",
+  "m_down": "1 if m_beat is 1 and the nearer of the two surrounding beats lies within 2 ms of a downbeat of the grid, else 0. 0 everywhere when the grid has no downbeats.",
+  "d_grid": "distance to the nearest of the beat, half-beat and quarter-beat positions, as a fraction of the beat period (u = position in the beat in [0,1); min(u, 1-u, |u-0.5|, |u-0.25|, |u-0.75|)).",
+  "meter": "Position in the beat: i = last grid beat at or before the candidate (clipped to the second-to-last beat), u = (t - beats[i]) / (beats[i+1] - beats[i]) mod 1. Grid = ctx.timing.beats / .downbeats of the generator.",
+  "no_grid": "When the generator has no snapped grid (ctx.timing.snapped false) or fewer than 3 beats: m_other = 1 and every other meter column (m_beat, m_half, m_quarter, m_down, d_grid) = 0 for every candidate. 1 of the 80 train songs has no grid."
+ },
+ "rank": "Every column is turned into a within-song rank before scoring. Columns with more than 2 distinct values in the song: average rank (ties get the mean of their ranks, 1-based) divided by the number of candidates n of that song, so the values lie in (0, 1]. Columns with at most 2 distinct values (the binary meter flags, or a constant column) stay raw. Same as common.rank_cols; scipy.stats.rankdata(method='average') / n. The ranks are float32 in the fit; a port may use float64.",
+ "rank_example": {
+  "raw": [
+   3,
+   1,
+   3,
+   2,
+   5
+  ],
+  "ranked": [
+   0.7,
+   0.2,
+   0.7,
+   0.4,
+   1.0
+  ],
+  "binary_raw": [
+   0,
+   1,
+   1,
+   0,
+   0
+  ],
+  "binary_ranked": [
+   0,
+   1,
+   1,
+   0,
+   0
+  ],
+  "constant_raw": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "constant_ranked": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "meter_example": {
+  "beats_ms": [
+   0,
+   500,
+   1000,
+   1500,
+   2000,
+   2500
+  ],
+  "downbeats_ms": [
+   0,
+   2000
+  ],
+  "candidates": [
+   {
+    "t_ms": 0,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 1.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 125,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 1.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 250,
+    "m_beat": 0.0,
+    "m_half": 1.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 375,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 1.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 500,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 560,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.12
+   },
+   {
+    "t_ms": 1010,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.02
+   },
+   {
+    "t_ms": 700,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.1
+   },
+   {
+    "t_ms": 1750,
+    "m_beat": 0.0,
+    "m_half": 1.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 2000,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 1.0,
+    "d_grid": 0.0
+   }
+  ],
+  "no_grid_candidates": [
+   {
+    "t_ms": 0,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 125,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 250,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 375,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 500,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 560,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 1010,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 700,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 1750,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 2000,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   }
+  ]
+ },
+ "candidates": "30 ms clusters of Features v4 onsets (extract.candidates: an onset joins a cluster while it lies within 30 ms of the cluster's first onset; candidate time = the strongest onset of the cluster); label = a human note of that level within 35 ms",
+ "train_songs": 80,
+ "levels": {
+  "easy": {
+   "songs": 79,
+   "skipped_without_level": 1,
+   "candidates": 179448,
+   "positive_rate": 0.2253,
+   "coef": [
+    2.728315,
+    1.103038,
+    -0.143434,
+    -2.741593,
+    -0.718213,
+    0.464883,
+    0.130978
+   ],
+   "intercept": -2.511861
+  },
+  "normal": {
+   "songs": 78,
+   "skipped_without_level": 2,
+   "candidates": 175168,
+   "positive_rate": 0.3428,
+   "coef": [
+    2.94142,
+    0.929129,
+    0.392415,
+    -2.187861,
+    -0.661454,
+    0.304963,
+    -0.604858
+   ],
+   "intercept": -1.532559
+  },
+  "hard": {
+   "songs": 75,
+   "skipped_without_level": 5,
+   "candidates": 169186,
+   "positive_rate": 0.4842,
+   "coef": [
+    2.920554,
+    0.798861,
+    0.670303,
+    -1.370092,
+    -0.690628,
+    0.238263,
+    -0.967896
+   ],
+   "intercept": -0.593304
+  }
+ },
+ "test_vector": {
+  "song": "1127488",
+  "n_candidates": 2663,
+  "columns": [
+   "raw_strength",
+   "m_beat",
+   "m_half",
+   "m_quarter",
+   "m_other",
+   "m_down",
+   "d_grid"
+  ],
+  "note": "raw = the column values before ranking, in 'features' order; ranked = the values the model sees (rank percentiles within this song of all n_candidates candidates, binary flags raw); score = intercept + coef . ranked from the rounded coefficients and rounded ranked values listed here, tolerance 1e-5.",
+  "candidates": [
+   {
+    "index": 2,
+    "t_ms": 619.0,
+    "raw": [
+     1.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ranked": [
+     0.953811,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.086557
+    ],
+    "score": {
+     "easy": 1.204811,
+     "normal": 2.149774,
+     "hard": 2.907435
+    },
+    "probability": {
+     "easy": 0.76938,
+     "normal": 0.895648,
+     "hard": 0.948213
+    }
+   },
+   {
+    "index": 200,
+    "t_ms": 11040.0,
+    "raw": [
+     0.606,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ranked": [
+     0.500376,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.086557
+    ],
+    "score": {
+     "easy": -1.278775,
+     "normal": 0.279317,
+     "hard": 1.454596
+    },
+    "probability": {
+     "easy": 0.217759,
+     "normal": 0.569379,
+     "hard": 0.810705
+    }
+   },
+   {
+    "index": 201,
+    "t_ms": 11093.0,
+    "raw": [
+     1.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.042969
+    ],
+    "ranked": [
+     0.953811,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.537552
+    ],
+    "score": {
+     "easy": -2.58075,
+     "normal": -1.240004,
+     "hard": 0.301966
+    },
+    "probability": {
+     "easy": 0.070388,
+     "normal": 0.224435,
+     "hard": 0.574923
+    }
+   },
+   {
+    "index": 202,
+    "t_ms": 11125.0,
+    "raw": [
+     0.465,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.082031
+    ],
+    "ranked": [
+     0.231881,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.713105
+    ],
+    "score": {
+     "easy": -2.504029,
+     "normal": -1.943281,
+     "hard": -1.296922
+    },
+    "probability": {
+     "easy": 0.075576,
+     "normal": 0.125288,
+     "hard": 0.214683
+    }
+   },
+   {
+    "index": 203,
+    "t_ms": 11168.0,
+    "raw": [
+     0.789,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "ranked": [
+     0.746339,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.086557
+    ],
+    "score": {
+     "easy": 1.103645,
+     "normal": 1.844475,
+     "hard": 2.539765
+    },
+    "probability": {
+     "easy": 0.750942,
+     "normal": 0.863477,
+     "hard": 0.926883
+    }
+   },
+   {
+    "index": 208,
+    "t_ms": 11467.0,
+    "raw": [
+     0.554,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ranked": [
+     0.404807,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.086557
+    ],
+    "score": {
+     "easy": -0.293045,
+     "normal": 0.534923,
+     "hard": 1.30404
+    },
+    "probability": {
+     "easy": 0.427259,
+     "normal": 0.630631,
+     "hard": 0.786514
+    }
+   }
+  ]
+ }
+}

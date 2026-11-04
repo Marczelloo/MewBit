@@ -1,11 +1,11 @@
 # Shared helpers for the density measurements. In mewbeat-ma: /repo = repo (ro), /scripts = salience dir with feat/,
 # /out = .mewbeat-debug, /cache = scratch cache (phrases dumped by the Node recomposition of analyse()). Train songs only.
-import os, sys, json
+import os, sys, json, glob
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
 sys.path.insert(0, "/scripts")
-from common import load, rank_cols, auc_fast, LV  # noqa: E402
+from common import load, rank_cols, auc_fast, LV, FEAT  # noqa: E402
 from extract import meter, candidates, TEST  # noqa: E402
 
 DATA = "/repo/.mewbeat-debug/data"
@@ -15,9 +15,11 @@ K_COLS = ["rel_os", "m_beat", "m_half", "m_quarter", "m_other", "m_down", "d_gri
 
 
 def songs_train():
-    """The 80 train songs: pkl + Features v4 json + generator timing/phrases. Test ids are filtered before any read."""
-    ss = load()
-    ss = [s for s in ss if s["id"] not in TEST]
+    """The 80 train songs: pkl + Features v4 json + generator timing/phrases. The ids are taken from the file names and the test ids
+    are removed before load() opens any pkl, so a test pkl is never read (none exists in /scripts/feat anyway)."""
+    ids = {os.path.basename(p)[:-4] for p in glob.glob(f"{FEAT}/*.pkl")} - TEST - {"hd"}
+    ss = load(ids)
+    assert len(ss) == len(ids) and not ({s["id"] for s in ss} & TEST)
     for s in ss:
         s["f"] = json.load(open(f"{DATA}/features/{s['id']}.json"))
         s["ph"] = json.load(open(f"{PH}/{s['id']}.json"))

@@ -18,12 +18,17 @@
 #                 with a bootstrap 95% CI over songs (seed 0, 2000 resamples).
 # Reproduction check (window budget only): K as in salience/d_subset.py (five columns rel_os, m_beat, m_half, m_quarter, d_grid; meter of
 # the pkl; max_iter 300; f1_topk seed = index of the song in the level list), on the 80 train songs, to compare with RESULTS.md.
+# Counting-artifact check (phrase budget; rel_os and raw_strength): (1) precision (picks that hit a human note / picks), recall (distinct
+# human notes hit / human notes) and the share of picks that hit an already-hit human note; (2) the same plus F1, beat share and the paired
+# CI when selection is greedy by score and skips any candidate within 70 ms (<=) of a pick already made in the song, with how often a phrase
+# runs out of candidates; (3) per-song AUC after keeping one positive candidate per human note (the best-scoring one by the variant's own
+# score, or the one nearest in time) and dropping the other positives, against the AUC over all candidates.
 # In mewbeat-ma. Train songs only. Songs without the level are skipped.
-import sys, json
+import sys, json, bisect
 import numpy as np
 sys.path.insert(0, "/density")
 from dcommon import *  # noqa: F401,F403
-from common import f1_topk, WIN  # noqa: E402
+from common import f1_topk, WIN, auc_fast  # noqa: E402
 from rel_proxy import proxies  # noqa: E402
 from sklearn.linear_model import LogisticRegression  # noqa: E402
 
@@ -31,6 +36,7 @@ OUT = "/cache/rel_proxy_select.json"
 BEAT_TOL = 70.0
 SOUND_FLOOR = 0.25
 MIN_PHRASE_MS = 2000
+GREEDY_GAP = 70.0
 NBOOT = 2000
 VARIANTS = {"rel_os": lambda s, names: s["X"][:, names.index("rel_os")],
             "raw_strength": lambda s, names: s["px"]["raw_strength"],
@@ -102,27 +108,58 @@ def phrases_of(s, lv):
             if p["endMs"] - p["startMs"] >= MIN_PHRASE_MS and p["startMs"] >= lo and p["endMs"] <= hi]
 
 
-def sel_phrase(s, lv, p, seed):
+def sel_phrase(s, lv, p, seed, greedy=False):
+    """greedy: candidates in order of score, a candidate within GREEDY_GAP ms of a pick already made (anywhere in the song) is skipped."""
     spans = phrases_of(s, lv)
     if not spans:
         return None
     t, hm, hidx = s["t"], np.asarray(s["human"][lv], float), s["hidx"][lv]
     sc = p + 1e-7 * np.random.default_rng(seed).random(len(p))
-    kept, inh = [], np.zeros(len(hm), bool)
+    kept, inh, acc, n_short, short_notes = [], np.zeros(len(hm), bool), [], 0, 0
     for a, b in spans:
         hin = (hm >= a) & (hm < b)
         inh |= hin
         N = int(hin.sum())
         idx = np.where((t >= a) & (t < b))[0]
-        kept.append(idx[np.argsort(-sc[idx])[:N]])
-    sel = np.concatenate(kept)
+        order = idx[np.argsort(-sc[idx])]
+        if not greedy:
+            pick = order[:N]
+        else:
+            pick = []
+            for c in order:
+                if len(pick) >= N:
+                    break
+                j = bisect.bisect_left(acc, t[c])
+                if (j < len(acc) and acc[j] - t[c] <= GREEDY_GAP) or (j > 0 and t[c] - acc[j - 1] <= GREEDY_GAP):
+                    continue
+                pick.append(c)
+                bisect.insort(acc, t[c])
+            pick = np.asarray(pick, int)
+        n_short += int(len(pick) < N)
+        short_notes += N - len(pick)
+        kept.append(pick)
+    sel = np.concatenate(kept).astype(int)
     nh = int(inh.sum())
     if nh == 0:
         return None
     h = hidx[sel]
-    h = h[h >= 0]
-    h = np.unique(h[inh[h]])
-    return dict(f1=2 * len(h) / (len(sel) + nh), sel=sel, hum=hm[inh], spans=spans)
+    hit = (h >= 0)
+    hit[hit] = inh[h[hit]]
+    dist = len(np.unique(h[hit]))
+    ns = max(len(sel), 1)
+    return dict(f1=2 * dist / (len(sel) + nh), sel=sel, hum=hm[inh], spans=spans, prec=hit.sum() / ns, rec=dist / nh,
+                dup=(hit.sum() - dist) / ns, nph=len(spans), n_short=n_short, short_notes=short_notes, nh=nh)
+
+
+def dedupe_auc(s, lv, p, mode):
+    """per-song AUC after keeping, per human note, one positive candidate (own: best score; nearest: closest in time) and dropping the other positives."""
+    t, h, hm = s["t"], s["hidx"][lv], np.asarray(s["human"][lv], float)
+    pos = h >= 0
+    keep = ~pos
+    for u in np.unique(h[pos]):
+        c = np.where(h == u)[0]
+        keep[c[np.argmax(p[c]) if mode == "own" else np.argmin(np.abs(t[c] - hm[u]))]] = True
+    return auc_fast(p[keep], pos[keep].astype(int)), int(pos.sum() - (pos & keep).sum()), int(pos.sum())
 
 
 def beats_in(s, spans):
@@ -217,6 +254,66 @@ def main():
                 "beat_gap_median_rel_os": round(float(np.nanmedian(gap(a))), 4), "beat_gap_median_raw_strength": round(float(np.nanmedian(gap(b))), 4)}
             print(bud, lv, "paired", out["paired_rel_os_minus_raw_strength"], flush=True)
             R["budgets"][bud][lv] = out
+        # ---- counting-artifact check (phrase budget): duplicates, greedy selection with a 70 ms exclusion, AUC with one positive per human note
+        chk = {}
+        res, hb = {}, np.full(m_, np.nan)
+        for mode in ("plain", "greedy"):
+            for vn in ("rel_os", "raw_strength"):
+                cols = {c: np.full(m_, np.nan) for c in ("f1", "bk", "prec", "rec", "dup", "n_short", "nph", "short_notes", "nh", "nsel")}
+                for k, (_, s) in enumerate(sl):
+                    r = sel_phrase(s, lv, scores[vn][sid == k], k, greedy=(mode == "greedy"))
+                    if r is None:
+                        continue
+                    for c in ("f1", "prec", "rec", "dup", "n_short", "nph", "short_notes", "nh"):
+                        cols[c][k] = r[c]
+                    cols["nsel"][k] = len(r["sel"])
+                    if s["ph"]["timing"]["snapped"]:
+                        b = beats_in(s, r["spans"])
+                        cols["bk"][k] = beats_arr(b, s["t"][r["sel"]])
+                        if mode == "plain" and vn == "rel_os":
+                            hb[k] = beats_arr(b, r["hum"])
+                res[(mode, vn)] = cols
+        gap = lambda c: np.abs(c["bk"] - hb)
+        for mode in ("plain", "greedy"):
+            o = {}
+            for vn in ("rel_os", "raw_strength"):
+                c = res[(mode, vn)]
+                o[vn] = {"f1_median": round(float(np.nanmedian(c["f1"])), 4), "f1_mean": round(float(np.nanmean(c["f1"])), 4),
+                         "beats_kept_mean": round(float(np.nanmean(c["bk"])), 4),
+                         "precision_mean": round(float(np.nanmean(c["prec"])), 4), "recall_mean": round(float(np.nanmean(c["rec"])), 4),
+                         "duplicate_share_mean": round(float(np.nanmean(c["dup"])), 4),
+                         "duplicate_share_pooled": round(float(np.nansum(c["dup"] * c["nsel"]) / np.nansum(c["nsel"])), 4),
+                         "picks": int(np.nansum(c["nsel"])), "human_notes": int(np.nansum(c["nh"])),
+                         "phrases": int(np.nansum(c["nph"])), "phrases_short": int(np.nansum(c["n_short"])),
+                         "notes_short": int(np.nansum(c["short_notes"]))}
+            a, b = res[(mode, "rel_os")], res[(mode, "raw_strength")]
+            o["paired_rel_os_minus_raw_strength"] = {"f1": boot(a["f1"] - b["f1"]), "beat_gap": boot(gap(a) - gap(b))}
+            o["human_beats_kept_mean"] = round(float(np.nanmean(hb)), 4)
+            chk[mode] = o
+            print("check", lv, mode, json.dumps(o), flush=True)
+        auc = {}
+        for vn in ("rel_os", "raw_strength"):
+            for mode in ("all", "own", "nearest"):
+                v, dropped, npos = np.full(m_, np.nan), 0, 0
+                for k, (_, s) in enumerate(sl):
+                    pk = scores[vn][sid == k]
+                    if mode == "all":
+                        v[k] = auc_fast(pk, s["label"][lv])
+                    else:
+                        v[k], d_, n_ = dedupe_auc(s, lv, pk, mode)
+                        dropped += d_
+                        npos += n_
+                auc[(vn, mode)] = v
+                o = {"auc_mean": round(float(np.nanmean(v)), 4), "auc_median": round(float(np.nanmedian(v)), 4)}
+                if mode != "all":
+                    o.update(positives=npos, positives_dropped=dropped, dropped_share=round(dropped / npos, 4))
+                chk[f"auc_{vn}_{mode}"] = o
+        for mode in ("all", "own", "nearest"):
+            chk[f"auc_gap_rel_os_minus_raw_{mode}"] = boot(auc[("rel_os", mode)] - auc[("raw_strength", mode)])
+        for kk, vv in chk.items():
+            if kk.startswith("auc"):
+                print("check", lv, kk, json.dumps(vv), flush=True)
+        R.setdefault("check", {})[lv] = chk
     json.dump(R, open(OUT, "w"), indent=1)
 
 

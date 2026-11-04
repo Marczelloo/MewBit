@@ -10,8 +10,261 @@
   "d_grid"
  ],
  "model": "sklearn LogisticRegression(C=1, max_iter=400); score = intercept + sum(coef[i] * x[i]); probability = 1 / (1 + exp(-score)); rank candidates by score",
- "rank": "Every column is turned into a within-song rank before scoring. Columns with more than 2 distinct values in the song: average rank (ties get the mean of their ranks, 1-based) divided by the number of candidates n of that song, so the values lie in (0, 1]. Columns with at most 2 distinct values (the binary meter flags) stay raw. Same as common.rank_cols; scipy.stats.rankdata(method='average') / n.",
- "candidates": "30 ms clusters of Features v4 onsets (extract.candidates); label = a human note of that level within 35 ms",
+ "inputs": {
+  "rel_os": "librosa.onset.onset_strength (mel spectrogram, 22050 Hz, hop 256, n_fft 2048) divided by its uniform mean over 2 s (172 frames, edges repeated) plus 1e-6; then a maximum filter over 5 frames; sampled at the candidate time plus a per-song mel shift (extract.py build). The plugin has to supply it; Features v4 does not carry it.",
+  "m_beat": "1 if the candidate lies within 0.07 of a beat period of a grid beat, else 0.",
+  "m_half": "1 if within 0.07 of the half-beat position (and m_beat is 0), else 0.",
+  "m_quarter": "1 if within 0.07 of a quarter-beat position (0.25 or 0.75; and m_beat, m_half are 0), else 0.",
+  "m_other": "1 if none of m_beat, m_half, m_quarter, else 0.",
+  "m_down": "1 if m_beat is 1 and the nearer of the two surrounding beats lies within 2 ms of a downbeat of the grid, else 0. 0 everywhere when the grid has no downbeats.",
+  "d_grid": "distance to the nearest of the beat, half-beat and quarter-beat positions, as a fraction of the beat period (u = position in the beat in [0,1); min(u, 1-u, |u-0.5|, |u-0.25|, |u-0.75|)).",
+  "meter": "Position in the beat: i = last grid beat at or before the candidate (clipped to the second-to-last beat), u = (t - beats[i]) / (beats[i+1] - beats[i]) mod 1. Grid = ctx.timing.beats / .downbeats of the generator.",
+  "no_grid": "When the generator has no snapped grid (ctx.timing.snapped false) or fewer than 3 beats: m_other = 1 and every other meter column (m_beat, m_half, m_quarter, m_down, d_grid) = 0 for every candidate. 1 of the 80 train songs has no grid."
+ },
+ "rank": "Every column is turned into a within-song rank before scoring. Columns with more than 2 distinct values in the song: average rank (ties get the mean of their ranks, 1-based) divided by the number of candidates n of that song, so the values lie in (0, 1]. Columns with at most 2 distinct values (the binary meter flags, or a constant column) stay raw. Same as common.rank_cols; scipy.stats.rankdata(method='average') / n. The ranks are float32 in the fit; a port may use float64.",
+ "rank_example": {
+  "raw": [
+   3,
+   1,
+   3,
+   2,
+   5
+  ],
+  "ranked": [
+   0.7,
+   0.2,
+   0.7,
+   0.4,
+   1.0
+  ],
+  "binary_raw": [
+   0,
+   1,
+   1,
+   0,
+   0
+  ],
+  "binary_ranked": [
+   0,
+   1,
+   1,
+   0,
+   0
+  ],
+  "constant_raw": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "constant_ranked": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "meter_example": {
+  "beats_ms": [
+   0,
+   500,
+   1000,
+   1500,
+   2000,
+   2500
+  ],
+  "downbeats_ms": [
+   0,
+   2000
+  ],
+  "candidates": [
+   {
+    "t_ms": 0,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 1.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 125,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 1.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 250,
+    "m_beat": 0.0,
+    "m_half": 1.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 375,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 1.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 500,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 560,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.12
+   },
+   {
+    "t_ms": 1010,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.02
+   },
+   {
+    "t_ms": 700,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.1
+   },
+   {
+    "t_ms": 1750,
+    "m_beat": 0.0,
+    "m_half": 1.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 2000,
+    "m_beat": 1.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 0.0,
+    "m_down": 1.0,
+    "d_grid": 0.0
+   }
+  ],
+  "no_grid_candidates": [
+   {
+    "t_ms": 0,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 125,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 250,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 375,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 500,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 560,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 1010,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 700,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 1750,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   },
+   {
+    "t_ms": 2000,
+    "m_beat": 0.0,
+    "m_half": 0.0,
+    "m_quarter": 0.0,
+    "m_other": 1.0,
+    "m_down": 0.0,
+    "d_grid": 0.0
+   }
+  ]
+ },
+ "candidates": "30 ms clusters of Features v4 onsets (extract.candidates: an onset joins a cluster while it lies within 30 ms of the cluster's first onset; candidate time = the strongest onset of the cluster); label = a human note of that level within 35 ms",
  "train_songs": 80,
  "levels": {
   "easy": {
@@ -62,5 +315,213 @@
    ],
    "intercept": -1.468758
   }
+ },
+ "test_vector": {
+  "song": "1127488",
+  "n_candidates": 2663,
+  "columns": [
+   "rel_os",
+   "m_beat",
+   "m_half",
+   "m_quarter",
+   "m_other",
+   "m_down",
+   "d_grid"
+  ],
+  "note": "raw = the column values before ranking, in 'features' order; ranked = the values the model sees (rank percentiles within this song of all n_candidates candidates, binary flags raw); score = intercept + coef . ranked from the rounded coefficients and rounded ranked values listed here, tolerance 1e-5.",
+  "candidates": [
+   {
+    "index": 200,
+    "t_ms": 11040.0,
+    "raw": [
+     1.650291,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ranked": [
+     0.619226,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.086557
+    ],
+    "score": {
+     "easy": -1.282673,
+     "normal": 0.520315,
+     "hard": 1.881709
+    },
+    "probability": {
+     "easy": 0.217096,
+     "normal": 0.627221,
+     "hard": 0.867807
+    }
+   },
+   {
+    "index": 201,
+    "t_ms": 11093.0,
+    "raw": [
+     1.649733,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.042969
+    ],
+    "ranked": [
+     0.618851,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.537552
+    ],
+    "score": {
+     "easy": -3.100569,
+     "normal": -1.767377,
+     "hard": -0.018972
+    },
+    "probability": {
+     "easy": 0.043084,
+     "normal": 0.145869,
+     "hard": 0.495257
+    }
+   },
+   {
+    "index": 202,
+    "t_ms": 11125.0,
+    "raw": [
+     1.700064,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.082031
+    ],
+    "ranked": [
+     0.641382,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.713105
+    ],
+    "score": {
+     "easy": -1.324774,
+     "normal": -0.59856,
+     "hard": 0.127338
+    },
+    "probability": {
+     "easy": 0.210025,
+     "normal": 0.354673,
+     "hard": 0.531792
+    }
+   },
+   {
+    "index": 203,
+    "t_ms": 11168.0,
+    "raw": [
+     0.670233,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "ranked": [
+     0.04356,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.086557
+    ],
+    "score": {
+     "easy": -2.683687,
+     "normal": -1.985985,
+     "hard": -0.94783
+    },
+    "probability": {
+     "easy": 0.063943,
+     "normal": 0.120682,
+     "hard": 0.279321
+    }
+   },
+   {
+    "index": 208,
+    "t_ms": 11467.0,
+    "raw": [
+     0.877644,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ranked": [
+     0.169733,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.086557
+    ],
+    "score": {
+     "easy": -2.55368,
+     "normal": -1.642931,
+     "hard": -0.552133
+    },
+    "probability": {
+     "easy": 0.07218,
+     "normal": 0.162067,
+     "hard": 0.36537
+    }
+   },
+   {
+    "index": 513,
+    "t_ms": 28469.0,
+    "raw": [
+     10.648731,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ranked": [
+     1.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.086557
+    ],
+    "score": {
+     "easy": 1.775876,
+     "normal": 2.852461,
+     "hard": 3.615452
+    },
+    "probability": {
+     "easy": 0.855187,
+     "normal": 0.945446,
+     "hard": 0.9738
+    }
+   }
+  ]
  }
 }
