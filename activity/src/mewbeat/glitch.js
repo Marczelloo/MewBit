@@ -16,7 +16,7 @@ const PAGE_BURSTS = [
   { from: 1000, to: 1320, peak: 1 },
   { from: 1320, to: 1500, peak: 0.5 },
 ];
-// The kicks sit on the two hard drawing swaps of the emerge pose (frames 9 and 15 at 12 fps), which hides them.
+// Two kicks while she climbs out of the rift.
 const SPRITE_BURSTS = [
   { from: 1300, to: 1620, peak: 0.7 },
   { from: 2000, to: 2110, peak: 0.8 },

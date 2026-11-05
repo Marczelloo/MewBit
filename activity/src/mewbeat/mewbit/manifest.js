@@ -16,32 +16,30 @@ function run(count, from) {
   return from === undefined ? up : [...up, ...up.slice(from - 1, -1).reverse()];
 }
 
-// Poses a screen shows play at 12 fps, on twos like anime; the tempo comes from the in-betweens per move.
-const TWOS = 12;
-
+// Most poses play at 24 fps; the calm loops run slower so they breathe instead of hurrying.
 export const MEWBIT_POSES = {
-  neutral: pose("neutral", "game", [1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 8, 9, 10, 11, 12, 13, 12, 11, 10, 9, 8], TWOS),
-  vibe1: pose("vibe1", "game", run(13, 2), TWOS, { bubble: "nyaa~!" }),
-  vibe2: pose("vibe2", "game", run(16), TWOS, { bubble: "wooo!!" }),
-  vibe3: pose("vibe3", "game", run(12), TWOS, { bubble: "SUGOI!!" }),
+  neutral: pose("neutral", "game", run(64), 16),
+  vibe1: pose("vibe1", "game", run(64), 24, { bubble: "nyaa~!" }),
+  vibe2: pose("vibe2", "game", run(64), 24, { bubble: "wooo!!" }),
+  vibe3: pose("vibe3", "game", run(48), 24, { bubble: "SUGOI!!" }),
   // These three fit MISS_POSE_MS, CRUSHED_POSE_MS and MILESTONE_POSE_MS in useMewbeatGame.js.
-  miss: pose("miss", "game", run(7), TWOS, { hold: true, bubble: "eep!" }),
+  miss: pose("miss", "game", run(14), 24, { hold: true, bubble: "eep!" }),
   crushed: pose("crushed", "game", run(28), 24, { hold: true, bubble: "nyoo… ;-;" }),
-  milestone: pose("milestone", "game", run(10), TWOS, { hold: true }),
-  fever: pose("fever", "game", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 11, 12, 13, 14, 15], TWOS, { bubble: "FEVER!!! ✦" }),
-  charting: pose("charting", "game", run(13, 2), TWOS, { bubble: "charting…" }),
+  milestone: pose("milestone", "game", run(21), 24, { hold: true }),
+  fever: pose("fever", "game", run(48), 24, { bubble: "FEVER!!! ✦" }),
+  charting: pose("charting", "game", run(48), 12, { bubble: "charting…" }),
   // Climbs out of the unlock glitch; its last frame is the first of reveal.
-  emerge: pose("emerge", "unlock", run(19), TWOS, { hold: true }),
-  reveal: pose("reveal", "unlock", run(13), TWOS, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
+  emerge: pose("emerge", "unlock", run(38), 24, { hold: true }),
+  reveal: pose("reveal", "unlock", run(30), 24, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
   // Lobby poses from the design spec: the room lobby shows stretch/adjust while idle, peek before a round,
   // hype on the countdown digits and go on GO.
-  stretch: pose("stretch", "lobby", [1, 2, 3, 2, 4], 2.5),
-  adjust: pose("adjust", "lobby", [1, 2, 3], 3),
-  peek: pose("peek", "lobby", [1, 2, 3, 2], 3),
-  hype: pose("hype", "lobby", [1, 2, 3, 4], 7),
-  go: pose("go", "lobby", [1, 2, 3], 5, { hold: true, bubble: "nyaa~ ✦" }),
-  cheer: pose("cheer", "results", [1, 2, 3, 2, 4], 5),
-  okay: pose("okay", "results", [1, 2, 3], 2.5),
-  sad: pose("sad", "results", [1, 2, 3], 2.5),
-  newbest: pose("newbest", "results", [1, 2, 3, 4], 4, { hold: true }),
+  stretch: pose("stretch", "lobby", run(64), 16),
+  adjust: pose("adjust", "lobby", run(48), 16),
+  peek: pose("peek", "lobby", run(48), 16),
+  hype: pose("hype", "lobby", run(32), 24),
+  go: pose("go", "lobby", run(22), 24, { hold: true, bubble: "nyaa~ ✦" }),
+  cheer: pose("cheer", "results", run(32), 24),
+  okay: pose("okay", "results", run(48), 12),
+  sad: pose("sad", "results", run(48), 12),
+  newbest: pose("newbest", "results", run(26), 24, { hold: true }),
 };
