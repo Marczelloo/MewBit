@@ -139,9 +139,29 @@ describe("mewbeat channel scores", () => {
         ranked: true,
         mode: "solo",
         guildId: "g1",
+        chartVersion: VERSION,
         at: undefined,
       },
     );
+  });
+
+  it("records the version of the chart that was played, flags included", async () => {
+    const flagged = `${VERSION}-holds-lead`;
+    const { channel, historyStore } = setup({ charts: makeCharts({ version: flagged }) });
+    await submit(channel, submitMessage({ chartVersion: flagged }));
+    assert.strictEqual(historyStore.recent("ann", 1)[0].chartVersion, flagged);
+  });
+
+  it("keeps reading history from before the chart version was recorded", async () => {
+    const file = path.join(dir, "history.json");
+    const old = { audioKey: KEY, title: "Old", difficulty: "hard", accuracy: 80, grade: "B", mode: "solo", guildId: "g1", at: 5 };
+    fs.writeFileSync(file, JSON.stringify({ users: { ann: [old] } }));
+    const { channel, historyStore } = setup({ charts: makeCharts() });
+    assert.strictEqual("chartVersion" in historyStore.recent("ann", 1)[0], false);
+    await submit(channel, submitMessage());
+    assert.deepStrictEqual(historyStore.recent("ann", 5).map((round) => round.chartVersion), [VERSION, undefined]);
+    const reply = await submit(channel, { type: "mewbeat_played", id: "p", scope: "server", limit: 5 });
+    assert.strictEqual(reply.tracks.length, 1);
   });
 
   it("keeps the best and reports a worse run as no new best", async () => {

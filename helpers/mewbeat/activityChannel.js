@@ -450,6 +450,7 @@ function createMewbeatChannel({
         ranked,
         mode: MODES.includes(mode) ? mode : "live",
         guildId,
+        chartVersion: stored.version,
       });
     }
 

@@ -44,6 +44,7 @@ let C = null; // chart data (or {unusable:true})
 let level = "normal";
 let snapVer = "";
 let snapData = null; // {notes} | {missing:true} | {loading:true}
+let roundIx = -1; // the picked round of a played song
 let sel = null; // {kind:"note",id} | {kind:"phrase",index} | {kind:"human",row,n}
 let filter = null; // {stage, rule?}
 let loop = null;
@@ -322,7 +323,7 @@ async function loadSong(id, { lv = level, pos = 0 } = {}) {
   audioAbort?.abort();
   player.destroy();
   peaks = null;
-  D = null; C = null; sel = null; snapData = null;
+  D = null; C = null; sel = null; snapData = null; roundIx = -1;
   setLoop(null);
   level = lv;
   syncLevelButtons();
@@ -467,6 +468,21 @@ async function setLevel(lv) {
   await Promise.all([loadChart(), loadSnapshot()]);
 }
 
+// A round of a played song: its level, and the chart it was played on when that version is stored.
+async function pickRound(i) {
+  const round = D?.song.rounds?.[i];
+  if (!round || !LEVELS.includes(round.difficulty)) return;
+  roundIx = i;
+  const label = round.chartVersion == null ? "" : `v${round.chartVersion}`;
+  snapVer = D.snapshots.includes(label) ? label : "";
+  el.snapSel.value = snapVer;
+  if (label && !snapVer) flash(`Wersja ${label} nie jest zachowana, pokazuję tylko chart z bieżącego generatora.`, 6000);
+  if (sel?.kind === "human" && sel.row === "snap") sel = null;
+  if (round.difficulty === level) await loadSnapshot();
+  else await setLevel(round.difficulty);
+  renderPanel(true);
+}
+
 // ---------- selection ----------
 function select(s) {
   sel = s;
@@ -485,6 +501,7 @@ function renderPanel(keepScroll = false) {
   else if (sel?.kind === "human") html = UI.plainNoteHtml({ ...c, C: usable ? C : null }, sel);
   else { sel = sel?.kind === "note" ? null : sel; html = UI.summaryHtml(c); }
   if (sel) html = `<div class="actions" style="padding-top:8px"><button class="mini" data-act="clearSel">← podsumowanie (Esc)</button></div>` + html;
+  else if (D.song.rounds?.length) html = UI.roundsHtml(D.song.rounds, D.snapshots, roundIx) + html;
   el.panel.innerHTML = html;
   el.panel.scrollTop = keepScroll ? st : 0;
   lastWin = "";
@@ -1224,6 +1241,7 @@ el.panel.addEventListener("click", (e) => {
       if (p && (p.startMs < tA || p.startMs > tB)) centerOn(p.startMs, 0.15);
       break;
     }
+    case "round": pickRound(Number(d.i)); break;
     case "goto": centerOn(Number(d.t), 0.15); break;
     case "play": {
       seek(Math.max(0, Number(d.t) - 800));
@@ -1268,11 +1286,15 @@ el.filterChip.addEventListener("click", () => { filter = null; renderPanel(true)
 
 // ---------- song picker ----------
 const isPreview = (s) => s.id.startsWith("preview:");
+const isPlayed = (s) => s.id.startsWith("played:");
+const roundsWord = (n) => (n === 1 ? "runda" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "rundy" : "rund");
 function renderSongList() {
   const q = el.songFilter.value.trim().toLowerCase();
   const dist = (s) => s.distance?.[level];
   const list = S.songs.filter((s) => !q || `${s.artist} ${s.title} ${s.creator ?? ""}`.toLowerCase().includes(q));
+  // Played songs stay on top in the server's order, last played first, whatever the sort.
   list.sort((a, b) => {
+    if (isPlayed(a) || isPlayed(b)) return isPlayed(a) === isPlayed(b) ? 0 : isPlayed(a) ? -1 : 1;
     if (isPreview(a) !== isPreview(b)) return isPreview(a) ? 1 : -1;
     if (S.sort === "dist") {
       const da = dist(a); const db = dist(b);
@@ -1283,10 +1305,13 @@ function renderSongList() {
   });
   S.shown = list;
   S.hi = clamp(S.hi, 0, Math.max(0, list.length - 1));
+  const nPlayed = list.filter(isPlayed).length;
   el.songList.innerHTML = list
     .map((s, i) => {
       const d = dist(s);
-      return `<li data-id="${esc(s.id)}" class="${s.id === D?.id ? "cur" : ""} ${i === S.hi ? "hi" : ""}"><span class="nm">${esc(s.artist)} — ${esc(s.title)}</span><span class="tg">${isPreview(s) ? "preview" : esc(s.genre ?? "")}</span><span class="ds">${d != null ? d.toFixed(2) : "–"}</span></li>`;
+      const head = nPlayed && (i === 0 || i === nPlayed) ? `<li class="grp">${i === 0 ? "Zagrane" : "Pozostałe"}</li>` : "";
+      const tag = isPlayed(s) ? `<span class="tg rounds">${s.rounds.length} ${roundsWord(s.rounds.length)}</span>` : `<span class="tg">${isPreview(s) ? "preview" : esc(s.genre ?? "")}</span>`;
+      return `${head}<li data-id="${esc(s.id)}" class="${s.id === D?.id ? "cur" : ""} ${i === S.hi ? "hi" : ""}"><span class="nm">${esc(s.artist)} — ${esc(s.title)}</span>${tag}<span class="ds">${d != null ? d.toFixed(2) : "–"}</span></li>`;
     })
     .join("");
   $("#sortSeg").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.sort === S.sort));
@@ -1322,7 +1347,7 @@ el.songFilter.addEventListener("keydown", (e) => {
   else if (e.key === "Escape") { e.preventDefault(); closePop(); }
 });
 el.songList.addEventListener("click", (e) => {
-  const li = e.target.closest("li");
+  const li = e.target.closest("li[data-id]");
   if (li) pickSong(li.dataset.id);
 });
 $("#sortSeg").addEventListener("click", (e) => {

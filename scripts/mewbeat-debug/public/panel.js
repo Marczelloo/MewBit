@@ -236,6 +236,22 @@ function countList(map, nameFn) {
     .join("");
 }
 
+const dateStr = (at) => (at == null ? "–" : new Date(at).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
+
+// The rounds somebody played of a song, newest first; a click picks the level and, if it is stored, the chart that was played.
+export function roundsHtml(rounds, snapshots, picked) {
+  const rows = rounds
+    .map((r, i) => {
+      const label = r.chartVersion == null ? null : `v${r.chartVersion}`;
+      const version = label == null ? `<span class="dim">nieznana</span>` : `${esc(label)}${snapshots.includes(label) ? "" : ` <span class="dim">(nie zachowana)</span>`}`;
+      const acc = r.accuracy == null ? "–" : `${Number(r.accuracy).toFixed(1)}%`;
+      return `<button class="rowbtn round ${i === picked ? "on" : ""}" data-act="round" data-i="${i}"><span class="tnum">${dateStr(r.at)}</span><span>${esc(r.difficulty)}</span><span class="tnum">${acc}</span><span>${esc(r.grade ?? "–")}</span><span>${version}</span></button>`;
+    })
+    .join("");
+  const head = `<div class="rowbtn round head dim"><span>data</span><span>poziom</span><span>celność</span><span>ocena</span><span>wersja</span></div>`;
+  return section(`Zagrane rundy (${rounds.length})`, head + rows);
+}
+
 export function summaryHtml(c) {
   const { C, D, song, level, human } = c;
   let h = `<div class="title">Podsumowanie · ${esc(level)}</div>`;

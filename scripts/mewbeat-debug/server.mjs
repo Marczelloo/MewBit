@@ -4,7 +4,11 @@
 //   node scripts/mewbeat-debug/server.mjs   (then open http://localhost:5180)
 //
 // Charts are made live from the code in helpers/mewbeat/charts, so an edit there shows on the next load, no restart.
-import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+// The songs the bot's players played come from helpers/data/mewbeat (history, features, audio) and show first. The bot
+// deletes the charts of older generator versions, so the chart files it made are copied to .mewbeat-debug/played-charts
+// once seen and offered as snapshots.
+import { createHash } from "node:crypto";
+import { copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, extname, join, resolve, sep } from "node:path";
@@ -20,6 +24,14 @@ const CHARTS = join(REPO, "helpers/mewbeat/charts") + sep;
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const SNAPSHOTS = ["v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v29"];
 const PREVIEW_PREFIX = "preview:";
+const PLAYED_PREFIX = "played:";
+const BOT_DATA = join(REPO, "helpers/data/mewbeat");
+const BOT_CHARTS = join(BOT_DATA, "charts");
+const PLAYED_CHARTS = join(REPO, ".mewbeat-debug/played-charts");
+const SHA1 = /^[0-9a-f]{40}$/;
+// <sha1 of the audio key>.<label>.json, the label being the version, then the generator flags: v31 or v31-density-holds.
+const CHART_FILE = /^([0-9a-f]{40})\.(v\d+(?:-[A-Za-z0-9_-]+)?)\.json$/;
+const SNAPSHOT_LABEL = /^v\d+(?:-[A-Za-z0-9_-]+)?$/;
 
 const require = createRequire(import.meta.url);
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".m4a": "audio/mp4" };
@@ -50,22 +62,96 @@ function previewSongs() {
     });
 }
 
+// Songs somebody played, last played first, as far as their features and audio are still on disk. A round says when,
+// at what level and how it went, never who or where: this page is reachable through a public tunnel.
+function playedSongs() {
+  const file = join(BOT_DATA, "history.json");
+  if (!existsSync(file)) return [];
+  let users;
+  try {
+    users = readJson(file)?.users;
+  } catch {
+    return [];
+  }
+  const bySha = new Map();
+  for (const entries of Object.values(users ?? {})) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (typeof entry?.audioKey !== "string" || !entry.audioKey) continue;
+      const sha = createHash("sha1").update(entry.audioKey).digest("hex");
+      if (!bySha.has(sha)) bySha.set(sha, []);
+      bySha.get(sha).push(entry);
+    }
+  }
+  const songs = [];
+  for (const [sha, entries] of bySha) {
+    if (!existsSync(join(BOT_DATA, "features", `${sha}.json`)) || !existsSync(join(BOT_DATA, "audio", `${sha}.ogg`))) continue;
+    entries.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+    const rounds = entries.map((e) => ({
+      at: e.at ?? null,
+      difficulty: e.difficulty,
+      accuracy: e.accuracy ?? null,
+      grade: e.grade ?? null,
+      mode: e.mode ?? null,
+      chartVersion: typeof e.chartVersion === "number" || (typeof e.chartVersion === "string" && e.chartVersion) ? e.chartVersion : null,
+    }));
+    songs.push({
+      id: `${PLAYED_PREFIX}${sha}`, artist: entries[0].artist ?? "", title: entries[0].title ?? sha, creator: null, genre: "played", humanBpm: null, algoBpm: null, onHumanBeat: null, phase: null,
+      humanLevels: [], distance: { easy: null, normal: null, hard: null }, rounds,
+    });
+  }
+  return songs.sort((a, b) => (b.rounds[0].at ?? 0) - (a.rounds[0].at ?? 0));
+}
+
 function allSongs() {
   const train = existsSync(join(DATA, "songs.json")) ? readJson(join(DATA, "songs.json")) : [];
-  return [...train, ...previewSongs()];
+  return [...playedSongs(), ...train, ...previewSongs()];
 }
 
 const isPreview = (id) => id.startsWith(PREVIEW_PREFIX);
 const previewSlug = (id) => id.slice(PREVIEW_PREFIX.length);
+const isPlayed = (id) => id.startsWith(PLAYED_PREFIX);
+const playedSha = (id) => (isPlayed(id) && SHA1.test(id.slice(PLAYED_PREFIX.length)) ? id.slice(PLAYED_PREFIX.length) : null);
+
+// The bot deletes the charts of other generator versions when it runs, so every chart file is copied once, when seen.
+// The bot writes a file whole (renamed into place) and so is it copied, so a half copy is never read.
+function archivePlayedCharts() {
+  if (!existsSync(BOT_CHARTS)) return 0;
+  mkdirSync(PLAYED_CHARTS, { recursive: true });
+  let copied = 0;
+  for (const name of readdirSync(BOT_CHARTS)) {
+    if (!CHART_FILE.test(name) || existsSync(join(PLAYED_CHARTS, name))) continue;
+    const temp = join(PLAYED_CHARTS, `${name}.tmp`);
+    try {
+      copyFileSync(join(BOT_CHARTS, name), temp);
+      renameSync(temp, join(PLAYED_CHARTS, name));
+      copied += 1;
+    } catch {
+      rmSync(temp, { force: true }); // swept by the bot while copying: nothing left to keep
+    }
+  }
+  return copied;
+}
+
+// The stored charts of a song, one label per version and flags: the newest version first, then by the flags.
+function playedSnapshots(sha) {
+  if (!existsSync(PLAYED_CHARTS)) return [];
+  const labels = readdirSync(PLAYED_CHARTS).flatMap((name) => {
+    const match = CHART_FILE.exec(name);
+    return match && match[1] === sha ? [match[2]] : [];
+  });
+  const version = (label) => Number(/^v(\d+)/.exec(label)[1]);
+  return labels.sort((a, b) => version(b) - version(a) || a.localeCompare(b));
+}
 
 function featuresOf(id) {
   if (isPreview(id)) return readJson(join(PREVIEW, `${previewSlug(id)}.json`)).features;
+  if (isPlayed(id)) return readJson(join(BOT_DATA, "features", `${playedSha(id)}.json`));
   return readJson(join(DATA, "features", `${id}.json`));
 }
 
 function humanOf(id) {
   const human = {};
-  if (isPreview(id)) return human;
+  if (isPreview(id) || isPlayed(id)) return human;
   for (const level of LEVELS) {
     const path = join(DATA, "human", level, `${id}.json`);
     if (existsSync(path)) human[level] = readJson(path);
@@ -76,6 +162,7 @@ function humanOf(id) {
 function songPayload(id) {
   const song = allSongs().find((s) => s.id === id);
   if (!song) return null;
+  if (isPlayed(id)) archivePlayedCharts();
   const f = featuresOf(id);
   return {
     song,
@@ -94,7 +181,7 @@ function songPayload(id) {
       phrases: f.phrases ?? null,
     },
     human: humanOf(id),
-    snapshots: isPreview(id) ? [] : SNAPSHOTS,
+    snapshots: isPreview(id) ? [] : isPlayed(id) ? playedSnapshots(playedSha(id)) : SNAPSHOTS,
   };
 }
 
@@ -146,7 +233,7 @@ function sendFile(req, res, path) {
 function audioPath(id) {
   const song = allSongs().find((s) => s.id === id);
   if (!song) return null;
-  const path = isPreview(id) ? join(PREVIEW, song.audio) : join(DATA, "audio", song.audio);
+  const path = isPreview(id) ? join(PREVIEW, song.audio) : isPlayed(id) ? join(BOT_DATA, "audio", `${playedSha(id)}.ogg`) : join(DATA, "audio", song.audio);
   return existsSync(path) ? path : null;
 }
 
@@ -174,12 +261,23 @@ function listeningRoute(res, parts) {
   return notFound(res);
 }
 
+// A stored chart of a played song: only by a validated label, only from the archive folder.
+function playedSnapshotRoute(res, sha, level, label) {
+  const path = join(PLAYED_CHARTS, `${sha}.${label}.json`);
+  if (!SNAPSHOT_LABEL.test(label) || !path.startsWith(PLAYED_CHARTS + sep) || !existsSync(path)) return notFound(res, "no such snapshot");
+  const notes = readJson(path)?.[level]?.notes;
+  return Array.isArray(notes) ? sendJson(res, notes) : notFound(res, "no such snapshot");
+}
+
 function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "api") {
     if (parts[1] === "listening") return listeningRoute(res, parts);
-    if (parts[1] === "songs") return sendJson(res, allSongs());
+    if (parts[1] === "songs") {
+      archivePlayedCharts();
+      return sendJson(res, allSongs());
+    }
     if (parts[1] === "song" && parts[2]) {
       const payload = songPayload(parts[2]);
       return payload ? sendJson(res, payload) : notFound(res, "no such song");
@@ -188,6 +286,7 @@ function route(req, res) {
       if (!allSongs().some((s) => s.id === parts[2])) return notFound(res, "no such song");
       return sendJson(res, chartPayload(parts[2], parts[3]));
     }
+    if (parts[1] === "snapshot" && playedSha(parts[2] ?? "") && LEVELS.includes(parts[3])) return playedSnapshotRoute(res, playedSha(parts[2]), parts[3], parts[4] ?? "");
     if (parts[1] === "snapshot" && parts[2] && LEVELS.includes(parts[3]) && SNAPSHOTS.includes(parts[4])) {
       const path = join(DATA, "charts", parts[4], parts[3], `${parts[2]}.json`);
       return existsSync(path) ? sendJson(res, readJson(path)) : notFound(res, "no such snapshot");
@@ -202,6 +301,8 @@ function route(req, res) {
   if (!file.startsWith(PUBLIC + sep) || !existsSync(file) || !statSync(file).isFile()) return notFound(res);
   return sendFile(req, res, file);
 }
+
+console.log(`archived ${archivePlayedCharts()} new chart files from the bot`);
 
 createServer((req, res) => {
   try {

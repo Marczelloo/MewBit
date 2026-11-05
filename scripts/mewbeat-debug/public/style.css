@@ -165,12 +165,19 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0
 .rowbtn.on { background: #3a2f1a; color: var(--warn); }
 .rowbtn.sub2 { padding-left: 20px; color: var(--dim); }
 .rowbtn.sub2.on { color: var(--warn); }
+.rowbtn.round { display: grid; grid-template-columns: 92px 52px 56px 40px 1fr; gap: 6px; }
+.rowbtn.round.head { font-size: 11px; cursor: default; }
+.rowbtn.round.head:hover { background: none; }
+#songList li.grp { color: var(--dim); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; cursor: default; padding-top: 6px; }
+#songList li.grp:hover { background: none; }
+#songList .tg.rounds { width: 70px; }
 
 @media (max-width: 1279px) {
   body { min-width: 0; height: auto; }
   html, body { height: auto; }
   main { flex: none; }
   main { grid-template-columns: 1fr; }
+  #transport { position: sticky; top: 0; z-index: 10; } /* the song time stays on screen, for screenshots */
   #canvasWrap { height: 70vh; flex: none; }
   #panel { border-left: 0; border-top: 1px solid var(--line); overflow-y: visible; }
 }

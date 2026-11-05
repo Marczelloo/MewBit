@@ -6,7 +6,8 @@ const DEFAULT_FILE = path.join(__dirname, "..", "data", "mewbeat", "history.json
 
 // The last rounds each user played, oldest first. File shape: { users: { [userId]: entry[] } }.
 // An entry is { audioKey, uri, source, title, artist, artworkUrl, durationMs, difficulty, score, accuracy,
-// grade, ranked, mode, guildId, at }.
+// grade, ranked, mode, guildId, chartVersion, at }. chartVersion is the stored chart's version (a number, or a
+// string like "31-holds" with generator flags); rounds from before it was recorded have none.
 function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200, debounceMs = 2000 } = {}) {
   const disk = createDebouncedJson({ file, debounceMs });
   const loaded = disk.load();
