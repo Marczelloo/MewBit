@@ -9,6 +9,7 @@ import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
 import { createLiveSender } from "./liveSender.js";
+import { missPose } from "./missPose.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
 export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
@@ -20,9 +21,6 @@ function playHit(sounds, volume, choice) {
   return sounds?.play(name, volume, { level });
 }
 
-const MISS_POSE_MS = 600;
-const CRUSHED_POSE_MS = 1200;
-const CRUSH_COMBO = 25;
 const MILESTONE_POSE_MS = 900;
 const DIFFICULTY_IDS = ["easy", "normal", "hard", "hell"]; // same list as DIFFICULTIES in SongSelect.jsx
 const MISS_LOOKBACK_MS = 500; // misses keep falling past the line this long before the renderer drops them
@@ -445,8 +443,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           flashesRef.current.push({ lane: event.lane, judgement: event.judgement, at: heardMs });
           judgementRef.current = { text: event.judgement.toUpperCase(), kind: event.judgement, id: ++judgementIdRef.current };
         } else if (event.kind === "miss") {
-          crushedRef.current = comboRef.current >= CRUSH_COMBO;
-          missUntilRef.current = performance.now() + (crushedRef.current ? CRUSHED_POSE_MS : MISS_POSE_MS);
+          const reaction = missPose({ combo: comboRef.current, now: performance.now(), crushed: crushedRef.current, until: missUntilRef.current });
+          crushedRef.current = reaction.crushed;
+          missUntilRef.current = reaction.until;
           if (comboRef.current > COMBO_BREAK_OVER && cfgRef.current.sfx !== false && !runAutoplayRef.current && !runSpectatingRef.current && !runCalibrationRef.current) {
             soundsRef.current?.play("combobreak", cfgRef.current.sfxVolume, { level: COMBO_BREAK_LEVEL });
           }

@@ -3,6 +3,7 @@
 // so everything is aria-hidden and ignores the pointer. The look is driven by CSS variables set on
 // .mb-stage (--mb-vibe, --mb-pulse), see mewbeat.css.
 import { useEffect, useState } from "react";
+import { pickScene } from "./scenes.js";
 
 // URLs only, so a scene's images are fetched when it first shows. New art only needs a new folder.
 const FILES = import.meta.glob("./backdrop/*/*.webp", { eager: true, query: "?url", import: "default" });
@@ -16,10 +17,7 @@ const url = (scene, layer) => FILES[`./backdrop/${scene}/${layer}.webp`];
 
 function sceneFor(track) {
   if (FORCED_SCENE && SCENES.includes(FORCED_SCENE)) return FORCED_SCENE;
-  if (!track?.title) return null;
-  let hash = 0;
-  for (const char of `${track.title}|${track.artist ?? ""}`) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return SCENES[hash % SCENES.length];
+  return pickScene(SCENES, track);
 }
 
 function Layer({ scene, layer, name = "" }) {

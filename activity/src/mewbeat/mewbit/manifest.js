@@ -24,7 +24,7 @@ export const MEWBIT_POSES = {
   vibe1: pose("vibe1", "game", run(13, 2), TWOS, { bubble: "nyaa~!" }),
   vibe2: pose("vibe2", "game", run(16), TWOS, { bubble: "wooo!!" }),
   vibe3: pose("vibe3", "game", run(12), TWOS, { bubble: "SUGOI!!" }),
-  // These three fit MISS_POSE_MS, CRUSHED_POSE_MS and MILESTONE_POSE_MS in useMewbeatGame.js.
+  // These three fit MISS_POSE_MS and CRUSHED_POSE_MS in missPose.js and MILESTONE_POSE_MS in useMewbeatGame.js.
   miss: pose("miss", "game", run(7), TWOS, { hold: true, bubble: "eep!" }),
   crushed: pose("crushed", "game", run(28), 24, { hold: true, bubble: "nyoo… ;-;" }),
   milestone: pose("milestone", "game", run(10), TWOS, { hold: true }),
