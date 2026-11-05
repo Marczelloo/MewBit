@@ -8,7 +8,8 @@ const pinned = require("./fixtures/v26-notes.json");
 const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 // The charts of generator v26 as hashes (fixtures/v26-notes.json, taken before the levels were rewired): Easy and Hard
-// and Hell stay v26 for good, normalV26 is the Normal of v26.
+// and Hell stay v26 for good, normalV26 is the Normal of v26. Re-pinned once, for the song's first second: every hash
+// matched with the old one-second lead-in and only LEAD_IN_MS moved to 0.
 const FIXTURES = {
   plain120: () => makeFeatures({ bpm: 120, durationMs: 180000, energy: threeSectionEnergy }),
   plain90: () => makeFeatures({ bpm: 90, durationMs: 120000, energy: threeSectionEnergy }),

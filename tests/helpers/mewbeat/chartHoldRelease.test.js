@@ -153,8 +153,7 @@ describe("accentSections", () => {
     assert.equal(at(out, 4000).length, 1);
   });
 
-  it("skips the lead-in and silence", () => {
-    assert.deepEqual(accentSections([], [{ t: 500, rise: 2 }], normal, timing, loud), []);
+  it("skips silence", () => {
     assert.deepEqual(accentSections([], sections, normal, timing, { at: () => 0 }), []);
   });
 

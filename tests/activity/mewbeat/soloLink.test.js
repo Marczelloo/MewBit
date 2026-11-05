@@ -118,9 +118,10 @@ test("chartAccepted outside the ready stage does nothing", async () => {
   assert.equal(env.link.state().count, 2);
 });
 
-test("the count-in runs 3-2-1, then plays from 0 and goes to playing", async () => {
+test("the count-in runs 3-2-1, then plays from the silence before the song and goes to playing", async () => {
   const env = setup();
   await ready(env);
+  assert.equal(env.link.songClock.songTimeAt(0), -2000);
   env.link.chartAccepted();
   env.scheduler.advance(500);
   assert.equal(env.link.state().count, 2);
@@ -128,7 +129,7 @@ test("the count-in runs 3-2-1, then plays from 0 and goes to playing", async () 
   assert.equal(env.link.state().count, 1);
   env.scheduler.advance(500);
   assert.equal(env.plays.length, 1);
-  assert.equal(env.plays[0].fromMs, 0);
+  assert.equal(env.plays[0].fromMs, -2000);
   env.plays[0].resolve();
   await Promise.resolve();
   assert.equal(env.link.state().stage, "playing");

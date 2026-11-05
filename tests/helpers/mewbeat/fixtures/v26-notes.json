@@ -1,128 +1,128 @@
 {
   "plain120": {
     "easy": {
-      "count": 340,
-      "sha1": "d705bd10c8e04602b465329ef6a93ee981ff69be"
+      "count": 344,
+      "sha1": "eb36c37102630af67aa2f590772b8bfc364ae35e"
     },
     "normal": {
-      "count": 717,
-      "sha1": "caba7301621be6f6211e2d2760c963ec330d8058"
+      "count": 721,
+      "sha1": "7a9a05ac21bbf0031ae8db74f0e5b66b90daffa2"
     },
     "hard": {
-      "count": 1061,
-      "sha1": "d635d9455e6888e260b42c09de506fd7cd07384e"
+      "count": 1060,
+      "sha1": "628254ffbc194be6b7ffe627101fa60fee39161c"
     },
     "hell": {
-      "count": 1295,
-      "sha1": "fc45c43a61c034f32ce675f03986c082939a43c1"
+      "count": 1299,
+      "sha1": "a2b48e0b0ac5bc8ead02181ae15acf659e26ba66"
     }
   },
   "plain90": {
     "easy": {
-      "count": 216,
-      "sha1": "3271780923a5ab5c5d41a2d686c09ff6892e3f00"
+      "count": 220,
+      "sha1": "14f3ca5b2ac5970c3e06a72e65c1e0cc40e69f83"
     },
     "normal": {
-      "count": 441,
-      "sha1": "98a6c612bcdffc59124e7599aff4a9305737fa0c"
+      "count": 444,
+      "sha1": "d88f8678f3bdfa58ef544c49034e6c22dbfc5d75"
     },
     "hard": {
-      "count": 685,
-      "sha1": "eefddaf724bf12c03db267c6fafbe1d3dc39ecd4"
+      "count": 687,
+      "sha1": "92b5be1bb4e7a99f72dd6387295a73bd6903b975"
     },
     "hell": {
-      "count": 760,
-      "sha1": "82bd4b1fb5fcc4d05da00d8f1036990fa0202123"
+      "count": 763,
+      "sha1": "bfe69abde7d8cda07b25453478d8080f923047b8"
     }
   },
   "plain170": {
     "easy": {
-      "count": 342,
-      "sha1": "a027a9a3538cfd802dfa21d50af628d4c15b58fe"
+      "count": 343,
+      "sha1": "bf66f04d6eef3dade6c229d4c55e923c768ef3d0"
     },
     "normal": {
-      "count": 664,
-      "sha1": "960b7a25b974667fde0bdc8db8e575421c816f86"
+      "count": 667,
+      "sha1": "737219d04d6fc4f306af3fef59f1342bcb0b1519"
     },
     "hard": {
-      "count": 1070,
-      "sha1": "24d9f287e428e6a128e4947929920fafe277cac7"
+      "count": 1067,
+      "sha1": "375e01ac83c859fef867012489ef39499d2b551c"
     },
     "hell": {
-      "count": 1335,
-      "sha1": "6c5d6165c3045adfc5bae882aace0e3ce1488531"
+      "count": 1337,
+      "sha1": "4ddbb74a1f0ec1fd8cea63a3d05841083a75d866"
     }
   },
   "layered": {
     "easy": {
-      "count": 148,
-      "sha1": "9dc1d58ec2a5a588c5409377ed796b7d7bd21a0d"
+      "count": 144,
+      "sha1": "2e4f8fe8fc77e84fce949f80c437049ad7fdadad"
     },
     "normal": {
-      "count": 204,
-      "sha1": "06df930ac3cd610405d60f9bc41766e472413209"
+      "count": 223,
+      "sha1": "ddac4d8f805e629ab349fc582ca63393c839453a"
     },
     "hard": {
-      "count": 268,
-      "sha1": "1e692103b2bf8e0c897008ab1aeded5b07c9bc37"
+      "count": 303,
+      "sha1": "398c41550507f689e4277181221bd4e2a99ab210"
     },
     "hell": {
-      "count": 316,
-      "sha1": "5b7cb2a469fa3f201c456f813df37f8d866cbbf8"
+      "count": 351,
+      "sha1": "5559ee0fdebf38ce4334db015d4a19248437b956"
     }
   },
   "layeredHolds": {
     "easy": {
-      "count": 111,
-      "sha1": "58933a1f134ae4b39344bf718bbc37239a74f503"
+      "count": 94,
+      "sha1": "7a5d178f0a429c6103e03968481ce36b94b2496f"
     },
     "normal": {
-      "count": 276,
-      "sha1": "86d75c71a30a2b434e97c483267c182704d31e03"
+      "count": 309,
+      "sha1": "92e9a102b73e2f622337daa2ba2b45622d4115e7"
     },
     "hard": {
-      "count": 376,
-      "sha1": "ee62113a2454bdccfe9a5e9b7776c4576e106702"
+      "count": 419,
+      "sha1": "6a4e08281a3c0be8d4d0723d1892e7fb2c24fc43"
     },
     "hell": {
-      "count": 396,
-      "sha1": "3db828b6cbc9f6cdae4ba758b46d0ed6fdf86343"
+      "count": 429,
+      "sha1": "54b6eaaff0d195ba9f2ea85f356eb24d3275d578"
     }
   },
   "layeredSustain": {
     "easy": {
-      "count": 148,
-      "sha1": "62357b201bf5389bb9451c94bbff0fac610420f9"
+      "count": 154,
+      "sha1": "028e0a049c4c2db732f78bc46c605932699ce446"
     },
     "normal": {
-      "count": 197,
-      "sha1": "c75cab55ad738cbd286afa84a7f72ecbdfe84221"
+      "count": 227,
+      "sha1": "e66ccb6d548b5222de09f7481108984a6f7441e8"
     },
     "hard": {
-      "count": 252,
-      "sha1": "e56af49218c31a673f5455fee9fe914d8cb42966"
+      "count": 293,
+      "sha1": "1e8aadf57082af30e4ece8a4d4ab2dbe42b1b137"
     },
     "hell": {
-      "count": 351,
-      "sha1": "945e76e53e6b1f7ca8db46c873b5966b54d0013e"
+      "count": 425,
+      "sha1": "a381ab795e000a4ad81c3cd316c8935e03e92416"
     }
   },
   "layeredNoLead": {
     "easy": {
-      "count": 84,
-      "sha1": "764e0605a0c5602a94cbb84a9cdf84ab925fd8a2"
+      "count": 92,
+      "sha1": "b2bdbc92826c4d43eda44a5f3222cdf5ea116820"
     },
     "normal": {
-      "count": 150,
-      "sha1": "1dd347d4438435f58955bdce45b027c2d21a7c6c"
+      "count": 167,
+      "sha1": "60037b4f05a3a6a28e827f88f04194d2c56e78df"
     },
     "hard": {
-      "count": 270,
-      "sha1": "83fd0c0cc0c15f8efe41643d882a6340764a922c"
+      "count": 303,
+      "sha1": "505a3a9461a91d0476db6bf14471dd6062933890"
     },
     "hell": {
-      "count": 302,
-      "sha1": "941b18e64d69d76df466fbef8a83a3002169e800"
+      "count": 351,
+      "sha1": "d9d0907bd96cd986e7cd208de441a29ca8fba72b"
     }
   }
 }

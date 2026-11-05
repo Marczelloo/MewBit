@@ -179,6 +179,13 @@ test("songProgress: nothing before the song, a fraction while playing, full once
   assert.equal(songProgress(playing, {}, 0), 0);
 });
 
+test("songProgress starts after the silence before the song", () => {
+  const playing = room({ phase: "playing", current: track("c", "h", 100_000), startAt: 10_000, silenceMs: 2000 });
+  const mapping = { offsetMs: 0 };
+  assert.equal(songProgress(playing, mapping, 11_000), 0);
+  assert.equal(songProgress(playing, mapping, 37_000), 0.25);
+});
+
 test("nextCountdownSecond lands on the moment the digit changes, down to GO and no further", () => {
   assert.deepEqual(nextCountdownSecond(3500), { second: 3, inMs: 500 });
   assert.deepEqual(nextCountdownSecond(3000), { second: 2, inMs: 1000 });

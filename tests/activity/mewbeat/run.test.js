@@ -30,6 +30,28 @@ test("startSongMs skips every note before the lead-in", () => {
   assert.equal(snap.grade, null);
 });
 
+test("a run started in the silence before the song reaches every note, also one on the first sound", () => {
+  const run = createRun({ chart: { notes: [{ t: 0, lane: 1 }, { t: 500, lane: 2 }] }, startSongMs: -2000 });
+  const snap = run.snapshot(-2000);
+  assert.equal(snap.total, 2);
+  assert.equal(snap.skipped, 0);
+  assert.equal(run.press(1, 0).judgement, "perfect");
+});
+
+test("a run started on the opening does not report the notes it cannot reach as a skip", () => {
+  const notes = [{ t: 500, lane: 0 }, { t: 2000, lane: 1 }];
+  const snap = createRun({ chart: { notes }, startSongMs: 0 }).snapshot(0);
+  assert.equal(snap.total, 1);
+  assert.equal(snap.skipped, 0);
+});
+
+test("a run started later in the song reports what it skipped", () => {
+  const notes = [{ t: 500, lane: 0 }, { t: 2000, lane: 1 }, { t: 9000, lane: 2 }];
+  const snap = createRun({ chart: { notes }, startSongMs: 4500 }).snapshot(4500);
+  assert.equal(snap.total, 1);
+  assert.equal(snap.skipped, 2);
+});
+
 test("a positive offset shifts the press into heard time", () => {
   const run = createRun({ chart: chart(), startSongMs: 0, offsetMs: 100 });
   assert.equal(run.heardTime(2100), 2000);

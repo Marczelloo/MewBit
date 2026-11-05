@@ -11,6 +11,8 @@ const LOADING_MS = 20_000;
 const LOADING_LATE_MS = 120_000;
 // The quiet stretch between the last player loading and the first note.
 const ROUND_LEAD_MS = 3_000;
+// Silence added between that start and the song's first sound, so the first notes can lie on it.
+const SONG_SILENCE_MS = 2_000;
 // The first Ready opens this long a wait for the others...
 const READY_WINDOW_MS = 60_000;
 // ...and everyone being ready cuts it down to this.
@@ -74,6 +76,7 @@ function createRooms({
       round: room.round,
       endedAt: room.endedAt,
       startAt: room.startAt,
+      silenceMs: SONG_SILENCE_MS,
       nextAt: room.nextAt,
       finalCountdown: room.finalAt != null,
       results: room.results.map((entry) => ({ ...entry })),
@@ -267,7 +270,7 @@ function createRooms({
       room.phase = "playing";
       checkFinished(room);
     });
-    after(room, "end", ROUND_LEAD_MS + durationMs + RESULTS_GRACE_MS, ["countdown", "playing"], () => endRound(room));
+    after(room, "end", ROUND_LEAD_MS + SONG_SILENCE_MS + durationMs + RESULTS_GRACE_MS, ["countdown", "playing"], () => endRound(room));
   }
 
   // Everyone who loaded the song is expected to play it; players whose audio
@@ -521,6 +524,7 @@ module.exports = {
   RESULTS_GRACE_MS,
   LOADING_MS,
   ROUND_LEAD_MS,
+  SONG_SILENCE_MS,
   READY_WINDOW_MS,
   FINAL_COUNTDOWN_MS,
   INTERMISSION_MS,

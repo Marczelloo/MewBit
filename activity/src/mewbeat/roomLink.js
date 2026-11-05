@@ -4,7 +4,7 @@ import { createSoloClock } from "./soloLink.js";
 import { memberOf, roundActive, startPerfMs } from "./room.js";
 
 // The run starts this long before the audio is due, so the game is already "playing" when the first
-// sound comes out; the clock reads 0 until then.
+// sound comes out.
 const RESUME_LEAD_MS = 40;
 // A start that is already in the past plays from where the song would be now, plus the audio's own lead.
 const LATE_LEAD_MS = 60;
@@ -13,9 +13,9 @@ const IDLE_STATE = { stage: "idle", round: null, audioKey: null, error: null, pr
 
 // The link of a room round. Same surface as createSoloLink/createMewbeatLink, so useMewbeatGame runs
 // unchanged on it. It is driven by room snapshots (setRoom):
-//   loading   -> download + decode the song, anchor the game on a paused clock at 0 so it charts my
-//                difficulty; once the game took the chart, tell the server (mewbeat_room_loaded)
-//   countdown -> start the audio exactly at startAt, mapped onto the audio clock
+//   loading   -> download + decode the song, anchor the game on a paused clock before the song so it charts
+//                my difficulty; once the game took the chart, tell the server (mewbeat_room_loaded)
+//   countdown -> run the clock from startAt, mapped onto the audio clock; the song follows after room.silenceMs
 //   anything else (the round ended, I left, a new round) drops the run.
 // A spectator (or a player whose chart came too late) engages the same way but in any active phase, never
 // reports "loaded", and joins the audio wherever the song is: the game runs an autoplay chart for them.
@@ -90,7 +90,7 @@ export function createRoomLink({
       return;
     }
     if (mine !== token) return;
-    soloClock.set({ key: audioKey, paused: true, positionMs: 0, durationMs: loaded.durationMs });
+    soloClock.set({ key: audioKey, paused: true, positionMs: -(room.silenceMs ?? 0), durationMs: loaded.durationMs });
     setState({ stage: "ready" });
     emitAnchor("init");
   }
@@ -118,9 +118,11 @@ export function createRoomLink({
     send({ type: "mewbeat_room_loaded", id: `rl${++counter}`, audioKey: state.audioKey });
   }
 
-  // Sets the audio start for the engaged round's startAt and the run's resume a moment before it.
+  // Sets the audio start for the engaged round's startAt and the run's resume a moment before it. The
+  // round's clock starts at startAt with the silence before the song, so the sound itself comes after it.
   function schedule(room, receivedAt) {
     scheduled = true;
+    const silence = room.silenceMs ?? 0;
     const startPerf = startPerfMs(room.startAt, { offsetMs: serverClock.offsetMs(), serverNow: room.serverNow, receivedAtMs: receivedAt });
     if (startPerf == null) {
       scheduled = false;
@@ -130,7 +132,7 @@ export function createRoomLink({
     const nowPerf = now();
     setState({ stage: "countdown", startPerf, playedRound: room.round });
     const late = nowPerf >= startPerf - 5;
-    const fromMs = Math.max(0, nowPerf - startPerf) + LATE_LEAD_MS;
+    const fromMs = Math.max(0, nowPerf - startPerf) + LATE_LEAD_MS - silence;
     // A spectator who joins a song in progress: the paused clock reads where the song is now and the run
     // jumps there before it resumes, so the autoplay does not burst through everything it "missed".
     const catchUp = late && state.spectating;
@@ -138,7 +140,7 @@ export function createRoomLink({
       soloClock.set({ positionMs: fromMs });
       emitAnchor("snap");
     }
-    const play = late ? audio.play(fromMs) : audio.play(0, startPerf);
+    const play = late ? audio.play(fromMs) : audio.play(-silence, startPerf);
     Promise.resolve(play).then(null, () => {
       if (mine !== token) return;
       // Not retried on every snapshot: a spectator would otherwise re-engage the same round at once.
@@ -148,7 +150,7 @@ export function createRoomLink({
     const resume = () => {
       startTimer = null;
       if (mine !== token || state.stage !== "countdown") return;
-      soloClock.set(catchUp ? { paused: false } : { paused: false, positionMs: 0 });
+      soloClock.set(catchUp ? { paused: false } : { paused: false, positionMs: -silence });
       setState({ stage: "playing" });
       emitAnchor("resume");
     };

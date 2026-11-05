@@ -166,8 +166,8 @@ export function createSoloAudio({
   }
 
   // Starts (or restarts) playback at fromMs. With whenPerfMs the song position fromMs becomes audible at
-  // that perf time (rooms start together); songTimeAt is negative until then. Rejects when the context
-  // cannot run, so a run is never left silent.
+  // that perf time (rooms start together); songTimeAt is negative until then. A negative fromMs is silence
+  // before the song, the clock runs through it. Rejects when the context cannot run, so a run is never left silent.
   async function play(fromMs = 0, whenPerfMs = null) {
     if (!buffer) throw new Error("No song loaded.");
     const c = context();
@@ -179,7 +179,7 @@ export function createSoloAudio({
       if (seq !== playSeq) return;
       if (c.state !== "running") throw new Error("Audio is blocked. Click Play to allow sound.");
     }
-    const from = Math.min(Math.max(0, fromMs), durationMs());
+    const from = Math.min(fromMs, durationMs());
     const node = c.createBufferSource();
     node.buffer = buffer;
     node.connect(gain);
@@ -217,7 +217,7 @@ export function createSoloAudio({
     playSeq += 1;
     if (!started) return 0;
     if (pausedAtMs === null) {
-      pausedAtMs = Math.min(Math.max(0, positionMs()), durationMs());
+      pausedAtMs = Math.min(positionMs(), durationMs());
       dropSource();
     }
     return pausedAtMs;

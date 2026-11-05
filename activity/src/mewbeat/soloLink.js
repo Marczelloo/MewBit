@@ -4,16 +4,20 @@ import { createServerClock } from "./clock.js";
 const PREPARE_TIMEOUT_MS = 30_000;
 const COUNT_IN_STEPS = 3;
 const COUNT_IN_STEP_MS = 500;
+// Silence added before the song: a solo run starts this far before song time 0, so the first notes can
+// lie on the first sound and still be reached. Nothing of the song is muted or cut.
+export const SONG_SILENCE_MS = 2000;
 
 // Song clock of a solo run. Same surface as createSongClock, but the time comes from the Activity's own
 // audio instead of a server anchor. While the audio is not playing (waiting for the chart, count-in,
-// pause) it holds positionMs, so the game can build its run on a real, non-null clock.
+// pause) it holds positionMs, so the game can build its run on a real, non-null clock. Its time is
+// negative in the silence before the song.
 export function createSoloClock(audio) {
   let key = null;
   let paused = true;
   let positionMs = 0;
   let durationMs = 0;
-  const clamp = (ms) => Math.max(0, durationMs > 0 ? Math.min(ms, durationMs) : ms);
+  const clamp = (ms) => (durationMs > 0 ? Math.min(ms, durationMs) : ms);
   return {
     // Server anchors don't drive a solo run (the link still pings the server for status and charts).
     setAnchor: () => "ignore",
@@ -39,7 +43,7 @@ const IDLE_STATE = { stage: "idle", count: null, error: null, audioKey: null, tr
 // whether the socket works); the clock and anchors are the link's own.
 //
 // Stages: idle (no song) -> preparing (server resolves the track) -> loading (audio download+decode)
-// -> ready (anchored and paused at 0, waiting for the chart) -> countin -> playing <-> paused -> ended.
+// -> ready (anchored and paused before the song, waiting for the chart) -> countin -> playing <-> paused -> ended.
 // "error" carries a message; "paused" with an error means the audio could not start (autoplay policy).
 export function createSoloLink({
   send,
@@ -125,7 +129,7 @@ export function createSoloLink({
     else entry.reject(message.reason || "This song can't be played here.");
   }
 
-  // ---- begin: download + decode, then anchor the game at 0 (paused) so it charts the song ----
+  // ---- begin: download + decode, then anchor the game before the song (paused) so it charts the song ----
   async function begin(audioKey, track) {
     audio.unlock?.();
     const mine = ++token;
@@ -149,11 +153,11 @@ export function createSoloLink({
     return true;
   }
 
-  // Anchors the run at 0, paused: the game charts the song and builds its run on this clock, and the
-  // link counts in as soon as the chart is ready.
+  // Anchors the run at the start of the silence, paused: the game charts the song and builds its run on
+  // this clock, and the link counts in as soon as the chart is ready.
   function startAt(audioKey, durationMs) {
     const first = !soloClock.audioKey();
-    soloClock.set({ key: audioKey, paused: true, positionMs: 0, durationMs });
+    soloClock.set({ key: audioKey, paused: true, positionMs: -SONG_SILENCE_MS, durationMs });
     setState({ stage: "ready", count: null, error: null, audioKey });
     emitAnchor(first ? "init" : "keyChange");
   }
@@ -163,7 +167,7 @@ export function createSoloLink({
   function chartAccepted(chart) {
     if (state.stage !== "ready") return;
     if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
-    countIn(0, true);
+    countIn(-SONG_SILENCE_MS, true);
   }
 
   // ---- count-in, pause, resume ----
@@ -219,7 +223,7 @@ export function createSoloLink({
     countIn(soloClock.songTimeAt(now()) ?? 0);
   }
 
-  // A fresh run of the same song from 0: the game drops its run and charts again.
+  // A fresh run of the same song from the silence: the game drops its run and charts again.
   function restart() {
     if (!state.audioKey || !soloClock.audioKey()) return;
     audio.unlock?.();

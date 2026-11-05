@@ -45,6 +45,9 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   }
   measureChart();
   let skipped = judge.skippedCount();
+  // A run that starts on the song's opening (the live link has no silence before the song) cannot reach its
+  // first notes: they are not a part of the song the player left out.
+  const openingSkips = startSongMs < START_LEAD_MS ? skipped : 0;
   const flags = { difficultyChanged: false };
 
   const hits = [];
@@ -220,7 +223,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       fevers: score.fevers,
       judged: perfect + great + good + miss,
       total: notes.length + holdCount - skipped,
-      skipped,
+      skipped: skipped - openingSkips,
       ranked: false,
       difficultyChanged: flags.difficultyChanged,
       hits: hits.slice(),

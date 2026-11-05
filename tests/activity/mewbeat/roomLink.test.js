@@ -153,6 +153,38 @@ test("a spectator plays along with the countdown although the server never count
   assert.equal(env.anchors.includes("snap"), false, "an on-time start needs no catching up");
 });
 
+test("a round with silence starts its clock before the song and the sound after the silence", async () => {
+  const env = setup();
+  await loaded(env, { silenceMs: 2000 });
+  assert.equal(env.link.songClock.songTimeAt(0), -2000);
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "countdown", silenceMs: 2000, members: loadedMe, startAt: 6000, serverNow: 1000 }), 0);
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("play:")), ["play:-2000:5000"]);
+  env.scheduler.advance(5000);
+  assert.equal(env.link.state().stage, "playing");
+  assert.equal(env.link.songClock.paused(), false);
+});
+
+test("a spectator who joins during the silence waits for the song with the others", async () => {
+  const env = setup();
+  env.scheduler.advance(7000);
+  const room = snapshot({ phase: "playing", silenceMs: 2000, members: spectatorMe, startAt: 6000, serverNow: 7000 });
+  env.link.setRoom(room, 7000);
+  await new Promise((resolve) => setImmediate(resolve));
+  env.link.chartAccepted();
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("play:")), ["play:-940:-"]);
+});
+
+test("a spectator who joins after the silence plays from where the song is", async () => {
+  const env = setup();
+  env.scheduler.advance(11_000);
+  const room = snapshot({ phase: "playing", silenceMs: 2000, members: spectatorMe, startAt: 6000, serverNow: 11_000 });
+  env.link.setRoom(room, 11_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  env.link.chartAccepted();
+  assert.deepEqual(env.calls.filter((c) => c.startsWith("play:")), ["play:3060:-"]);
+});
+
 test("a spectator who joins a song in progress starts at the song's true position, with no burst", async () => {
   const env = setup();
   const seen = [];

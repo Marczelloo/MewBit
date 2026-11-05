@@ -133,6 +133,46 @@ test("play(fromMs) starts at that offset", async () => {
   assert.ok(Math.abs(audio.songTimeAt(env.perf) - 30_450) < 1e-6);
 });
 
+test("a negative start waits in silence with the clock running, then the song plays from its beginning", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  await audio.play(-2000);
+  const node = env.sources.at(-1);
+  assert.equal(node.started.offset, 0);
+  assert.ok(Math.abs(node.started.when - 2.05) < 1e-6);
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) + 2050) < 1e-6);
+  env.perf += 2050;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf)) < 1e-6);
+  env.perf += 500;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - 500) < 1e-6);
+});
+
+test("a pause in the silence holds its negative position and resume waits out the rest", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  await audio.play(-2000);
+  env.perf += 1050;
+  assert.ok(Math.abs(audio.pause() + 1000) < 1e-6);
+  env.perf += 10_000;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) + 1000) < 1e-6);
+  await audio.resume();
+  const node = env.sources.at(-1);
+  assert.equal(node.started.offset, 0);
+  env.perf += 1050;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf)) < 1e-6);
+});
+
+test("a scheduled negative start plays the song that long after its perf time", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  await audio.play(-2000, env.perf + 3000);
+  const node = env.sources.at(-1);
+  assert.equal(node.started.offset, 0);
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) + 5000) < 1e-6);
+  env.perf += 5000;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf)) < 1e-6);
+});
+
 test("a scheduled start reads negative until its perf time", async () => {
   const { env, audio } = harness();
   await audio.load("k1");

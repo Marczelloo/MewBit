@@ -7,7 +7,7 @@ const GENERATOR_VERSION = 30;
 const BANDS = ["low", "lowmid", "highmid", "high"]; // band index === base lane
 
 const MERGE_WINDOW_MS = 30; // onsets this close across bands are one candidate
-const LEAD_IN_MS = 1000; // no notes before this
+const LEAD_IN_MS = 0; // no notes before this; the Activity adds silence before the song, so the first sound can be played
 const SILENCE_ENERGY = 0.08; // no notes where the energy curve is below this
 const MIN_NOTES = 20; // fewer notes than this means "not chartable"
 

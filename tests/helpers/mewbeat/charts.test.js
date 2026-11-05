@@ -125,10 +125,10 @@ describe("mewbeat chart generator", () => {
     assert.strictEqual(weak.length, 0, "weak onset is snapped to the 1/4 grid");
   });
 
-  it("leadInAndSilence", () => {
+  it("noNotesBeforeTheSongOrInSilence", () => {
     const features = fixture({ energy: (ms) => (ms >= 30000 && ms < 40000 ? 0 : 1) });
     for (const chart of Object.values(chartsOf(features))) {
-      assert.ok(chart.notes.every((n) => n.t >= 1000), `${chart.difficulty}: note in lead-in`);
+      assert.ok(chart.notes.every((n) => n.t >= 0), `${chart.difficulty}: note before the song`);
       assert.ok(
         chart.notes.every((n) => n.t < 30000 || n.t >= 40000),
         `${chart.difficulty}: note in silence`,

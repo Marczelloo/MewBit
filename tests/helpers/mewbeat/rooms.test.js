@@ -417,12 +417,18 @@ describe("mewbeat rooms rounds", () => {
     rooms.loaded(G, "bo", KEY_A);
     clock.advance(3000);
     rooms.submitted(G, "ann", result(500, 0.7));
-    clock.advance(200_000 + 9999);
+    clock.advance(2000 + 200_000 + 9999); // the silence before the song, the song, the grace period
     assert.strictEqual(phaseOf(rooms), "playing");
     clock.advance(1);
     const room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "intermission");
     assert.deepStrictEqual(room.results.map((entry) => entry.userId), ["ann"]);
+  });
+
+  it("tells the clients how much silence comes between the start and the song", () => {
+    const { rooms } = ctx;
+    rooms.start(G, "ann");
+    assert.strictEqual(rooms.snapshot(G).silenceMs, 2000);
   });
 
   it("starts for the first player to load once the song has run late", () => {

@@ -670,7 +670,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       const songMs = songClock.songTimeAt(now);
       const duration = trackRef.current?.durationMs;
       if (progressRef.current) {
-        const fraction = songMs !== null && duration > 0 ? Math.min(1, songMs / duration) : 0;
+        const fraction = songMs !== null && duration > 0 ? Math.max(0, Math.min(1, songMs / duration)) : 0;
         progressRef.current.style.transform = `scaleX(${fraction})`;
         const percent = Math.round(fraction * 100);
         if (percent !== lastPercent) {

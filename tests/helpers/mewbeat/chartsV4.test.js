@@ -407,10 +407,10 @@ describe("applyDifficulty", () => {
     assert.ok(easy.every((n) => Object.keys(n).join() === "t,lane"));
   });
 
-  it("drops notes in the lead-in and in silence", () => {
-    const early = [{ t: 500, lane: 0, level: 0, s: 1, source: "drums" }, { t: 9000, lane: 1, level: 0, s: 1, source: "drums" }];
+  it("keeps a note on the first sound and drops notes in silence", () => {
+    const early = [{ t: 0, lane: 0, level: 0, s: 1, source: "drums" }, { t: 9000, lane: 1, level: 0, s: 1, source: "drums" }];
     const out = applyDifficulty(early, DIFFICULTIES.easy, timing, () => 0.9, []);
-    assert.deepEqual(out, [{ t: 9000, lane: 1 }]);
+    assert.deepEqual(out, [{ t: 0, lane: 0 }, { t: 9000, lane: 1 }]);
     assert.deepEqual(applyDifficulty(early, DIFFICULTIES.easy, timing, () => 0.01, []), []);
   });
 

@@ -139,7 +139,7 @@ export function songProgress(room, mapping, nowPerf) {
   if (room.phase !== "playing" || !Number.isFinite(room.startAt) || !(room.current.durationMs > 0)) return 0;
   const server = serverNowMs(mapping, nowPerf);
   if (server == null) return 0;
-  return Math.min(1, Math.max(0, (server - room.startAt) / room.current.durationMs));
+  return Math.min(1, Math.max(0, (server - room.startAt - (room.silenceMs ?? 0)) / room.current.durationMs));
 }
 
 // The status line of a player in the list: ready flag between rounds, loading/playing/done during one.
