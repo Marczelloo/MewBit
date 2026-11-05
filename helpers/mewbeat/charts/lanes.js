@@ -42,6 +42,7 @@ const laneOfSingle = (mask) => (mask === undefined || !isSingle(mask) ? null : 3
 const leftOf = (mask) => (mask & 1) + ((mask >> 1) & 1);
 const isSingle = (mask) => (mask & (mask - 1)) === 0;
 const mirrorMask = (mask) => lanesOf(mask).reduce((m, l) => m | (1 << (LANES - 1 - l)), 0);
+const lonelyLanes = (mask) => lanesOf(mask).filter((l) => !lanesOf(mask).some((o) => o !== l && handOf(o) === handOf(l)));
 
 function gapClass(gapMs) {
   const at = GAP_LIMITS_MS.findIndex((limit) => gapMs < limit);
@@ -167,7 +168,6 @@ function assignLanes(notes, ctx, diff, upper = null) {
     };
     const underBreaks = (lanes) => !!diff.underHold && active.some((h) => breaksUnder(h, lanes.filter((l) => l !== h.lane).length));
 
-    const lonelyLanes = (mask) => lanesOf(mask).filter((l) => !lanesOf(mask).some((o) => o !== l && handOf(o) === handOf(l)));
     const legal = (mask, holds) => {
       const lanes = lanesOf(mask);
       if (holds > 0 && (lonelyLanes(mask).length < holds || (diff.holdOtherHand === "blocked" && lanes.length > 1))) return false;
@@ -283,4 +283,7 @@ function assignLanes(notes, ctx, diff, upper = null) {
   return out.sort(byTime);
 }
 
-module.exports = { assignLanes };
+module.exports = {
+  AGREE, BALANCE_BEATS, GAP_LIMITS_MS, LANES, MASKS, RECENT_NOTES, SAME_MOMENT_MS, TRILL_FREE, TRILL_MAX,
+  assignLanes, freeTheHands, gapClass, grammarOdds, handOf, isSingle, laneOfSingle, lanesOf, leftOf, lonelyLanes, mirrorMask,
+};

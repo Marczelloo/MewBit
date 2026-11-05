@@ -65,6 +65,23 @@ function freeLanes(moment, count) {
   return [0, 1, 2, 3].filter((l) => !taken.has(l)).slice(0, count);
 }
 
+// How the figure around moment m weighs a chord there (diff.chordFlow, generator flag "transitions"): people play fewer
+// between two fast gaps and on the way from a hold into a fast run, more where the moment has room and beside another chord.
+function flowScale(flow, moments, sizes, m, beatMs) {
+  if (!flow) return 1;
+  const { t } = moments[m][0];
+  const before = m > 0 ? (t - moments[m - 1][0].t) / beatMs : Infinity;
+  const after = m + 1 < moments.length ? (moments[m + 1][0].t - t) / beatMs : Infinity;
+  const fastBefore = before <= flow.fastBeats;
+  const fastAfter = after <= flow.fastBeats;
+  let scale = 1;
+  if (fastBefore && fastAfter) scale *= flow.betweenFast;
+  if (!fastBefore && !fastAfter) scale *= flow.withRoom;
+  if (fastAfter && m > 0 && moments[m - 1].some((n) => n.len > 0)) scale *= flow.holdIntoRun;
+  if (m > 0 && sizes[m - 1] > 1 && before <= flow.nearBeats) scale *= flow.besideChord;
+  return scale;
+}
+
 // A chord of `plan` (the moments so far, { m, t, kept, added, score, firm }) given back for `m`, the moment just planned: while
 // the chords in the 8 beats that end at m are more than `limit`, the weakest of them plays one note instead (its first,
 // a hold before a tap); a chord with `firm` (a section's opening, two holds at one moment) never does. The window is
@@ -129,7 +146,7 @@ function planChords(notes, ctx, diff, upper = null) {
       want = canChord ? planned[inSource] : 1;
       cap = sizes[inSource];
     } else if (canChord) {
-      const scale = strength[m] * (nearest < FAST_BEATS * beatMs ? FAST_SCALE : 1);
+      const scale = strength[m] * (nearest < FAST_BEATS * beatMs ? FAST_SCALE : 1) * flowScale(diff.chordFlow, moments, sizes, m, beatMs);
       if (diff.chordRates) {
         carry[rank] += diff.chordRates[rank] * barScale(t) * scale;
       } else if ((upper?.at.get(t)?.length ?? 0) >= 2) {

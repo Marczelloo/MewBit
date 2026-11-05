@@ -7,6 +7,7 @@ const { planChords } = require("./chords");
 const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
 const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds } = require("./holds");
 const { assignLanes } = require("./lanes");
+const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
@@ -315,7 +316,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
     ? limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare)
     : holdsCappedByPhrase(floored, ctx, diff, isSustain));
   const chorded = step("chords", capped, planChords(capped, ctx, diff, upper));
-  const laid = step("lanes", chorded, assignLanes(chorded, ctx, diff, upper));
+  const layLanes = diff.laneSearch ? searchLanes : assignLanes;
+  const laid = step("lanes", chorded, layLanes(chorded, ctx, diff, upper));
   return step("finalFloors", laid, enforceFloors(laid, diff, ctx.timing));
 }
 
