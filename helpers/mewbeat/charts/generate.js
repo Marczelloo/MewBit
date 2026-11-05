@@ -2,6 +2,7 @@ const { DENSITY_WINDOW_MS, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENE
 const { bandPathNotes } = require("./bandPath");
 const { withFittedBeats } = require("./beatFit");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
+const { CALM_ENOUGH, calmLookup, shareOver } = require("./calm");
 const { planChords } = require("./chords");
 const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
 const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds } = require("./holds");
@@ -57,6 +58,7 @@ function analyse(raw, flags) {
     eventTimes: onsets.map((o) => o.t), // what a copied note may sit on
     final: {}, // difficulty -> its finished notes (finalNotes)
     localKeep: null, // the share of moments each second keeps (keptShare)
+    calm: undefined, // t -> how calm the music is, null with nothing to tell it from (calmOf)
     rhythms: {}, // difficulty -> the moments the level below it is cut from (upperRhythm)
   };
 }
@@ -135,6 +137,13 @@ function followingTheMusic(ctx, notes, phrase, diff) {
   return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below));
 }
 
+// How calm the music is at a time (calm.js), the same for every level; null where the level's holds do not read it.
+function calmOf(ctx, diff) {
+  if (!diff.holdsByCalm) return null;
+  if (ctx.calm === undefined) ctx.calm = calmLookup(ctx.features, ctx.durationMs, diff.holdsByCalm);
+  return ctx.calm;
+}
+
 // Moments selection.js chose as notes, each with a lane to hold its place (finish lays the lanes over the finished moments).
 function placed(chosen, trace) {
   const events = laneTheRest(chosen);
@@ -176,9 +185,10 @@ function chartNotes(ctx, diff, trace = null) {
   // part of the phrase, so a repeat copies them.
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
   const followed = (notes, p) => step("localThin", notes, followingTheMusic(ctx, notes, p, diff));
+  const calmAt = calmOf(ctx, diff);
   const withGapHolds = (notes, tail, p, toMs) =>
-    tonal(p)
-      ? step("gapHolds", notes, addGapHolds([...tail, ...notes], features, diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs))
+    tonal(p) || (calmAt !== null && notes.some((n) => calmAt(n.t) >= CALM_ENOUGH))
+      ? step("gapHolds", notes, addGapHolds([...tail, ...notes], features, diff, timing, energy, Math.min(toMs, durationMs), p.startMs, calmAt).filter((n) => n.t >= p.startMs))
       : notes;
 
   // Where the charted layer rests (a sung line pausing, a lead dropping out, the leading layer changing at a seam) while
@@ -261,8 +271,11 @@ function chartNotes(ctx, diff, trace = null) {
 
 // The hold share, phrase by phrase. A repeat of a level that picks from the music gives up first the holds its source gave
 // up: a hold lost at the seam would leave the repeat's cap room for one its source had to let go, and the two would differ.
+// With the calm of the music to go by (diff.holdsByCalm) the share follows it, and the calm holds are given up last.
 function holdsCappedByPhrase(notes, ctx, diff, isSustain) {
   const { phrases, timing } = ctx;
+  const calmAt = calmOf(ctx, diff);
+  const keptLongest = calmAt ? (n) => isSustain(n) || calmAt(n.t) >= CALM_ENOUGH : isSustain;
   const last = phrases.length - 1;
   const inPhrase = (n, i) => (i === 0 || n.t >= phrases[i].startMs) && (i === last || n.t < phrases[i].endMs);
   const gaveUp = []; // per phrase: the times of the holds it no longer plays
@@ -278,7 +291,7 @@ function holdsCappedByPhrase(notes, ctx, diff, isSustain) {
         return tap;
       });
     }
-    const capped = limitHoldShare(open, Math.round, isSustain, diff.maxHoldShare);
+    const capped = limitHoldShare(open, Math.round, keptLongest, calmAt ? shareOver(open, calmAt, diff.holdsByCalm.maxShare) : diff.maxHoldShare);
     gaveUp[i] = own.filter((n, k) => n.len > 0 && !(capped[k].len > 0)).map((n) => n.t);
     return capped;
   }).sort(byTime);

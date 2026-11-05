@@ -6,6 +6,8 @@
 const FLAGS_FILE_NAME = "generator-flags.json";
 
 const LOCAL_THIN = { reach: 6, power: 1, floor: 0.5, knee: 0.6 }; // localThin.js: the slower seconds inside a phrase
+// calm.js: the holds follow the calm stretches. gapShare and maxShare stand in for gapHoldShare and maxHoldShare.
+const holdsByCalm = (gapShare, maxShare) => ({ quietBelow: 0.25, loudAbove: 0.6, quietEnergy: 0.15, gapShare, maxShare });
 
 // name -> { label, levels: { <level name, public or internal>: { <difficulty parameter>: value } } }
 const FLAGS = {
@@ -13,7 +15,15 @@ const FLAGS = {
     label: "how many moments a phrase plays",
     levels: { easy: { localThin: LOCAL_THIN }, normal: { localThin: LOCAL_THIN }, hard: { localThin: LOCAL_THIN }, hell: { localThin: LOCAL_THIN } },
   },
-  holds: { label: "where and how long the holds are", levels: {} },
+  holds: {
+    label: "where and how long the holds are",
+    levels: {
+      easy: { holdsByCalm: holdsByCalm({ loud: 0.15, quiet: 0.32 }, { loud: 0.2, quiet: 0.42 }) },
+      normal: { holdsByCalm: holdsByCalm({ loud: 0.22, quiet: 0.42 }, { loud: 0.2, quiet: 0.5 }) },
+      hard: { holdsByCalm: holdsByCalm({ loud: 0.1, quiet: 0.2 }, { loud: 0.12, quiet: 0.3 }), shortestHoldMaxMs: 225 },
+      hell: { holdsByCalm: holdsByCalm({ loud: 0.07, quiet: 0.2 }, { loud: 0.12, quiet: 0.3 }), shortestHoldMaxMs: 225 },
+    },
+  },
   transitions: { label: "how one figure leads into the next", levels: {} },
   lead: { label: "which instrument carries the melody", levels: {} },
 };

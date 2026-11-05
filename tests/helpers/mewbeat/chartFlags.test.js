@@ -58,7 +58,7 @@ describe("mewbeat generator flags", () => {
     it("returns the same object when no enabled flag overrides the level", () => {
       const diff = levelOf("hard");
       assert.strictEqual(withFlags(diff, "hard", undefined), diff);
-      assert.strictEqual(withFlags(diff, "hard", ["holds"]), diff);
+      withOverrides("holds", {}, () => assert.strictEqual(withFlags(diff, "hard", ["holds"]), diff));
       withOverrides("holds", { easy: { maxNps: 1 } }, () => {
         assert.strictEqual(withFlags(diff, "hard", ["holds"]), diff);
         assert.strictEqual(withFlags(diff, "hard", []), diff);
@@ -73,7 +73,7 @@ describe("mewbeat generator flags", () => {
         assert.strictEqual(over.maxNps, 1);
         assert.strictEqual(over.baseDiv, easy.baseDiv);
         assert.strictEqual(easy.maxNps, DIFFICULTIES.easy.maxNps);
-        assert.strictEqual(withFlags(easy, "easy", ["lead"]), easy);
+        withOverrides("lead", {}, () => assert.strictEqual(withFlags(easy, "easy", ["lead"]), easy));
       });
     });
 
@@ -114,11 +114,13 @@ describe("mewbeat generator flags", () => {
 
     it("are the same with a flag on that overrides nothing, but carry the flag in their version", () => {
       const plain = generateAll(features(), KEY);
-      const flagged = generateAll(features(), KEY, ["holds"]);
-      for (const level of LEVELS) {
-        assert.deepStrictEqual({ ...flagged[level], version: undefined }, { ...plain[level], version: undefined }, level);
-        assert.strictEqual(flagged[level].version, `${GENERATOR_VERSION}-holds`);
-      }
+      withOverrides("holds", {}, () => {
+        const flagged = generateAll(features(), KEY, ["holds"]);
+        for (const level of LEVELS) {
+          assert.deepStrictEqual({ ...flagged[level], version: undefined }, { ...plain[level], version: undefined }, level);
+          assert.strictEqual(flagged[level].version, `${GENERATOR_VERSION}-holds`);
+        }
+      });
     });
 
     it("change when a flag's override is set (control)", () => {

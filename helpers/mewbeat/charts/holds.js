@@ -6,6 +6,7 @@
 // (Normal) it lets go with its sound instead, and carries the notes of the other hand under it (underHoldFlagged).
 const { BEAT_TOLERANCE_MS, FALLBACK_BEAT_MS } = require("./difficulty");
 const { lowerBound, nearestIndex } = require("./util");
+const { CALM_ENOUGH, shareOver } = require("./calm");
 const { sustainsOf } = require("./sustains");
 
 const MAX_HOLD_BEATS = 4;
@@ -339,7 +340,7 @@ function momentsOf(notes) {
 }
 
 // The shortest hold of a difficulty at this tempo: Hard's may be half a beat, but never only a flick of the finger.
-const shortestHold = (diff, beat) => Math.max((diff.restHoldBeats ?? diff.holdMinBeats) * beat * SPACING_SLACK, SHORT_HOLD_NOTE_GAPS * (diff.minNoteGapMs ?? 0));
+const shortestHold = (diff, beat) => Math.max(Math.min((diff.restHoldBeats ?? diff.holdMinBeats) * beat * SPACING_SLACK, diff.shortestHoldMaxMs ?? Infinity), SHORT_HOLD_NOTE_GAPS * (diff.minNoteGapMs ?? 0));
 
 // May `note` go to `lane`: its gaps on that lane kept before and after, no hold in the way? `holder` is about to let go.
 function laneFits(note, lane, notes, diff, timing, holder) {
@@ -470,14 +471,16 @@ function settleHolds(notes, diff, timing, limitMs = Infinity) {
 // while the music keeps sounding, is held until the next moment (letGo). From `fromMs` on (the notes before it are
 // context: their holds may still run) holds are brought up to diff.gapHoldShare of the notes: first where a long note
 // of the bass or lead starts, then on the beat, then the longest rests. Nothing is dropped: a hold that would forbid a
-// note stays a tap.
-function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, fromMs = -Infinity) {
+// note stays a tap. With `calmAt` (calm.js) the share follows the music (diff.holdsByCalm): the calm moments are held
+// first, through longer rests and quieter music.
+function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, fromMs = -Infinity, calmAt = null) {
   const out = [...notes].sort((a, b) => a.t - b.t || a.lane - b.lane).map((n) => ({ ...n }));
   const own = out.filter((n) => n.t >= fromMs);
-  let budget = Math.round((diff.gapHoldShare ?? GAP_HOLD_SHARE) * own.length) - own.filter((n) => n.len > 0).length;
+  const share = calmAt ? shareOver(own, calmAt, diff.holdsByCalm.gapShare) : diff.gapHoldShare ?? GAP_HOLD_SHARE;
+  let budget = Math.round(share * own.length) - own.filter((n) => n.len > 0).length;
   if (budget <= 0) return out;
   const moments = momentsOf(out);
-  const loud = (t) => (typeof energy?.at === "function" ? energy.at(t) : 1) >= GAP_MIN_ENERGY;
+  const sounds = (t, least) => (typeof energy?.at === "function" ? energy.at(t) : 1) >= least;
   const sustains = [...HOLD_SOURCES].flatMap((layer) => (Array.isArray(features?.[layer]) ? features[layer] : [])).filter((e) => Number.isFinite(e?.t) && Number(e.len) > 0).sort((x, y) => x.t - y.t);
   const sustainTimes = sustains.map((e) => e.t);
   const sustained = (t, rest) => {
@@ -502,10 +505,12 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
     const next = moments.times[lowerBound(moments.times, c.t + 1)];
     if (next === undefined || next > limitMs) continue;
     const rest = next - c.t;
-    if (rest < shortestHold(diff, beat) || rest > (GAP_MAX_BEATS * beat) / SPACING_SLACK) continue;
-    if (![c.t, c.t + rest / 2, next].every(loud)) continue;
+    const calm = calmAt !== null && calmAt(c.t) >= CALM_ENOUGH;
+    if (rest < shortestHold(diff, beat) || rest > (calm ? MAX_HOLD_BEATS * beat : (GAP_MAX_BEATS * beat) / SPACING_SLACK)) continue;
+    const least = calm ? diff.holdsByCalm.quietEnergy : GAP_MIN_ENERGY;
+    if (![c.t, c.t + rest / 2, next].every((t) => sounds(t, least))) continue;
     const sound = free ? draggedNear(dragged, c.t, GAP_SUSTAIN_SHARE * rest) : null;
-    candidates.push({ c, next, rest, rank: 2 * (free ? +(sound !== null) : sustained(c.t, rest)) + onBeat(c.t), sound });
+    candidates.push({ c, next, rest, rank: 2 * (free ? +(sound !== null) : sustained(c.t, rest)) + (calm ? 4 : onBeat(c.t)), sound });
   }
   candidates.sort((x, y) => y.rank - x.rank || y.rest - x.rest || x.c.t - y.c.t || x.c.lane - y.c.lane);
   for (const { c, next, sound } of candidates) {
