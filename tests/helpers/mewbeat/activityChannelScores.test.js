@@ -261,6 +261,22 @@ describe("mewbeat channel scores", () => {
       assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
     });
 
+    it("charts made with generator flags have their own score key, and a run on the unflagged ones goes stale", async () => {
+      const flagged = `${VERSION}-holds`;
+      const { channel, scoreStore } = setup({ charts: makeCharts({ version: flagged }) });
+      const stale = await submit(channel, submitMessage({ chartVersion: VERSION }));
+      assert.strictEqual(stale.reason, "stale_chart");
+
+      const reply = await submit(channel, submitMessage({ chartVersion: flagged }));
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(reply.result.ranked, true);
+      assert.strictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${flagged}`, guildId: null, limit: 5 }).length, 1);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
+      assert.strictEqual(scoreStore.latestChartKey(KEY, "hard"), null);
+      const board = await submit(channel, { type: "mewbeat_board", id: "b", audioKey: KEY, difficulty: "hard", scope: "server" });
+      assert.deepStrictEqual(board.entries.map((entry) => entry.userId), ["ann"]);
+    });
+
     it("a song whose chart is not stored yet", async () => {
       const { channel, peeked } = setup({ charts: null });
       const reply = await submit(channel, submitMessage());

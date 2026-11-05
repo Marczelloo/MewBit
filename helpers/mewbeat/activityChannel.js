@@ -340,11 +340,12 @@ function createMewbeatChannel({
     return verdict?.status === "ready" ? verdict.charts : null;
   }
 
-  // The scores key of the chart in use now (stored chart version), else the
-  // newest version anyone has a score for.
+  // The scores key of the chart in use now (stored chart version: a number, or
+  // a string like "30-holds" while generator flags are on), else the newest
+  // version anyone has a score for.
   function chartKeyFor(audioKey, difficulty) {
     const stored = peekChartsOf(trackFromAudioKey(audioKey))?.[difficulty];
-    if (stored && Number.isFinite(stored.version)) return `${audioKey}|${difficulty}|${stored.version}`;
+    if (stored && (Number.isFinite(stored.version) || (typeof stored.version === "string" && stored.version))) return `${audioKey}|${difficulty}|${stored.version}`;
     return scoreStore.latestChartKey(audioKey, difficulty);
   }
 

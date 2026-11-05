@@ -11,6 +11,7 @@ const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
+const { flagsKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
@@ -29,7 +30,7 @@ const SAME_MOMENT_MS = 3; // a note this close to a time in the source is the on
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
-function analyse(raw) {
+function analyse(raw, flags) {
   const features = withFittedBeats(withMergedLead(raw));
   const durationMs = Math.round(features.durationMs);
   const timing = buildTiming(features, durationMs);
@@ -46,6 +47,7 @@ function analyse(raw) {
     energy,
     sections: sectionStarts(features, timing, energy),
     busy: busyFactor(features),
+    flags: normalFlags(flags), // the experimental switches that are on (flags.js); diffOf reads their overrides
     phrases,
     leaders,
     vocal,
@@ -287,7 +289,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   return step("finalFloors", laid, enforceFloors(laid, diff, ctx.timing));
 }
 
-const diffOf = (ctx, difficulty) => effectiveDifficulty(levelOf(difficulty), ctx.busy);
+// Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
+const diffOf = (ctx, difficulty) => effectiveDifficulty(withFlags(levelOf(difficulty), difficulty, ctx.flags), ctx.busy);
 
 const notesFor = (ctx, difficulty, trace = null) => {
   const diff = diffOf(ctx, difficulty);
@@ -313,8 +316,9 @@ function chartFrom(ctx, difficulty, audioKey) {
   const notes = finalNotes(ctx, difficulty);
   if (new Set(notes.map((n) => n.t)).size < MIN_NOTES) return null; // chords don't make a sparse song playable
   const { features, durationMs } = ctx;
+  const flagged = flagsKey(ctx.flags);
   return {
-    version: GENERATOR_VERSION,
+    version: flagged ? `${GENERATOR_VERSION}-${flagged}` : GENERATOR_VERSION, // scores and stale runs follow it
     audioKey,
     difficulty,
     durationMs,
@@ -331,15 +335,15 @@ function usable(features) {
   return !!features && Array.isArray(features.bands) && Number.isFinite(features.durationMs);
 }
 
-function generateChart(features, difficulty, audioKey) {
+function generateChart(features, difficulty, audioKey, flags) {
   if (!levelOf(difficulty)) throw new Error(`Unknown difficulty: ${difficulty}`);
   if (!usable(features)) return null;
-  return chartFrom(analyse(features), difficulty, audioKey);
+  return chartFrom(analyse(features, flags), difficulty, audioKey);
 }
 
-function generateAll(features, audioKey) {
+function generateAll(features, audioKey, flags) {
   if (!usable(features)) return null;
-  const ctx = analyse(features);
+  const ctx = analyse(features, flags);
   const easy = chartFrom(ctx, "easy", audioKey);
   const normal = chartFrom(ctx, "normal", audioKey);
   const hard = chartFrom(ctx, "hard", audioKey);
@@ -350,10 +354,10 @@ function generateAll(features, audioKey) {
 // generateChart plus the chart's story, for the debugger: the same chart, every candidate with what became of it
 // (trace.js), the grid and phrases it was charted on, and the difficulty's parameters for this song. `chart` is null
 // when too few notes survive; the story is there all the same.
-function traceChart(features, difficulty, audioKey) {
+function traceChart(features, difficulty, audioKey, flags) {
   if (!levelOf(difficulty)) throw new Error(`Unknown difficulty: ${difficulty}`);
   if (!usable(features)) return null;
-  const ctx = analyse(features);
+  const ctx = analyse(features, flags);
   const trace = createTrace();
   const notes = notesFor(ctx, difficulty, trace);
   const chart = chartFrom(ctx, difficulty, audioKey);

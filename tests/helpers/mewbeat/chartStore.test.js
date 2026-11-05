@@ -32,11 +32,13 @@ function fakeAnalysis(features = makeFeatures(), status = null) {
 }
 
 function spiedGenerate() {
-  const spy = (features, audioKey) => {
+  const spy = (features, audioKey, flags) => {
     spy.calls += 1;
-    return generateAll(features, audioKey);
+    spy.flags.push(flags);
+    return generateAll(features, audioKey, flags);
   };
   spy.calls = 0;
+  spy.flags = [];
   return spy;
 }
 
@@ -44,8 +46,9 @@ describe("mewbeat chart store", () => {
   let dir;
   const track = makeTrack();
   const chartsDir = () => path.join(dir, "charts");
-  const chartsPath = (version = GENERATOR_VERSION) =>
-    path.join(chartsDir(), `${audioKeyFile(audioKeyOf(track))}.v${version}.json`);
+  const chartsPath = (version = GENERATOR_VERSION, flagged = "") =>
+    path.join(chartsDir(), `${audioKeyFile(audioKeyOf(track))}.v${version}${flagged && `-${flagged}`}.json`);
+  const setFlags = (value) => fs.writeFileSync(path.join(dir, "generator-flags.json"), typeof value === "string" ? value : JSON.stringify(value));
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "mewbeat-charts-"));
@@ -268,5 +271,111 @@ describe("mewbeat chart store", () => {
 
     assert.ok(charts.easy.notes.length > 0);
     assert.strictEqual(store.peekCharts(track).charts, charts);
+  });
+
+  describe("generator flags", () => {
+    it("reads the flags file on every call and keeps a file per combination", async () => {
+      const generate = spiedGenerate();
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), generate, log: quietLog });
+
+      const plain = await store.getCharts(track, "node");
+      setFlags({ flags: ["holds", "density"] });
+      const flagged = await store.getCharts(track, "node");
+
+      assert.deepStrictEqual(generate.flags, [{}, { density: true, holds: true }]);
+      assert.strictEqual(plain.charts.easy.version, GENERATOR_VERSION);
+      assert.strictEqual(flagged.charts.easy.version, `${GENERATOR_VERSION}-density-holds`);
+      assert.ok(fs.existsSync(chartsPath()));
+      assert.ok(fs.existsSync(chartsPath(GENERATOR_VERSION, "density-holds")));
+      assert.ok(!fs.existsSync(chartsPath(GENERATOR_VERSION, "holds-density")));
+    });
+
+    it("turning a flag on and off again reuses the cache of each combination", async () => {
+      const generate = spiedGenerate();
+      const analysis = fakeAnalysis();
+      const store = createChartStore({ dir, analysis, generate, log: quietLog });
+
+      const plain = await store.getCharts(track, "node");
+      setFlags({ flags: ["holds"] });
+      const flagged = await store.getCharts(track, "node");
+      setFlags({ flags: [] });
+      assert.strictEqual((await store.getCharts(track, "node")).charts, plain.charts);
+      assert.strictEqual(store.peekCharts(track).charts, plain.charts);
+      setFlags({ flags: ["holds"] });
+      assert.strictEqual((await store.getCharts(track, "node")).charts, flagged.charts);
+      fs.rmSync(path.join(dir, "generator-flags.json"));
+      assert.strictEqual((await store.getCharts(track, "node")).charts, plain.charts);
+
+      assert.strictEqual(generate.calls, 2);
+      assert.strictEqual(analysis.calls.length, 2);
+    });
+
+    it("serves a flagged combination from disk to a fresh store", async () => {
+      setFlags({ flags: ["lead"] });
+      await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
+      const generate = spiedGenerate();
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), generate, log: quietLog });
+
+      assert.strictEqual(store.peekCharts(track).charts.easy.version, `${GENERATOR_VERSION}-lead`);
+      setFlags({ flags: [] });
+      assert.strictEqual(store.peekCharts(track), null);
+      assert.strictEqual(generate.calls, 0);
+    });
+
+    it("peeks nothing for a combination that has no charts yet", async () => {
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      await store.getCharts(track, "node");
+      assert.strictEqual(store.peekCharts(track).status, "ready");
+
+      setFlags({ flags: ["transitions"] });
+      assert.strictEqual(store.peekCharts(track), null);
+      await store.getCharts(track, "node");
+      assert.strictEqual(store.peekCharts(track).charts.hard.version, `${GENERATOR_VERSION}-transitions`);
+    });
+
+    it("keeps uncharted verdicts per combination", async () => {
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), generate: () => null, log: quietLog });
+      assert.strictEqual((await store.getCharts(track, "node")).status, "uncharted");
+      setFlags({ flags: ["holds"] });
+      assert.strictEqual(store.peekCharts(track), null);
+      assert.strictEqual((await store.getCharts(track, "node")).status, "uncharted");
+      assert.ok(fs.existsSync(chartsPath(GENERATOR_VERSION, "holds")));
+    });
+
+    it("sweeps charts of other versions, flagged or not, and keeps the current ones with any flags", async () => {
+      fs.mkdirSync(chartsDir(), { recursive: true });
+      const old = [chartsPath(0), chartsPath(GENERATOR_VERSION - 1, "holds"), chartsPath(GENERATOR_VERSION + 1, "density-holds")];
+      const current = [chartsPath(GENERATOR_VERSION, "lead"), chartsPath(GENERATOR_VERSION, "density-holds")];
+      const backup = `${chartsPath()}.corrupt-1`;
+      for (const file of [...old, ...current, backup]) fs.writeFileSync(file, "{}");
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+
+      await store.getCharts(track, "node");
+
+      for (const file of old) assert.ok(!fs.existsSync(file), file);
+      for (const file of [...current, backup]) assert.ok(fs.existsSync(file), file);
+    });
+
+    it("treats a missing, broken or oddly shaped flags file as no flags, logging a failure once", async () => {
+      const warnings = [];
+      const generate = spiedGenerate();
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), generate, log: { warning: (...args) => warnings.push(args) } });
+
+      assert.strictEqual((await store.getCharts(track, "node")).charts.easy.version, GENERATOR_VERSION);
+      setFlags("{not json");
+      for (let i = 0; i < 3; i += 1) {
+        assert.strictEqual(store.peekCharts(track).charts.easy.version, GENERATOR_VERSION);
+        assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
+      }
+      assert.strictEqual(warnings.length, 1);
+      for (const text of ["null", "[]", '{"flags":"holds"}', '{"flags":["nope"]}']) {
+        setFlags(text);
+        assert.strictEqual(store.peekCharts(track).charts.easy.version, GENERATOR_VERSION, text);
+      }
+      setFlags("{still not json");
+      store.peekCharts(track);
+      assert.strictEqual(warnings.length, 2);
+      assert.strictEqual(generate.calls, 1);
+    });
   });
 });
