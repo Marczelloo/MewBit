@@ -1,18 +1,19 @@
 const assert = require("node:assert");
 const { describe, it } = require("node:test");
 
+const { DIFFICULTIES, FIGURES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { figureTimes } = require("../../../helpers/mewbeat/charts/figures");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { selectMoments } = require("../../../helpers/mewbeat/charts/selection");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const BEAT = 400;
 const SLOT = BEAT / 4;
 const BARS = 24;
 const grid = Array.from({ length: BARS * 16 + 1 }, (_, i) => i * SLOT);
 const timing = { snapped: true, gridPoints: () => grid, beats: grid.filter((_, i) => i % 4 === 0), downbeats: [], beatMsAt: () => BEAT, medianMs: BEAT };
-const SPEC = FLAGS.figures.levels.normal.figures;
+const SPEC = FIGURES;
 const QUARTERS = FLAGS.figuresQuarter.levels.normal.figures;
 // A hit at every one of the slots of a bar, in the bars from..to.
 const hits = (kind, slots, from = 0, to = BARS) =>
@@ -99,15 +100,20 @@ describe("mewbeat figures", () => {
     });
   });
 
-  describe("the flags", () => {
+  describe("on the levels", () => {
     const features = makeLayeredFeatures();
-    const off = generateAll(features, "figures");
+    const plain = generateAll(features, "figures");
 
-    for (const flag of ["figures", "figuresQuarter"]) {
-      it(`${flag} touches Normal alone`, () => {
-        const on = generateAll(features, "figures", { [flag]: true });
-        for (const level of ["easy", "hard", "hell"]) assert.deepStrictEqual(on[level].notes, off[level].notes, level);
-      });
-    }
+    it("are Normal's alone (v33)", () => {
+      assert.strictEqual(DIFFICULTIES.normal.figures, FIGURES);
+      for (const level of ["easy", "hard", "hell"]) assert.strictEqual(DIFFICULTIES[level].figures, undefined, level);
+      const without = generateAll(features, "figures", flagWithout("withoutfigures", "figures"));
+      for (const level of ["easy", "hard", "hell"]) assert.deepStrictEqual(without[level].notes, plain[level].notes, level);
+    });
+
+    it("figuresQuarter touches Normal alone", () => {
+      const on = generateAll(features, "figures", { figuresQuarter: true });
+      for (const level of ["easy", "hard", "hell"]) assert.deepStrictEqual(on[level].notes, plain[level].notes, level);
+    });
   });
 });

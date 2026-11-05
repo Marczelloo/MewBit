@@ -19,7 +19,7 @@ const UNKNOWN_PLACE = 2; // without a grid no note counts as on a beat
 // The span the repeat copies from. The plugin's lag includes the beat shift its
 // match found (up to +-4 beats), so the copied music is the repeat's own window
 // moved back by the lag, which need not be the source phrase's window.
-// With a beat grid (`timing`, optional: flag phraseGrid) the window is moved back the way the notes are copied, by whole
+// With a beat grid (`timing`, optional) the window is moved back the way the notes are copied, by whole
 // beats, so a bound on the grid stays on the grid point its moments have.
 function sourceWindow(phrase, source, timing = null) {
   if (timing?.snapped && Number.isFinite(phrase.lagMs)) {

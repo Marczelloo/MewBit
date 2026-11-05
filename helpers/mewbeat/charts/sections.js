@@ -136,8 +136,8 @@ function accentSections(notes, sections, diff, timing, energy) {
   return out.sort((a, b) => a.t - b.t || a.lane - b.lane);
 }
 
-// openWithFirstSound(notes, onsets, diff, timing, energy) -> notes: the song opens on its first strong sound (flag
-// firstSound), played on the beat beside it. That sound can come a little before the grid's first beat (Hopes And
+// openWithFirstSound(notes, onsets, diff, timing, energy) -> notes: the song opens on its first strong sound (v33),
+// played on the beat beside it. That sound can come a little before the grid's first beat (Hopes And
 // Dreams: 117 ms against a beat at 150) and so score as off the beat. diff.firstSound = { strong, nearBeats }: how
 // strong the sound must be, and how near the beat. Nothing changes when the chart already plays there or before.
 function openWithFirstSound(notes, onsets, diff, timing, energy) {

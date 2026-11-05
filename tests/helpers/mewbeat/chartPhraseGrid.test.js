@@ -1,7 +1,6 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { FLAGS, analysisOf } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { isRepeatOf, onGrid } = require("../../../helpers/mewbeat/charts/phrases");
 const { sourceWindow } = require("../../../helpers/mewbeat/charts/repeats");
@@ -25,14 +24,7 @@ const offBeat = (features) => {
   return { ...features, phrases: { ...features.phrases, list } };
 };
 
-describe("phrase bounds on the grid (flag phraseGrid)", () => {
-  it("is a flag of the analysis, not of a level", () => {
-    assert.equal(typeof FLAGS.phraseGrid.label, "string");
-    assert.deepEqual(analysisOf(["phraseGrid"]), { phraseGrid: true });
-    assert.deepEqual(analysisOf([]), {});
-    assert.deepEqual(analysisOf(["figures"]), {});
-  });
-
+describe("phrase bounds on the grid (v33)", () => {
   it("onGrid moves a bound a few ms off the grid onto its point, and leaves the song's start and end", () => {
     const phrases = [{ startMs: 0, endMs: 8001 }, { startMs: 8001, endMs: 15997 }, { startMs: 15997, endMs: 20003 }];
     assert.deepEqual(onGrid(phrases, timing).map((p) => [p.startMs, p.endMs]), [[0, 8000], [8000, 16000], [16000, 20003]]);
@@ -50,19 +42,18 @@ describe("phrase bounds on the grid (flag phraseGrid)", () => {
     assert.deepEqual(sourceWindow(phrase, { startMs: 4000 }), { from: 3999, to: 11999 });
   });
 
-  it("puts the analysed phrase bounds on the grid points of the moments with the flag only", () => {
+  it("puts the analysed phrase bounds on the grid points of the moments", () => {
     const features = offBeat(makeLayeredFeatures({ bpm: 120, durationMs: 64000 }));
-    const plain = analyse(features).phrases.slice(1).map((p) => p.startMs);
-    const flagged = analyse(features, ["phraseGrid"]);
-    const grid = new Set(flagged.timing.gridPoints(4));
-    assert.ok(plain.every((t) => !grid.has(t)), "the fixture's bounds start off the grid");
-    assert.ok(flagged.phrases.slice(1).every((p) => grid.has(p.startMs)));
+    const { phrases, timing: analysed } = analyse(features);
+    const grid = new Set(analysed.gridPoints(4));
+    assert.ok(features.phrases.list.slice(1).every((p) => !grid.has(p.startMs)), "the fixture's bounds start off the grid");
+    assert.ok(phrases.slice(1).every((p) => grid.has(p.startMs)));
   });
 
   it("gives every repeat the first beat its source plays, on every level", () => {
     const features = offBeat(makeLayeredFeatures({ bpm: 120, durationMs: 64000 }));
-    const charts = generateAll(features, KEY, ["phraseGrid"]);
-    const { phrases } = analyse(features, ["phraseGrid"]);
+    const charts = generateAll(features, KEY);
+    const { phrases } = analyse(features);
     for (const level of LEVELS) {
       const times = new Set(charts[level].notes.map((n) => n.t));
       phrases.forEach((p, i) => {

@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { openWithFirstSound } = require("../../../helpers/mewbeat/charts/sections");
 
 // A steady 170 BPM grid as in Hopes And Dreams: beats every 352 ms from 150, quarter points every 88 ms.
@@ -17,9 +17,9 @@ const loud = { at: () => 0.4 };
 const diff = { minNoteGapMs: 100, gapBeats: 0.25, firstSound: { strong: 0.8, nearBeats: 1 / 8 } };
 const later = [{ t: 678, lane: 3 }, { t: 853, lane: 1 }];
 
-describe("the song opens on its first strong sound (flag firstSound)", () => {
-  it("is a flag on every level and on normalV26, which Easy is cut from", () => {
-    assert.deepEqual(Object.keys(FLAGS.firstSound.levels).sort(), ["easy", "hard", "hell", "normal", "normalV26"]);
+describe("the song opens on its first strong sound (v33)", () => {
+  it("is on every level and on normalV26, which Easy is cut from", () => {
+    for (const level of [...Object.keys(DIFFICULTIES), "normalV26"]) assert.deepEqual(levelOf(level).firstSound, { strong: 0.8, nearBeats: 1 / 8 }, level);
   });
 
   it("plays a strong sound a little before the first beat on that beat (Hopes And Dreams 0:00.117)", () => {

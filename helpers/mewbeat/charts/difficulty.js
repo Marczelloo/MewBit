@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 32;
+const GENERATOR_VERSION = 33;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -40,6 +40,14 @@ const LANE_SEARCH = { beam: 8, tau: 1, handPull: 3, lanePull: 2, melody: 0, echo
 const HARD_LANE_SEARCH = { ...LANE_SEARCH, tau: 0.6, handPull: 1, lanePull: 1, restrike: 0, overChord: 0, oneHand: 0 };
 // chords.js: the chords of Normal move out of the fast runs. Only Normal plays them differently from people there.
 const CHORD_FLOW = { fastBeats: 0.62, nearBeats: 1.25, betweenFast: 0.45, withRoom: 3, holdIntoRun: 0.15, besideChord: 1.6 };
+// figures.js, selection.js: what the drums and bass keep repeating, for Normal: the least share of the same places a bar or
+// two away where the layer sounds too, on beats and half beats. On the train songs people have a note on 66% of the
+// moments this adds, on 55% of the few it costs, and on a third of an unrepeated onset at the same place. A phrase whose
+// lead plays fewer than weakLead notes a beat may go extra over its budget for them; none of it drops a note of the foreground.
+const FIGURES = { layers: { snare: 0.7, kick: 0.7, bass: 0.7, low: 0.85 }, restBeats: 0.45, weakLead: 0.5, extra: 0.2 };
+// sections.js openWithFirstSound: the song opens on its first very strong sound, on the beat beside it (Hopes And Dreams
+// 0:00.139). Asked for by ear: where v32 missed such a sound people play it about a third of the time.
+const FIRST_SOUND = { strong: 0.8, nearBeats: 1 / 8 };
 
 // --- Per-difficulty parameters ---------------------------------------------
 
@@ -92,6 +100,7 @@ const INTERNAL_LEVELS = {
     echoMirror: 0.3,
     sustainMinBeats: 1,
     laneSearch: LANE_SEARCH,
+    firstSound: FIRST_SOUND, // so Easy, cut from it, keeps it
   },
 };
 
@@ -151,6 +160,7 @@ const DIFFICULTIES = {
     localThin: LOCAL_THIN,
     holdsByCalm: holdsByCalm({ loud: 0.15, quiet: 0.32 }, { loud: 0.2, quiet: 0.42 }),
     laneSearch: LANE_SEARCH,
+    firstSound: FIRST_SOUND,
   },
   // Normal picks its notes from the music (selection.js): the moments the music puts in the foreground, as many as its
   // phrase has budget for, and not cut from Hard's. Chords come over the finished moments like Hard's (chords.js).
@@ -189,6 +199,8 @@ const DIFFICULTIES = {
     laneSearch: { ...LANE_SEARCH, melody: 0.15, oneHand: 1.25, echoBeta: 10, echoNone: 5, echoMirror: null },
     chordFlow: CHORD_FLOW,
     openingLead: 0.9, // a quiet opening plays this share of its lead line, a soloist before the song comes in (selection.js)
+    figures: FIGURES,
+    firstSound: FIRST_SOUND,
   },
   hard: {
     grammar: "hard",
@@ -232,6 +244,7 @@ const DIFFICULTIES = {
     shortestHoldMaxMs: 225,
     laneSearch: HARD_LANE_SEARCH,
     openingLead: 1.2,
+    firstSound: FIRST_SOUND,
   },
   // For fun, beyond Hard. Charted from the music like Hard, not by stacking notes on it: the extra notes are the
   // music's own sixteenths and accents (finer onsets kept at a lower strength, chords on more of the loud hits,
@@ -274,6 +287,7 @@ const DIFFICULTIES = {
     shortestHoldMaxMs: 225,
     laneSearch: HARD_LANE_SEARCH,
     openingLead: 1.2,
+    firstSound: FIRST_SOUND,
   },
 };
 
@@ -282,6 +296,7 @@ const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 
 module.exports = {
   BANDS,
+  FIGURES,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
   BUSY_MAX_FACTOR,

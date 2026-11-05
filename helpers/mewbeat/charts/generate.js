@@ -10,11 +10,11 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
-const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, onGrid, supportLayers } = require("./phrases");
+const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { localKeep, thinned } = require("./localThin");
-const { analysisOf, flagsKey, normalFlags, withFlags } = require("./flags");
+const { flagsKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
@@ -38,9 +38,7 @@ function analyse(raw, flags) {
   const features = withFittedBeats(withMergedLead(raw));
   const durationMs = Math.round(features.durationMs);
   const timing = buildTiming(features, durationMs);
-  const { phraseGrid = false } = analysisOf(flags);
-  const built = buildPhrases(features, timing, durationMs);
-  const phrases = phraseGrid ? onGrid(built, timing) : built;
+  const phrases = buildPhrases(features, timing, durationMs);
   const leaders = chooseLeaders(phrases);
   const vocal = isVocalSong(phrases);
   const energy = withIntensity(energyLookup(features), features, phrases); // with each section's intensity (intensity.js)
@@ -54,7 +52,6 @@ function analyse(raw, flags) {
     sections: sectionStarts(features, timing, energy),
     busy: busyFactor(features),
     flags: normalFlags(flags), // the experimental switches that are on (flags.js); diffOf reads their overrides
-    phraseGrid, // the phrase bounds sit on the grid (flag phraseGrid), and so do the windows repeats copy from
     phrases,
     leaders,
     vocal,
@@ -83,7 +80,7 @@ function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
   const phrase = phrases[i];
   if (!isRepeatOf(phrase, i)) return null;
-  const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf], ctx.phraseGrid ? timing : null);
+  const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf], timing);
   const sourceNotes = inWindow(all, from, to);
   if (sourceNotes.length === 0) return null;
   const plan = repeatPlan(phrase, phrases[phrase.repeatOf], ctx, diff, new Set(sourceNotes.map((n) => n.t)).size);

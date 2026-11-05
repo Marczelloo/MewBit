@@ -8,9 +8,10 @@ const pinned = require("./fixtures/v26-notes.json");
 const { flagWithout, makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 // The charts of generator v26 as hashes (fixtures/v26-notes.json, taken before the levels were rewired): under what v32
-// laid over them Easy and Hard and Hell stay v26, normalV26 is the Normal of v26. Re-pinned once, for the song's first
-// second: every hash matched with the old one-second lead-in and only LEAD_IN_MS moved to 0.
-const UNDER_V32 = flagWithout("underv32", "localThin", "holdsByCalm", "shortestHoldMaxMs", "laneSearch", "chordFlow", "openingLead");
+// and v33 laid over them Easy and Hard and Hell stay v26, normalV26 is the Normal of v26. Re-pinned once, for the song's first
+// second: every hash matched with the old one-second lead-in and only LEAD_IN_MS moved to 0. The fixtures' phrase bounds sit
+// on the grid, so v33's phrases.js onGrid leaves them.
+const UNDER_V32 = flagWithout("underv32", "localThin", "holdsByCalm", "shortestHoldMaxMs", "laneSearch", "chordFlow", "openingLead", "firstSound");
 const FIXTURES = {
   plain120: () => makeFeatures({ bpm: 120, durationMs: 180000, energy: threeSectionEnergy }),
   plain90: () => makeFeatures({ bpm: 90, durationMs: 120000, energy: threeSectionEnergy }),

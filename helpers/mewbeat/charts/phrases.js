@@ -228,7 +228,7 @@ function buildPhrases(features, timing, durationMs) {
     raw = windows.map(([startMs, endMs]) => ({ startMs, endMs, repeatOf: null, similarity: 0, lagMs: 0 }));
   }
 
-  return raw.map((p, index) => {
+  return onGrid(raw.map((p, index) => {
     const layers = p.activity ? { activity: p.activity, confidence: p.confidence } : layersOf(features, p.startMs, p.endMs, beatMs);
     return {
       index,
@@ -245,14 +245,15 @@ function buildPhrases(features, timing, durationMs) {
       pulse: pulseOf(pulseTimes, timing, lookup, p.startMs, p.endMs),
       sectionStart: isSectionStart(p.startMs),
     };
-  });
+  }), timing);
 }
 
 const ON_GRID_BEATS = 1 / 16; // a bound this near a quarter-beat grid point is that point (half the way to the 1/8 between)
 
 // onGrid(phrases, timing) -> Phrase[]: each bound between two phrases moved onto the quarter-beat grid point it sits
-// beside, the time the moments there have (flag phraseGrid). The plugin's bounds come a few ms off that grid, so a
-// moment on a phrase's first beat could fall to the phrase before. The song's own start and end stay.
+// beside, the time the moments there have (v33). The plugin's bounds come a few ms off that grid (58731 against a moment
+// at 58730), so the moment on a phrase's first beat fell to the phrase before and a repeat left it out: a drop came in a
+// beat late (Cutie Mew Mew Magic 0:53, Hopes And Dreams 1:35). The song's own start and end stay.
 function onGrid(phrases, timing) {
   if (!timing?.snapped || typeof timing.gridPoints !== "function") return phrases;
   const grid = timing.gridPoints(4);
