@@ -58,6 +58,7 @@ const yields = (o, c) => o.source !== c.source && (isSupport(o) || o.level > c.l
 // What may sit under a hold: the Ranking Criteria for Normal, shared with laneRules.js (normalViolations).
 const SHORT_HOLD_CLASS = 0.6; // a hold up to this long (in beats) is a half-beat hold: nothing under it
 const BEAT_HOLD_CLASS = 1.1; // ...up to this long a beat hold: nothing faster than a half beat under it
+const ROUNDED_MS = 1; // notes sit on whole ms: on an even grid a half-beat gap comes out this much short
 
 // underHoldFlagged(start, len, under, beatOf) -> the indices of `under` that break the rule. `start` is the hold's time,
 // `len` its length, `under` the offsets (ms, ascending) from `start` of the notes strictly inside it, beatOf(t) the beat
@@ -71,7 +72,7 @@ function underHoldFlagged(start, len, under, beatOf) {
   const marks = [0, ...under, len];
   const flagged = new Set();
   marks.forEach((t, k) => {
-    if (k === 0 || t - marks[k - 1] >= Math.max(beatOf(start + marks[k - 1]), beatOf(start + t)) / 2) return;
+    if (k === 0 || t - marks[k - 1] + ROUNDED_MS >= Math.max(beatOf(start + marks[k - 1]), beatOf(start + t)) / 2) return;
     for (const at of [k - 1, k]) if (at > 0 && at < marks.length - 1) flagged.add(at - 1);
   });
   return [...flagged].sort((a, b) => a - b);

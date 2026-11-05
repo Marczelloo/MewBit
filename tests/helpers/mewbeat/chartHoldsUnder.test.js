@@ -125,6 +125,12 @@ describe("the rule the generator and the checker share", () => {
     assert.deepEqual(underHoldFlagged(0, 550, [275], slowing), [0], "275 ms is under half of the 600 ms beat at the hold's end");
     assert.deepEqual(underHoldFlagged(0, 550, [275], () => 500), [], "...but a half of the 500 ms beat all along");
   });
+
+  it("does not take a half-beat gap rounded to the ms for a faster one", () => {
+    // an even grid of a 667.1 ms beat: a beat hold from 0 to 667 with a note on its half beat, at 333 (333.55 unrounded)
+    assert.deepEqual(underHoldFlagged(0, 667, [333], () => 667.1), []);
+    assert.deepEqual(underHoldFlagged(0, 667, [330], () => 667.1), [0], "3 ms short is not rounding");
+  });
 });
 
 describe("running holds", () => {
