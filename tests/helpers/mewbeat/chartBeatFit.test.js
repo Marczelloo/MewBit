@@ -63,6 +63,34 @@ describe("the fitted beats", () => {
     assert.ok(off.length <= 1, `${off.length} of ${intro.length} opening onsets have no fitted beat within 12 ms`); // the one next to the seam may go
   });
 
+  describe("when the highmid onsets fall on the beat and the offbeat alike", () => {
+    // Highmid on the true beats at `onBeat`, between them at `offBeat`; high on the true beats, or between them with `highOff`.
+    const tied = ({ onBeat = 0.8, offBeat = 0.81, highOff = false } = {}) => {
+      const f = song({ trackerOff: 0 });
+      const beats = f.bands[2].onsets.map((o) => o.t);
+      const half = (t) => Math.round(t + 250);
+      f.bands[2].onsets = beats.flatMap((t) => [{ t, s: onBeat }, { t: half(t), s: offBeat }]);
+      f.bands[3].onsets = beats.map((t) => ({ t: highOff ? half(t) : t, s: 0.6 }));
+      return { f, beats, off: beats.map(half) };
+    };
+    const onLine = (fitted, list) => list.filter((t) => nearest(fitted, t) <= 4).length / list.length;
+
+    it("takes the beat the high onsets name", () => {
+      const { f, beats } = tied();
+      assert.ok(onLine(fitBeats(f).beats, beats) > 0.95);
+    });
+
+    it("keeps the highmid's choice when the high onsets agree with it", () => {
+      const { f, off } = tied({ highOff: true });
+      assert.ok(onLine(fitBeats(f).beats, off) > 0.95);
+    });
+
+    it("keeps the highmid's choice when it is no tie", () => {
+      const { f, off } = tied({ onBeat: 0.8, offBeat: 1 });
+      assert.ok(onLine(fitBeats(f).beats, off) > 0.95);
+    });
+  });
+
   it("takes the wobble out: equal gaps stay equal to the millisecond", () => {
     const f = song({ trackerOff: 0 });
     assert.ok(Math.max(...gaps(f.tempo.beats)) - Math.min(...gaps(f.tempo.beats)) > 20, "the tracker wobbles here");
