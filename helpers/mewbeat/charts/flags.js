@@ -18,6 +18,9 @@ const FLAGS = {
   // The same with quarter beats, where people follow a figure far less often (27% of these, about 5% of an unrepeated onset).
   // The level's least gap keeps them to songs under about 150 BPM, most to the slow ones, which lack quarter beats the most.
   figuresQuarter: { label: "Figury także na ćwierćbeatach", levels: { normal: { figures: { ...FIGURES, quarters: { snare: 0.7, kick: 0.7, bass: 0.7 } } } } },
+  // generate.js copiedRepeat: a repeat also copies the note on its source's first beat, which sits a millisecond before the
+  // phrase's rounded start and was left out, so a chorus or a drop came in a beat late (Cutie Mew Mew Magic 0:53).
+  repeatEdge: { label: "Powtórka zaczyna się na pierwszym beacie", levels: Object.fromEntries(["easy", "normalV26", "normal", "hard", "hell"].map((level) => [level, { repeatEdgeMs: 10 }])) },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

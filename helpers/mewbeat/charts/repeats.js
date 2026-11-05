@@ -15,6 +15,8 @@ const UNKNOWN_PLACE = 2; // without a grid no note counts as on a beat
 // The plugin's lag is measured in ms and is rarely a whole number of beats (69269 ms = 164.14 beats). On a beat grid
 // (`timing`, optional) a note keeps its place in the bar instead: it moves by the whole beats nearest the lag, so what
 // sat on the grid in the source sits on the grid here, whatever the tempo did in between.
+// `edgeMs` moves the phrase's bounds that much earlier: phrase bounds and grid times round apart, so the note on a
+// phrase's first beat can sit a millisecond before it (42730 against 42731).
 // sourceWindow(phrase, source) -> { from, to }
 // The span the repeat copies from. The plugin's lag includes the beat shift its
 // match found (up to +-4 beats), so the copied music is the repeat's own window
@@ -38,12 +40,12 @@ function sourceTime(phrase, timing = null) {
   return (t) => timeAtPosition(timing, beatPosition(timing, t) - beats);
 }
 
-function copyRepeat(sourceNotes, phrase, eventTimes, timing = null) {
+function copyRepeat(sourceNotes, phrase, eventTimes, timing = null, edgeMs = 0) {
   const shift = shifter(phrase, Number.isFinite(phrase.lagMs) ? phrase.lagMs : 0, timing);
   const out = [];
   for (const note of sourceNotes) {
     const t = shift(note.t);
-    if (!(t >= phrase.startMs && t < phrase.endMs)) continue;
+    if (!(t >= phrase.startMs - edgeMs && t < phrase.endMs - edgeMs)) continue;
     const i = nearestIndex(eventTimes, t);
     const heard = i >= 0 && Math.abs(eventTimes[i] - t) <= EVENT_TOLERANCE_MS;
     if (!heard && metricLevel(timing, t, UNKNOWN_PLACE) > 1) continue;

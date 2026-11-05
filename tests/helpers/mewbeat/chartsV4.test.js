@@ -495,6 +495,14 @@ describe("copyRepeat", () => {
     const out = copyRepeat([{ t: 1500, lane: 1 }, { t: 2500, lane: 2 }], phrase, [17540, 18600]);
     assert.deepEqual(out, [{ t: 17500, lane: 1 }]);
   });
+
+  // Cutie Mew Mew Magic 0:53: the source's first note sat at 42730 before a phrase rounded to 42731, so the drop lost it.
+  it("keeps the note a millisecond before the phrase only with edgeMs (repeatEdge)", () => {
+    const source = [{ t: -1, lane: 1 }, { t: 7999, lane: 2 }];
+    const at = [15999, 23999];
+    assert.deepEqual(copyRepeat(source, phrase, at), [{ t: 23999, lane: 2 }]);
+    assert.deepEqual(copyRepeat(source, phrase, at, null, 10), [{ t: 15999, lane: 1 }]);
+  });
 });
 
 describe("chartMetrics", () => {

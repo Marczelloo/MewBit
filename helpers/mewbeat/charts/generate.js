@@ -80,14 +80,19 @@ function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
   const phrase = phrases[i];
   if (!isRepeatOf(phrase, i)) return null;
+  // diff.repeatEdgeMs: the window reaches that much earlier, so the note on the source's first beat is copied too.
+  const edge = diff.repeatEdgeMs ?? 0;
   const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf]);
-  const sourceNotes = inWindow(all, from, to);
+  const sourceNotes = inWindow(all, from - edge, to - edge);
   if (sourceNotes.length === 0) return null;
   const plan = repeatPlan(phrase, phrases[phrase.repeatOf], ctx, diff, new Set(sourceNotes.map((n) => n.t)).size);
   if (!plan.copy) return null;
+  // A moment the phrase before already plays at the seam is not played twice.
+  const taken = edge > 0 ? all.filter((n) => Math.abs(n.t - phrase.startMs) <= 2 * edge).map((n) => n.t) : [];
   // A copy may end sooner than its source (or the song): its holds are clipped to fit.
-  const fitted = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing), Math.min(phrase.endMs, durationMs), diff, timing)
-    .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
+  const fitted = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing, edge), Math.min(phrase.endMs, durationMs), diff, timing)
+    .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY)
+    .filter((n) => !taken.some((t) => Math.abs(t - n.t) <= edge));
   const upper = upperRhythm(ctx, diff);
   const copied = upper ? nested(fitted, upper) : fitted;
   return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? { notes: copied, extra: plan.extra } : null;
