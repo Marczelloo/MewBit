@@ -40,7 +40,11 @@ const FLAGS = {
       hell: { laneSearch: HARD_LANE_SEARCH },
     },
   },
-  lead: { label: "which instrument carries the melody", levels: {} },
+  lead: {
+    label: "which instrument carries the melody",
+    // selection.js: a quiet opening plays this share of its lead line, a soloist before the song comes in.
+    levels: { normal: { openingLead: 0.9 }, hard: { openingLead: 1.2 }, hell: { openingLead: 1.2 } },
+  },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

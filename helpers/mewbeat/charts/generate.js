@@ -19,7 +19,7 @@ const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
-const { extraMoments, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -258,7 +258,9 @@ function chartNotes(ctx, diff, trace = null) {
     // Cut from a harder level, a phrase that plays on gets its beats whatever leads it.
     const steady = (leaders[i] === "drums" && hasSteadyPulse(phrase)) || (!!rhythm && phrase.energy >= PLAYS_ON_ENERGY);
     const cut = rhythm && { rhythm, fromMs: i === 0 ? 0 : phrase.startMs, toMs: i === phrases.length - 1 ? Infinity : phrase.endMs };
-    const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steady, trace, cut);
+    // A level with diff.openingLead keeps at least that share of a quiet opening's lead line, whatever the loudness allows it.
+    const leadFloor = diff.openingLead ? Math.min(1, (diff.openingLead * openingLeadRates(ctx)[i]) / diff.maxNps) : 0;
+    const charted = applyDifficulty(events, leadFloor > 0 ? { ...diff, leadPowerFloor: leadFloor } : diff, timing, energy, tail, phrase.energy, phrase.endMs, steady, trace, cut);
     all.push(...bridged(withGapHolds(followed(charted, phrase), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i));
     i++;
   }

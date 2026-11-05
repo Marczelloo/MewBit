@@ -187,10 +187,24 @@ function budgetModelOf(ctx, diff) {
   return ctx.budgets[diff.scoreLevel];
 }
 
+// The notes per audible second of the lead line in each phrase before the song's first loud one, 0 in the others: a quiet
+// soloist at the start of a song leads it, where the loudness alone says a quiet part. Kept on the ctx.
+function openingLeadRates(ctx) {
+  if (ctx.openingLeadRates) return ctx.openingLeadRates;
+  const values = ctx.features.energy?.values ?? [];
+  const songLoudness = values.length > 0 ? mean(values) : 1;
+  const audible = ctx.phrases.map((p) => audibleOf(ctx, p, songLoudness));
+  const firstLoud = audible.findIndex((a) => a.seconds > 0 && a.loudness >= BUDGET.openingLoudness);
+  const lead = (ctx.features.lead ?? []).map((n) => n.t);
+  ctx.openingLeadRates = ctx.phrases.map((p, k) => (k < firstLoud && audible[k].seconds > 0 ? lead.filter((t) => t >= p.startMs && t < p.endMs).length / audible[k].seconds : 0));
+  return ctx.openingLeadRates;
+}
+
 // phraseBudget(phrase, ctx, diff) -> the most moments the phrase gets: the seconds the music plays in it at the rate the
 // music calls for (a song and a phrase the music fills get more than the median, a thin one fewer), times diff.budgetScale,
 // and never above diff.maxNpsCeiling moments per second. A quiet phrase before the song's first loud one keeps a higher floor
-// than one later on. A budget is a limit; selectMoments leaves it unused where the music has less to offer.
+// than one later on, and with diff.openingLead at least that share of the notes of its lead line (generator flag "lead"). A
+// budget is a limit; selectMoments leaves it unused where the music has less to offer.
 function phraseBudget(phrase, ctx, diff) {
   const { fitted, song, seconds: played, openingEnd } = budgetModelOf(ctx, diff);
   const own = fitted[phrase.index];
@@ -200,7 +214,8 @@ function phraseBudget(phrase, ctx, diff) {
   const bySong = Math.pow(song / BUDGET.refModel, BUDGET.gamma);
   const floor = phrase.index < openingEnd ? BUDGET.openingMinRatio : BUDGET.minRatio;
   const byPhrase = Math.pow(clamp(own / song, floor, Infinity), BUDGET.delta);
-  return Math.max(0, Math.min(most, Math.round(BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale)));
+  const lead = (diff.openingLead ?? 0) * openingLeadRates(ctx)[phrase.index] * seconds;
+  return Math.max(0, Math.min(most, Math.round(Math.max(lead, BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale))));
 }
 
 // --- choosing the moments --------------------------------------------------------------------
@@ -352,4 +367,4 @@ function extraMoments(phrase, scored, kept, extra, diff, timing, edges = {}) {
   return chosen.sort(byTime).map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { audibleOf, extraMoments, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments };
+module.exports = { audibleOf, extraMoments, openingLeadRates, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments };

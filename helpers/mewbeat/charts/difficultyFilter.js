@@ -261,7 +261,7 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   if (diff.thinChords) items = step("thinChords", items, thinChords(items, diff, timing, phraseEnergy, energy));
   items = step("capMoments", items, capMoments(items, diff.chord ? 2 : 1));
   const onReject = trace ? (item, why) => trace.reject(item, "floors", why) : null;
-  items = step("floors", items, selectByFloors(items, diff, energy, prev, steadyPulse ? pulsePowerFloor(diff, timing) : 0, timing, onReject));
+  items = step("floors", items, selectByFloors(items, diff, energy, prev, Math.max(steadyPulse ? pulsePowerFloor(diff, timing) : 0, diff.leadPowerFloor ?? 0), timing, onReject));
   if (diff.thinChords) items = step("spaceChords", items, spaceChords(items, diff, timing));
   items = step("planHolds", items, planHolds(items.sort(byTime), diff, timing, prev, phraseEndMs));
   const bare = (n) => (n.len > 0 ? { t: n.t, lane: n.lane, len: n.len } : { t: n.t, lane: n.lane });

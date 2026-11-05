@@ -222,7 +222,7 @@ describe("Normal picks its notes from the music", () => {
   });
 
   it("exports only what the generator and the measurements use", () => {
-    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "extraMoments", "phraseBudget", "repeatPlan", "scoreMoments", "selectMoments", "snappedMoments"]);
+    assert.deepStrictEqual(Object.keys(selection).sort(), ["audibleOf", "extraMoments", "openingLeadRates", "phraseBudget", "repeatPlan", "scoreMoments", "selectMoments", "snappedMoments"]);
   });
 });
 
