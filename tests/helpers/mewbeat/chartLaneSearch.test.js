@@ -6,36 +6,29 @@ const { normalViolations } = require("../../../helpers/mewbeat/charts/laneRules"
 const { searchLanes } = require("../../../helpers/mewbeat/charts/laneSearch");
 const { assignLanes } = require("../../../helpers/mewbeat/charts/lanes");
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { withFlags } = require("../../../helpers/mewbeat/charts/flags");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const DURATION = 64000;
-const FLAG = { transitions: true };
+const WITHOUT = flagWithout("withoutsearch", "laneSearch", "chordFlow");
 const features = () => makeLayeredFeatures({ bpm: 120, durationMs: DURATION });
 
 describe("mewbeat lane search", () => {
-  describe("behind the transitions flag", () => {
-    it("leaves every level as it was with the flag off", () => {
-      const off = generateAll(features(), "k");
-      const none = generateAll(features(), "k", {});
-      for (const level of LEVELS) assert.deepStrictEqual(none[level].notes, off[level].notes);
-    });
-
+  describe("in the charts", () => {
     it("gives the same chart for the same song", () => {
-      const a = generateAll(features(), "k", FLAG);
-      const b = generateAll(features(), "k", FLAG);
+      const a = generateAll(features(), "k");
+      const b = generateAll(features(), "k");
       for (const level of LEVELS) assert.deepStrictEqual(a[level].notes, b[level].notes);
     });
 
     it("changes the lanes on every level", () => {
-      const off = generateAll(features(), "k");
-      const on = generateAll(features(), "k", FLAG);
+      const off = generateAll(features(), "k", WITHOUT);
+      const on = generateAll(features(), "k");
       for (const level of LEVELS) assert.notDeepStrictEqual(on[level].notes, off[level].notes, level);
     });
 
     it("holds no note past the next moment on its own lane, nor past the song", () => {
-      const on = generateAll(features(), "k", FLAG);
+      const on = generateAll(features(), "k");
       for (const level of LEVELS) {
         const notes = on[level].notes;
         for (const n of notes) {
@@ -48,7 +41,7 @@ describe("mewbeat lane search", () => {
     });
 
     it("keeps Normal within the rules of its lanes, which random lanes break (the control)", () => {
-      const on = generateAll(features(), "k", FLAG);
+      const on = generateAll(features(), "k");
       const { timing } = analyse(features());
       assert.deepStrictEqual(normalViolations(on.normal.notes, timing, { durationMs: DURATION }), []);
       let x = 7;
@@ -57,9 +50,9 @@ describe("mewbeat lane search", () => {
       assert.ok(normalViolations(shuffled, timing, { durationMs: DURATION }).length > 0);
     });
 
-    it("keeps the number of holds of the chart without the flag", () => {
-      const off = generateAll(features(), "k");
-      const on = generateAll(features(), "k", FLAG);
+    it("keeps the number of holds of the chart without the search", () => {
+      const off = generateAll(features(), "k", WITHOUT);
+      const on = generateAll(features(), "k");
       const holds = (chart) => chart.notes.filter((n) => n.len > 0).length;
       assert.ok(Math.abs(holds(on.normal) - holds(off.normal)) <= 0.1 * holds(off.normal), `${holds(on.normal)} against ${holds(off.normal)}`);
     });
@@ -67,8 +60,8 @@ describe("mewbeat lane search", () => {
 
   describe("searchLanes", () => {
     const ctx = analyse(features());
-    const diff = withFlags(DIFFICULTIES.normal, "normal", FLAG);
-    const notes = generateAll(features(), "k").normal.notes;
+    const diff = DIFFICULTIES.normal;
+    const notes = generateAll(features(), "k", WITHOUT).normal.notes;
     const kept = (a, b) => {
       const seen = new Set(a.map((n) => `${n.t}:${n.lane}`));
       return b.filter((n) => seen.has(`${n.t}:${n.lane}`)).length / b.length;

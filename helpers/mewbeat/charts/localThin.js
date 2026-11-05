@@ -16,7 +16,8 @@ const meanOf = (list) => (list.length ? list.reduce((sum, x) => sum + x, 0) / li
 function strongOnsetsPerSecond(features, durationMs) {
   const seconds = Math.max(1, Math.ceil(durationMs / 1000));
   const counts = new Array(seconds).fill(0);
-  for (const onset of features.bands?.find((band) => band.name === "high")?.onsets ?? []) {
+  const high = features.bands?.find((band) => band?.name === "high")?.onsets;
+  for (const onset of Array.isArray(high) ? high : []) {
     const second = Math.floor(onset.t / 1000);
     if (onset.s >= STRONG_ONSET && second >= 0 && second < seconds) counts[second]++;
   }

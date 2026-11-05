@@ -3,8 +3,9 @@ const { describe, it } = require("node:test");
 
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { localKeep, thinned } = require("../../../helpers/mewbeat/charts/localThin");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
+const WITHOUT = flagWithout("withoutthin", "localThin");
 const PARAMS = { reach: 6, power: 1, floor: 0.5, knee: 0.6 };
 const BEAT = 500;
 const timing = { beats: Array.from({ length: 200 }, (_, i) => i * BEAT), snapped: true, beatMsAt: () => BEAT, medianMs: BEAT };
@@ -83,7 +84,7 @@ describe("mewbeat local thinning", () => {
     });
   });
 
-  describe("behind the density flag", () => {
+  describe("in the charts", () => {
     const LEVELS = ["easy", "normal", "hard", "hell"];
     // A song whose high band all but stops for a few seconds inside a phrase that repeats nothing (a repeat copies its source).
     const dipped = () => {
@@ -95,15 +96,9 @@ describe("mewbeat local thinning", () => {
     };
     const dip = (chart) => momentsOf(chart.notes.filter((n) => n.t >= 9000 && n.t < 14000));
 
-    it("leaves every level as it was with the flag off", () => {
-      const off = generateAll(dipped(), "k");
-      const none = generateAll(dipped(), "k", {});
-      for (const level of LEVELS) assert.deepStrictEqual(none[level].notes, off[level].notes);
-    });
-
-    it("plays fewer moments in the dip with the flag on", () => {
-      const off = generateAll(dipped(), "k");
-      const on = generateAll(dipped(), "k", { density: true });
+    it("plays fewer moments in the dip than without the thinning", () => {
+      const off = generateAll(dipped(), "k", WITHOUT);
+      const on = generateAll(dipped(), "k");
       assert.ok(LEVELS.some((level) => dip(on[level]) < dip(off[level])), "the dip is thinned on some level");
       for (const level of LEVELS) assert.ok(dip(on[level]) <= dip(off[level]), `${level}: ${dip(on[level])} > ${dip(off[level])}`);
     });
@@ -115,8 +110,8 @@ describe("mewbeat local thinning", () => {
         high.onsets = Array.from({ length: 64 * 8 }, (_, i) => ({ t: i * 125, s: 0.9 }));
         return features;
       };
-      const off = generateAll(even(), "k");
-      const on = generateAll(even(), "k", { density: true });
+      const off = generateAll(even(), "k", WITHOUT);
+      const on = generateAll(even(), "k");
       for (const level of LEVELS) assert.deepStrictEqual(on[level].notes, off[level].notes);
     });
   });

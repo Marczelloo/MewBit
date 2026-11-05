@@ -11,8 +11,11 @@ const { buildPhrases, chooseLeaders } = require("../../../helpers/mewbeat/charts
 const { copyRepeat, sourceWindow } = require("../../../helpers/mewbeat/charts/repeats");
 const { starsOf } = require("../../../helpers/mewbeat/charts/stars");
 const { buildTiming, energyLookup } = require("../../../helpers/mewbeat/charts/timing");
-const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
+// A repeat is copied before the lanes are laid. The search gives it its own lanes and a hold may let go early for them
+// (laneSearch.js clipRelease), so what the copy keeps is read without the search.
+const WITHOUT_SEARCH = flagWithout("withoutsearch", "laneSearch", "chordFlow");
 const KEY = "youtube:fixture:v4";
 const DIFFS = ["easy", "normal", "hard"];
 // The machinery below (applyDifficulty, patternEvents, holds, floors) is run with Normal as v26 charted it: normalV26, the
@@ -47,8 +50,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 31", () => {
-    assert.equal(GENERATOR_VERSION, 31);
+  it("is version 32", () => {
+    assert.equal(GENERATOR_VERSION, 32);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(LEVELS[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -105,7 +108,7 @@ describe("generator v4", () => {
       const features = makeLayeredFeatures({ energy });
 
       it("repeatsIdenticalOnEveryDifficulty: phrase 2 plays like 0 and 3 like 1", () => {
-        const charts = chartsOf(features);
+        const charts = generateAll(features, KEY, WITHOUT_SEARCH);
         const { list } = features.phrases;
         for (const d of DIFFS) {
           const { notes } = charts[d];
@@ -186,7 +189,7 @@ describe("generator v4", () => {
     const { list } = features.phrases;
     const copies = list.map((p, i) => [p, i]).filter(([p, i]) => p.repeatOf !== null && list[i - 1].repeatOf === null);
     assert.ok(copies.length > 0, "a repeat directly after a non-repeat phrase");
-    for (const chart of Object.values(chartsOf(features))) {
+    for (const chart of Object.values(generateAll(features, KEY, WITHOUT_SEARCH))) {
       const p = DIFFICULTIES[chart.difficulty];
       for (const [phrase, i] of copies) {
         const source = list[phrase.repeatOf];
@@ -523,16 +526,16 @@ describe("holds", () => {
       assert.ok(onSustain.some((n) => n.len >= beatMs), `phrase ${i}: the sustained note stayed a tap`);
     });
     for (const n of holdsOf(normal.notes)) {
-      assert.ok(Number.isInteger(n.len) && n.len >= beatMs && n.len <= 4 * beatMs, `len ${n.len} at ${n.t}`);
+      assert.ok(Number.isInteger(n.len) && n.len >= beatMs / 2 && n.len <= 4 * beatMs, `len ${n.len} at ${n.t}`); // half a beat: laneSearch.js clipRelease
     }
   });
 
-  it("easyHoldsAreLongAndSpaced: a hold is at least a beat, its hand is free, the other hand taps a beat apart", () => {
+  it("easyHoldsAreLongAndSpaced: a hold is at least half a beat, its hand is free, the other hand taps a beat apart", () => {
     const { easy } = chartsOf(features);
     const holds = holdsOf(easy.notes);
     assert.ok(holds.length >= 10, `${holds.length} holds`);
     for (const h of holds) {
-      assert.ok(h.len >= beatMs, `len ${h.len} at ${h.t}`);
+      assert.ok(h.len >= beatMs / 2, `len ${h.len} at ${h.t}`); // laneSearch.js clipRelease
       const during = easy.notes.filter((n) => n.t > h.t && n.t <= h.t + h.len);
       assert.ok(during.every((n) => n.lane >> 1 !== h.lane >> 1), `its own hand plays inside the hold at ${h.t}`);
       assert.ok(during.every((n) => !(n.len > 0)), `a second hold starts inside the hold at ${h.t}`);
@@ -575,7 +578,7 @@ describe("holds", () => {
   });
 
   it("holdsSurviveRepeats: the repeat identity includes len", () => {
-    const charts = chartsOf(features);
+    const charts = generateAll(features, KEY, WITHOUT_SEARCH);
     const { list } = features.phrases;
     for (const d of DIFFS) {
       const { notes } = charts[d];

@@ -6,10 +6,14 @@ const { afterEach, beforeEach, describe, it } = require("node:test");
 
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 const { createChartStore } = require("../../../helpers/mewbeat/chartStore");
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { GENERATOR_VERSION, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { makeFeatures } = require("./fixtures");
 
 const quietLog = { warning() {} };
+
+// The registry is empty between experiments, so these tests bring their own flags.
+for (const name of ["density", "holds", "lead", "transitions"]) FLAGS[name] = { label: name, levels: {} };
 
 function makeTrack(info) {
   return {

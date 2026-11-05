@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 31;
+const GENERATOR_VERSION = 32;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -31,6 +31,15 @@ const GAP_TOLERANCE_MS = 1; // rounding slack on the same-lane gap check
 const MAX_SNAP_DISTANCE_MS = 35; // an onset further than this from the grid stays at its raw time (inside the perfect window)
 const BEAT_INTERVAL_TOLERANCE = 0.25; // local beat length must be within +-25% of the median
 const SNAPPED_FLOOR_SLACK = 0.98; // snapped notes may sit this much under the tempo-relative gap floor
+
+const LOCAL_THIN = { reach: 6, power: 1, floor: 0.5, knee: 0.6 }; // localThin.js: the slower seconds inside a phrase
+// calm.js: the holds follow the calm stretches. gapShare and maxShare stand in for gapHoldShare and maxHoldShare.
+const holdsByCalm = (gapShare, maxShare) => ({ quietBelow: 0.25, loudAbove: 0.6, quietEnergy: 0.15, gapShare, maxShare });
+// laneSearch.js: the lanes come from a search over the whole song. Hard stays closer to the figures it already plays.
+const LANE_SEARCH = { beam: 8, tau: 1, handPull: 3, lanePull: 2, melody: 0, echoBeta: 6, echoNone: 3, echoMirror: 0, restrike: 1.5, overChord: 1.5, oneHand: 0.75 };
+const HARD_LANE_SEARCH = { ...LANE_SEARCH, tau: 0.6, handPull: 1, lanePull: 1, restrike: 0, overChord: 0, oneHand: 0 };
+// chords.js: the chords of Normal move out of the fast runs. Only Normal plays them differently from people there.
+const CHORD_FLOW = { fastBeats: 0.62, nearBeats: 1.25, betweenFast: 0.45, withRoom: 3, holdIntoRun: 0.15, besideChord: 1.6 };
 
 // --- Per-difficulty parameters ---------------------------------------------
 
@@ -82,6 +91,7 @@ const INTERNAL_LEVELS = {
     motifPull: 6,
     echoMirror: 0.3,
     sustainMinBeats: 1,
+    laneSearch: LANE_SEARCH,
   },
 };
 
@@ -138,6 +148,9 @@ const DIFFICULTIES = {
     sectionChordRise: 0.9, // a section this much louder than the last one opens on a chord (sections.js)...
     sectionChordEnergy: 0.35, // ...when it is at least this loud
     sustainMinBeats: 1,
+    localThin: LOCAL_THIN,
+    holdsByCalm: holdsByCalm({ loud: 0.15, quiet: 0.32 }, { loud: 0.2, quiet: 0.42 }),
+    laneSearch: LANE_SEARCH,
   },
   // Normal picks its notes from the music (selection.js): the moments the music puts in the foreground, as many as its
   // phrase has budget for, and not cut from Hard's. Chords come over the finished moments like Hard's (chords.js).
@@ -171,6 +184,11 @@ const DIFFICULTIES = {
     motifPull: 2, // 6 narrowed a song to its favourites: distinct 4-block figures per 100 were 44 on the train songs, 50 at 2, 58 at 0, people 56
     echoMirror: 0.3,
     sustainMinBeats: 1,
+    localThin: LOCAL_THIN,
+    holdsByCalm: holdsByCalm({ loud: 0.22, quiet: 0.42 }, { loud: 0.2, quiet: 0.5 }),
+    laneSearch: { ...LANE_SEARCH, melody: 0.15, oneHand: 1.25, echoBeta: 10, echoNone: 5, echoMirror: null },
+    chordFlow: CHORD_FLOW,
+    openingLead: 0.9, // a quiet opening plays this share of its lead line, a soloist before the song comes in (selection.js)
   },
   hard: {
     grammar: "hard",
@@ -209,6 +227,11 @@ const DIFFICULTIES = {
     // other) every second note takes the runner-up band's lane instead of the
     // strongest band's, so patterns alternate between the two loudest bands.
     alternation: { maxGapBeats: 2 },
+    localThin: LOCAL_THIN,
+    holdsByCalm: holdsByCalm({ loud: 0.1, quiet: 0.2 }, { loud: 0.12, quiet: 0.3 }),
+    shortestHoldMaxMs: 225,
+    laneSearch: HARD_LANE_SEARCH,
+    openingLead: 1.2,
   },
   // For fun, beyond Hard. Charted from the music like Hard, not by stacking notes on it: the extra notes are the
   // music's own sixteenths and accents (finer onsets kept at a lower strength, chords on more of the loud hits,
@@ -246,6 +269,11 @@ const DIFFICULTIES = {
     beatBias: 0,
     chord: { minStrength: 0.8, onDownbeat: false, minEnergy: 0.4 },
     alternation: { maxGapBeats: 2 },
+    localThin: LOCAL_THIN,
+    holdsByCalm: holdsByCalm({ loud: 0.07, quiet: 0.2 }, { loud: 0.12, quiet: 0.3 }),
+    shortestHoldMaxMs: 225,
+    laneSearch: HARD_LANE_SEARCH,
+    openingLead: 1.2,
   },
 };
 

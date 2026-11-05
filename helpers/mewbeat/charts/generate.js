@@ -3,7 +3,7 @@ const { bandPathNotes } = require("./bandPath");
 const { withFittedBeats } = require("./beatFit");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { CALM_ENOUGH, calmLookup, shareOver } = require("./calm");
-const { planChords } = require("./chords");
+const { limitChordShare, planChords } = require("./chords");
 const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
 const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds } = require("./holds");
 const { assignLanes } = require("./lanes");
@@ -320,7 +320,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const chorded = step("chords", capped, planChords(capped, ctx, diff, upper));
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   const laid = step("lanes", chorded, layLanes(chorded, ctx, diff, upper));
-  return step("finalFloors", laid, enforceFloors(laid, diff, ctx.timing));
+  const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
+  return step("finalFloors", limited, enforceFloors(limited, diff, ctx.timing));
 }
 
 // Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.

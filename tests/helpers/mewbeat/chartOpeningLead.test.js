@@ -4,12 +4,12 @@ const { describe, it } = require("node:test");
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { openingLeadRates, phraseBudget } = require("../../../helpers/mewbeat/charts/selection");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const DURATION = 64000;
 const QUIET_UNTIL = 16000;
-const FLAG = { lead: true };
+const WITHOUT = flagWithout("withoutlead", "openingLead");
 
 // Two quiet phrases and then the song, with a lead line of four notes a second all through.
 const features = ({ lead = true } = {}) => {
@@ -37,8 +37,8 @@ describe("mewbeat opening lead", () => {
   describe("phraseBudget", () => {
     it("lets a quiet opening play its lead line, and nothing past it (the control)", () => {
       const ctx = analyse(features());
-      const plain = DIFFICULTIES.normal;
-      const lifted = { ...plain, openingLead: 0.9 };
+      const { openingLead, ...plain } = DIFFICULTIES.normal;
+      const lifted = { ...plain, openingLead };
       assert.ok(phraseBudget(ctx.phrases[0], ctx, lifted) > phraseBudget(ctx.phrases[0], ctx, plain));
       assert.strictEqual(phraseBudget(ctx.phrases[4], ctx, lifted), phraseBudget(ctx.phrases[4], ctx, plain));
     });
@@ -51,29 +51,23 @@ describe("mewbeat opening lead", () => {
     });
   });
 
-  describe("behind the lead flag", () => {
-    it("leaves every level as it was with the flag off", () => {
-      const off = generateAll(features(), "k");
-      const none = generateAll(features(), "k", {});
-      for (const level of LEVELS) assert.deepStrictEqual(none[level].notes, off[level].notes);
-    });
-
+  describe("in the charts", () => {
     it("plays more of the opening on Normal and Hard, and keeps Easy under Normal", () => {
-      const off = generateAll(features(), "k");
-      const on = generateAll(features(), "k", FLAG);
+      const off = generateAll(features(), "k", WITHOUT);
+      const on = generateAll(features(), "k");
       assert.ok(momentsIn(on.normal, 0, QUIET_UNTIL) > momentsIn(off.normal, 0, QUIET_UNTIL));
       assert.ok(momentsIn(on.hard, 0, QUIET_UNTIL) >= momentsIn(off.hard, 0, QUIET_UNTIL));
       assert.ok(momentsIn(on.easy, 0, QUIET_UNTIL) <= momentsIn(on.normal, 0, QUIET_UNTIL));
     });
 
     it("gives the same chart for the same song", () => {
-      const a = generateAll(features(), "k", FLAG);
-      const b = generateAll(features(), "k", FLAG);
+      const a = generateAll(features(), "k");
+      const b = generateAll(features(), "k");
       for (const level of LEVELS) assert.deepStrictEqual(a[level].notes, b[level].notes);
     });
 
     it("holds no note past the next moment on its own lane, nor past the song", () => {
-      const on = generateAll(features(), "k", FLAG);
+      const on = generateAll(features(), "k");
       for (const level of LEVELS) {
         const { notes } = on[level];
         for (const n of notes) {

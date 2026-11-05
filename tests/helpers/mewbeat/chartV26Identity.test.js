@@ -5,11 +5,12 @@ const { describe, it } = require("node:test");
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const pinned = require("./fixtures/v26-notes.json");
-const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
+const { flagWithout, makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
-// The charts of generator v26 as hashes (fixtures/v26-notes.json, taken before the levels were rewired): Easy and Hard
-// and Hell stay v26 for good, normalV26 is the Normal of v26. Re-pinned once, for the song's first second: every hash
-// matched with the old one-second lead-in and only LEAD_IN_MS moved to 0.
+// The charts of generator v26 as hashes (fixtures/v26-notes.json, taken before the levels were rewired): under what v32
+// laid over them Easy and Hard and Hell stay v26, normalV26 is the Normal of v26. Re-pinned once, for the song's first
+// second: every hash matched with the old one-second lead-in and only LEAD_IN_MS moved to 0.
+const UNDER_V32 = flagWithout("underv32", "localThin", "holdsByCalm", "shortestHoldMaxMs", "laneSearch", "chordFlow", "openingLead");
 const FIXTURES = {
   plain120: () => makeFeatures({ bpm: 120, durationMs: 180000, energy: threeSectionEnergy }),
   plain90: () => makeFeatures({ bpm: 90, durationMs: 120000, energy: threeSectionEnergy }),
@@ -25,7 +26,7 @@ const sha1 = (notes) => crypto.createHash("sha1").update(JSON.stringify(notes)).
 
 function check(level, name) {
   for (const [fixture, make] of Object.entries(FIXTURES)) {
-    const notes = generateChart(make(), name, KEY).notes;
+    const notes = generateChart(make(), name, KEY, UNDER_V32).notes;
     assert.deepStrictEqual({ count: notes.length, sha1: sha1(notes) }, pinned[fixture][level], `${level} on ${fixture}`);
   }
 }

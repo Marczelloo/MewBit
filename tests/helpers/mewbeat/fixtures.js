@@ -1,5 +1,7 @@
 // Deterministic features-JSON-v1 builder for chart tests. No randomness: every
 // "variation" below is a pure function of the onset index.
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+
 const BANDS = ["low", "lowmid", "highmid", "high"];
 
 function near(value, target) {
@@ -212,4 +214,11 @@ function makeLayeredFeatures({
   };
 }
 
-module.exports = { makeFeatures, makeLayeredFeatures, threeSectionEnergy };
+// A generator flag that takes the named parameters away from every level: what a chart is without them, as flags to pass.
+function flagWithout(name, ...params) {
+  const without = Object.fromEntries(params.map((param) => [param, undefined]));
+  FLAGS[name] = { label: name, levels: Object.fromEntries(["easy", "normalV26", "normal", "hard", "hell"].map((level) => [level, without])) };
+  return { [name]: true };
+}
+
+module.exports = { flagWithout, makeFeatures, makeLayeredFeatures, threeSectionEnergy };

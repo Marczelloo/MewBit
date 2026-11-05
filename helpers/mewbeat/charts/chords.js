@@ -197,4 +197,21 @@ function planChords(notes, ctx, diff, upper = null) {
   return plan.flatMap((e) => [...e.kept, ...e.added]).sort(byTime);
 }
 
-module.exports = { planChords };
+// limitChordShare(notes, timing, diff) -> notes with the chords of a capped level back at diff.maxChordShare. A plan keeps a
+// section's opening chord and two holds whatever the share says, and the lane search keeps more of what is planned than
+// the walk in lanes.js does. The chords on the weakest places of the bar go first, the latest of them first, down to one note.
+function limitChordShare(notes, timing, diff) {
+  if (!(diff.chordRates && diff.maxChordShare)) return notes;
+  const moments = groupByTime(notes);
+  const chords = moments.filter((m) => m.length > 1);
+  const over = chords.length - Math.floor(diff.maxChordShare * moments.length);
+  if (over <= 0) return notes;
+  const dropped = new Set();
+  const weakestFirst = chords
+    .filter((m) => m.some((n) => !(n.len > 0)))
+    .sort((a, b) => slotRank(timing, b[0].t) - slotRank(timing, a[0].t) || b[0].t - a[0].t);
+  for (const m of weakestFirst.slice(0, over)) dropped.add(m.findLast((n) => !(n.len > 0)));
+  return notes.filter((n) => !dropped.has(n));
+}
+
+module.exports = { limitChordShare, planChords };

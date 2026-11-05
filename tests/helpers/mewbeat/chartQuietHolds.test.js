@@ -147,7 +147,9 @@ describe("holds on sustained notes of a non-leader layer", () => {
     assert.ok(holds.every((h) => features.bass.some((n) => Math.abs(n.t - h.t) <= 40)), JSON.stringify(holds));
   });
 
-  it("no hold is shorter than a beat, on Hard than half a beat", () => {
+  // The lane search lets a hold go early for a note on its own hand, down to half a beat (laneSearch.js clipRelease). On the
+  // train songs that moves Normal's short holds towards people's: under .89 of a beat they are 45 %, it 30 %, without it 0 %.
+  it("no hold is shorter than half a beat, on Hard than the shortest it may be", () => {
     const songs = [
       withBassNote(),
       makeLayeredFeatures({ sustainAtBeats: [6], drums: false, durationMs: 128000 }),
@@ -156,7 +158,7 @@ describe("holds on sustained notes of a non-leader layer", () => {
     ];
     for (const features of songs) {
       for (const d of ["easy", "normal", "hard"]) {
-        const shortest = (d === "hard" ? BEAT_MS / 2 : BEAT_MS) * 0.89;
+        const shortest = (d === "hard" ? Math.min(BEAT_MS / 2, DIFFICULTIES.hard.shortestHoldMaxMs) : BEAT_MS / 2) * 0.89;
         for (const h of holdsOf(generateChart(features, d, "k"))) assert.ok(h.len >= shortest, `${d}: ${h.len} at ${h.t}`);
       }
     }

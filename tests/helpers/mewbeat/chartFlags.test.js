@@ -10,6 +10,9 @@ const KEY = "youtube:flags:64000";
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const features = () => makeLayeredFeatures({ bpm: 120, durationMs: 64000 });
 
+// The registry is empty between experiments, so these tests bring their own flags.
+for (const name of ["density", "holds", "lead"]) FLAGS[name] = { label: name, levels: {} };
+
 // Runs fn with a flag's overrides set, and puts the registry back after it.
 function withOverrides(name, levels, fn) {
   const saved = FLAGS[name].levels;
@@ -23,8 +26,7 @@ function withOverrides(name, levels, fn) {
 
 describe("mewbeat generator flags", () => {
   describe("registry", () => {
-    it("has the four named flags", () => {
-      assert.deepStrictEqual(Object.keys(FLAGS), ["density", "holds", "transitions", "lead"]);
+    it("gives every flag a label and its levels", () => {
       for (const flag of Object.values(FLAGS)) {
         assert.strictEqual(typeof flag.label, "string");
         assert.strictEqual(typeof flag.levels, "object");

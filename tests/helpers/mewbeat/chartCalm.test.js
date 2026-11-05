@@ -4,10 +4,11 @@ const { describe, it } = require("node:test");
 const { calmLookup, shareOver } = require("../../../helpers/mewbeat/charts/calm");
 const { addGapHolds } = require("../../../helpers/mewbeat/charts/holds");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const PARAMS = { quietBelow: 0.25, loudAbove: 0.6 };
 const LEVELS = ["easy", "normal", "hard", "hell"];
+const WITHOUT = flagWithout("withoutcalm", "holdsByCalm", "shortestHoldMaxMs");
 
 // The upper bands of a song of `seconds`, with `perSecond(second)` strong onsets each second in each band.
 const upperBands = (seconds, perSecond, s = 0.8) => ({
@@ -95,7 +96,7 @@ describe("mewbeat calm", () => {
     });
   });
 
-  describe("behind the holds flag", () => {
+  describe("in the charts", () => {
     // A song whose upper bands all but stop for a few seconds inside a phrase that repeats nothing (a repeat copies its source).
     const stilled = () => {
       const features = makeLayeredFeatures({ bpm: 120, durationMs: 64000 });
@@ -106,27 +107,21 @@ describe("mewbeat calm", () => {
     };
     const heldIn = (chart, from, to) => chart.notes.filter((n) => n.t >= from && n.t < to && n.len > 0).length;
 
-    it("leaves every level as it was with the flag off", () => {
-      const off = generateAll(stilled(), "k");
-      const none = generateAll(stilled(), "k", {});
-      for (const level of LEVELS) assert.deepStrictEqual(none[level].notes, off[level].notes);
-    });
-
-    it("holds as much or more in the calm stretch with the flag on", () => {
-      const off = generateAll(stilled(), "k");
-      const on = generateAll(stilled(), "k", { holds: true });
+    it("holds as much or more in the calm stretch than without the calm", () => {
+      const off = generateAll(stilled(), "k", WITHOUT);
+      const on = generateAll(stilled(), "k");
       for (const level of LEVELS) assert.ok(heldIn(on[level], 8000, 15000) >= heldIn(off[level], 8000, 15000), `${level}: ${heldIn(on[level], 8000, 15000)} < ${heldIn(off[level], 8000, 15000)}`);
       assert.ok(LEVELS.some((level) => heldIn(on[level], 8000, 15000) > heldIn(off[level], 8000, 15000)), "some level holds more");
     });
 
     it("gives the same chart for the same song", () => {
-      const a = generateAll(stilled(), "k", { holds: true });
-      const b = generateAll(stilled(), "k", { holds: true });
+      const a = generateAll(stilled(), "k");
+      const b = generateAll(stilled(), "k");
       for (const level of LEVELS) assert.deepStrictEqual(a[level].notes, b[level].notes);
     });
 
     it("holds no note past the next moment on its own lane, nor past the song", () => {
-      const on = generateAll(stilled(), "k", { holds: true });
+      const on = generateAll(stilled(), "k");
       for (const level of LEVELS) {
         const notes = on[level].notes;
         for (const n of notes) {

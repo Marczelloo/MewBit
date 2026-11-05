@@ -16,8 +16,8 @@ function calmLookup(features, durationMs, { quietBelow, loudAbove }) {
   const seconds = Math.max(1, Math.ceil(durationMs / 1000));
   const counts = new Array(seconds).fill(0);
   for (const band of features.bands ?? []) {
-    if (!UPPER_BANDS.includes(band.name)) continue;
-    for (const onset of band.onsets ?? []) {
+    if (!UPPER_BANDS.includes(band?.name) || !Array.isArray(band.onsets)) continue;
+    for (const onset of band.onsets) {
       const second = Math.floor(onset.t / 1000);
       if (onset.s >= STRONG_ONSET && second >= 0 && second < seconds) counts[second]++;
     }

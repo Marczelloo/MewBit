@@ -5,47 +5,9 @@
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
-const LOCAL_THIN = { reach: 6, power: 1, floor: 0.5, knee: 0.6 }; // localThin.js: the slower seconds inside a phrase
-// calm.js: the holds follow the calm stretches. gapShare and maxShare stand in for gapHoldShare and maxHoldShare.
-const holdsByCalm = (gapShare, maxShare) => ({ quietBelow: 0.25, loudAbove: 0.6, quietEnergy: 0.15, gapShare, maxShare });
-
-// laneSearch.js: the lanes come from a search over the whole song. Hard stays closer to the figures it already plays.
-const LANE_SEARCH = { beam: 8, tau: 1, handPull: 3, lanePull: 2, melody: 0, echoBeta: 6, echoNone: 3, echoMirror: 0, restrike: 1.5, overChord: 1.5, oneHand: 0.75 };
-const HARD_LANE_SEARCH = { ...LANE_SEARCH, tau: 0.6, handPull: 1, lanePull: 1, restrike: 0, overChord: 0, oneHand: 0 };
-// chords.js: the chords of Normal move out of the fast runs. Only Normal plays them differently from people there.
-const CHORD_FLOW = { fastBeats: 0.62, nearBeats: 1.25, betweenFast: 0.45, withRoom: 3, holdIntoRun: 0.15, besideChord: 1.6 };
-
 // name -> { label, levels: { <level name, public or internal>: { <difficulty parameter>: value } } }
-const FLAGS = {
-  density: {
-    label: "how many moments a phrase plays",
-    levels: { easy: { localThin: LOCAL_THIN }, normal: { localThin: LOCAL_THIN }, hard: { localThin: LOCAL_THIN }, hell: { localThin: LOCAL_THIN } },
-  },
-  holds: {
-    label: "where and how long the holds are",
-    levels: {
-      easy: { holdsByCalm: holdsByCalm({ loud: 0.15, quiet: 0.32 }, { loud: 0.2, quiet: 0.42 }) },
-      normal: { holdsByCalm: holdsByCalm({ loud: 0.22, quiet: 0.42 }, { loud: 0.2, quiet: 0.5 }) },
-      hard: { holdsByCalm: holdsByCalm({ loud: 0.1, quiet: 0.2 }, { loud: 0.12, quiet: 0.3 }), shortestHoldMaxMs: 225 },
-      hell: { holdsByCalm: holdsByCalm({ loud: 0.07, quiet: 0.2 }, { loud: 0.12, quiet: 0.3 }), shortestHoldMaxMs: 225 },
-    },
-  },
-  transitions: {
-    label: "how one figure leads into the next",
-    levels: {
-      easy: { laneSearch: LANE_SEARCH },
-      normalV26: { laneSearch: LANE_SEARCH },
-      normal: { laneSearch: { ...LANE_SEARCH, melody: 0.15, oneHand: 1.25, echoBeta: 10, echoNone: 5, echoMirror: null }, chordFlow: CHORD_FLOW },
-      hard: { laneSearch: HARD_LANE_SEARCH },
-      hell: { laneSearch: HARD_LANE_SEARCH },
-    },
-  },
-  lead: {
-    label: "which instrument carries the melody",
-    // selection.js: a quiet opening plays this share of its lead line, a soloist before the song comes in.
-    levels: { normal: { openingLead: 0.9 }, hard: { openingLead: 1.2 }, hell: { openingLead: 1.2 } },
-  },
-};
+// None right now: density, holds, transitions and lead were played and became part of the levels in v32 (difficulty.js).
+const FLAGS = {};
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
 
