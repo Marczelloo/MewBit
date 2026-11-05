@@ -50,6 +50,19 @@ describe("the fitted beats", () => {
     for (const t of onBeat) assert.ok(nearest(beats, t) <= 4, `no fitted beat at ${t}`);
   });
 
+  it("keeps a thin opening on its own sound when it stands off the long part's grid", () => {
+    const bpm = 171, beatMs = 60000 / bpm, introBeats = 57;
+    const f = song({ bpm, trackerOff: 0, beatAt: (i) => 250 + i * beatMs + (i < introBeats ? -38 : 0) });
+    const introEnd = 250 + introBeats * beatMs;
+    f.bands.forEach((band, b) => {
+      band.onsets = band.onsets.filter((o) => o.t >= introEnd - 38 || (b === 2 && Math.round((o.t - 212) / beatMs) % 2 === 0));
+    });
+    const intro = f.bands[2].onsets.filter((o) => o.t < introEnd - 38).map((o) => o.t);
+    const { beats } = fitBeats(f);
+    const off = intro.filter((t) => nearest(beats, t) > 12);
+    assert.ok(off.length <= 1, `${off.length} of ${intro.length} opening onsets have no fitted beat within 12 ms`); // the one next to the seam may go
+  });
+
   it("takes the wobble out: equal gaps stay equal to the millisecond", () => {
     const f = song({ trackerOff: 0 });
     assert.ok(Math.max(...gaps(f.tempo.beats)) - Math.min(...gaps(f.tempo.beats)) > 20, "the tracker wobbles here");

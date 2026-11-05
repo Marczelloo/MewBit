@@ -36,6 +36,7 @@ const PHASE_WINDOW_BEATS = 8;
 const PHASE_STEP_MS = 14; // a smaller step of the quarter grid is not a step
 const MIN_PHASE_BEATS = 16;
 const MERGE_KEEP = 0.85; // two parts are one tempo when one period keeps this share of their lock
+const MERGE_MIN_ON_GRID = -0.8; // a part this far off the pair's quarter grid (-1 is halfway between its lines) stays apart: the sums above always let a long part swallow a thin one
 const MAX_MERGE_REFINES = 64; // the merge stops trying after this many periods (a Raspberry Pi runs this)
 
 // Which phase is the beat
@@ -263,8 +264,10 @@ function mergeParts(on, parts, P) {
     if (x.apartFrom === y) { i++; continue; }
     const both = refinePeriod(on, x.a, y.b, P);
     refines++;
-    const kept = quarterPhase(on, x.a, y.b, both).lock;
-    if (kept >= MERGE_KEEP * (quarterPhase(on, x.a, x.b, x.P).lock + quarterPhase(on, y.a, y.b, y.P).lock)) {
+    const whole = quarterPhase(on, x.a, y.b, both);
+    const onGrid = (part) => Math.cos(((TAU * BEATS_PER_BAR) / both) * (quarterPhase(on, part.a, part.b, both).t - whole.t));
+    const fits = onGrid(x) >= MERGE_MIN_ON_GRID && onGrid(y) >= MERGE_MIN_ON_GRID;
+    if (fits && whole.lock >= MERGE_KEEP * (quarterPhase(on, x.a, x.b, x.P).lock + quarterPhase(on, y.a, y.b, y.P).lock)) {
       list.splice(i, 2, { a: x.a, b: y.b, P: both, apartFrom: null });
       i = 0;
     } else {
