@@ -19,6 +19,7 @@ const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
+const { figureTimes } = require("./figures");
 const { extraMoments, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -157,7 +158,11 @@ function placed(chosen, trace) {
 function musicNotes(ctx, i, diff, trace, before = null) {
   const phrase = ctx.phrases[i];
   const { heard, carry } = momentsAround(ctx, i, diff, before);
-  const chosen = selectMoments(phrase, heard, budgetOf(ctx, phrase, diff), diff, ctx.timing, { before, carry });
+  const budget = budgetOf(ctx, phrase, diff);
+  const figures = diff.figures ? figureTimes(ctx, diff.figures) : null;
+  const weakLead = diff.figures && (phrase.rate?.lead ?? 0) * (ctx.timing.medianMs / 1000) < diff.figures.weakLead;
+  const figureRoom = weakLead ? Math.round(diff.figures.extra * budget) : 0;
+  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 

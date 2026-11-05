@@ -238,8 +238,9 @@ function gapOf(diff, timing) {
 // SILENT_GAP_BEATS between notes with a sound in it takes its best moment, for a spare place or for the weakest note; the
 // stretches count from the phrase's start to its first note and from its last note to its end too, and from the last note of
 // the phrase before (`edges.before`, its time) with the sounds that lie after that note in `edges.carry` (earlier moments,
-// they may be chosen too). What the foreground leaves of the budget goes to beats and half beats in the rests where something
-// sounds; a beat nothing sounds on is played only where the phrase has a steady pulse. The budget is never passed.
+// they may be chosen too). What the foreground leaves of the budget goes first to what the drums and bass repeat (`edges.figures`,
+// the times of figures.js), then to beats and half beats in the rests where something sounds; a beat nothing sounds on is played
+// only where the phrase has a steady pulse. The budget is never passed, but for the figures' `edges.figureRoom`.
 function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   const snapped = !!timing?.snapped;
   const beatAt = (t) => beatMsOf(timing, t);
@@ -288,6 +289,17 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     if (!weakest) break;
     chosen.splice(chosen.indexOf(weakest), 1);
     add(best.c, "dopełnienie");
+  }
+
+  // What the drums and bass keep repeating (diff.figures), before the rests are filled: the foreground and the long stretches
+  // keep their notes. `edges.figureRoom` is what a phrase with a weak lead may take on top of its budget.
+  if (edges.figures?.size > 0) {
+    const most = budget + (edges.figureRoom ?? 0);
+    const figure = scored.filter((c) => edges.figures.has(c.t)).sort((a, b) => a.metric - b.metric || b.score - a.score || a.t - b.t);
+    for (const c of figure) {
+      if (chosen.length >= most) break;
+      if (fits(c.t, c.metric === 2 ? 0 : diff.figures.restBeats)) add(c, "figura");
+    }
   }
 
   // What is missing: beats and half beats with a sound, in the rests.
