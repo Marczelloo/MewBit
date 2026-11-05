@@ -863,7 +863,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         className={`mb-stage${stageUnder ? " mb-stage-under" : ""}${hud.feverActive ? " mb-fever" : ""}${pulseClass}`}
         style={{ "--mb-vibe": stageVibe }}
       >
-        <Stage />
+        <Stage track={track} />
         {hud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
         {endBanner ? <div className="mb-feverbanner mb-endbanner" role="status">{endBanner}</div> : null}
         {readoutHud.judgement?.kind === "miss" && effectsLevel !== "off" ? (
