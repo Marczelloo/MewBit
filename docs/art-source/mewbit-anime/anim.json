@@ -1,0 +1,108 @@
+{
+  "neutral": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "standing relaxed, arms loose at her sides, calm small smile, eyes open looking at the viewer."},
+    {"ref": "prev", "p": "she shifts her weight a little: hips slightly toward the right side of the image, head slightly tilted the same way, same calm smile."},
+    {"ref": "prev", "p": "back to standing centered, both eyes closed in a soft blink, same calm smile."}
+  ],
+  "vibe1": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "her head and upper body lean toward the left side of the image, eyes closed in a happy curve, gentle smile, arms relaxed."},
+    {"ref": "prev", "p": "her head and upper body are now upright and centered, chin slightly raised, eyes closed in a happy curve, gentle smile, arms relaxed."},
+    {"ref": "prev", "p": "her head and upper body now lean toward the right side of the image, eyes closed in a happy curve, gentle smile, arms relaxed."}
+  ],
+  "vibe2": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "dancing to music: head tilted strongly toward the left side of the image, hips swayed toward the right side of the image, the hand on the left side of the image holds the headphone cup, the other arm is bent, eyes closed, big smile."},
+    {"ref": "prev", "p": "knees bent dipping down on the beat, head centered and nodding down, same hand still on the headphone cup, eyes closed, big smile."},
+    {"ref": "prev", "p": "head tilted strongly toward the right side of the image, hips swayed toward the left side of the image, same hand still on the headphone cup, eyes closed, big smile."},
+    {"ref": "prev", "p": "standing tall with legs straight, chin raised, same hand still on the headphone cup, happy open-mouth smile."}
+  ],
+  "vibe3": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "free": true, "p": "dancing hard: the fist on the left side of the image is punched high in the air, the other hand on her hip, knees bent, head tilted, big open-mouth grin, eyes closed happily."},
+    {"ref": "prev", "free": true, "p": "the raised fist comes down to shoulder height, knees bent deeper, head nodding down, hair bouncing upward, big grin."},
+    {"ref": "prev", "free": true, "p": "now the fist on the right side of the image is punched high in the air, the other hand on her hip, knees bent, head tilted the other way, big open-mouth grin, eyes closed happily."},
+    {"ref": "prev", "free": true, "p": "the raised fist comes down to shoulder height, knees bent deeper, head nodding down, hair bouncing upward, big grin."}
+  ],
+  "miss": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "she flinches: shoulders pulled up, both eyes squeezed shut, cat ears flattened, teeth clenched in a wince, hands raised a little in front of her chest."},
+    {"ref": "prev", "p": "she leans back a little further, one eye opening, cat ears still flat, worried wavy mouth, hands still in front of her chest."},
+    {"ref": "prev", "p": "she relaxes back to standing upright, sheepish embarrassed smile, both eyes open, cat ears half lowered, one hand scratching the back of her head and the other arm relaxed at her side."}
+  ],
+  "crushed": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "sad: shoulders drooping, head lowered, cat ears flat, teary eyes, arms hanging limp at her sides."},
+    {"ref": "prev", "p": "even more slumped, knees bending inward, head low, tears in the corners of her eyes, wobbling mouth."},
+    {"ref": "prev", "free": true, "p": "she drops down kneeling on the floor, both knees on the ground, both hands on the floor in front of her, head hanging low, cat ears flat, boots still visible behind her."},
+    {"ref": "prev", "free": true, "p": "still kneeling in the same place, head raised a little, crying big anime tears, small pouting mouth, cat ears flat."}
+  ],
+  "milestone": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "free": true, "p": "anticipation crouch before a jump: knees deeply bent, arms pulled back behind her, looking up, excited grin."},
+    {"ref": "prev", "free": true, "p": "leaping straight up: both feet off the ground, legs together stretched down, both arms thrust upward, hair and jacket trailing downward, joyful open mouth."},
+    {"ref": "prev", "free": true, "p": "at the top of the jump: knees tucked up, both fists raised, eyes closed happily, big open-mouth smile, hair and jacket floating."},
+    {"ref": "prev", "free": true, "p": "landed on the ground: knees bent, both arms out to the sides, eyes open, big grin, hair settling down."}
+  ],
+  "fever": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "free": true, "p": "wild dance: both arms thrown up in the air, head thrown back, big open-mouth laugh, eyes shut as happy arcs, knees bent, hair flying toward the left side of the image."},
+    {"ref": "prev", "free": true, "p": "both arms sweep toward the left side of the image pointing up and out, hips pushed toward the right side of the image, head tilted, playful tongue out, hair flying."},
+    {"ref": "prev", "free": true, "p": "both arms pulled down with fists at her chest, knees bent deep, head banging downward, hair flying upward, big grin."},
+    {"ref": "prev", "free": true, "p": "both arms sweep toward the right side of the image pointing up and out, hips pushed toward the left side of the image, big grin, hair flying."},
+    {"ref": "prev", "free": true, "p": "jumping: both feet off the ground, both arms straight up, hair and jacket flying, ecstatic open-mouth smile, eyes closed happily."}
+  ],
+  "charting": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "thinking: one hand on her chin, the other hand holds a small glowing tablet at waist height, eyes looking up toward the left side of the image, small curious smile."},
+    {"ref": "prev", "p": "she looks down at the tablet and taps it with one finger, tip of her tongue out in concentration."},
+    {"ref": "prev", "p": "she looks up toward the right side of the image, one finger on her chin, cat ears perked, tablet still held at her waist."}
+  ],
+  "reveal": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "startled, caught: both hands raised near her face, wide eyes, small open mouth, cat ears perked up, leaning back."},
+    {"ref": "prev", "p": "a grin spreading across her face, hands lowering to chest height, leaning a little toward the viewer."},
+    {"ref": "prev", "p": "she points at the viewer with the hand on the left side of the image, the other hand on her hip, playful open-mouth smile, both eyes open."},
+    {"ref": "prev", "p": "a wink: only the eye on the left side of the image is closed as a single curved line, the other eye stays open with its purple iris visible, still pointing at the viewer, big playful smile."}
+  ],
+  "stretch": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "beginning to stretch: both arms rising in front of her chest, fingers interlaced, eyes closed."},
+    {"ref": "prev", "free": true, "p": "both arms stretched straight up above her head, fingers interlaced, palms facing up, back arched, eyes closed, mouth open in a yawn."},
+    {"ref": "prev", "free": true, "p": "same stretch with arms above her head, her whole upper body bending toward the left side of the image, eyes closed, small smile."},
+    {"ref": "frames/raw/game/neutral/f1/qwen-base-quality-391_00001_.png", "p": "arms lowered to her sides after a stretch, jacket open showing the black crop top, standing upright, relaxed content smile, eyes half closed."}
+  ],
+  "adjust": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "both hands on the headphone cups, adjusting them, head tilted slightly, eyes closed."},
+    {"ref": "prev", "p": "only the hand on the left side of the image stays on the headphone cup, the other arm lowered to her side, eyes open looking up, small smile."},
+    {"ref": "prev", "p": "both arms lowered to her sides, satisfied smile, eyes open looking at the viewer."}
+  ],
+  "peek": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "leaning toward the right side of the image, one hand shading her eyes above her brow, looking into the distance, curious."},
+    {"ref": "prev", "p": "leaning further toward the right side of the image, the other arm out for balance, hand still shading her eyes, eyes wide."},
+    {"ref": "prev", "p": "she spots it: same lean, excited open-mouth smile, cat ears perked up, sparkling eyes."}
+  ],
+  "hype": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "excited bouncing: both fists at her chest, knees bent, excited grin, eyes wide."},
+    {"ref": "prev", "free": true, "p": "a small hop: both feet just off the ground, fists raised to shoulder height, open-mouth smile."},
+    {"ref": "prev", "free": true, "p": "knees bent on the ground, the fist on the left side of the image raised high, the other at her chest, shouting happily."},
+    {"ref": "prev", "free": true, "p": "a small hop: both feet just off the ground, both fists raised high, shouting happily, eyes bright, hair bouncing."}
+  ],
+  "go": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "crouched in a ready stance, one foot forward, fists up, determined grin."},
+    {"ref": "prev", "free": true, "p": "cute cat pose: both hands curled into paws beside her face, one knee raised, head tilted, cat-like open smile, both eyes closed happily."},
+    {"ref": "prev", "free": true, "p": "same paw pose with both feet on the ground, head tilted the other way, sparkling open eyes, cat-like smile."}
+  ],
+  "cheer": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "free": true, "p": "cheering: both fists raised above her head, knees slightly bent, huge open-mouth smile."},
+    {"ref": "prev", "free": true, "p": "hopping: both feet off the ground, arms straight up, eyes closed happily, huge open-mouth smile, hair bouncing."},
+    {"ref": "prev", "free": true, "p": "landed, both arms waving wide apart above her shoulders, huge open-mouth smile."},
+    {"ref": "prev", "free": true, "p": "a peace sign toward the viewer with the hand on the left side of the image, the other hand on her hip, confident grin."}
+  ],
+  "okay": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "a gentle shrug: one hand behind her head, the other arm relaxed, lopsided small smile."},
+    {"ref": "prev", "p": "a small thumbs up at chest height with the hand on the left side of the image, the other arm relaxed at her side, mild smile."},
+    {"ref": "prev", "p": "she exhales, both arms relaxed at her sides, small nod, eyes closed, soft smile."}
+  ],
+  "sad": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "shoulders drooping, cat ears lowered, cute pout with big watery eyes, hands clasped in front of her waist."},
+    {"ref": "prev", "p": "sniffling: head lowered, one hand rubbing her eye, the other arm at her side, small tears."},
+    {"ref": "prev", "p": "she looks up at the viewer with a brave teary little smile, a small wave at waist height with one hand."}
+  ],
+  "newbest": [
+    {"ref": "poses/qwen-smile/qwen-base-quality-83_00001_.png", "p": "a gasp of disbelief: both hands on her cheeks, huge sparkling eyes, mouth wide open."},
+    {"ref": "prev", "free": true, "p": "hopping with joy: both feet off the ground, arms thrown wide, big open-mouth scream of happiness."},
+    {"ref": "prev", "free": true, "p": "standing, holding a small golden star trophy high above her head with both hands, huge smile."},
+    {"ref": "prev", "free": true, "p": "hugging the small golden star trophy to her chest with both arms, eyes closed, blushing happy smile."}
+  ]
+}

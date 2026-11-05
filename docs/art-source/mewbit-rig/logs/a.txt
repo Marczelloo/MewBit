@@ -1,0 +1,15 @@
+eyes-closed shift (-1, 0) mismatch 0.1113
+face-happy-23 shift (-1, 1) mismatch 0.1277
+face-sad-7 shift (-1, 0) mismatch 0.1063
+face-wince-23 shift (-1, 1) mismatch 0.1238
+neutral 64 frames 2.11 MB
+arm_low rest 28
+vibe2 64 frames 2.12 MB
+both_down rest 18
+crushed 28 frames 0.93 MB
+miss 14 frames 0.46 MB
+arm_high rest 155
+arm_star rest 159
+arm_fore rest 41
+arm_mid rest 91
+newbest 26 frames 0.91 MB

@@ -1,0 +1,212 @@
+<title>Tła Mewbeat</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: the live stage first, with the controls that drive it right under it; the eight scenes below as pickable frames with notes. One dark look, taken from the game. */
+:root {
+  color-scheme: dark;
+  --bg: #0d0818;
+  --panel: #171026;
+  --line: #33264d;
+  --fg: #efe9f8;
+  --muted: #a99bc4;
+  --magenta: #ff6ec7;
+  --cyan: #67e3f4;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.page { max-width: 1320px; margin: 0 auto; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; justify-content: space-between; }
+h1 { margin: 0; font: 700 26px/1.1 var(--display); letter-spacing: 0.01em; }
+header p { margin: 0; color: var(--muted); max-width: 66ch; }
+
+/* The same layer stack and the same opacity formulas as the game. --vibe and --pulse come from the controls. */
+.stage { --vibe: 0.5; --pulse: 0; position: relative; aspect-ratio: 16 / 9; width: 100%; overflow: hidden; border-radius: 6px; background: #000; }
+.stage img.layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 100%; }
+.l-fever { opacity: 0; transition: opacity 400ms ease-out; }
+.fever .l-fever { opacity: 1; }
+.l-lit { opacity: calc(0.1 + var(--vibe) * 0.3 + var(--pulse) * 0.7); }
+.fever .l-lit { opacity: calc(0.55 + var(--pulse) * 0.45); }
+.l-neon { opacity: calc(0.7 + var(--vibe) * 0.15 + var(--pulse) * 0.3); }
+.l-glow { opacity: calc(0.15 + var(--vibe) * 0.25 + var(--pulse) * 0.6); }
+.dim { position: absolute; inset: 0; background: #07040f; opacity: calc(0.3 - var(--vibe) * 0.3); pointer-events: none; }
+.game { position: absolute; inset: 0; }
+.game[hidden] { display: none; }
+.mewbit { position: absolute; left: 4%; bottom: 0; height: 88%; aspect-ratio: 1; }
+.road { position: absolute; left: 39.5%; width: 21%; top: 0; bottom: 0; background: rgb(13 8 24 / 0.72); border-inline: 1px solid rgb(255 255 255 / 0.14); display: grid; grid-template-columns: repeat(4, 1fr); }
+.road i { border-right: 1px solid rgb(255 255 255 / 0.07); position: relative; }
+.road i:last-of-type { border-right: 0; }
+.road b { position: absolute; left: 14%; right: 14%; height: 2.2%; border-radius: 3px; background: var(--magenta); }
+.road i:nth-child(even) b { background: var(--cyan); }
+.keys { position: absolute; left: 0; right: 0; bottom: 6%; height: 1.5%; background: rgb(255 255 255 / 0.5); }
+.card { position: absolute; right: 4%; top: 8%; width: 19%; padding: 1.2%; background: rgb(23 16 38 / 0.85); border: 1px solid rgb(255 255 255 / 0.12); border-radius: 8px; font: 700 clamp(9px, 1.4vw, 18px)/1.3 var(--display); }
+.card small { display: block; font: 400 clamp(8px, 0.9vw, 12px)/1.3 var(--body); color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+.controls h2 { margin: 0 auto 0 0; font: 700 19px/1.2 var(--display); min-width: 100%; }
+@media (min-width: 900px) { .controls h2 { min-width: 0; } }
+.controls label { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); cursor: pointer; }
+.controls input[type="range"] { width: 130px; accent-color: var(--magenta); }
+.controls input[type="checkbox"] { accent-color: var(--magenta); }
+output { font-variant-numeric: tabular-nums; color: var(--fg); min-width: 2.2em; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 14px; }
+.item { display: grid; gap: 7px; min-width: 0; }
+.thumb { all: unset; display: block; cursor: pointer; aspect-ratio: 16 / 9; border-radius: 5px; overflow: hidden; outline: 2px solid transparent; outline-offset: 1px; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb:hover { outline-color: var(--line); }
+.thumb:focus-visible { outline-color: var(--cyan); }
+.item.on .thumb { outline-color: var(--magenta); }
+.name { font: 500 14px/1.2 var(--display); min-width: 0; }
+textarea { width: 100%; box-sizing: border-box; min-height: 38px; resize: vertical; padding: 6px 8px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 5px; font: 400 13.5px/1.35 var(--body); }
+textarea::placeholder { color: var(--muted); }
+textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 0; }
+#status { color: var(--muted); font-size: 13px; margin: 0; }
+</style>
+
+<div class="page">
+  <header>
+    <h1>Tła Mewbeat</h1>
+    <p>Twoje 8 teł w warstwach, liczonych tak samo jak w grze: światła pulsują na trafienia i rosną z vibe, a FEVER rozgrzewa całą scenę. Klikaj sceny i wpisuj uwagi.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <div id="layers"></div>
+    <div class="dim"></div>
+    <div class="game" id="game">
+      <img class="mewbit" id="mewbit" alt="Mewbit">
+      <div class="road"><i><b style="top:18%"></b></i><i><b style="top:46%"></b></i><i><b style="top:31%"></b></i><i><b style="top:68%"></b></i><div class="keys"></div></div>
+      <div class="card">128 400<small>wynik · combo 64</small></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <h2 id="title"></h2>
+    <label>Vibe <input type="range" id="vibe" min="0" max="1" step="0.05" value="0.5"><output id="vibeOut">0.50</output></label>
+    <label><input type="checkbox" id="beat" checked> Trafienia w rytm</label>
+    <label><input type="checkbox" id="fever"> FEVER</label>
+    <label><input type="checkbox" id="showGame" checked> Mewbit, tor nut i wynik</label>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <p id="status">Łączę z zapisem uwag…</p>
+</div>
+
+<script>
+const SCENES = [
+  ["01-dach-s22", "Dach nocą"], ["02-klub-s22", "Scena w klubie"], ["03-pokoj-s22", "Pokój-studio"], ["04-arcade-s22", "Salon arcade"],
+  ["05-zaulek-s22", "Deszczowy zaułek"], ["06-metro-s22", "Peron metra"], ["07-glitch-s11", "Świat glitcha"], ["08-swit-s22", "Dach o świcie"],
+];
+const LAYERS = [["base", ""], ["fever", "l-fever"], ["lit", "l-lit"], ["glow", "l-glow"], ["neon", "l-neon"]];
+const stage = document.getElementById("stage");
+const box = document.getElementById("layers");
+const title = document.getElementById("title");
+const grid = document.getElementById("grid");
+const status = document.getElementById("status");
+const notes = {};
+let store = null;
+
+function show(id, name) {
+  const next = document.createElement("div");
+  for (const [layer, cls] of LAYERS) {
+    const image = new Image();
+    image.className = `layer ${cls}`.trim();
+    image.alt = layer === "base" ? name : "";
+    image.src = `scenes/${id}/${layer}.webp`;
+    next.append(image);
+  }
+  box.replaceChildren(next);
+  title.textContent = name;
+  grid.querySelectorAll(".item").forEach((el) => el.classList.toggle("on", el.dataset.id === id));
+}
+
+const writes = {};
+function save(id) {
+  if (!store) return;
+  // One write at a time per scene; each one sends the latest text.
+  writes[id] = (writes[id] || Promise.resolve()).then(() => store.doc(id).set({ note: notes[id] })).then(
+    () => { status.textContent = "Zapisane. Widzę Twoje uwagi po swojej stronie."; },
+    () => { status.textContent = "Nie udało się zapisać. Spróbuj jeszcze raz albo napisz mi uwagę na czacie."; },
+  );
+}
+
+for (const [id, name] of SCENES) {
+  notes[id] = "";
+  const item = document.createElement("article");
+  item.className = "item";
+  item.dataset.id = id;
+  item.innerHTML = `<button class="thumb" type="button"><img loading="lazy" alt=""></button><span class="name"></span><textarea rows="1" placeholder="Uwagi do tego tła"></textarea>`;
+  const thumb = item.querySelector(".thumb img");
+  thumb.src = `scenes/${id}/base.webp`;
+  thumb.alt = name;
+  item.querySelector(".thumb").addEventListener("click", () => show(id, name));
+  item.querySelector(".name").textContent = name;
+  const note = item.querySelector("textarea");
+  note.setAttribute("aria-label", `Uwagi: ${name}`);
+  note.addEventListener("change", () => { notes[id] = note.value; save(id); });
+  grid.append(item);
+}
+
+const vibe = document.getElementById("vibe");
+const vibeOut = document.getElementById("vibeOut");
+const beat = document.getElementById("beat");
+const fever = document.getElementById("fever");
+function applyVibe() {
+  stage.style.setProperty("--vibe", fever.checked ? 1.4 : vibe.value);
+  vibeOut.textContent = Number(vibe.value).toFixed(2);
+}
+vibe.addEventListener("input", applyVibe);
+fever.addEventListener("change", () => { stage.classList.toggle("fever", fever.checked); applyVibe(); });
+document.getElementById("showGame").addEventListener("change", (event) => { document.getElementById("game").hidden = !event.target.checked; });
+show(...SCENES[0]);
+
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (calm) beat.checked = false;
+
+// A hit every half second, fading over 250 ms as in the game.
+const start = performance.now();
+function tick(now) {
+  const into = (now - start) % 500;
+  stage.style.setProperty("--pulse", beat.checked ? Math.max(0, 1 - into / 250).toFixed(3) : "0");
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// Mewbit's approved idle loop, as in the game.
+const mewbit = document.getElementById("mewbit");
+const frames = Array.from({ length: 64 }, (_, i) => `mewbit/${String(i + 1).padStart(2, "0")}.webp`);
+mewbit.src = frames[0];
+if (!calm) {
+  frames.forEach((src) => { new Image().src = src; });
+  let f = 0;
+  setInterval(() => { f = (f + 1) % frames.length; mewbit.src = frames[f]; }, 1000 / 24);
+}
+
+(async () => {
+  const db = window.claude?.use ? await window.claude.use("db") : null;
+  if (!db) {
+    status.textContent = "Zapis uwag jest tu niedostępny. Napisz mi je na czacie.";
+    return;
+  }
+  store = db.collection("layers");
+  status.textContent = "Wczytuję zapisane uwagi…";
+  const slow = setTimeout(() => { status.textContent = "Zapisane uwagi jeszcze się nie wczytały. Jeśli to zostanie, napisz mi je na czacie."; }, 10000);
+  store.onSnapshot((snapshot) => {
+    snapshot.docs.forEach((doc) => {
+      if (!(doc.id in notes)) return;
+      notes[doc.id] = doc.data().note ?? "";
+      const field = grid.querySelector(`[data-id="${doc.id}"] textarea`);
+      if (document.activeElement !== field) field.value = notes[doc.id];
+    });
+    if (!snapshot.metadata.fromCache) {
+      clearTimeout(slow);
+      if (status.textContent.startsWith("Wczytuję") || status.textContent.startsWith("Zapisane uwagi jeszcze")) status.textContent = "Uwagi zapisują się same.";
+    }
+  }, () => {
+    clearTimeout(slow);
+    status.textContent = "Nie mogę odczytać zapisanych uwag. Napisz mi je na czacie.";
+  });
+})();
+</script>

@@ -1,0 +1,16 @@
+eyes-closed shift (-1, 0) mismatch 0.1113
+face-happy-23 shift (-1, 1) mismatch 0.1277
+face-sad-7 shift (-1, 0) mismatch 0.1063
+face-wince-23 shift (-1, 1) mismatch 0.1238
+both_low rest 33
+both_up rest 147
+stretch rest 177
+stretch 64 frames 2.33 MB
+fever 48 frames 1.96 MB
+arm_up rest 160
+vibe3 48 frames 1.69 MB
+arm_low rest 28
+arm_fore rest 41
+arm_mid rest 91
+arm_paw rest 172
+go 22 frames 0.73 MB

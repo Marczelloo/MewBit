@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MewBit rig</title>
+<style>
+  body { margin: 0; background: #f4f1f8; font: 14px system-ui, sans-serif; }
+  #stage { width: calc(420px * var(--zoom, 1)); transform-origin: 0 0; }
+  #stage svg { width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+  // ?zoom=2&x=100&y=0 frames a part of the drawing for close inspection.
+  const q = new URLSearchParams(location.search);
+  const stage = document.getElementById('stage');
+  stage.style.setProperty('--zoom', q.get('zoom') || 1);
+  stage.style.marginLeft = `-${(q.get('x') || 0) * (q.get('zoom') || 1)}px`;
+  stage.style.marginTop = `-${(q.get('y') || 0) * (q.get('zoom') || 1)}px`;
+  fetch((q.get('src') || 'mewbit.svg') + '?' + Date.now()).then(r => r.text()).then(t => { stage.innerHTML = t; });
+</script>
+</body>
+</html>
