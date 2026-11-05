@@ -21,7 +21,7 @@ function playHit(sounds, volume, choice) {
 }
 
 const MISS_POSE_MS = 600;
-const CRUSHED_POSE_MS = 1200;
+const CRUSHED_POSE_MS = 1000;
 const CRUSH_COMBO = 25;
 const MILESTONE_POSE_MS = 900;
 const DIFFICULTY_IDS = ["easy", "normal", "hard", "hell"]; // same list as DIFFICULTIES in SongSelect.jsx
