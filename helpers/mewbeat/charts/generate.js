@@ -11,6 +11,7 @@ const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
+const { localKeep, thinned } = require("./localThin");
 const { flagsKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
@@ -55,6 +56,7 @@ function analyse(raw, flags) {
     onsets,
     eventTimes: onsets.map((o) => o.t), // what a copied note may sit on
     final: {}, // difficulty -> its finished notes (finalNotes)
+    localKeep: null, // the share of moments each second keeps (keptShare)
     rhythms: {}, // difficulty -> the moments the level below it is cut from (upperRhythm)
   };
 }
@@ -119,6 +121,20 @@ function budgetOf(ctx, phrase, diff) {
   return Math.max(own, below);
 }
 
+// Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
+function keptShare(ctx, diff) {
+  ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
+  return ctx.localKeep;
+}
+
+// The notes of a phrase with the slower seconds inside it thinned (diff.localThin), and never fewer moments than the level
+// below plays there (diff.notBelow).
+function followingTheMusic(ctx, notes, phrase, diff) {
+  if (!diff.localThin) return notes;
+  const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
+  return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below));
+}
+
 // Moments selection.js chose as notes, each with a lane to hold its place (finish lays the lanes over the finished moments).
 function placed(chosen, trace) {
   const events = laneTheRest(chosen);
@@ -159,6 +175,7 @@ function chartNotes(ctx, diff, trace = null) {
   // Where a bass or lead line plays (or the features cannot tell), a phrase's rests are held through; the holds are
   // part of the phrase, so a repeat copies them.
   const tonal = (p) => !p.confidence || ["bass", "lead"].some((l) => p.confidence[l] >= TONAL_MIN_CONF);
+  const followed = (notes, p) => step("localThin", notes, followingTheMusic(ctx, notes, p, diff));
   const withGapHolds = (notes, tail, p, toMs) =>
     tonal(p)
       ? step("gapHolds", notes, addGapHolds([...tail, ...notes], features, diff, timing, energy, Math.min(toMs, durationMs), p.startMs).filter((n) => n.t >= p.startMs))
@@ -205,7 +222,7 @@ function chartNotes(ctx, diff, trace = null) {
       trace?.enter(i, { ...info, charted: "music" });
       const charted = musicNotes(ctx, i, diff, trace, i > 0 && before > -Infinity ? before : null);
       // A sound the phrase takes from the end of the one before stays where it is (gap holds start with the phrase).
-      all.push(...charted.filter((n) => n.t < phrase.startMs), ...withGapHolds(charted.filter((n) => n.t >= phrase.startMs), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
+      all.push(...charted.filter((n) => n.t < phrase.startMs), ...withGapHolds(followed(charted.filter((n) => n.t >= phrase.startMs), phrase), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
       i++;
       continue;
     }
@@ -218,7 +235,7 @@ function chartNotes(ctx, diff, trace = null) {
       const toMs = last === phrases.length - 1 ? Math.max(phrases[last].endMs, durationMs + 1) : phrases[last].endMs;
       trace?.enter(i, { ...info, charted: "bands", lastPhrase: last });
       const notes = step("bandPath", [], bandPathNotes(features, timing, diff, energy, { fromMs: phrase.startMs, toMs }));
-      all.push(...bridged(withGapHolds(notes, tail, phrase, toMs), i, false, last));
+      all.push(...bridged(withGapHolds(followed(notes, phrase), tail, phrase, toMs), i, false, last));
       i = last + 1;
       continue;
     }
@@ -231,7 +248,7 @@ function chartNotes(ctx, diff, trace = null) {
     const steady = (leaders[i] === "drums" && hasSteadyPulse(phrase)) || (!!rhythm && phrase.energy >= PLAYS_ON_ENERGY);
     const cut = rhythm && { rhythm, fromMs: i === 0 ? 0 : phrase.startMs, toMs: i === phrases.length - 1 ? Infinity : phrase.endMs };
     const charted = applyDifficulty(events, diff, timing, energy, tail, phrase.energy, phrase.endMs, steady, trace, cut);
-    all.push(...bridged(withGapHolds(charted, tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i));
+    all.push(...bridged(withGapHolds(followed(charted, phrase), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs), i));
     i++;
   }
   // Long bass/lead notes become holds wherever they were charted, drum-led phrases included. Those holds (and the

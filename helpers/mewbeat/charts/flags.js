@@ -5,9 +5,14 @@
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
+const LOCAL_THIN = { reach: 6, power: 1, floor: 0.5, knee: 0.6 }; // localThin.js: the slower seconds inside a phrase
+
 // name -> { label, levels: { <level name, public or internal>: { <difficulty parameter>: value } } }
 const FLAGS = {
-  density: { label: "how many moments a phrase plays", levels: {} },
+  density: {
+    label: "how many moments a phrase plays",
+    levels: { easy: { localThin: LOCAL_THIN }, normal: { localThin: LOCAL_THIN }, hard: { localThin: LOCAL_THIN }, hell: { localThin: LOCAL_THIN } },
+  },
   holds: { label: "where and how long the holds are", levels: {} },
   transitions: { label: "how one figure leads into the next", levels: {} },
   lead: { label: "which instrument carries the melody", levels: {} },

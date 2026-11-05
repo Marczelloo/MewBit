@@ -23,11 +23,11 @@ function withOverrides(name, levels, fn) {
 
 describe("mewbeat generator flags", () => {
   describe("registry", () => {
-    it("starts with the four named flags and no overrides", () => {
+    it("has the four named flags", () => {
       assert.deepStrictEqual(Object.keys(FLAGS), ["density", "holds", "transitions", "lead"]);
       for (const flag of Object.values(FLAGS)) {
         assert.strictEqual(typeof flag.label, "string");
-        assert.deepStrictEqual(flag.levels, {});
+        assert.strictEqual(typeof flag.levels, "object");
       }
     });
   });
