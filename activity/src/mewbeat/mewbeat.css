@@ -208,9 +208,13 @@
 @keyframes mb-pulse-a { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 @keyframes mb-pulse-b { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 
-/* scenery: painted layers on one canvas, pinned to the bottom edge so the roof survives any crop.
+/* scenery: painted layers on one canvas, pinned to the bottom edge so the floor survives any crop.
    Only opacity changes per frame; a filter here would re-rasterise a full-screen layer on every beat. */
 .mb-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.mb-scene-set { position: absolute; inset: 0; }
+.mb-scene-leaving { animation: mb-scene-out 700ms ease-in-out both; }
+@keyframes mb-scene-out { to { opacity: 0; } }
+.mb-fx-off .mb-scene-leaving { display: none; }
 .mb-layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 100%; user-select: none; }
 .mb-layer-fever { opacity: 0; transition: opacity 400ms ease-out; }
 .mb-fever .mb-layer-fever { opacity: 1; }
@@ -218,20 +222,9 @@
 .mb-fever .mb-layer-lit { opacity: calc(0.55 + var(--mb-pulse) * 0.45 * var(--mb-pulse-scale)); }
 .mb-layer-neon { opacity: calc(0.7 + var(--mb-vibe) * 0.15 + var(--mb-pulse) * 0.3 * var(--mb-pulse-scale)); }
 .mb-layer-glow { opacity: calc(0.15 + var(--mb-vibe) * 0.25 + var(--mb-pulse) * 0.6 * var(--mb-pulse-scale)); }
-/* FEVER tints the buildings and the roof too, the sky alone would leave most of the stage violet. */
-.mb-backdrop-wash {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgb(255 110 199 / 0.55), rgb(255 212 121 / 0.5) 55%, transparent 85%);
-  mix-blend-mode: overlay;
-  opacity: 0;
-  transition: opacity 400ms ease-out;
-}
-.mb-fever .mb-backdrop-wash { opacity: 1; }
 /* An idle stage sits dim and the vibe lifts it. */
 .mb-backdrop-dim { position: absolute; inset: 0; background: #07040f; opacity: calc(0.3 - var(--mb-vibe) * 0.3); }
-.mb-fx-off .mb-layer-fever,
-.mb-fx-off .mb-backdrop-wash { transition: none; }
+.mb-fx-off .mb-layer-fever { transition: none; }
 .mb-spot {
   position: absolute;
   top: -10%;
@@ -676,12 +669,12 @@
   .mb-pulse-a,
   .mb-pulse-b,
   .mb-fever-ready .mb-fever-bar::after { animation: none; }
+  .mb-scene-leaving { display: none; }
   .mb-feverbanner, .mb-fever-ready .mb-fever-bar::after { opacity: 1; }
   .mb-btn,
   .mb-highway,
   .mb-stage,
   .mb-layer-fever,
-  .mb-backdrop-wash,
   .mb-mult-fg { transition: none; }
 }
 
