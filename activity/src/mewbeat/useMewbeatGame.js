@@ -231,7 +231,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       return { ...rest, best: bestRef.current, unranked: runAutoplayRef.current || skipped > 0 || snap.difficultyChanged, judgement: judgementRef.current };
     }
 
-    const liveSample = (snap) => ({ score: Math.round(snap.score), combo: snap.combo, accuracy: snap.accuracy ?? null });
+    const liveSample = (snap) => ({ score: Math.round(snap.score), combo: snap.combo, accuracy: snap.accuracy ?? null, vibe: Math.round(snap.vibe * 100) / 100, fever: snap.feverActive });
 
     function endLive(snap) {
       liveRef.current?.end(snap ? liveSample(snap) : undefined);

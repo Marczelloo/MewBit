@@ -5,9 +5,10 @@ const { pathToFileURL } = require("node:url");
 
 let boardRows;
 let createLiveBoardStore;
+let watchedStage;
 
 test.before(async () => {
-  ({ boardRows, createLiveBoardStore } = await import(
+  ({ boardRows, createLiveBoardStore, watchedStage } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/liveBoard.js")).href
   ));
 });
@@ -31,6 +32,24 @@ test("boardRows without the player, or with few entries, shows what there is", (
   assert.equal(boardRows(entries(8), "nobody").length, 5);
   assert.equal(boardRows(entries(2), null).length, 2);
   assert.deepEqual(boardRows(null, "u1"), []);
+});
+
+test("watchedStage takes the watched player's vibe and FEVER over the local autoplay", () => {
+  const hud = { vibe: 1, feverActive: false, feverLeftMs: 0, combo: 80 };
+  assert.deepEqual(watchedStage(hud, { vibe: 0.25, fever: false, ended: false }), { ...hud, vibe: 0.25 });
+  assert.deepEqual(watchedStage(hud, { vibe: 0.8, fever: true, ended: false }), { ...hud, vibe: 0.8, feverActive: true });
+});
+
+test("watchedStage keeps the local hud without an entry, or with one from an older client", () => {
+  const hud = { vibe: 1, feverActive: false };
+  assert.equal(watchedStage(hud, null), hud);
+  assert.equal(watchedStage(hud, { userId: "u1", score: 10 }), hud);
+  assert.equal(watchedStage(hud, { userId: "u1", score: 10, vibe: null, fever: false }), hud);
+});
+
+test("watchedStage ends FEVER with the watched run", () => {
+  const hud = { vibe: 1, feverActive: false };
+  assert.equal(watchedStage(hud, { vibe: 0.5, fever: true, ended: true }).feverActive, false);
 });
 
 function timers() {

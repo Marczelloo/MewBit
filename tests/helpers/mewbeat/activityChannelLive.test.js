@@ -81,6 +81,18 @@ describe("mewbeat channel live board", () => {
     assert.strictEqual(pushes.length, 0);
   });
 
+  it("brings a player's vibe and FEVER to a room spectator", async () => {
+    const { send, live, pushes } = setup();
+    await send(ANN, { type: "mewbeat_room_join", id: "1" });
+    await send(BO, { type: "mewbeat_room_join", id: "2" });
+    await send(BO, { type: "mewbeat_room_ready", id: "3", spectate: true });
+    pushes.length = 0;
+    await live(ANN, { session: "room", vibe: 0.5, fever: true });
+    const board = pushes.filter((push) => push.payload.type === "mewbeat_live_board").at(-1);
+    assert.deepStrictEqual(board.userIds, ["ann", "bo"]);
+    assert.deepStrictEqual(board.payload.entries.map((entry) => [entry.userId, entry.vibe, entry.fever]), [["ann", 0.5, true]]);
+  });
+
   it("drops the player's live entry when the last socket closes", async () => {
     const { live, channel, pushes, advance } = setup();
     await live(ANN, { score: 100 });

@@ -64,7 +64,42 @@ const sample = (score, combo = 0, accuracy = null) => ({ score, combo, accuracy 
 test("the first update goes out at once with the protocol fields", () => {
   const { sender, sent } = setup();
   sender.update(sample(0));
-  assert.deepEqual(sent, [{ at: 0, type: "mewbeat_live", session: "live:k", audioKey: "k", difficulty: "normal", score: 0, combo: 0, accuracy: null, ended: false }]);
+  assert.deepEqual(sent, [{ at: 0, type: "mewbeat_live", session: "live:k", audioKey: "k", difficulty: "normal", score: 0, combo: 0, accuracy: null, vibe: null, fever: false, ended: false }]);
+});
+
+test("vibe and FEVER go out with the numbers", () => {
+  const { sender, sent } = setup();
+  sender.update({ ...sample(100, 3, 95), vibe: 0.42, fever: false });
+  assert.equal(sent[0].vibe, 0.42);
+  assert.equal(sent[0].fever, false);
+});
+
+test("FEVER turning on or off is a change even when the numbers stand still", () => {
+  const { sender, scheduler, sent } = setup({ keepAliveMs: 1e9 });
+  sender.update({ ...sample(100, 3, 95), vibe: 1, fever: false });
+  scheduler.advance(300);
+  sender.update({ ...sample(100, 3, 95), vibe: 1, fever: true });
+  scheduler.advance(300);
+  sender.update({ ...sample(100, 3, 95), vibe: 0, fever: false });
+  assert.deepEqual(sent.map((m) => [m.vibe, m.fever]), [[1, false], [1, true], [0, false]]);
+});
+
+test("a vibe change alone is sent, and the keep-alive repeats vibe and FEVER", () => {
+  const { sender, scheduler, sent } = setup();
+  sender.update({ ...sample(100, 3, 95), vibe: 0.5, fever: false });
+  scheduler.advance(300);
+  sender.update({ ...sample(100, 3, 95), vibe: 0.6, fever: true });
+  assert.equal(sent.length, 2);
+  scheduler.advance(2000);
+  assert.equal(sent.length, 3);
+  assert.deepEqual([sent[2].vibe, sent[2].fever], [0.6, true]);
+});
+
+test("the final message carries the vibe and FEVER it ended on", () => {
+  const { sender, sent } = setup();
+  sender.update({ ...sample(100, 3, 95), vibe: 0.5, fever: false });
+  sender.end({ ...sample(120, 4, 95), vibe: 0.7, fever: true });
+  assert.deepEqual([sent.at(-1).vibe, sent.at(-1).fever, sent.at(-1).ended], [0.7, true, true]);
 });
 
 test("changes inside 250 ms collapse into one trailing message with the latest numbers", () => {

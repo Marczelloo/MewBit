@@ -20,14 +20,15 @@ export function createLiveSender({
   clearTimer = clearTimeout,
 }) {
   let difficulty = initialDifficulty; // follows a mid-run difficulty change
-  let latest = null; // { score, combo, accuracy } of the last update()
+  let latest = null; // { score, combo, accuracy, vibe, fever } of the last update()
   let lastSent = null;
   let lastAt = null;
   let trailing = null;
   let keepAlive = null;
   let ended = false;
 
-  const same = (a, b) => Boolean(a && b) && a.score === b.score && a.combo === b.combo && a.accuracy === b.accuracy;
+  const numbersOf = (sample) => ({ score: sample.score, combo: sample.combo, accuracy: sample.accuracy ?? null, vibe: sample.vibe ?? null, fever: Boolean(sample.fever) });
+  const same = (a, b) => Boolean(a && b) && a.score === b.score && a.combo === b.combo && a.accuracy === b.accuracy && a.vibe === b.vibe && a.fever === b.fever;
 
   function clearTimers() {
     clearTimer(trailing);
@@ -38,7 +39,7 @@ export function createLiveSender({
 
   function transmit(sample, isEnd) {
     try {
-      send({ type: "mewbeat_live", session, audioKey, difficulty, score: sample.score, combo: sample.combo, accuracy: sample.accuracy, ended: isEnd });
+      send({ type: "mewbeat_live", session, audioKey, difficulty, score: sample.score, combo: sample.combo, accuracy: sample.accuracy, vibe: sample.vibe, fever: sample.fever, ended: isEnd });
     } catch {
       /* a refused or failed send is just a missed update */
     }
@@ -58,7 +59,7 @@ export function createLiveSender({
   // Call with the run's current numbers whenever they may have changed (cheap when they did not).
   function update(sample) {
     if (ended || !sample) return;
-    latest = { score: sample.score, combo: sample.combo, accuracy: sample.accuracy ?? null };
+    latest = numbersOf(sample);
     if (same(latest, lastSent)) {
       clearTimer(trailing);
       trailing = null;
@@ -80,7 +81,7 @@ export function createLiveSender({
     if (ended) return;
     ended = true;
     clearTimers();
-    const final = sample ? { score: sample.score, combo: sample.combo, accuracy: sample.accuracy ?? null } : latest;
+    const final = sample ? numbersOf(sample) : latest;
     if (final) transmit(final, true);
   }
 

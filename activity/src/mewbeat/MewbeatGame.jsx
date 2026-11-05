@@ -8,7 +8,7 @@ import { MIN_TAPS } from "./calibration.js";
 import { createServerClock, createSongClock } from "./clock.js";
 import { createKeyHold, keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
-import { createLiveBoardStore } from "./liveBoard.js";
+import { createLiveBoardStore, watchedStage } from "./liveBoard.js";
 import { createMockLink } from "./mockLink.js";
 import { createMewbeatRequests } from "./requests.js";
 import { createRoomLink } from "./roomLink.js";
@@ -558,10 +558,12 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const [pulse, setPulse] = useState({ id: 0, count: 0 });
   if (judgement && judgement.kind !== "miss" && judgement.id !== pulse.id) setPulse({ id: judgement.id, count: pulse.count + 1 });
   const pulseClass = pulse.count > 0 && effectsLevel !== "off" ? ` mb-pulse-${pulse.count % 2 ? "a" : "b"}` : "";
+  // A spectator's stage follows the watched player, not the autoplay that draws their notes.
+  const stageHud = watchingLive ? watchedStage(hud, targetEntry) : hud;
   // FEVER pushes the vibe look past full.
-  const stageVibe = hud.feverActive ? 1.4 : Math.min(1, Math.max(0, hud.vibe));
-  const feverTimeStyle = hud.feverActive
-    ? { opacity: 1, transform: "scaleX(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
+  const stageVibe = stageHud.feverActive ? 1.4 : Math.min(1, Math.max(0, stageHud.vibe));
+  const feverTimeStyle = stageHud.feverActive
+    ? { opacity: 1, transform: "scaleX(0)", transition: `transform ${Math.max(0, stageHud.feverLeftMs)}ms linear` }
     : { opacity: 0, transform: "scaleX(1)", transition: "none" };
 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
@@ -572,8 +574,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const readoutHud = useMemo(() => {
     if (!watchingLive) return hud;
     const combo = targetEntry?.combo ?? 0;
-    return { ...hud, combo, multiplier: multiplierFor(combo), feverActive: false, judgement: null };
-  }, [watchingLive, hud, targetEntry?.combo]);
+    return { ...hud, combo, multiplier: multiplierFor(combo), feverActive: stageHud.feverActive, judgement: null };
+  }, [watchingLive, hud, targetEntry?.combo, stageHud.feverActive]);
   // Back (Live) hides the results of that run; the next run's summary has a new id and shows again. Solo keeps the
   // last summary around until the next run starts, so it only shows while the run it belongs to is on stage.
   const [dismissedId, setDismissedId] = useState(null);
@@ -860,11 +862,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       </header>
 
       <div
-        className={`mb-stage${stageUnder ? " mb-stage-under" : ""}${hud.feverActive ? " mb-fever" : ""}${pulseClass}`}
+        className={`mb-stage${stageUnder ? " mb-stage-under" : ""}${stageHud.feverActive ? " mb-fever" : ""}${pulseClass}`}
         style={{ "--mb-vibe": stageVibe }}
       >
         <Stage track={track} />
-        {hud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
+        {stageHud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
         {endBanner ? <div className="mb-feverbanner mb-endbanner" role="status">{endBanner}</div> : null}
         {readoutHud.judgement?.kind === "miss" && effectsLevel !== "off" ? (
           <div key={readoutHud.judgement.id} className={`mb-missflash${mewbitPose === "crushed" ? " mb-missflash-crushed" : ""}`} aria-hidden="true" />
@@ -883,7 +885,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           </div>
 
           <div className="mb-highway-slot">
-            <div className={`mb-highway ${hud.feverActive ? "mb-highway-fever" : ""}`.trim()}>
+            <div className={`mb-highway ${stageHud.feverActive ? "mb-highway-fever" : ""}`.trim()}>
               <canvas className="mb-canvas" ref={canvasRef} aria-hidden="true" />
               <div className="mb-keys" aria-hidden="true">
                 {keys.map((code) => (

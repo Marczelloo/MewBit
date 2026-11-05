@@ -70,9 +70,21 @@ describe("mewbeat live board", () => {
       type: "mewbeat_live_board",
       session: LIVE,
       entries: [{
-        userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal", score: 250, combo: 4, accuracy: 88.5, ended: true,
+        userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal", score: 250, combo: 4, accuracy: 88.5, vibe: null, fever: false, ended: true,
       }],
     });
+  });
+
+  it("passes the player's vibe and FEVER on to everyone in the session", () => {
+    ctx.post("ann", { vibe: 0.75, fever: true });
+    const [entry] = ctx.pushes[0].payload.entries;
+    assert.deepStrictEqual([entry.vibe, entry.fever], [0.75, true]);
+  });
+
+  it("takes an update without vibe and FEVER, as an older client sends it", () => {
+    assert.deepStrictEqual(ctx.post("ann"), { ok: true });
+    const [entry] = ctx.pushes[0].payload.entries;
+    assert.deepStrictEqual([entry.vibe, entry.fever], [null, false]);
   });
 
   it("keeps one entry per user however often or from however many sockets they post", () => {
@@ -301,6 +313,8 @@ describe("mewbeat live board", () => {
       assert.strictEqual(reason({ score: "9" }), "bad_numbers");
       assert.strictEqual(reason({ combo: Infinity }), "bad_numbers");
       assert.strictEqual(reason({ accuracy: "high" }), "bad_numbers");
+      assert.strictEqual(reason({ vibe: "full" }), "bad_numbers");
+      assert.strictEqual(reason({ vibe: NaN }), "bad_numbers");
       assert.strictEqual(reason({ score: undefined }), "bad_numbers");
       assert.strictEqual(ctx.pushes.length, 0);
     });
@@ -312,6 +326,14 @@ describe("mewbeat live board", () => {
       const [bo, ann] = ctx.pushes.at(-1).payload.entries;
       assert.deepStrictEqual([ann.score, ann.combo, ann.accuracy], [0, 0, 100]);
       assert.deepStrictEqual([bo.score, bo.combo, bo.accuracy], [1_000_000_000, 13, 0]);
+    });
+
+    it("clamps vibe into 0..1", () => {
+      ctx.post("ann", { score: 200, vibe: 3 });
+      ctx.post("bo", { score: 100, vibe: -1 });
+      ctx.clock.advance(PUSH_INTERVAL_MS);
+      const [ann, bo] = ctx.pushes.at(-1).payload.entries;
+      assert.deepStrictEqual([ann.vibe, bo.vibe], [1, 0]);
     });
   });
 });

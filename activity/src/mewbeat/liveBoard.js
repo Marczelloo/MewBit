@@ -17,6 +17,13 @@ export function boardRows(entries, meId, top = TOP_ROWS) {
   return shown;
 }
 
+// The hud a spectator's stage reads: the watched player's vibe and FEVER from their board entry. Without
+// them (no entry yet, or a player or bot older than these fields) it stays the local run's hud.
+export function watchedStage(hud, entry) {
+  if (typeof entry?.vibe !== "number") return hud;
+  return { ...hud, vibe: entry.vibe, feverActive: Boolean(entry.fever) && !entry.ended };
+}
+
 export function createLiveBoardStore({ ttlMs = TTL_MS, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
   const listeners = new Set();
   let session = null;

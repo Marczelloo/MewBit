@@ -67,8 +67,8 @@ function createLiveBoard({
     entries.sort((a, b) => (mixed
       ? accuracyOf(b) - accuracyOf(a) || b.score - a.score
       : b.score - a.score || accuracyOf(b) - accuracyOf(a)) || (a.userId < b.userId ? -1 : 1));
-    return entries.map(({ userId, username, avatarUrl, difficulty, score, combo, accuracy, ended }) => ({
-      userId, username, avatarUrl, difficulty, score, combo, accuracy, ended,
+    return entries.map(({ userId, username, avatarUrl, difficulty, score, combo, accuracy, vibe, fever, ended }) => ({
+      userId, username, avatarUrl, difficulty, score, combo, accuracy, vibe, fever, ended,
     }));
   }
 
@@ -143,7 +143,9 @@ function createLiveBoard({
     const combo = number(message.combo, { min: 0, max: MAX_COMBO, integer: true });
     // Before the first judgement there is no accuracy yet.
     const accuracy = message.accuracy == null ? null : number(message.accuracy, { min: 0, max: 100 });
-    if (score === null || combo === null || (message.accuracy != null && accuracy === null)) return fail("bad_numbers");
+    // What a spectator's stage follows. Older clients don't send it.
+    const vibe = message.vibe == null ? null : number(message.vibe, { min: 0, max: 1 });
+    if (score === null || combo === null || (message.accuracy != null && accuracy === null) || (message.vibe != null && vibe === null)) return fail("bad_numbers");
 
     if (session === ROOM) {
       const member = membersOf(guildId).find((candidate) => candidate.userId === userId);
@@ -173,6 +175,8 @@ function createLiveBoard({
       score,
       combo,
       accuracy,
+      vibe,
+      fever: Boolean(message.fever),
       ended: Boolean(ended),
       expireTimer: undefined,
     };
