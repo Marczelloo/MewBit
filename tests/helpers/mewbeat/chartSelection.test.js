@@ -6,7 +6,7 @@ const { afterEach, beforeEach, describe, it } = require("node:test");
 
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 const { createChartStore } = require("../../../helpers/mewbeat/chartStore");
-const { LEAD_IN_MS, SILENCE_ENERGY, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, LEAD_IN_MS, SILENCE_ENERGY, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { GENERATOR_VERSION, analyse, generateChart, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { BUDGET, METER_TOLERANCE } = require("../../../helpers/mewbeat/charts/momentWeights");
 const selection = require("../../../helpers/mewbeat/charts/selection");
@@ -483,6 +483,11 @@ describe("the repeats of Normal", () => {
   const QUIET = 0.4;
   const song = (repeatEnergy = QUIET) => layered({ energy: (ms) => (ms >= 24000 && ms < 32000 ? repeatEnergy : QUIET) });
   const momentsIn = (notes, p) => [...new Set(notes.filter((n) => n.t >= p.startMs && n.t < p.endMs).map((n) => n.t))].sort((a, b) => a - b);
+
+  // What these test is the plan against Normal's own budget: the floor under Easy lifts that budget, and has its own tests.
+  const notBelow = DIFFICULTIES.normal.notBelow;
+  beforeEach(() => { delete DIFFICULTIES.normal.notBelow; });
+  afterEach(() => { DIFFICULTIES.normal.notBelow = notBelow; });
 
   it("same loudness copies rhythm and lanes", () => {
     const features = song();

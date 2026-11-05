@@ -9,7 +9,7 @@ const { assignLanes } = require("./lanes");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
-const { copyRepeat, sourceWindow } = require("./repeats");
+const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
@@ -25,6 +25,7 @@ const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
 const MIN_COPY_SHARE = 0.5; // a repeat keeping less of its source than this is charted fresh
 const PLAYS_ON_ENERGY = 0.35; // a phrase at least this loud plays on, for a level cut from a harder one
+const SAME_MOMENT_MS = 3; // a note this close to a time in the source is the one copied from there
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
@@ -107,6 +108,15 @@ function momentsAround(ctx, i, diff, before) {
   return { heard, carry };
 }
 
+// The most moments phrase may take: what the music calls for, and at least as many as the level below plays there
+// (diff.notBelow), or a stretch of a harder level would play fewer notes than an easier one.
+function budgetOf(ctx, phrase, diff) {
+  const own = phraseBudget(phrase, ctx, diff);
+  if (!diff.notBelow) return own;
+  const below = new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size;
+  return Math.max(own, below);
+}
+
 // Moments selection.js chose as notes, each with a lane to hold its place (finish lays the lanes over the finished moments).
 function placed(chosen, trace) {
   const events = laneTheRest(chosen);
@@ -119,7 +129,7 @@ function placed(chosen, trace) {
 function musicNotes(ctx, i, diff, trace, before = null) {
   const phrase = ctx.phrases[i];
   const { heard, carry } = momentsAround(ctx, i, diff, before);
-  const chosen = selectMoments(phrase, heard, phraseBudget(phrase, ctx, diff), diff, ctx.timing, { before, carry });
+  const chosen = selectMoments(phrase, heard, budgetOf(ctx, phrase, diff), diff, ctx.timing, { before, carry });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 
@@ -128,7 +138,7 @@ function musicNotes(ctx, i, diff, trace, before = null) {
 function repeatNotes(ctx, i, diff, trace, copied, extra, before = null) {
   const phrase = ctx.phrases[i];
   const { heard, carry } = momentsAround(ctx, i, diff, before);
-  const room = Math.max(0, phraseBudget(phrase, ctx, diff) - new Set(copied.map((n) => n.t)).size);
+  const room = Math.max(0, budgetOf(ctx, phrase, diff) - new Set(copied.map((n) => n.t)).size);
   return placed(extraMoments(phrase, heard, copied.map((n) => n.t), Math.min(extra, room), diff, ctx.timing, { before, carry }), trace);
 }
 
@@ -230,6 +240,31 @@ function chartNotes(ctx, diff, trace = null) {
   return { notes, sustained: new Set(notes.filter((n) => n.len > 0 && !gapHeld.has(key(n))).map(key)) };
 }
 
+// The hold share, phrase by phrase. A repeat of a level that picks from the music gives up first the holds its source gave
+// up: a hold lost at the seam would leave the repeat's cap room for one its source had to let go, and the two would differ.
+function holdsCappedByPhrase(notes, ctx, diff, isSustain) {
+  const { phrases, timing } = ctx;
+  const last = phrases.length - 1;
+  const inPhrase = (n, i) => (i === 0 || n.t >= phrases[i].startMs) && (i === last || n.t < phrases[i].endMs);
+  const gaveUp = []; // per phrase: the times of the holds it no longer plays
+  return phrases.flatMap((phrase, i) => {
+    const own = notes.filter((n) => inPhrase(n, i));
+    let open = own;
+    if (diff.selector === "music" && isRepeatOf(phrase, i)) {
+      const inSource = sourceTime(phrase, timing);
+      const lost = (n) => gaveUp[phrase.repeatOf].some((t) => Math.abs(t - inSource(n.t)) <= SAME_MOMENT_MS);
+      open = own.map((n) => {
+        if (!(n.len > 0) || !lost(n)) return n;
+        const { len, ...tap } = n;
+        return tap;
+      });
+    }
+    const capped = limitHoldShare(open, Math.round, isSustain, diff.maxHoldShare);
+    gaveUp[i] = own.filter((n, k) => n.len > 0 && !(capped[k].len > 0)).map((n) => n.t);
+    return capped;
+  }).sort(byTime);
+}
+
 // No hold runs past the end of the song, whatever produced it. Sections open on a note; only then, with every moment
 // of the chart known, do holds let go on the next one. The hold share is capped per phrase (a cap over the whole song
 // would demote holds unevenly and break the repeats); real sustains are kept before gap holds. With the moments
@@ -244,11 +279,9 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const spaced = step("spacedMoments", settled, spacedMoments(settled, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
-  const last = ctx.phrases.length - 1;
-  const inPhrase = (n, i) => (i === 0 || n.t >= ctx.phrases[i].startMs) && (i === last || n.t < ctx.phrases[i].endMs);
-  const capped = step("holdShare", floored, last < 0
+  const capped = step("holdShare", floored, ctx.phrases.length === 0
     ? limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare)
-    : ctx.phrases.flatMap((_, i) => limitHoldShare(floored.filter((n) => inPhrase(n, i)), Math.round, isSustain, diff.maxHoldShare)).sort(byTime));
+    : holdsCappedByPhrase(floored, ctx, diff, isSustain));
   const chorded = step("chords", capped, planChords(capped, ctx, diff, upper));
   const laid = step("lanes", chorded, assignLanes(chorded, ctx, diff, upper));
   return step("finalFloors", laid, enforceFloors(laid, diff, ctx.timing));

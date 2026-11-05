@@ -146,6 +146,7 @@ const DIFFICULTIES = {
     scoreLevel: "normal", // the weights the moments are scored with (momentWeights.js K)
     foreground: 0.5, // a moment scoring at least this (a logit) is in the foreground
     budgetScale: 1.1, // the phrase budget as the music calls for it times this (selection.js phraseBudget)
+    notBelow: "easy", // ...and never fewer moments in a phrase than this level plays there (generate.js budgetOf)
     grammar: "normal",
     melodyLanes: true, // the lanes follow the melody and keep the rules of Normal (laneRules.js, lanes.js)
     chordRates: [0.7, 0.6, 0.13, 0.14], // how often a moment is a chord, by place in the bar (chords.js)
