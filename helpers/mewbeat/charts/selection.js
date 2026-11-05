@@ -65,6 +65,18 @@ function meterOf(timing, t) {
   return { metric: toQuarter < METER_TOLERANCE ? 2 : 3, down: 0, grid };
 }
 
+// The beats a moment's place is read on. With diff.feltTempo (generator flag "feltTempo") a song slower than its belowBpm is
+// read at twice the tempo, its half beats as beats: on the train songs people's Normal plays about 4.3 notes a second at any
+// tempo, and under 115 BPM a third of its notes on quarter beats (34%, against 4% over 170 BPM), so a slow song is played as a
+// song twice as fast. The downbeats stay; the grid the moments snap to is the song's own.
+function meterTimingOf(timing, felt) {
+  if (!felt || !timing?.snapped || 60000 / timing.medianMs >= felt.belowBpm) return timing;
+  return { ...timing, beats: timing.gridPoints(2), medianMs: timing.medianMs / 2 };
+}
+
+// The key the scores of a level are kept under on the ctx: a level read at its felt tempo is scored apart.
+const scoreKey = (level, felt) => (felt ? `${level}:felt${felt.belowBpm}` : level);
+
 // Within-song rank in (0, 1]: ties share the mean of their ranks. A column of at most two distinct values stays as it is.
 function rankColumn(values) {
   if (new Set(values).size <= 2) return values;
@@ -82,13 +94,15 @@ function rankColumn(values) {
 
 // scoreMoments(ctx, level) -> [{ t, s, score, metric, down, grid, source }], time-ordered: the candidates of the whole song with
 // K's score (a logit: how likely people put a note there), from the features as measured (the scores were fitted on
-// those, not on the lead merged). Kept on the ctx, as every phrase asks.
-function scoreMoments(ctx, level) {
+// those, not on the lead merged). `felt` is diff.feltTempo (meterTimingOf). Kept on the ctx, as every phrase asks.
+function scoreMoments(ctx, level, felt = null) {
   ctx.scored ??= {};
-  if (ctx.scored[level]) return ctx.scored[level];
+  const key = scoreKey(level, felt);
+  if (ctx.scored[key]) return ctx.scored[key];
   const { coef, intercept } = K[level];
   const candidates = candidatesOf(ctx.raw);
-  const meters = candidates.map((c) => meterOf(ctx.timing, c.t));
+  const meterTiming = meterTimingOf(ctx.timing, felt);
+  const meters = candidates.map((c) => meterOf(meterTiming, c.t));
   const columns = {
     raw_strength: rankColumn(candidates.map((c) => c.s)),
     m_beat: meters.map((m) => (m.metric === 0 ? 1 : 0)),
@@ -98,7 +112,7 @@ function scoreMoments(ctx, level) {
     m_down: meters.map((m) => m.down),
     d_grid: rankColumn(meters.map((m) => m.grid)),
   };
-  ctx.scored[level] = candidates.map((c, i) => ({
+  ctx.scored[key] = candidates.map((c, i) => ({
     t: c.t,
     s: c.s,
     score: intercept + K_COLUMNS.reduce((sum, name, k) => sum + coef[k] * columns[name][i], 0),
@@ -107,7 +121,7 @@ function scoreMoments(ctx, level) {
     grid: meters[i].grid,
     source: c.source,
   }));
-  return ctx.scored[level];
+  return ctx.scored[key];
 }
 
 // snappedMoments(ctx, level) -> the moments of scoreMoments on the quarter-beat grid, time-ordered: what a chart may play. A
@@ -117,12 +131,13 @@ function scoreMoments(ctx, level) {
 // grid, or where the beats are too irregular for it to be trusted (timing.intervalOk; a stretch with no beats at all), the
 // moments keep their times: there is no grid there to be on, and dropping them would empty the stretch. Kept on the ctx. The
 // budget is counted on scoreMoments, as it was fitted.
-function snappedMoments(ctx, level) {
+function snappedMoments(ctx, level, felt = null) {
   ctx.snappedMoments ??= {};
-  if (ctx.snappedMoments[level]) return ctx.snappedMoments[level];
-  const scored = scoreMoments(ctx, level);
+  const key = scoreKey(level, felt);
+  if (ctx.snappedMoments[key]) return ctx.snappedMoments[key];
+  const scored = scoreMoments(ctx, level, felt);
   const { timing } = ctx;
-  if (!timing?.snapped) return (ctx.snappedMoments[level] = scored);
+  if (!timing?.snapped) return (ctx.snappedMoments[key] = scored);
   const grid = timing.gridPoints(GRID_DIVISION);
   const onGrid = new Map();
   for (const c of scored) {
@@ -135,7 +150,7 @@ function snappedMoments(ctx, level) {
       onGrid.set(t, trusted ? { ...c, t, raw: c.t } : c);
     }
   }
-  return (ctx.snappedMoments[level] = [...onGrid.values()].sort(byTime));
+  return (ctx.snappedMoments[key] = [...onGrid.values()].sort(byTime));
 }
 
 // --- the budget of a phrase ----------------------------------------------------------------
@@ -162,8 +177,9 @@ function audibleOf(ctx, p, songLoudness) {
 // something. Kept on the ctx.
 function budgetModelOf(ctx, diff) {
   ctx.budgets ??= {};
-  if (ctx.budgets[diff.scoreLevel]) return ctx.budgets[diff.scoreLevel];
-  const scored = scoreMoments(ctx, diff.scoreLevel);
+  const key = scoreKey(diff.scoreLevel, diff.feltTempo);
+  if (ctx.budgets[key]) return ctx.budgets[key];
+  const scored = scoreMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const ranked = scored.map((m) => m.score).sort((a, b) => a - b);
   const salientFrom = ranked.length > 0 ? ranked[Math.min(ranked.length - 1, Math.floor(BUDGET.q * ranked.length))] : Infinity;
   const times = scored.map((m) => m.t);
@@ -183,8 +199,8 @@ function budgetModelOf(ctx, diff) {
   const total = weights.reduce((sum, w) => sum + w.seconds, 0);
   const song = total > 0 ? weights.reduce((sum, w) => sum + w.rate * w.seconds, 0) / total : 0;
   const firstLoud = audible.findIndex((a) => a.seconds > 0 && a.loudness >= BUDGET.openingLoudness);
-  ctx.budgets[diff.scoreLevel] = { fitted, song, seconds: audible.map((a) => a.seconds), openingEnd: Math.max(firstLoud, 0) };
-  return ctx.budgets[diff.scoreLevel];
+  ctx.budgets[key] = { fitted, song, seconds: audible.map((a) => a.seconds), openingEnd: Math.max(firstLoud, 0) };
+  return ctx.budgets[key];
 }
 
 // The notes per audible second of the lead line in each phrase before the song's first loud one, 0 in the others: a quiet

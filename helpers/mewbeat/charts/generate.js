@@ -109,7 +109,7 @@ const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENER
 function momentsAround(ctx, i, diff, before) {
   const { phrases } = ctx;
   const phrase = phrases[i];
-  const scored = snappedMoments(ctx, diff.scoreLevel);
+  const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const times = scored.map((m) => m.t);
   const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
   const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(ctx, m.t));
@@ -320,7 +320,7 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const released = step("settleHolds", inside, settleHolds(inside, diff, ctx.timing, ctx.durationMs));
   // With the holds let go, a rest is what the player feels: a mini rest keeps its best moment (bridges.js).
   const settled = diff.restBridge
-    ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel), ctx.energy, ctx.timing, diff.restBridge))
+    ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
   const spaced = step("spacedMoments", settled, spacedMoments(settled, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;

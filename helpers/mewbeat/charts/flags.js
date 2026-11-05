@@ -18,6 +18,8 @@ const FLAGS = {
   // bridges.js: a rest of Normal where the music plays on keeps its best moment (a mini rest); one where the music holds
   // no moment that strong stays empty (a full rest).
   miniRests: { label: "Mini pauzy łączą sekcje", levels: { normal: { restBridge: { minBeats: 1.5, playing: 0.25, score: 0, edgeBeats: 0.5 } } } },
+  // selection.js meterTimingOf: Normal reads a song under 115 BPM at twice its tempo, so its quarter beats count as half beats.
+  feltTempo: { label: "Wolne utwory jak dwa razy szybsze", levels: { normal: { feltTempo: { belowBpm: 115 } } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
