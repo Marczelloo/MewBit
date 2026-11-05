@@ -128,3 +128,37 @@ Rozjazdy:
 - `maxChordsPer8Beats` 6 pochodzi z ucha użytkownika, a nie z rozkładu ludzi (p50/p90/p95/p99 na 8 beatów: 4 / 8 / 8 / 10). H&D 22–45 s: mediana akordów na 8 beatów z 7 do 4,5–5, maksimum z 9 do 6. Mizuoto 12–20 s bez zmian (7 akordów, 26 momentów, 33 nuty); przyczyna raczej gęstość nut, nie akordy.
 - `motifPull` 2 na publicznym Normalu. Różne figury 4-blokowe na 100: 44 przy 6, 50 przy 2, ludzie 56. Koszt: kroki zgodne z melodią .648 do .621, echo na tych samych torach .944 do .90, przejścia akordów między rękami .372 do .388 (ludzie .556, v27 .571). Próg testu opadającego przebiegu obniżony z .7 do .65, bo .7 trzymało się samowzmacnianiem; bez torów melodii wynik to .446.
 - Końcowa recenzja: 0 krytycznych, 0 ważnych, 6 drobnych. Niezmierzone: czas `generateAll` na Pi.
+
+## v30: wynik etapu siatki (dopasowanie stałego tempa)
+
+`charts/beatFit.js` raz przed `buildTiming`: `generate.js` i `metrics.js` widzą te same beaty, cache cech bez zmian. Bez wtyczki i jara. Mało danych: beaty wtyczki. Kod zamrożony przed kontrolą na 20 testowych (użycie nr 11). Mierniki leżą w scratchpadzie sesji, w repo tylko te liczby. Migawki v30 w debuggerze nie dodałem.
+
+Kontrole. Dopasowanie wyłączone wobec v29, hash nut: train 80/80 na każdym poziomie, test 20/20. Włączone: v30 równe v29 na 1 z 80 (Preserved Valkyria: zaufanie .31, nieregularne beaty, zostaje bez przyciągania jak w v29), test 0 z 20. Port wobec prototypu: 80/80 te same zaokrąglone beaty i downbeaty. Ten sam pomiar na beatach wtyczki znajduje defekt, patrz niżej. `compare-v26 --levels easy,hard` zgłasza różnice na 80 z 81 na obu poziomach, zgodnie z oczekiwaniem; skryptu nie ruszałem.
+
+Beaty wobec czerwonych linii ludzi, utwory poniżej .9 przy 35 ms i średnia, wtyczka / dopasowanie: train 46 i .792 / 7 i .954, test 7 i .888 / 0 i .990. Mediana roztrzęsienia 6,1 / .35 ms (test 5,3 / .35), mediana poślizgów 2 / 0 (test 1 / 0). Czas dopasowania na train: średnio 229 ms, najgorzej 908 ms; najgorszy utwór bota 3653 ms; merge kończy się najwyżej po 10 przebiegach, limit to 64.
+
+Train, mediany, człowiek / v29 / v30 (test w nawiasie v29 / v30):
+
+| | Easy | Normal | Hard |
+|---|---|---|---|
+| nuty na beacie człowieka | .795 / .642 / .848 (.701 / .879) | .551 / .448 / .553 (.495 / .595) | .443 / .335 / .420 (.364 / .447) |
+| nuty poza siatką (średnia) | 0 / .127 / .015 (.129 / .001) | 0 / .113 / .013 (.111 / 0) | 0 / .108 / .015 (.104 / .001) |
+| równe odstępy różne o >5 ms | 0 / .532 / 0 (.588 / 0) | 0 / .223 / 0 (.217 / 0) | 0 / .141 / 0 (.147 / 0) |
+| różne rytmy na 100 taktów | 29,4 / 47,1 / 37,3 (41,9 / 35,4) | 42,3 / 67,4 / 63,0 (67,1 / 63,2) | 54,1 / 84,0 / 80,9 (84,0 / 83,5) |
+| nuty, średnia | 378 / 383,5 / 388,5 (366 / 368) | 572 / 591,3 / 591,6 (548 / 545) | 815 / 837 / 842 (775 / 776) |
+| odległość do ataku, ms | 11,52 / 8,63 / 9,51 (8,75 / 9,41) | 11,55 / 8,81 / 9,58 (8,89 / 9,59) | 12,37 / 10,58 / 10,69 (10,66 / 11,02) |
+| rozrzut wokół ataku, ms | 1,58 / 3,48 / 2,20 (3,40 / 2,20) | 1,99 / 3,71 / 2,37 (3,72 / 2,29) | 2,53 / 5,32 / 3,59 (5,30 / 3,60) |
+
+Równe odstępy per utwór na train: lepiej 79, gorzej 0, bez zmian 1 na każdym poziomie. Nuty na beacie, lepiej/gorzej o .02: 72/2, 70/1, 69/1 (test 19/0 na każdym).
+
+Rozjazdy:
+
+- H&D, pierwsze 20 s, do odsłuchu: dopasowanie stoi obok onsetów. Mediana odległości nut do onsetu 0 do 30 ms na Easy, 0 do 24 na Normalu, 0 do 28 na Hard; po 20 s 3 ms. Rzadki wstęp tuż obok długiej części: `mergeParts` porównuje sumy zamków, więc cienka część zawsze przegra. Próba trzymania części osobno naprawia H&D i psuje train (próg 14 ms: średnia .9538 do .9397, 8 utworów poniżej .9), odrzucona. Na 7 granych tylko H&D ma taki objaw; na train 17 okien w 11 utworach, ludzie po 8 za dopasowaniem i 9 za wtyczką, więc rozstrzygnąć się nie da.
+- H&D Easy: chwile prawie nie jadą (mediana 3 ms, p90 8 ms, 55 z 513 znika, 49 nowych), ale tory są inne: tylko .30 nut trzyma tor w 40 ms (Normal .35, Hard .38). Lubiany chart zagra się inaczej. Pozostałe grane utwory .26–.48. Torów nie było w zakresie.
+- Normal, grane utwory: Rebel Path holdy 37 do 9, MORE 81 do 56, GHOST 226 do 165, FNAF 171 do 135. Na train łącznie 7325 do 6772 (−7,5%), na test bez zmian (2096 do 2081). Nie szukałem przyczyny i nie stroiłem.
+- Hard: akordy nieznacznie w górę, mediana chwil z akordem .416 do .438 (test .478 do .488), szczyt na 4 s 8,75 do 9 na train. Odległość nuty do ataku rośnie na wszystkich poziomach o .1–.9 ms, bo nuty stoją na siatce zamiast gonić onset; rozrzut maleje.
+- Znane porażki na train, poniżej .9: LegenD. .615, Borealis 0, Preserved Valkyria .743, Resurrection Spell .755, Confessions .87, Made of Fire 0, Tracen Ondo .771. Dopasowanie nie umie ich rozpoznać. Borealis na Easy spada z .312 do .145 nut na beacie. Płynne rubato zostaje poza zasięgiem.
+- `phrases.list` z wtyczki zostaje na starych beatach: mediana odległości początku frazy do nowego beatu 6 ms, ale .22 początków dalej niż 35 ms i .17 dalej niż 100 ms. Długość frazy nadal 16 beatów (p10–p90 15,8–16,1). Powtórki `heard` i puls liczone na nowej siatce; udział fraz z powtórką .25 w obu, `heard` .080 do .078. Skutek: granica frazy może wypaść między beatami.
+- `bpm` w charcie to nadal liczba całkowita z mediany odstępu. Prototyp podbijał zaufanie do .6; tu nie, stąd Preserved Valkyria jak w v29. Wagi K na beatach trackera (`fitted: true` w teście), nie przeuczone.
+- H&D 170,68 BPM to pomiar, nie błąd: koherencja i regresja dają 170,67–170,69 w oknach 40 s (poza rzadkim wstępem), stałe 171 rozjechałoby się o 339 ms. Rebel Path: 90,00, wtyczka na siatce .601, na półbeacie .016, więc nie pół beatu; rozjazd .13–.29 beatu w 0–60, 90–105 i 150–165 s. Fazę dopasowania wspierają highmid, high i lowmid, low słabo woli półbeat. Do odsłuchu.
+- Niezmierzone: czas na Pi. Limit merge sprawdzony tylko ręcznie (limit 1: bez awarii, 72/80 ta sama siatka, średnia .9521), bez testu jednostkowego.
