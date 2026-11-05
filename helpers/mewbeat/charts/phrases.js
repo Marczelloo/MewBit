@@ -248,6 +248,23 @@ function buildPhrases(features, timing, durationMs) {
   });
 }
 
+const ON_GRID_BEATS = 1 / 16; // a bound this near a quarter-beat grid point is that point (half the way to the 1/8 between)
+
+// onGrid(phrases, timing) -> Phrase[]: each bound between two phrases moved onto the quarter-beat grid point it sits
+// beside, the time the moments there have (flag phraseGrid). The plugin's bounds come a few ms off that grid, so a
+// moment on a phrase's first beat could fall to the phrase before. The song's own start and end stay.
+function onGrid(phrases, timing) {
+  if (!timing?.snapped || typeof timing.gridPoints !== "function") return phrases;
+  const grid = timing.gridPoints(4);
+  if (grid.length === 0) return phrases;
+  const at = (t) => {
+    const g = grid[nearestIndex(grid, t)];
+    return Math.abs(g - t) <= timing.beatMsAt(t) * ON_GRID_BEATS ? g : t;
+  };
+  const last = phrases.length - 1;
+  return phrases.map((p, i) => ({ ...p, startMs: i === 0 ? p.startMs : at(p.startMs), endMs: i === last ? p.endMs : at(p.endMs) }));
+}
+
 // --- leading layer ---------------------------------------------------------------
 
 function isPresent(layer, activity, confidence) {
@@ -342,4 +359,4 @@ function supportLayers(phrase, leader, vocal = false) {
     .sort((a, b) => score[b] - score[a]);
 }
 
-module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers };
+module.exports = { REPEAT_SIMILARITY, TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, onGrid, supportLayers };

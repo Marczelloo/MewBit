@@ -10,11 +10,11 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { patternEvents } = require("./patterns");
-const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
+const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, onGrid, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { localKeep, thinned } = require("./localThin");
-const { flagsKey, normalFlags, withFlags } = require("./flags");
+const { analysisOf, flagsKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, sectionStarts } = require("./sections");
@@ -38,7 +38,9 @@ function analyse(raw, flags) {
   const features = withFittedBeats(withMergedLead(raw));
   const durationMs = Math.round(features.durationMs);
   const timing = buildTiming(features, durationMs);
-  const phrases = buildPhrases(features, timing, durationMs);
+  const { phraseGrid = false } = analysisOf(flags);
+  const built = buildPhrases(features, timing, durationMs);
+  const phrases = phraseGrid ? onGrid(built, timing) : built;
   const leaders = chooseLeaders(phrases);
   const vocal = isVocalSong(phrases);
   const energy = withIntensity(energyLookup(features), features, phrases); // with each section's intensity (intensity.js)
@@ -52,6 +54,7 @@ function analyse(raw, flags) {
     sections: sectionStarts(features, timing, energy),
     busy: busyFactor(features),
     flags: normalFlags(flags), // the experimental switches that are on (flags.js); diffOf reads their overrides
+    phraseGrid, // the phrase bounds sit on the grid (flag phraseGrid), and so do the windows repeats copy from
     phrases,
     leaders,
     vocal,
@@ -80,19 +83,14 @@ function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
   const phrase = phrases[i];
   if (!isRepeatOf(phrase, i)) return null;
-  // diff.repeatEdgeMs: the window reaches that much earlier, so the note on the source's first beat is copied too.
-  const edge = diff.repeatEdgeMs ?? 0;
-  const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf]);
-  const sourceNotes = inWindow(all, from - edge, to - edge);
+  const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf], ctx.phraseGrid ? timing : null);
+  const sourceNotes = inWindow(all, from, to);
   if (sourceNotes.length === 0) return null;
   const plan = repeatPlan(phrase, phrases[phrase.repeatOf], ctx, diff, new Set(sourceNotes.map((n) => n.t)).size);
   if (!plan.copy) return null;
-  // A moment the phrase before already plays at the seam is not played twice.
-  const taken = edge > 0 ? all.filter((n) => Math.abs(n.t - phrase.startMs) <= 2 * edge).map((n) => n.t) : [];
   // A copy may end sooner than its source (or the song): its holds are clipped to fit.
-  const fitted = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing, edge), Math.min(phrase.endMs, durationMs), diff, timing)
-    .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY)
-    .filter((n) => !taken.some((t) => Math.abs(t - n.t) <= edge));
+  const fitted = clipHolds(copyRepeat(sourceNotes, phrase, phraseEventTimes(ctx, phrase), timing), Math.min(phrase.endMs, durationMs), diff, timing)
+    .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
   const upper = upperRhythm(ctx, diff);
   const copied = upper ? nested(fitted, upper) : fitted;
   return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? { notes: copied, extra: plan.extra } : null;

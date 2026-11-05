@@ -185,20 +185,34 @@ function songPayload(id) {
   };
 }
 
+// The generator flags the bot has on (helpers/data/mewbeat/generator-flags.json): the page charts what the game plays.
+function botFlags() {
+  try {
+    const flags = readJson(join(BOT_DATA, "generator-flags.json"))?.flags;
+    return Array.isArray(flags) ? flags : [];
+  } catch {
+    return [];
+  }
+}
+
 function chartPayload(id, level) {
   const { GENERATOR_VERSION, generateChart, traceChart, chartMetrics } = freshGenerator();
+  const { flagsKey } = require(join(CHARTS, "flags.js"));
   const features = featuresOf(id);
+  const flags = botFlags();
+  const flagged = flagsKey(flags);
+  const generatorVersion = flagged ? `${GENERATOR_VERSION}-${flagged}` : GENERATOR_VERSION;
   const started = performance.now();
-  const story = traceChart(features, level, "debug");
+  const story = traceChart(features, level, "debug", flags);
   const ms = Math.round(performance.now() - started);
-  if (!story) return { generatorVersion: GENERATOR_VERSION, usable: false };
+  if (!story) return { generatorVersion, usable: false };
   // The promise the whole page rests on: the story told is the story of the very chart the game would get.
-  const plain = generateChart(features, level, "debug");
+  const plain = generateChart(features, level, "debug", flags);
   const bare = story.notes.map(({ id: _id, ...note }) => note);
   const matches = JSON.stringify(bare) === JSON.stringify(plain?.notes ?? []);
   const { chart, ...rest } = story;
   return {
-    generatorVersion: GENERATOR_VERSION,
+    generatorVersion,
     usable: true,
     matches,
     ms,
