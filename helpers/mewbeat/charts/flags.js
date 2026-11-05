@@ -22,6 +22,10 @@ const FLAGS = {
   // moment at 58730), so the moment on a phrase's first beat fell to the phrase before; a repeat left it out and the drop
   // came in a beat late (Cutie Mew Mew Magic 0:53, Hopes And Dreams 1:35). It changes the analysis, so every level.
   phraseGrid: { label: "Granice fraz na siatce", analysis: { phraseGrid: true }, levels: {} },
+  // sections.js openWithFirstSound: the song opens on its first very strong sound, on the grid point beside it (Hopes And
+  // Dreams 0:00.139). Not backed by people: where v32 misses such a sound, they play it about a third of the time. The
+  // user asked for it by ear. normalV26 too, so Easy, cut from it, keeps it.
+  firstSound: { label: "Pierwszy mocny dźwięk otwiera utwór", levels: Object.fromEntries(["easy", "normalV26", "normal", "hard", "hell"].map((level) => [level, { firstSound: { strong: 0.8, nearBeats: 1 / 8 } }])) },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

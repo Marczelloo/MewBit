@@ -3,7 +3,7 @@
 // know of a bar: how loud it is, how busy each band and layer is, and the pitches of its bass and lead.
 const { DENSITY_WINDOW_MS, LEAD_IN_MS, SILENCE_ENERGY, SNAPPED_FLOOR_SLACK } = require("./difficulty");
 const { beatMsOf } = require("./holds");
-const { lowerBound } = require("./util");
+const { lowerBound, nearestIndex } = require("./util");
 
 const KERNEL_BARS = 8; // the checkerboard compares the 4 bars before a downbeat with the 4 after it
 const MIN_APART_BARS = 4; // sections this near are one change
@@ -136,4 +136,22 @@ function accentSections(notes, sections, diff, timing, energy) {
   return out.sort((a, b) => a.t - b.t || a.lane - b.lane);
 }
 
-module.exports = { accentSections, opensOnChord, sectionStarts };
+// openWithFirstSound(notes, onsets, diff, timing, energy) -> notes: the song opens on its first strong sound (flag
+// firstSound), played on the beat beside it. That sound can come a little before the grid's first beat (Hopes And
+// Dreams: 117 ms against a beat at 150) and so score as off the beat. diff.firstSound = { strong, nearBeats }: how
+// strong the sound must be, and how near the beat. Nothing changes when the chart already plays there or before.
+function openWithFirstSound(notes, onsets, diff, timing, energy) {
+  const rule = diff.firstSound;
+  if (!rule || !timing?.snapped || typeof timing.gridPoints !== "function") return notes;
+  const first = onsets.find((o) => o.s >= rule.strong && o.t >= LEAD_IN_MS && energy.at(o.t) >= SILENCE_ENERGY);
+  const grid = timing.gridPoints(1);
+  if (!first || grid.length === 0) return notes;
+  const t = grid[nearestIndex(grid, first.t)];
+  const beat = beatMsOf(timing, t);
+  if (t < LEAD_IN_MS || Math.abs(t - first.t) > beat * rule.nearBeats) return notes;
+  const clear = Math.max(diff.minNoteGapMs ?? 0, (diff.gapBeats ?? 0) * beat * SNAPPED_FLOOR_SLACK);
+  if (notes.some((n) => n.t < t + clear)) return notes;
+  return [{ t, lane: 0 }, ...notes];
+}
+
+module.exports = { accentSections, openWithFirstSound, opensOnChord, sectionStarts };

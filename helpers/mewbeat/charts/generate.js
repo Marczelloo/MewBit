@@ -17,7 +17,7 @@ const { localKeep, thinned } = require("./localThin");
 const { analysisOf, flagsKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
-const { accentSections, sectionStarts } = require("./sections");
+const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { extraMoments, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
@@ -315,7 +315,8 @@ function holdsCappedByPhrase(notes, ctx, diff, isSustain) {
 function finish(ctx, { notes, sustained }, diff, trace = null) {
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const held = step("clipHolds", notes, clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing));
-  const accented = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy));
+  const sectioned = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy));
+  const accented = diff.firstSound ? step("firstSound", sectioned, openWithFirstSound(sectioned, ctx.onsets, diff, ctx.timing, ctx.energy)) : sectioned;
   const upper = upperRhythm(ctx, diff);
   const inside = upper ? step("nested", accented, nested(accented, upper)) : accented;
   const settled = step("settleHolds", inside, settleHolds(inside, diff, ctx.timing, ctx.durationMs));
