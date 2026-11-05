@@ -1,5 +1,6 @@
 const { DENSITY_WINDOW_MS, GENERATOR_VERSION, LEAD_IN_MS, MIN_NOTES, SILENCE_ENERGY, levelOf } = require("./difficulty");
 const { bandPathNotes } = require("./bandPath");
+const { bridgeRests } = require("./bridges");
 const { withFittedBeats } = require("./beatFit");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { CALM_ENOUGH, calmLookup, shareOver } = require("./calm");
@@ -316,7 +317,11 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const accented = diff.firstSound ? step("firstSound", sectioned, openWithFirstSound(sectioned, ctx.onsets, diff, ctx.timing, ctx.energy)) : sectioned;
   const upper = upperRhythm(ctx, diff);
   const inside = upper ? step("nested", accented, nested(accented, upper)) : accented;
-  const settled = step("settleHolds", inside, settleHolds(inside, diff, ctx.timing, ctx.durationMs));
+  const released = step("settleHolds", inside, settleHolds(inside, diff, ctx.timing, ctx.durationMs));
+  // With the holds let go, a rest is what the player feels: a mini rest keeps its best moment (bridges.js).
+  const settled = diff.restBridge
+    ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel), ctx.energy, ctx.timing, diff.restBridge))
+    : released;
   const spaced = step("spacedMoments", settled, spacedMoments(settled, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);

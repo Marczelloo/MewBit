@@ -15,6 +15,9 @@ const FLAGS = {
   // these, about 5% of an unrepeated onset; 0% on the test songs). The level's least gap keeps them to songs under about
   // 150 BPM, most to the slow ones, which lack quarter beats the most.
   figuresQuarter: { label: "Figury także na ćwierćbeatach", levels: { normal: { figures: { ...FIGURES, quarters: { snare: 0.7, kick: 0.7, bass: 0.7 } } } } },
+  // bridges.js: a rest of Normal where the music plays on keeps its best moment (a mini rest); one where the music holds
+  // no moment that strong stays empty (a full rest).
+  miniRests: { label: "Mini pauzy łączą sekcje", levels: { normal: { restBridge: { minBeats: 1.5, playing: 0.25, score: 0, edgeBeats: 0.5 } } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
