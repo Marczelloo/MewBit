@@ -4,7 +4,7 @@
 //   a windowed tempogram with Viterbi: one tempo per stretch, a change only where it pays
 //   per stretch: the exact period, and where the quarter grid lies, from the phase coherence of the onsets
 //   phase steps at one tempo only where the quarter grid really moves
-//   which of the four quarter phases is the beat: where the highmid onsets fall, the high ones when those all but tie
+//   which of the four quarter phases is the beat: where the highmid onsets fall
 //   the bars: the tracker's downbeats vote for a beat modulo 4
 // Fails on smooth rubato (median 36 ms on such songs), and cannot tell that it failed.
 const { cleanTimes, lowerBound } = require("./util");
@@ -44,8 +44,6 @@ const BEAT_WINDOW_BEATS = 8;
 const BEAT_SWITCH_PENALTY = 2;
 const KERNEL_SIGMA_MS = 12;
 const MIN_BEAT_GAP = 0.45; // of a beat, where two stretches meet
-const TIE_BAND = 3; // high: names the beat where the highmid onsets cannot tell it from the offbeat
-const HIGHMID_TIE = 0.95; // the offbeat has this share of the beat's highmid energy over the whole song: a tie
 
 // Bars
 const BAR_WINDOW_BEATS = 32;
@@ -353,23 +351,6 @@ function beatRuns(beatOnsets, parts) {
   return runs.map((r) => ({ a: r.a, b: r.b, P: r.part.P, phi: r.part.phi + (r.k * r.part.P) / 4 }));
 }
 
-// Each list's energy over the runs, on the beats and half a beat off them.
-function energyOnAndOff(list, runs) {
-  let on = 0, off = 0;
-  for (const { a, b, P, phi } of runs) {
-    on += kernelEnergy(list, a, b, P, phi);
-    off += kernelEnergy(list, a, b, P, phi + P / 2);
-  }
-  return { on, off };
-}
-
-// True when the whole song's highmid onsets all but tie between the beat and the offbeat, and the high onsets side with
-// the offbeat. Two of the 80 train songs, both half a beat out for their whole length, and none of the others.
-function beatIsOffbeat(beatOnsets, tieOnsets, runs) {
-  const mid = energyOnAndOff(beatOnsets, runs), high = energyOnAndOff(tieOnsets, runs);
-  return mid.off >= HIGHMID_TIE * mid.on && high.off > 0 && high.off >= high.on;
-}
-
 // Bars on the new beats: the tracker's downbeats vote for a beat modulo 4, window by window, with a cost for changing.
 function fitDownbeats(beats, trackedDownbeats) {
   const votes = new Float64Array(beats.length);
@@ -397,12 +378,9 @@ function fitBeats(features) {
   const durationMs = features.durationMs;
   if (tracked.length < MIN_BEATS || !(durationMs > 0)) return null;
   const on = onsetsOf(features);
-  const listOf = (band) => {
-    const sorted = weighted(bandOnsets(band)).sort((x, y) => x.t - y.t);
-    return { t: sorted.map((o) => o.t), w: sorted.map((o) => o.w) };
-  };
-  const beatOnsets = listOf(features.bands?.[BEAT_BAND]);
-  if (on.t.length < MIN_ONSETS_PER_BEAT * tracked.length || beatOnsets.t.length < MIN_BEAT_ONSETS) return null;
+  const beatList = weighted(bandOnsets(features.bands?.[BEAT_BAND])).sort((x, y) => x.t - y.t);
+  if (on.t.length < MIN_ONSETS_PER_BEAT * tracked.length || beatList.length < MIN_BEAT_ONSETS) return null;
+  const beatOnsets = { t: beatList.map((o) => o.t), w: beatList.map((o) => o.w) };
 
   const P0 = middle(tracked.slice(1).map((t, i) => t - tracked[i]));
   const runs = [];
@@ -412,10 +390,8 @@ function fitBeats(features) {
     linkParts(on, parts);
     runs.push(...beatRuns(beatOnsets, parts));
   }
-  const turn = beatIsOffbeat(beatOnsets, listOf(features.bands?.[TIE_BAND]), runs) ? 0.5 : 0;
   const fitted = [];
-  for (const { a, b, P, phi: phase } of runs) {
-    const phi = phase + turn * P;
+  for (const { a, b, P, phi } of runs) {
     let n = Math.ceil((a - phi) / P);
     for (let t = phi + n * P; t < b; t = phi + ++n * P) {
       if (!fitted.length || t - fitted[fitted.length - 1] > P * MIN_BEAT_GAP) fitted.push(t);
