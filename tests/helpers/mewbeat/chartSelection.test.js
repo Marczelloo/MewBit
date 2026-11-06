@@ -190,13 +190,13 @@ describe("Normal picks its notes from the music", () => {
 
       const analysis = { getFeatures: async () => makeFeatures(), statusOf: () => null };
       const store = createChartStore({ dir, analysis, log: quietLog });
-      assert.strictEqual(GENERATOR_VERSION, 34);
+      assert.strictEqual(GENERATOR_VERSION, 35);
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
-      assert.strictEqual(charts.normal.version, 34);
+      assert.strictEqual(charts.normal.version, 35);
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file(34)));
+      assert.ok(fs.existsSync(file(35)));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -66,11 +66,10 @@ function meterOf(timing, t) {
   return { metric: toQuarter < tolerance ? 2 : 3, down: 0, grid };
 }
 
-// The beats a moment's place is read on. With diff.feltTempo (generator flag "feltTempo") a song slower than its belowBpm is
+// The beats a moment's place is read on. With diff.feltTempo (Normal's, difficulty.js FELT_TEMPO) a song slower than its belowBpm is
 // read at twice the tempo, its half beats as beats: on the train songs people's Normal plays about 4.3 notes a second at any
 // tempo, and under 115 BPM a third of its notes on quarter beats (34%, against 4% over 170 BPM), so a slow song is played as a
-// song twice as fast. The downbeats stay; the grid the moments snap to is the song's own. With felt.keepTolerance (generator
-// flag "feltTolerance") a place in the beat keeps the tolerance in ms it has at the song's own tempo: the halved beat would
+// song twice as fast. The downbeats stay; the grid the moments snap to is the song's own. With felt.keepTolerance a place in the beat keeps the tolerance in ms it has at the song's own tempo: the halved beat would
 // halve it, and a sound 18-37 ms off the grid, which snaps, would be read as off the beat.
 function meterTimingOf(timing, felt) {
   if (!felt || !timing?.snapped || 60000 / timing.medianMs >= felt.belowBpm) return timing;
@@ -220,7 +219,7 @@ function openingLeadRates(ctx) {
 }
 
 // The notes per audible second of the lead line in each phrase a quiet soloist leads after the song's first loud one, 0 in
-// the others (diff.soloLead = { drumsBelow, leadFrom, share }, generator flag "soloLead"): quieter than the opening's end
+// the others (diff.soloLead = { drumsBelow, leadFrom, share }, Normal's SOLO_LEAD): quieter than the opening's end
 // against the song, the drums' confidence under drumsBelow and the lead's at least leadFrom. On the train songs people's
 // Normal plays a chord on 19% of the moments of such a phrase, Normal on 44%. Kept on the ctx.
 function soloLeadRates(ctx, rule) {

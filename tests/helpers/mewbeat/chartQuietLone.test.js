@@ -2,11 +2,9 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { holdQuietLone, planChords } = require("../../../helpers/mewbeat/charts/chords");
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
-const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { DIFFICULTIES, QUIET_LONE } = require("../../../helpers/mewbeat/charts/difficulty");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
-const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
+const { makeFeatures } = require("./fixtures");
 
 const BEAT_MS = 500; // the fixtures play at 120 BPM
 const timing = buildTiming(makeFeatures({ durationMs: 64000 }), 64000);
@@ -22,10 +20,10 @@ const sizes = (out) => {
   return at;
 };
 
-const LONE = FLAGS.quietLone.levels.normal.quietLone;
-const HOLD = FLAGS.quietLoneHold.levels.normal.quietLone;
+const { hold, ...LONE } = QUIET_LONE; // the rule without its hold
+const HOLD = QUIET_LONE;
 
-describe("a lone moment in quiet music (flags quietLone, quietLoneHold)", () => {
+describe("a lone moment in quiet music (Normal's quietLone)", () => {
   it("plays one note where it would be a chord, and leaves the other moments as they were", () => {
     const plain = sizes(planChords(notes(), context(0.1), chordy(undefined)));
     const lone = sizes(planChords(notes(), context(0.1), chordy(LONE)));
@@ -48,12 +46,8 @@ describe("a lone moment in quiet music (flags quietLone, quietLoneHold)", () => 
     assert.deepEqual(held.map((n) => [n.t, n.len]), [[14000, 16000 - BEAT_MS / 2 - 14000]]);
   });
 
-  it("touches Normal alone", () => {
-    const features = makeLayeredFeatures({ durationMs: 64000 });
-    const plain = generateAll(features, "youtube:lone:64000");
-    for (const flag of ["quietLone", "quietLoneHold"]) {
-      const on = generateAll(features, "youtube:lone:64000", [flag]);
-      for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level].notes, plain[level].notes, `${flag} ${level}`);
-    }
+  it("is Normal's alone", () => {
+    assert.deepEqual(DIFFICULTIES.normal.quietLone, QUIET_LONE);
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].quietLone, undefined, level);
   });
 });

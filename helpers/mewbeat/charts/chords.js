@@ -84,7 +84,7 @@ function flowScale(flow, moments, sizes, m, beatMs) {
 }
 
 // The times of the moments that come after rule.gapBeats of nothing (holds count until they let go) while the music is
-// quieter than rule.below (diff.quietLone, generator flag "quietLone"). On the train songs people play such a moment as one
+// quieter than rule.below (diff.quietLone, Normal's QUIET_LONE). On the train songs people play such a moment as one
 // tap 68% of the time and a chord 27%; Normal made a chord of 38%, as the room around it (flowScale) asks for one.
 function quietLoneMoments(moments, ctx, rule) {
   const out = new Set();

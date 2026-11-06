@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 34;
+const GENERATOR_VERSION = 35;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -49,8 +49,16 @@ const FIGURES = { layers: { snare: 0.7, kick: 0.7, bass: 0.7, low: 0.85 }, restB
 // 0:00.139). Asked for by ear: where v32 missed such a sound people play it about a third of the time.
 const FIRST_SOUND = { strong: 0.8, nearBeats: 1 / 8 };
 // selection.js meterTimingOf: Normal reads a song under belowBpm at twice its tempo, so its quarter beats count as half
-// beats. People's Normal plays about 4.3 notes a second at any tempo, a third of them on quarter beats under 115 BPM.
-const FELT_TEMPO = { belowBpm: 115 };
+// beats. People's Normal plays about 4.3 notes a second at any tempo, a third of them on quarter beats under 115 BPM. A
+// place in the beat keeps the song's own tolerance in ms (keepTolerance), so a piano slowing down a little off the grid
+// stays on the beat (ASGORE 1:47.7).
+const FELT_TEMPO = { belowBpm: 115, keepTolerance: true };
+// chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
+// next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
+const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
+// selection.js soloLeadRates, chords.js: a quiet phrase after the song's first loud one, drums hardly there and the lead
+// sure of itself (a piano alone, ASGORE 1:49), keeps this share of its lead line in its budget and plays one note at a time.
+const SOLO_LEAD = { drumsBelow: 0.3, leadFrom: 0.8, share: 0.6 };
 
 // --- Per-difficulty parameters ---------------------------------------------
 
@@ -205,6 +213,8 @@ const DIFFICULTIES = {
     figures: FIGURES,
     firstSound: FIRST_SOUND,
     feltTempo: FELT_TEMPO,
+    quietLone: QUIET_LONE,
+    soloLead: SOLO_LEAD,
   },
   hard: {
     grammar: "hard",
@@ -302,6 +312,8 @@ module.exports = {
   BANDS,
   FELT_TEMPO,
   FIGURES,
+  QUIET_LONE,
+  SOLO_LEAD,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
   BUSY_MAX_FACTOR,

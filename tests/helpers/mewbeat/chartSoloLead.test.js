@@ -2,14 +2,12 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { planChords } = require("../../../helpers/mewbeat/charts/chords");
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
-const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { DIFFICULTIES, SOLO_LEAD } = require("../../../helpers/mewbeat/charts/difficulty");
 const { soloLeadRates } = require("../../../helpers/mewbeat/charts/selection");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
-const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
+const { makeFeatures } = require("./fixtures");
 
-const RULE = FLAGS.soloLead.levels.normal.soloLead;
+const RULE = SOLO_LEAD;
 const HOP_MS = 100;
 const timing = buildTiming(makeFeatures({ durationMs: 40000 }), 40000);
 // Loud, then a quiet stretch the lead plays alone, then quiet with the drums back, then loud again.
@@ -38,7 +36,7 @@ const chordTimes = (notes) => {
   return [...at].filter(([, size]) => size > 1).map(([t]) => t);
 };
 
-describe("a quiet soloist after the song has come in (flag soloLead)", () => {
+describe("a quiet soloist after the song has come in (Normal's soloLead)", () => {
   it("is a quiet phrase after the first loud one, with the drums away and the lead sure", () => {
     const rates = soloLeadRates(context(), RULE);
     assert.equal(rates[0], 0, "the loud opening");
@@ -55,10 +53,8 @@ describe("a quiet soloist after the song has come in (flag soloLead)", () => {
     assert.deepEqual(solo, plain.filter((t) => t < 10000 || t >= 20000));
   });
 
-  it("touches Normal alone", () => {
-    const features = makeLayeredFeatures({ durationMs: 64000 });
-    const plain = generateAll(features, "youtube:solo:64000");
-    const on = generateAll(features, "youtube:solo:64000", ["soloLead"]);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level].notes, plain[level].notes, level);
+  it("is Normal's alone", () => {
+    assert.deepEqual(DIFFICULTIES.normal.soloLead, SOLO_LEAD);
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].soloLead, undefined, level);
   });
 });

@@ -24,10 +24,11 @@ describe("slow songs read at twice the tempo (Normal's feltTempo)", () => {
     assert.deepEqual(scoreMoments(ctx, "normal", FELT), scoreMoments(ctx, "normal"));
   });
 
-  it("keeps the song's own tolerance in ms with keepTolerance (flag feltTolerance)", () => {
+  it("keeps the song's own tolerance in ms with keepTolerance", () => {
     const ctx = analyse(makeLayeredFeatures({ bpm: 90, durationMs: 64000 }));
-    const halved = scoreMoments(ctx, "normal", FELT);
-    const kept = scoreMoments(ctx, "normal", { ...FELT, keepTolerance: true });
+    const halved = scoreMoments(ctx, "normal", { ...FELT, keepTolerance: false });
+    const kept = scoreMoments(ctx, "normal", FELT);
+    assert.ok(FELT.keepTolerance);
     assert.equal(kept.length, halved.length);
     // A wider tolerance only ever moves a moment from "off the beat" onto a place in it, never the other way.
     for (let i = 0; i < kept.length; i++) if (halved[i].metric !== 3) assert.equal(kept[i].metric, halved[i].metric, `${kept[i].t}`);
