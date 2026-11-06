@@ -82,6 +82,40 @@ function flowScale(flow, moments, sizes, m, beatMs) {
   return scale;
 }
 
+// The times of the moments that come after rule.gapBeats of nothing (holds count until they let go) while the music is
+// quieter than rule.below (diff.quietLone, generator flag "quietLone"). On the train songs people play such a moment as one
+// tap 68% of the time and a chord 27%; Normal made a chord of 38%, as the room around it (flowScale) asks for one.
+function quietLoneMoments(moments, ctx, rule) {
+  const out = new Set();
+  if (!rule) return out;
+  let reach = null;
+  for (const moment of moments) {
+    const { t } = moment[0];
+    if (reach !== null && t - reach >= rule.gapBeats * beatMsOf(ctx.timing, t) && ctx.energy.at(t) < rule.below) out.add(t);
+    const end = Math.max(...moment.map((n) => n.t + (n.len > 0 ? n.len : 0)));
+    reach = reach === null ? end : Math.max(reach, end);
+  }
+  return out;
+}
+
+// holdQuietLone(notes, ctx, rule) -> notes: with rule.hold, a lone quiet moment (quietLoneMoments) that is one tap holds
+// until rule.hold.releaseBeats before the next moment, when that leaves at least rule.hold.minBeats. Something drawn out
+// starting in a quiet stretch reads as one long note; the pitch tracker often misses it there, so the room decides.
+function holdQuietLone(notes, ctx, rule) {
+  if (!rule?.hold) return notes;
+  const moments = groupByTime(notes);
+  const lone = quietLoneMoments(moments, ctx, rule);
+  const held = new Map();
+  moments.forEach((moment, m) => {
+    const next = moments[m + 1];
+    if (!lone.has(moment[0].t) || moment.length > 1 || moment[0].len > 0 || !next) return;
+    const beat = beatMsOf(ctx.timing, moment[0].t);
+    const len = next[0].t - rule.hold.releaseBeats * beat - moment[0].t;
+    if (len >= rule.hold.minBeats * beat) held.set(moment[0], Math.round(len));
+  });
+  return notes.map((n) => (held.has(n) ? { ...n, len: held.get(n) } : n));
+}
+
 // A chord of `plan` (the moments so far, { m, t, kept, added, score, firm }) given back for `m`, the moment just planned: while
 // the chords in the 8 beats that end at m are more than `limit`, the weakest of them plays one note instead (its first,
 // a hold before a tap); a chord with `firm` (a section's opening, two holds at one moment) never does. The window is
@@ -109,6 +143,7 @@ function planChords(notes, ctx, diff, upper = null) {
   const barScale = barScales(moments, ctx);
   const strength = strengthScales(moments, ctx);
   const opening = new Set(sections.filter((s) => opensOnChord(s, diff, energy)).map((s) => s.t));
+  const quietLone = quietLoneMoments(moments, ctx, diff.quietLone);
   const carry = [0, 0, 0, 0]; // what each place in the bar has saved towards its next chord
   const carryNew = [0, 0, 0, 0];
   const carryTriple = [0, 0, 0, 0];
@@ -179,6 +214,8 @@ function planChords(notes, ctx, diff, upper = null) {
     if (running.length > 0 && diff.holdOtherHand !== "free") want = 1;
     const asked = want;
     want = Math.min(want, Math.max(cap, Math.min(holds.length, 2)));
+    // A lone moment in quiet music plays one note, but counts as planned: the chords around it stay where they were.
+    if (quietLone.has(t) && !opens) want = Math.min(want, Math.max(1, Math.min(holds.length, 2)));
 
     const kept = [...holds, ...moment.filter((n) => !(n.len > 0))].slice(0, want);
     const added = freeLanes(kept, want - kept.length).map((lane) => ({ t, lane }));
@@ -214,4 +251,4 @@ function limitChordShare(notes, timing, diff) {
   return notes.filter((n) => !dropped.has(n));
 }
 
-module.exports = { limitChordShare, planChords };
+module.exports = { holdQuietLone, limitChordShare, planChords };

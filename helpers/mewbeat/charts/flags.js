@@ -20,6 +20,10 @@ const FLAGS = {
   miniRests: { label: "Mini pauzy łączą sekcje", levels: { normal: { restBridge: { minBeats: 1.5, playing: 0.25, score: 0, edgeBeats: 0.5 } } } },
   // selection.js meterTimingOf: Normal reads a song under 115 BPM at twice its tempo, so its quarter beats count as half beats.
   feltTempo: { label: "Wolne utwory jak dwa razy szybsze", levels: { normal: { feltTempo: { belowBpm: 115 } } } },
+  // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, no chord; with quietLoneHold
+  // (applied after quietLone, the names are sorted) that note holds until half a beat before the next moment.
+  quietLone: { label: "Samotna nuta w ciszy bez akordu", levels: { normal: { quietLone: { gapBeats: 2, below: 0.25 } } } },
+  quietLoneHold: { label: "Samotna nuta w ciszy jako hold", levels: { normal: { quietLone: { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } } } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
