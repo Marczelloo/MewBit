@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 33;
+const GENERATOR_VERSION = 34;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -48,6 +48,9 @@ const FIGURES = { layers: { snare: 0.7, kick: 0.7, bass: 0.7, low: 0.85 }, restB
 // sections.js openWithFirstSound: the song opens on its first very strong sound, on the beat beside it (Hopes And Dreams
 // 0:00.139). Asked for by ear: where v32 missed such a sound people play it about a third of the time.
 const FIRST_SOUND = { strong: 0.8, nearBeats: 1 / 8 };
+// selection.js meterTimingOf: Normal reads a song under belowBpm at twice its tempo, so its quarter beats count as half
+// beats. People's Normal plays about 4.3 notes a second at any tempo, a third of them on quarter beats under 115 BPM.
+const FELT_TEMPO = { belowBpm: 115 };
 
 // --- Per-difficulty parameters ---------------------------------------------
 
@@ -201,6 +204,7 @@ const DIFFICULTIES = {
     openingLead: 0.9, // a quiet opening plays this share of its lead line, a soloist before the song comes in (selection.js)
     figures: FIGURES,
     firstSound: FIRST_SOUND,
+    feltTempo: FELT_TEMPO,
   },
   hard: {
     grammar: "hard",
@@ -296,6 +300,7 @@ const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 
 module.exports = {
   BANDS,
+  FELT_TEMPO,
   FIGURES,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,

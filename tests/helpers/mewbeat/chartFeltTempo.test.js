@@ -1,15 +1,14 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { analyse } = require("../../../helpers/mewbeat/charts/generate");
 const { scoreMoments } = require("../../../helpers/mewbeat/charts/selection");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, FELT_TEMPO } = require("../../../helpers/mewbeat/charts/difficulty");
 const { makeLayeredFeatures } = require("./fixtures");
 
-const FELT = FLAGS.feltTempo.levels.normal.feltTempo;
+const FELT = FELT_TEMPO;
 
-describe("slow songs read at twice the tempo (flag feltTempo)", () => {
+describe("slow songs read at twice the tempo (Normal's feltTempo)", () => {
   it("a quarter beat of a slow song is scored as a half beat, a half beat as a beat", () => {
     const ctx = analyse(makeLayeredFeatures({ bpm: 90, durationMs: 64000 }));
     const plain = scoreMoments(ctx, "normal");
@@ -25,10 +24,8 @@ describe("slow songs read at twice the tempo (flag feltTempo)", () => {
     assert.deepEqual(scoreMoments(ctx, "normal", FELT), scoreMoments(ctx, "normal"));
   });
 
-  it("touches Normal alone", () => {
-    const features = makeLayeredFeatures({ bpm: 90, durationMs: 64000 });
-    const plain = generateAll(features, "youtube:felt:64000");
-    const on = generateAll(features, "youtube:felt:64000", ["feltTempo"]);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level].notes, plain[level].notes, level);
+  it("is Normal's alone", () => {
+    assert.deepEqual(DIFFICULTIES.normal.feltTempo, FELT_TEMPO);
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].feltTempo, undefined, level);
   });
 });

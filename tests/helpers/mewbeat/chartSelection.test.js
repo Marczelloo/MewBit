@@ -190,13 +190,13 @@ describe("Normal picks its notes from the music", () => {
 
       const analysis = { getFeatures: async () => makeFeatures(), statusOf: () => null };
       const store = createChartStore({ dir, analysis, log: quietLog });
-      assert.strictEqual(GENERATOR_VERSION, 33);
+      assert.strictEqual(GENERATOR_VERSION, 34);
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
-      assert.strictEqual(charts.normal.version, 33);
+      assert.strictEqual(charts.normal.version, 34);
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file(33)));
+      assert.ok(fs.existsSync(file(34)));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -412,12 +412,16 @@ describe("the budget of a phrase", () => {
     const quietAt = (t) => t >= 40000 && t < 48000;
     const startsLoud = analyse(loud({ energy: (t) => (quietAt(t) ? 0.2 : 0.8) }));
     phraseBudget(startsLoud.phrases[0], startsLoud, NORMAL);
-    assert.strictEqual(startsLoud.budgets[NORMAL.scoreLevel].openingEnd, 0);
+    // Normal's budgets are kept under one key, its felt tempo in it (selection.js scoreKey).
+    const keys = Object.keys(startsLoud.budgets);
+    assert.strictEqual(keys.length, 1);
+    const [key] = keys;
+    assert.strictEqual(startsLoud.budgets[key].openingEnd, 0);
 
     // A silent phrase reports the loudness of the song, and it is not the first loud one.
     const silence = analyse(loud({ energy: (t) => (t < 8000 ? 0 : t < 16000 ? 0.2 : 0.8) }));
     phraseBudget(silence.phrases[0], silence, NORMAL);
-    const end = silence.budgets[NORMAL.scoreLevel].openingEnd;
+    const end = silence.budgets[key].openingEnd;
     assert.ok(silence.phrases[end].startMs >= 8000, `the opening ends at phrase ${end}`);
   });
 
