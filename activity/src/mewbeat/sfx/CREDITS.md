@@ -10,6 +10,7 @@ All samples come from [osu-resources](https://github.com/ppy/osu-resources) (com
 | `hit-taiko.wav` | Taiko | `Gameplay/Argon/taiko-drum-hitnormal.wav` |
 | `hit-drum.wav` | Drum | `Gameplay/Argon/drum-hitnormal.wav` |
 | `hit-tight.wav` | Tight | `Gameplay/ArgonPro/drum-hitnormal.wav` |
+| `hit-osu.wav` | osu! (the classic hit circle) | `osu.Game.Resources/Skins/Legacy/normal-hitnormal.wav` (the classic skin, not under `Samples/`) |
 | `combobreak.mp3` | A miss that breaks a combo over 20 | `Gameplay/combobreak.mp3` |
 | `full-combo.wav` | The end of a song with a full combo | `Multiplayer/Matchmaking/match-found.wav` |
 | `swoosh.wav` | The results, rising through the score's count to its landing | `Results/swoosh-up.wav` |
