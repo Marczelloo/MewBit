@@ -11,6 +11,7 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
+const { thinDips } = require("./dips");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
@@ -353,7 +354,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
-  const spaced = step("spacedMoments", ran, spacedMoments(ran, diff));
+  const thinned = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin)) : ran;
+  const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const capped = step("holdShare", floored, ctx.phrases.length === 0

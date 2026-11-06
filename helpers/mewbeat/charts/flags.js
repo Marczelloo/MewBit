@@ -23,6 +23,12 @@ const FLAGS = {
   // withRunNotes): asked for by ear, as Normal hardly speeds up with the music (train, speed-ups per minute: people 26,
   // Normal 16; runs of equal gaps 3.6 against 6.3 on average). Train F1 .8035 -> .8041, Easy and Hard unchanged.
   melodyRuns: { label: "Szybkie serie za melodią", levels: { normal: { melodyRuns: { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 } } } },
+  // Normal slows down where the music dips for a moment inside a loud passage (dips.js thinDips): asked for by ear. Train,
+  // audio dips of 400 ms+: people thin 35% of them to under half the density around, Normal 21%, the flag 41%; left empty
+  // 16 / 4 / 11%. Weak moments alone (deep 0) would give F1 .8018 -> .8021 and 33%; dropping every off-beat moment where
+  // the energy falls under 0.6 of the level around, as the user heard it, costs F1 .8005 (those are people's 49%).
+  // Easy and Hard unchanged.
+  dipThin: { label: "Zwolnienia w spadkach muzyki", levels: { normal: { dipThin: { drop: 0.7, level: 0.3, below: 0.7, offBeatBelow: 0.9, deep: 0.6 } } } },
   twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
 };
 
