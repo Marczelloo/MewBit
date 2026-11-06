@@ -51,3 +51,7 @@ Wpisy 17–19 w `mapping-analysis/TEST_USAGE.md`:
 
 - `fadeOut` poprawiony po ocenie Bad Piggies (0ba79db): zaczyna się, gdzie energia spada pod 0,5, i tnie połowę każdego taktu osobno.
 - `copyStrictHard` od v37 jest częścią Hard (`difficulty.js COPY_FROM`), na życzenie użytkownika bez grania; Easy zmienia się razem z nim.
+- `copyStrict`, `fadeOut` i `stairs` od v38 są częścią Normal.
+- Nowa flaga `chordLoudness` (6161f29): akordy na Normal idą za głośnością muzyki, więc w cichych początkach prawie ich nie ma (energia 0,1–0,2: u nas 23% -> 8%, ludzie 6%). F1 bez zmian, test 20.
+- Nowa flaga `twoKeyTrill` (e41a931): tam, gdzie melodia albo bas skacze między dwiema nutami (A B A B, co najwyżej pół beatu), Normal gra tryl na dwóch klawiszach. To Twoje życzenie, nie korpus: ludzie grają tam tryl tylko w 7% przypadków. Odpala rzadko (4 z 80 utworów treningowych, 1 z 20 testowych), bo detektor nie słyszy wysokości w większości szybkich melodii. Test 21.
+- [later-easy-hard.md](later-easy-hard.md): ustalenia o Easy, Hard i Hell zapisane na później (akordy w ciszy na Hard 38% wobec 5% u ludzi, dziury na szwach, krótkie holdy na długich dźwiękach). Nic w tych poziomach nie zmieniono.
