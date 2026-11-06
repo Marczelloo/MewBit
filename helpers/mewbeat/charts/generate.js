@@ -10,7 +10,7 @@ const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime,
 const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
-const { withMelody } = require("./melodyPick");
+const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
@@ -123,8 +123,15 @@ function scoredFor(ctx, diff) {
   ctx.melodyScored ??= new Map();
   ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
   const byScored = ctx.melodyScored.get(melody);
-  if (!byScored.has(scored)) byScored.set(scored, withMelody(scored, melody, diff.melodyPick));
-  return byScored.get(scored);
+  // diff.melodyRuns (a flag): the moments where the melody runs fast are marked, for finish to add
+  const key = diff.melodyRuns ? "runs" : "plain";
+  byScored.has(scored) || byScored.set(scored, {});
+  const cached = byScored.get(scored);
+  if (!cached[key]) {
+    const picked = withMelody(scored, melody, diff.melodyPick);
+    cached[key] = diff.melodyRuns ? withMelodyRuns(picked, melody, diff.melodyRuns) : picked;
+  }
+  return cached[key];
 }
 
 // What phrase i of a level that picks its notes from the music may play: the moments the music plays, and `carry`, the sounds after `before` (the time of the last note of the phrases before) that this phrase's
@@ -345,7 +352,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const settled = diff.restBridge
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
-  const spaced = step("spacedMoments", settled, spacedMoments(settled, diff));
+  const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
+  const spaced = step("spacedMoments", ran, spacedMoments(ran, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const capped = step("holdShare", floored, ctx.phrases.length === 0

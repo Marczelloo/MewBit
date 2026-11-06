@@ -19,6 +19,10 @@ const FLAGS = {
   // Normal's lanes trill on two keys where the lead (or the bass) alternates two pitches fast (laneRules alternateSteps):
   // the user's wish, not the corpus. People trill only 7% of such notes on Normal, and the lines show them in 4 of the
   // 80 train songs (half a beat or faster), so it fires rarely: the detector hears no pitch in most of a fast melody.
+  // Normal adds a short burst of notes on top of its stream where the decoded melody runs fast (melodyPick.js
+  // withRunNotes): asked for by ear, as Normal hardly speeds up with the music (train, speed-ups per minute: people 26,
+  // Normal 16; runs of equal gaps 3.6 against 6.3 on average). Train F1 .8035 -> .8041, Easy and Hard unchanged.
+  melodyRuns: { label: "Szybkie serie za melodią", levels: { normal: { melodyRuns: { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 } } } },
   twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
 };
 
