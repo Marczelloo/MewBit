@@ -354,7 +354,7 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
   const chorded = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
-  // decoderLanes: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.
+  // diff.melodyLine: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.
   const decoded = diff.melodyLine ? decodedMelodyOf(ctx, diff) : null;
   const laneCtx = decoded ? { ...ctx, features: { ...ctx.features, melodyLine: decoded } } : ctx;
   const laid = step("lanes", chorded, layLanes(chorded, laneCtx, diff, upper));

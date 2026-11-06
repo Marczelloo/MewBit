@@ -16,7 +16,7 @@ const quietLog = { warning() {} };
 const times = Array.from({ length: 6 }, (_, i) => 1000 + i * 250);
 const line = (pitches) => pitches.map((pitch, i) => ({ t: times[i], pitch, conf: 0.9 }));
 
-describe("lanes on a second detector's melody (flag decoderLanes)", () => {
+describe("Normal's lanes on a second detector's melody (v39)", () => {
   it("reads features.melodyLine before the lead line", () => {
     const features = { lead: line([60, 60, 60, 60, 60, 60]), bass: [], bands: [] };
     assert.ok(stairSteps({ features }, times, () => 500, STAIRS).every((s) => s === 0));
@@ -24,16 +24,13 @@ describe("lanes on a second detector's melody (flag decoderLanes)", () => {
     assert.deepEqual(stairSteps({ features: withMelody }, times, () => 500, STAIRS), [0, 1, 1, 1, 1, 1]);
   });
 
-  it("changes lanes only, and only with the flag on", () => {
+  it("changes lanes where a melody was decoded", () => {
     const features = makeLayeredFeatures();
     const rising = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 48 + (i % 12), conf: 1 }));
-    const decoded = { ...features, decodedMelody: rising };
     const plain = generateChart(features, "normal", "k", []).notes;
-    assert.deepEqual(generateChart(decoded, "normal", "k", []).notes, plain);
-    const flagged = generateChart(decoded, "normal", "k", ["decoderLanes"]).notes;
-    assert.deepEqual(flagged.map((n) => n.t), plain.map((n) => n.t));
-    assert.ok(flagged.some((n, i) => n.lane !== plain[i].lane));
-    assert.deepEqual(Object.keys(FLAGS.decoderLanes.levels), ["normal"]);
+    const decoded = generateChart({ ...features, decodedMelody: rising }, "normal", "k", []).notes;
+    assert.ok(decoded.some((n, i) => n.lane !== plain[i]?.lane));
+    for (const name of ["decoderLanes", "decoderPick", "melodyTuned"]) assert.equal(FLAGS[name], undefined, name);
   });
 
   it("is loaded by the chart store from melody/<audio key>.json when there is one", async () => {
@@ -63,7 +60,7 @@ describe("lanes on a second detector's melody (flag decoderLanes)", () => {
   });
 });
 
-describe("moments on a second detector's melody (flag decoderPick)", () => {
+describe("Normal's moments on a second detector's melody (v39)", () => {
   const { withMelody } = require("../../../helpers/mewbeat/charts/melodyPick");
   const scored = [
     { t: 1000, s: 0.2, score: 0 },
@@ -78,45 +75,31 @@ describe("moments on a second detector's melody (flag decoderPick)", () => {
     assert.equal(withMelody(scored, [], { bonus: 1, minStrength: 0 }), scored);
   });
 
-  it("changes Normal alone, and only with the flag on and a melody decoded", () => {
+  it("changes Normal alone, and only where a melody was decoded", () => {
     const features = makeLayeredFeatures();
     const melody = Array.from({ length: 120 }, (_, i) => ({ t: 1125 + i * 500, pitch: 60 }));
     const decoded = { ...features, decodedMelody: melody };
     const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
     const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
     const plain = notesOf(generateAll(features, "k", {}));
-    assert.deepEqual(notesOf(generateAll(features, "k", { decoderPick: true })), plain);
-    assert.deepEqual(notesOf(generateAll(decoded, "k", {})), plain);
-    const on = notesOf(generateAll(decoded, "k", { decoderPick: true }));
+    const on = notesOf(generateAll(decoded, "k", {}));
+    assert.notDeepEqual(on.normal, plain.normal);
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.deepEqual(Object.keys(FLAGS.decoderPick.levels), ["normal"]);
   });
 });
 
-describe("the tuned melody line (flag melodyTuned)", () => {
+describe("the tuned melody line (v39)", () => {
   const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
   const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
   const flat = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 60, conf: 1 }));
   const rising = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 48 + (i % 12), conf: 1 }));
-  const features = { ...makeLayeredFeatures(), decodedMelody: flat, decodedMelodyTuned: rising };
 
-  it("takes the tuned line in place of the decoder's own, for decoderLanes", () => {
-    const own = notesOf(generateAll(features, "k", { decoderLanes: true }));
-    const tuned = notesOf(generateAll(features, "k", { decoderLanes: true, melodyTuned: true }));
-    const asRising = notesOf(generateAll({ ...features, decodedMelody: rising }, "k", { decoderLanes: true }));
-    assert.deepEqual(tuned, asRising);
-    assert.ok(tuned.normal.some((n, i) => n.lane !== own.normal[i].lane));
+  it("is read in place of the decoder's own line, where there is one", () => {
+    const features = makeLayeredFeatures();
+    const tuned = notesOf(generateAll({ ...features, decodedMelody: flat, decodedMelodyTuned: rising }, "k", {}));
+    assert.deepEqual(tuned, notesOf(generateAll({ ...features, decodedMelody: rising }, "k", {})));
+    const own = notesOf(generateAll({ ...features, decodedMelody: flat }, "k", {}));
+    assert.ok(tuned.normal.some((n, i) => n.lane !== own.normal[i]?.lane));
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(tuned[level], own[level], level);
-  });
-
-  it("changes nothing alone, nor without a tuned line decoded", () => {
-    const plain = notesOf(generateAll(features, "k", {}));
-    assert.deepEqual(notesOf(generateAll(features, "k", { melodyTuned: true })), plain);
-    const { decodedMelodyTuned, ...untuned } = features;
-    assert.deepEqual(
-      notesOf(generateAll(untuned, "k", { decoderLanes: true, melodyTuned: true })),
-      notesOf(generateAll(untuned, "k", { decoderLanes: true })),
-    );
-    assert.deepEqual(Object.keys(FLAGS.melodyTuned.levels), ["normal"]);
   });
 });

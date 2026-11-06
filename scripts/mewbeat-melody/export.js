@@ -2,7 +2,7 @@
 // Usage: node scripts/mewbeat-melody/export.js <decoder output dir> [features dir] [melody dir]
 // Each <decoder output dir>/<audio key file>.json is { notes: [[t, len, midi, vel, conf, onset, layer, ghost, wob]],
 // fg: [note indices] } (research decoder, decoder.py). Writes `notes`, the decoder's own foreground line, and `tuned`,
-// the line drawn again with line.js TUNED (the melodyTuned flag). Both are shifted by the song's median offset to our
+// the line drawn again with line.js TUNED (Normal's melodyTuned). Both are shifted by the song's median offset to our
 // lead line, as the two detectors place a note's start differently.
 const fs = require("node:fs");
 const path = require("node:path");

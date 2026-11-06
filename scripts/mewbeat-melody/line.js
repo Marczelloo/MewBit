@@ -1,7 +1,7 @@
 // The melody line through a song's decoded notes (Basic Pitch via the research decoder, decoder.py), ported from its
 // foreground(): a chain of notes maximising their salience above `base`, with a cost of `jump` per octave of a step.
 // Each note is [t, len, midi, vel, conf, onset, layer, ghost, wob]. P are the decoder's own values; TUNED draws the line
-// denser (base) and smoother (jump), as the melodyTuned flag reads it (charts/flags.js).
+// denser (base) and smoother (jump), as Normal reads it (charts/difficulty.js melodyTuned).
 const P = { reg_mid: 76, reg_width: 16, bass_top: 48, min_ioi_ms: 85, jump: 0.05, base: 0.62, max_gap_ms: 2500, rep_win_ms: 2500, rep_weight: 0.75, rep_count: 8, norm_win_ms: 4000, norm_q: 85, norm_floor: 0.12 };
 const lowerBound = (a, x) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < x) lo = m + 1; else hi = m; } return lo; };
 const upperBound = (a, x) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] <= x) lo = m + 1; else hi = m; } return lo; };

@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 38;
+const GENERATOR_VERSION = 39;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -61,6 +61,12 @@ const COPY_FROM = 0.95;
 // up or down over at least minNotes single notes, each within maxGapBeats. Asked for by ear (v38): people follow such a
 // run no more than chance does (40-50% of the steps go the melody's way on the train songs, random lanes 42%).
 const STAIRS = { minNotes: 3, maxGapBeats: 1, weight: 3 };
+// melodyPick.js, generate.js: Normal's lanes follow a melody from a second detector (Basic Pitch, decoded offline into
+// helpers/data/mewbeat/melody/<audio key>.json, its tuned line from scripts/mewbeat-melody/line.js), and a moment where it
+// hears a melody note begin scores `bonus` more. Played and approved in v39 (H&D "o wiele lepiej"). Train Normal: F1
+// .8018 -> .8036, moments on the melody 27.1 -> 36.6% (people 37.0%), a melody direction on 74% of single notes (65%).
+// A song with no melody file is charted as before.
+const MELODY_PICK = { bonus: 1.25, minStrength: 0 };
 // fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
@@ -234,6 +240,9 @@ const DIFFICULTIES = {
     copyFrom: COPY_FROM, // from v38 (train F1 0.7985 -> 0.8017)
     fadeOut: FADE_OUT,
     stairs: STAIRS,
+    melodyLine: true, // from v39, with melodyTuned and melodyPick
+    melodyTuned: true,
+    melodyPick: MELODY_PICK,
   },
   hard: {
     grammar: "hard",
@@ -334,6 +343,7 @@ module.exports = {
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,
+  MELODY_PICK,
   MINI_RESTS,
   QUIET_LONE,
   SOLO_LEAD,

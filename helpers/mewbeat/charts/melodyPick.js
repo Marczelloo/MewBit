@@ -1,4 +1,4 @@
-// A melody from a second detector in Normal's choice of moments (diff.melodyPick, the decoderPick flag). The decoder lost a
+// A melody from a second detector in Normal's choice of moments (diff.melodyPick, from v39). The decoder lost a
 // listening test when it picked the moments itself: quiet melody notes took the place of loud, full ones and left holes. So
 // here it only raises the score of a moment where it hears a melody note begin, and only of a moment at least as loud as
 // rule.minStrength of the song's moments (a rank, 0 the quietest, 1 the loudest): a quiet melody note gains nothing.
