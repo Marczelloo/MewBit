@@ -3,7 +3,6 @@ const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, FIGURES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { figureTimes } = require("../../../helpers/mewbeat/charts/figures");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { selectMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { flagWithout, makeLayeredFeatures } = require("./fixtures");
@@ -14,7 +13,7 @@ const BARS = 24;
 const grid = Array.from({ length: BARS * 16 + 1 }, (_, i) => i * SLOT);
 const timing = { snapped: true, gridPoints: () => grid, beats: grid.filter((_, i) => i % 4 === 0), downbeats: [], beatMsAt: () => BEAT, medianMs: BEAT };
 const SPEC = FIGURES;
-const QUARTERS = FLAGS.figuresQuarter.levels.normal.figures;
+const QUARTERS = { ...FIGURES, quarters: { snare: 0.7, kick: 0.7, bass: 0.7 } }; // figures.js spec.quarters (the figuresQuarter flag, dropped)
 // A hit at every one of the slots of a bar, in the bars from..to.
 const hits = (kind, slots, from = 0, to = BARS) =>
   Array.from({ length: to - from }, (_, b) => slots.map((k) => ({ t: (from + b) * 16 * SLOT + k * SLOT, s: 0.8, kind }))).flat();
@@ -109,11 +108,6 @@ describe("mewbeat figures", () => {
       for (const level of ["easy", "hard", "hell"]) assert.strictEqual(DIFFICULTIES[level].figures, undefined, level);
       const without = generateAll(features, "figures", flagWithout("withoutfigures", "figures"));
       for (const level of ["easy", "hard", "hell"]) assert.deepStrictEqual(without[level].notes, plain[level].notes, level);
-    });
-
-    it("figuresQuarter touches Normal alone", () => {
-      const on = generateAll(features, "figures", { figuresQuarter: true });
-      for (const level of ["easy", "hard", "hell"]) assert.deepStrictEqual(on[level].notes, plain[level].notes, level);
     });
   });
 });
