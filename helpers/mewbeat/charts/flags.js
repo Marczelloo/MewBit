@@ -19,6 +19,10 @@ const FLAGS = {
   // Normal's lanes trill on two keys where the lead (or the bass) alternates two pitches fast (laneRules alternateSteps):
   // the user's wish, not the corpus. People trill only 7% of such notes on Normal, and the lines show them in 4 of the
   // 80 train songs (half a beat or faster), so it fires rarely: the detector hears no pitch in most of a fast melody.
+  // Normal's lanes follow a melody from a second detector (Basic Pitch's foreground line, decoded offline into
+  // helpers/data/mewbeat/melody/<audio key>.json) instead of the lead line; the moments still come from the lead.
+  // Train: a melody direction on 74% of single notes (lead 65%), stairs 1.9% (0.4%), lanes as close to people's.
+  decoderLanes: { label: "Melodia z drugiego detektora (tory)", levels: { normal: { melodyLine: true } } },
   twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
   // Normal's figures (difficulty.js FIGURES) on quarter beats too, where people follow a figure far less often (27% of
   // these, about 5% of an unrepeated onset; 0% on the test songs). The level's least gap keeps them to songs under about

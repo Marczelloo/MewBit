@@ -333,7 +333,10 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
   const chorded = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
-  const laid = step("lanes", chorded, layLanes(chorded, ctx, diff, upper));
+  // decoderLanes: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.
+  const decoded = diff.melodyLine && Array.isArray(ctx.features.decodedMelody);
+  const laneCtx = decoded ? { ...ctx, features: { ...ctx.features, melodyLine: ctx.features.decodedMelody } } : ctx;
+  const laid = step("lanes", chorded, layLanes(chorded, laneCtx, diff, upper));
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut), ctx, diff.fadeOut)) : limited;

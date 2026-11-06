@@ -152,6 +152,18 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     return READY(stored);
   }
 
+  // A melody from a second detector, where one was decoded offline for this audio (melody/<audio key file>.json): the
+  // decoderLanes flag lays Normal's lanes on it (generate.js finish). Without the file, or the flag, nothing changes.
+  function withDecodedMelody(features, key) {
+    if (!features) return features;
+    try {
+      const notes = JSON.parse(fs.readFileSync(path.join(dir, "melody", `${audioKeyFile(key)}.json`), "utf8"))?.notes;
+      return Array.isArray(notes) ? { ...features, decodedMelody: notes } : features;
+    } catch {
+      return features;
+    }
+  }
+
   async function resolve(track, key, node, { flags, key: flagged }) {
     const id = memoryKey(key, flagged);
     await sweepOldVersions();
@@ -170,7 +182,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
       });
     }
 
-    const features = await analysis.getFeatures(track, node);
+    const features = withDecodedMelody(await analysis.getFeatures(track, node), key);
     if (!features) return statusWithoutFeatures(track);
 
     const charts = generate(features, key, flags);

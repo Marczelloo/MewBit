@@ -24,7 +24,8 @@ function linesOf(features) {
     const sounds = (Array.isArray(features.bands) ? features.bands : [])
       .flatMap((band, b) => (Array.isArray(band?.onsets) ? band.onsets : []).filter((o) => Number.isFinite(o?.t)).map((o) => ({ t: o.t, s: Number.isFinite(o.s) ? o.s : 0.5, band: b })))
       .sort((a, b) => a.t - b.t);
-    const lead = tonal(features.lead);
+    // features.melodyLine: a melody from a second detector, for the lanes alone (the moments still come from features.lead)
+    const lead = tonal(Array.isArray(features.melodyLine) ? features.melodyLine : features.lead);
     const bass = tonal(features.bass);
     lines.set(features, { tonal: [lead, bass].map((line) => ({ line, times: line.map((n) => n.t) })), sounds, soundTimes: sounds.map((o) => o.t) });
   }
