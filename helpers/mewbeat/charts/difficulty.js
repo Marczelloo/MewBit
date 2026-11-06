@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 39;
+const GENERATOR_VERSION = 40;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -67,6 +67,23 @@ const STAIRS = { minNotes: 3, maxGapBeats: 1, weight: 3 };
 // .8018 -> .8036, moments on the melody 27.1 -> 36.6% (people 37.0%), a melody direction on 74% of single notes (65%).
 // A song with no melody file is charted as before.
 const MELODY_PICK = { bonus: 1.25, minStrength: 0 };
+// chords.js loudnessScale: Normal's chord rate scales with how loud the music is ([energy, factor] steps); bars were
+// ranked against the song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 /
+// -0.45 / -0.6 / louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, this 8 / 8 / 15 / 21 / 29%. F1
+// unchanged. Played and approved in v40, with the three below.
+const CHORD_LOUDNESS = [[0.2, 0.1], [0.3, 0.12], [0.45, 0.35], [0.6, 0.6], [0.75, 1.4]];
+// laneRules alternateSteps: Normal's lanes trill on two keys where the lead (or the bass) alternates two pitches fast. The
+// user's wish, not the corpus: people trill only 7% of such notes on Normal, and it fires in 4 of the 80 train songs.
+const TWO_KEY_TRILL = { minNotes: 4, maxGapBeats: 0.6, weight: 3 };
+// melodyPick.js withRunNotes: a short burst of notes on top of Normal's stream where the decoded melody runs fast; asked
+// for by ear, as Normal hardly sped up with the music (train speed-ups per minute: people 26, Normal 17). Train F1 .8035
+// -> .8041.
+const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
+// dips.js thinDips: Normal slows down where the music dips for a moment inside a loud passage; asked for by ear
+// (MEGALOVANIA, Camellia remix, 2:18-2:23). Train, audio dips of 400 ms+: people thin 35% of them to under half the density
+// around, v39 21%, this 41%. Dropping every off-beat moment where the energy falls under `deep` of the level around, as
+// the user heard it, costs train F1 .8018 -> .8005 and test .8337 -> .8309.
+const DIP_THIN = { drop: 0.7, level: 0.3, below: 0.7, offBeatBelow: 0.9, deep: 0.6 };
 // fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
@@ -243,6 +260,10 @@ const DIFFICULTIES = {
     melodyLine: true, // from v39, with melodyTuned and melodyPick
     melodyTuned: true,
     melodyPick: MELODY_PICK,
+    chordLoudness: CHORD_LOUDNESS, // from v40, with twoKeyTrill, melodyRuns and dipThin
+    twoKeyTrill: TWO_KEY_TRILL,
+    melodyRuns: MELODY_RUNS,
+    dipThin: DIP_THIN,
   },
   hard: {
     grammar: "hard",
@@ -339,15 +360,19 @@ const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 
 module.exports = {
   BANDS,
+  CHORD_LOUDNESS,
   COPY_FROM,
+  DIP_THIN,
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,
   MELODY_PICK,
+  MELODY_RUNS,
   MINI_RESTS,
   QUIET_LONE,
   SOLO_LEAD,
   STAIRS,
+  TWO_KEY_TRILL,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
   BUSY_MAX_FACTOR,

@@ -11,6 +11,9 @@ const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const DURATION = 64000;
 const WITHOUT = flagWithout("withoutsearch", "laneSearch", "chordFlow");
+// The notes the search is tried on, with v39's chords: v40's chordLoudness changes which moments chord, and the control
+// below dropped to 0.67 at its one drop point (0.80 to 1.00 at the others), a property of this fixture, not of the search.
+const WITHOUT_LOUDNESS = flagWithout("withoutsearchloudness", "laneSearch", "chordFlow", "chordLoudness");
 const features = () => makeLayeredFeatures({ bpm: 120, durationMs: DURATION });
 
 describe("mewbeat lane search", () => {
@@ -61,7 +64,7 @@ describe("mewbeat lane search", () => {
   describe("searchLanes", () => {
     const ctx = analyse(features());
     const diff = DIFFICULTIES.normal;
-    const notes = generateAll(features(), "k", WITHOUT).normal.notes;
+    const notes = generateAll(features(), "k", WITHOUT_LOUDNESS).normal.notes;
     const kept = (a, b) => {
       const seen = new Set(a.map((n) => `${n.t}:${n.lane}`));
       return b.filter((n) => seen.has(`${n.t}:${n.lane}`)).length / b.length;

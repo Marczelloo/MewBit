@@ -9,28 +9,9 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // density, holds, transitions and lead were played and became part of the levels in v32, figures, phraseGrid and
 // firstSound in v33 (difficulty.js, phrases.js onGrid), feltTempo in v34, quietLoneHold, soloLead and feltTolerance in v35,
 // miniRests in v36, copyStrictHard (difficulty.js COPY_FROM) in v37, copyStrict, fadeOut and stairs in v38, decoderLanes,
-// decoderPick and melodyTuned in v39 (difficulty.js MELODY_PICK). figuresQuarter was dropped (0% of its notes hit on the
-// test songs).
-const FLAGS = {
-  // Normal's chord rate scales with how loud the music is (chords.js loudnessScale): bars were ranked against the
-  // song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 / -0.45 / -0.6 /
-  // louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, the flag 8 / 8 / 15 / 21 / 29%. F1 unchanged.
-  chordLoudness: { label: "Akordy za głośnością", levels: { normal: { chordLoudness: [[0.2, 0.1], [0.3, 0.12], [0.45, 0.35], [0.6, 0.6], [0.75, 1.4]] } } },
-  // Normal's lanes trill on two keys where the lead (or the bass) alternates two pitches fast (laneRules alternateSteps):
-  // the user's wish, not the corpus. People trill only 7% of such notes on Normal, and the lines show them in 4 of the
-  // 80 train songs (half a beat or faster), so it fires rarely: the detector hears no pitch in most of a fast melody.
-  // Normal adds a short burst of notes on top of its stream where the decoded melody runs fast (melodyPick.js
-  // withRunNotes): asked for by ear, as Normal hardly speeds up with the music (train, speed-ups per minute: people 26,
-  // Normal 16; runs of equal gaps 3.6 against 6.3 on average). Train F1 .8035 -> .8041, Easy and Hard unchanged.
-  melodyRuns: { label: "Szybkie serie za melodią", levels: { normal: { melodyRuns: { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 } } } },
-  // Normal slows down where the music dips for a moment inside a loud passage (dips.js thinDips): asked for by ear. Train,
-  // audio dips of 400 ms+: people thin 35% of them to under half the density around, Normal 21%, the flag 41%; left empty
-  // 16 / 4 / 11%. Weak moments alone (deep 0) would give F1 .8018 -> .8021 and 33%; dropping every off-beat moment where
-  // the energy falls under 0.6 of the level around, as the user heard it, costs F1 .8005 (those are people's 49%).
-  // Easy and Hard unchanged.
-  dipThin: { label: "Zwolnienia w spadkach muzyki", levels: { normal: { dipThin: { drop: 0.7, level: 0.3, below: 0.7, offBeatBelow: 0.9, deep: 0.6 } } } },
-  twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
-};
+// decoderPick and melodyTuned in v39 (difficulty.js MELODY_PICK), chordLoudness, twoKeyTrill, melodyRuns and dipThin in v40.
+// figuresQuarter was dropped (0% of its notes hit on the test songs).
+const FLAGS = {};
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
 

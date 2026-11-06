@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { alternateSteps } = require("../../../helpers/mewbeat/charts/laneRules");
 const { searchLanes } = require("../../../helpers/mewbeat/charts/laneSearch");
 const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
@@ -12,7 +11,7 @@ const BEAT_MS = 500; // the fixtures play at 120 BPM
 const DURATION_MS = 64000;
 const timing = buildTiming(makeFeatures({ durationMs: DURATION_MS }), DURATION_MS);
 const beatOf = () => BEAT_MS;
-const RULE = FLAGS.twoKeyTrill.levels.normal.twoKeyTrill;
+const RULE = DIFFICULTIES.normal.twoKeyTrill;
 
 // A lead line with these pitches, one note a half beat from 1000 ms.
 const leadOf = (pitches) => pitches.map((pitch, i) => ({ t: 1000 + i * 250, pitch, conf: 0.9 }));
@@ -37,7 +36,7 @@ describe("the moments of an alternation (laneRules.js alternateSteps)", () => {
   });
 });
 
-describe("Normal's lanes on an alternation (flag twoKeyTrill)", () => {
+describe("Normal's lanes on an alternation (twoKeyTrill, v40)", () => {
   it("trills on two keys while the melody alternates", () => {
     const pitches = [60, 67, 60, 67, 60, 67, 60, 67];
     const notes = timesOf(pitches.length).map((t) => ({ t, lane: 0 }));
@@ -46,8 +45,8 @@ describe("Normal's lanes on an alternation (flag twoKeyTrill)", () => {
     for (let i = 3; i < lanes.length; i++) assert.ok(lanes[i] === lanes[i - 2] && lanes[i] !== lanes[i - 1], `${lanes}`);
   });
 
-  it("is off unless the flag is on, and Normal's alone", () => {
-    for (const level of ["easy", "normal", "hard", "hell"]) assert.equal(DIFFICULTIES[level].twoKeyTrill, undefined, level);
-    assert.deepEqual(Object.keys(FLAGS.twoKeyTrill.levels), ["normal"]);
+  it("is part of Normal alone (v40)", () => {
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].twoKeyTrill, undefined, level);
+    assert.ok(DIFFICULTIES.normal.twoKeyTrill);
   });
 });

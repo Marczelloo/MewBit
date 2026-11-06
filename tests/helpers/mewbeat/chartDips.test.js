@@ -1,19 +1,19 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { energyDipsOf, thinDips } = require("../../../helpers/mewbeat/charts/dips");
 const { makeLayeredFeatures } = require("./fixtures");
 
-const RULE = FLAGS.dipThin.levels.normal.dipThin;
+const RULE = DIFFICULTIES.normal.dipThin;
 // 20 frames of 500 ms at 0.8, two of them (4000-5000 ms) dipping to 0.4
 const values = Array.from({ length: 20 }, (_, i) => (i === 8 || i === 9 ? 0.4 : 0.8));
 const beats = Array.from({ length: 21 }, (_, i) => i * 500);
 const onsets = Array.from({ length: 40 }, (_, i) => ({ t: i * 250, s: 0.8 }));
 const ctxOf = () => ({ features: { energy: { hopMs: 500, values } }, timing: { beats }, onsets });
 
-describe("slowing down in a dip of the music (flag dipThin)", () => {
+describe("slowing down in a dip of the music (dipThin, v40)", () => {
   it("finds a dip of the energy curve with its depth, and none in quiet music", () => {
     assert.deepEqual(energyDipsOf(ctxOf(), RULE), [[4000, 5000, 0.5]]);
     const quiet = { features: { energy: { hopMs: 500, values: values.map((v) => v / 4) } } };
@@ -33,13 +33,11 @@ describe("slowing down in a dip of the music (flag dipThin)", () => {
     assert.deepEqual(thinDips(notes, { ...ctxOf(), onsets: weak }, RULE).map((n) => n.t), [4000]);
   });
 
-  it("changes Normal alone, and only with the flag on", () => {
+  it("is part of Normal alone, and only thins it (v40)", () => {
     const features = makeLayeredFeatures();
-    const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
-    const plain = notesOf(generateAll(features, "k", {}));
-    const on = notesOf(generateAll(features, "k", { dipThin: true }));
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.ok(on.normal.length <= plain.normal.length);
-    assert.deepEqual(Object.keys(FLAGS.dipThin.levels), ["normal"]);
+    const on = generateAll(features, "k").normal.notes;
+    DIFFICULTIES.normal.dipThin = undefined;
+    try { assert.ok(on.length <= generateAll(features, "k").normal.notes.length); } finally { DIFFICULTIES.normal.dipThin = RULE; }
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].dipThin, undefined, level);
   });
 });

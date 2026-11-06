@@ -1,15 +1,15 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { withMelodyRuns, withRunNotes } = require("../../../helpers/mewbeat/charts/melodyPick");
 const { makeLayeredFeatures } = require("./fixtures");
 
-const RULE = FLAGS.melodyRuns.levels.normal.melodyRuns;
+const RULE = DIFFICULTIES.normal.melodyRuns;
 const timing = { snapped: true, beatMsAt: () => 500 };
 
-describe("short bursts where the melody runs fast (flag melodyRuns)", () => {
+describe("short bursts where the melody runs fast (melodyRuns, v40)", () => {
   it("marks a moment on a melody start whose neighbour starts within fastMs", () => {
     const scored = [{ t: 1000 }, { t: 1250, raw: 1260 }, { t: 2000 }];
     const melody = [{ t: 1000 }, { t: 1130 }, { t: 2000 }, { t: 2600 }];
@@ -30,16 +30,16 @@ describe("short bursts where the melody runs fast (flag melodyRuns)", () => {
     assert.equal(withRunNotes(notes, [{ t: 1125 }], timing, RULE), notes);
   });
 
-  it("changes Normal alone, and only with the flag on and a melody decoded", () => {
+  it("is part of Normal alone, and adds notes only where a melody was decoded (v40)", () => {
     const features = makeLayeredFeatures();
     const run = Array.from({ length: 200 }, (_, i) => ({ t: 1000 + Math.floor(i / 2) * 500 + (i % 2) * 125, pitch: 60 + (i % 5) }));
     const decoded = { ...features, decodedMelody: run, decodedMelodyTuned: run };
-    const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
-    const plain = notesOf(generateAll(decoded, "k", {}));
-    assert.deepEqual(notesOf(generateAll(features, "k", { melodyRuns: true })), notesOf(generateAll(features, "k", {})));
-    const on = notesOf(generateAll(decoded, "k", { melodyRuns: true }));
-    assert.ok(on.normal.length > plain.normal.length);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.deepEqual(Object.keys(FLAGS.melodyRuns.levels), ["normal"]);
+    const on = generateAll(decoded, "k").normal.notes, bare = generateAll(features, "k").normal.notes;
+    DIFFICULTIES.normal.melodyRuns = undefined;
+    try {
+      assert.ok(on.length > generateAll(decoded, "k").normal.notes.length);
+      assert.deepEqual(generateAll(features, "k").normal.notes, bare);
+    } finally { DIFFICULTIES.normal.melodyRuns = RULE; }
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].melodyRuns, undefined, level);
   });
 });
