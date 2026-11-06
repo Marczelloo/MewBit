@@ -7,7 +7,7 @@
 const grammar = require("./laneGrammar.json");
 const { beatMsOf, holdBlocks, spacedBlocked, underHoldFlagged } = require("./holds");
 const { groupByTime } = require("./difficultyFilter");
-const { TAIL, breaksLaneRules, melodyDirection, melodyPull, stairSteps } = require("./laneRules");
+const { TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, stairSteps } = require("./laneRules");
 const { isRepeatOf } = require("./phrases");
 const { sourceTime } = require("./repeats");
 const { nearestIndex } = require("./util");
@@ -64,6 +64,7 @@ function searchLanes(notes, ctx, diff, upper = null) {
   const moments = groupByTime(notes);
   const times = moments.map((raw) => raw[0].t);
   const stairs = diff.stairs ? stairSteps(ctx, moments.map((raw) => (raw.length === 1 ? raw[0].t : null)), (at) => beatMsOf(timing, at), diff.stairs) : null;
+  const alternates = diff.twoKeyTrill ? alternateSteps(ctx, moments.map((raw) => (raw.length === 1 ? raw[0].t : null)), (at) => beatMsOf(timing, at), diff.twoKeyTrill) : null;
   const committed = new Array(moments.length).fill(0);
   let committedTo = -1;
   const repeats = phrases.map((p, i) => isRepeatOf(p, i));
@@ -258,9 +259,11 @@ function searchLanes(notes, ctx, diff, upper = null) {
         let run = 1;
         if (isSingle(mask) && h.m1 !== 0 && isSingle(h.m1) && mask !== h.m1) run = h.m2 === mask && t - h.lastT <= beat ? h.trill + 1 : 2;
         if (run > TRILL_MAX) cost += TRILL_OVER;
-        else if (run > TRILL_FREE) cost += (run - TRILL_FREE) * Math.LN2;
+        else if (run > TRILL_FREE && !alternates?.[m]) cost += (run - TRILL_FREE) * Math.LN2;
         if (direction !== null) cost -= o.melody * Math.log(melodyPull(direction, lanesOf(mask)[0], prevLane, beforeLane, t - h.lastT, beat));
         if (stairs?.[m] && size === 1) cost -= diff.stairs.weight * Math.log(melodyPull(stairs[m], lanesOf(mask)[0], prevLane, beforeLane, t - h.lastT, beat));
+        // An alternation goes back to the lane two notes before (melodyPull's fast repeat: no gap, so never a jack).
+        if (alternates?.[m] && size === 1) cost -= diff.twoKeyTrill.weight * Math.log(melodyPull(0, lanesOf(mask)[0], prevLane, beforeLane, 0, beat));
         if (size === 1 && h.lastT !== null && t - h.lastT <= FAST_BEATS * beat && (mask & h.m1) !== 0) cost += isSingle(h.m1) ? o.restrike : o.overChord;
         if (mask === ONE_HAND[0] || mask === ONE_HAND[1]) cost -= o.oneHand;
         if (inUpper.length > 0) cost -= Math.log(1 + (AGREE * lanesOf(mask).filter((l) => inUpper.includes(l)).length) / size);

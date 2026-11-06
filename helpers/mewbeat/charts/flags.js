@@ -16,6 +16,10 @@ const FLAGS = {
   // song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 / -0.45 / -0.6 /
   // louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, the flag 8 / 8 / 15 / 21 / 29%. F1 unchanged.
   chordLoudness: { label: "Akordy za głośnością", levels: { normal: { chordLoudness: [[0.2, 0.1], [0.3, 0.12], [0.45, 0.35], [0.6, 0.6], [0.75, 1.4]] } } },
+  // Normal's lanes trill on two keys where the lead (or the bass) alternates two pitches fast (laneRules alternateSteps):
+  // the user's wish, not the corpus. People trill only 7% of such notes on Normal, and the lines show them in 4 of the
+  // 80 train songs (half a beat or faster), so it fires rarely: the detector hears no pitch in most of a fast melody.
+  twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
   // Normal's figures (difficulty.js FIGURES) on quarter beats too, where people follow a figure far less often (27% of
   // these, about 5% of an unrepeated onset; 0% on the test songs). The level's least gap keeps them to songs under about
   // 150 BPM, most to the slow ones, which lack quarter beats the most.

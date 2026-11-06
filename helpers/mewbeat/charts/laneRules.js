@@ -109,6 +109,41 @@ function stairSteps(ctx, times, beatOf, rule) {
   return out;
 }
 
+// alternateSteps(ctx, times, beatOf, rule) -> [boolean] per moment
+// The moments of an alternation (diff.twoKeyTrill): single notes on the lead line, or failing it the bass line, that go
+// back to the pitch two notes before after a different one between (A B A B), at least rule.minNotes in a row, each
+// within rule.maxGapBeats of the last. True from the run's third note on (the first two have no pattern yet).
+function alternateSteps(ctx, times, beatOf, rule) {
+  const out = new Array(times.length).fill(false);
+  const features = ctx?.features;
+  if (!features || !rule) return out;
+  const { tonal } = linesOf(features);
+  const noteAt = ({ line, times: at }, t) => {
+    const i = nearestIndex(at, t);
+    return i >= 0 && Math.abs(at[i] - t) <= MATCH_MS ? line[i] : null;
+  };
+  const close = (a, b) => a !== null && b !== null && b - a <= rule.maxGapBeats * beatOf(b);
+  const turn = new Array(times.length).fill(false);
+  for (let m = 2; m < times.length; m++) {
+    const [a, b, c] = [times[m - 2], times[m - 1], times[m]];
+    if (!close(a, b) || !close(b, c)) continue;
+    for (const line of tonal) {
+      const [first, between, back] = [noteAt(line, a), noteAt(line, b), noteAt(line, c)];
+      if (!first || !between || !back) continue;
+      turn[m] = Math.abs(back.pitch - first.pitch) <= SAME_SEMITONES && Math.abs(between.pitch - first.pitch) >= MOVED_SEMITONES;
+      break;
+    }
+  }
+  for (let m = 2; m < times.length; m++) {
+    if (!turn[m]) continue;
+    let end = m;
+    while (end + 1 < times.length && turn[end + 1]) end++;
+    if (end - m + 3 >= rule.minNotes) out.fill(true, m, end + 1);
+    m = end;
+  }
+  return out;
+}
+
 // --- the figures the melody asks for ---------------------------------------------------------------------------
 
 const STEP_PULL = 12; // the lane next to the last one, on the side the melody goes
@@ -247,4 +282,4 @@ function normalViolations(notes, timing = null, { durationMs = Infinity } = {}) 
   return out.sort((a, b) => a.t - b.t);
 }
 
-module.exports = { TAIL, breaksLaneRules, melodyDirection, melodyPull, normalViolations, stairSteps };
+module.exports = { TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, normalViolations, stairSteps };
