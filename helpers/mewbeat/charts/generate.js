@@ -21,6 +21,7 @@ const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rh
 const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
+const { holdFadeOut, thinFadeOut } = require("./fades");
 const { extraMoments, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -328,8 +329,10 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const capped = step("holdShare", floored, ctx.phrases.length === 0
     ? limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare)
     : holdsCappedByPhrase(floored, ctx, diff, isSustain));
-  const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
-  const chorded = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
+  const faded = diff.fadeOut ? step("fadeOut", capped, thinFadeOut(capped, ctx, diff.fadeOut)) : capped;
+  const planned = step("chords", faded, planChords(faded, ctx, diff, upper));
+  const lone = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
+  const chorded = diff.fadeOut?.hold ? step("fadeOutHold", lone, holdFadeOut(lone, ctx, diff.fadeOut)) : lone;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   const laid = step("lanes", chorded, layLanes(chorded, ctx, diff, upper));
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));

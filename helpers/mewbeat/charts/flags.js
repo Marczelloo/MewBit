@@ -12,6 +12,16 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // firstSound in v33 (difficulty.js, phrases.js onGrid), feltTempo in v34, quietLoneHold, soloLead and feltTolerance in v35,
 // miniRests in v36.
 const FLAGS = {
+  // Normal's lanes climb or come down a lane a note where the lead (or bass) line goes up or down over at least three
+  // single notes (laneRules.js stairSteps, laneSearch.js). Asked for by ear: people follow such a run no more than chance
+  // does (40-50% of the steps go the melody's way on the train songs, random lanes 42%).
+  stairs: { label: "Schodki za melodią", levels: { normal: { stairs: { minNotes: 3, maxGapBeats: 1, weight: 3 } } } },
+  // Normal's fade-out at the end of a song (fades.js): half its moments, the ones on the beat first, and a lone tap
+  // with room is held. People play half as many notes a second there as v36.
+  fadeOut: {
+    label: "Spokojniejszy fade-out (rzadziej, holdy)",
+    levels: { normal: { fadeOut: { loud: 0.6, quiet: 0.35, minSec: 4, keep: 0.5, hold: { minBeats: 1, releaseBeats: 0.5, lastBeats: 2 } } } },
+  },
   // Normal's figures (difficulty.js FIGURES) on quarter beats too, where people follow a figure far less often (27% of
   // these, about 5% of an unrepeated onset; 0% on the test songs). The level's least gap keeps them to songs under about
   // 150 BPM, most to the slow ones, which lack quarter beats the most.

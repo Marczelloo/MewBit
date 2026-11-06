@@ -76,6 +76,39 @@ function melodyDirection(ctx, t) {
   return Math.abs(move) >= MOVED_BANDS ? Math.sign(move) : null;
 }
 
+// stairSteps(ctx, times, beatOf, rule) -> [1 | -1 | 0] per moment
+// The moments of a stair (diff.stairs): single notes (`times` holds null for a chord) that sit on notes of the lead line,
+// or failing it the bass line, each a semitone or more above the one before (1) or below it (-1), at least rule.minNotes
+// of them in a row and each within rule.maxGapBeats of the last. 0 elsewhere, and for the run's first note (it has no step).
+function stairSteps(ctx, times, beatOf, rule) {
+  const out = new Array(times.length).fill(0);
+  const features = ctx?.features;
+  if (!features || !rule) return out;
+  const { tonal } = linesOf(features);
+  const noteAt = ({ line, times: at }, t) => {
+    const i = nearestIndex(at, t);
+    return i >= 0 && Math.abs(at[i] - t) <= MATCH_MS ? line[i] : null;
+  };
+  const step = new Array(times.length).fill(0);
+  for (let m = 1; m < times.length; m++) {
+    const [a, b] = [times[m - 1], times[m]];
+    if (a === null || b === null || b - a > rule.maxGapBeats * beatOf(b)) continue;
+    for (const line of tonal) {
+      const [from, to] = [noteAt(line, a), noteAt(line, b)];
+      if (!from || !to) continue;
+      if (from !== to && Math.abs(to.pitch - from.pitch) >= MOVED_SEMITONES) step[m] = Math.sign(to.pitch - from.pitch);
+      break;
+    }
+  }
+  for (let m = 1; m < times.length; ) {
+    let end = m;
+    while (step[m] !== 0 && end + 1 < times.length && step[end + 1] === step[m]) end++;
+    if (step[m] !== 0 && end - m + 2 >= rule.minNotes) for (let k = m; k <= end; k++) out[k] = step[m];
+    m = end + 1;
+  }
+  return out;
+}
+
 // --- the figures the melody asks for ---------------------------------------------------------------------------
 
 const STEP_PULL = 12; // the lane next to the last one, on the side the melody goes
@@ -214,4 +247,4 @@ function normalViolations(notes, timing = null, { durationMs = Infinity } = {}) 
   return out.sort((a, b) => a.t - b.t);
 }
 
-module.exports = { TAIL, breaksLaneRules, melodyDirection, melodyPull, normalViolations };
+module.exports = { TAIL, breaksLaneRules, melodyDirection, melodyPull, normalViolations, stairSteps };

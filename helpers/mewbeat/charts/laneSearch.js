@@ -7,7 +7,7 @@
 const grammar = require("./laneGrammar.json");
 const { beatMsOf, holdBlocks, spacedBlocked, underHoldFlagged } = require("./holds");
 const { groupByTime } = require("./difficultyFilter");
-const { TAIL, breaksLaneRules, melodyDirection, melodyPull } = require("./laneRules");
+const { TAIL, breaksLaneRules, melodyDirection, melodyPull, stairSteps } = require("./laneRules");
 const { isRepeatOf } = require("./phrases");
 const { sourceTime } = require("./repeats");
 const { nearestIndex } = require("./util");
@@ -63,6 +63,7 @@ function searchLanes(notes, ctx, diff, upper = null) {
 
   const moments = groupByTime(notes);
   const times = moments.map((raw) => raw[0].t);
+  const stairs = diff.stairs ? stairSteps(ctx, moments.map((raw) => (raw.length === 1 ? raw[0].t : null)), (at) => beatMsOf(timing, at), diff.stairs) : null;
   const committed = new Array(moments.length).fill(0);
   let committedTo = -1;
   const repeats = phrases.map((p, i) => isRepeatOf(p, i));
@@ -259,6 +260,7 @@ function searchLanes(notes, ctx, diff, upper = null) {
         if (run > TRILL_MAX) cost += TRILL_OVER;
         else if (run > TRILL_FREE) cost += (run - TRILL_FREE) * Math.LN2;
         if (direction !== null) cost -= o.melody * Math.log(melodyPull(direction, lanesOf(mask)[0], prevLane, beforeLane, t - h.lastT, beat));
+        if (stairs?.[m] && size === 1) cost -= diff.stairs.weight * Math.log(melodyPull(stairs[m], lanesOf(mask)[0], prevLane, beforeLane, t - h.lastT, beat));
         if (size === 1 && h.lastT !== null && t - h.lastT <= FAST_BEATS * beat && (mask & h.m1) !== 0) cost += isSingle(h.m1) ? o.restrike : o.overChord;
         if (mask === ONE_HAND[0] || mask === ONE_HAND[1]) cost -= o.oneHand;
         if (inUpper.length > 0) cost -= Math.log(1 + (AGREE * lanesOf(mask).filter((l) => inUpper.includes(l)).length) / size);
