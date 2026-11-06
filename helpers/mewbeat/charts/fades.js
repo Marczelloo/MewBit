@@ -26,7 +26,8 @@ function fadeOutOf(ctx, rule) {
     while (loud > 0 && at(loud) < rule.loud) loud -= STEP_MS;
     let start = loud;
     if (rule.from !== undefined) while (start < last && at(start) >= rule.from) start += STEP_MS;
-    const fade = last - loud >= rule.minSec * 1000 && at(last - 500) < rule.quiet ? { startMs: start, endMs: last } : null;
+    // a song never that loud has no fade-out: it is quiet all through
+    const fade = loud > 0 && last - loud >= rule.minSec * 1000 && at(last - 500) < rule.quiet ? { startMs: start, endMs: last } : null;
     cache.set(key, fade);
   }
   return cache.get(key);

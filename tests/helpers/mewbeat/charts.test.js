@@ -315,7 +315,9 @@ describe("mewbeat chart generator", () => {
     assert.strictEqual(chart.highlightMs, 90000);
     assert.strictEqual(chart.stars, Math.round(chart.stars * 10) / 10);
     for (const n of chart.notes) {
-      assert.deepStrictEqual(Object.keys(n), ["t", "lane"]);
+      // a hold has its length (the fixture's fade-out holds a lone tap, fades.js)
+      assert.deepStrictEqual(Object.keys(n), n.len === undefined ? ["t", "lane"] : ["t", "lane", "len"]);
+      if (n.len !== undefined) assert.ok(Number.isInteger(n.len) && n.len > 0);
       assert.ok(Number.isInteger(n.t));
       assert.ok(Number.isInteger(n.lane) && n.lane >= 0 && n.lane <= 3);
     }

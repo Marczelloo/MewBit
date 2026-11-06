@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 37;
+const GENERATOR_VERSION = 38;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -57,6 +57,14 @@ const FELT_TEMPO = { belowBpm: 115, keepTolerance: true };
 // one from 0.85); else it is charted from its own music, where people often play other notes. Hard, from v37 (train F1
 // 0.7678 -> 0.7712); Easy, cut from v26's Normal and so from Hard, moved 0.7166 -> 0.7167 on train, 0.7576 -> 0.7554 on test.
 const COPY_FROM = 0.95;
+// laneRules.js stairSteps, laneSearch.js: Normal's lanes climb or come down a lane a note where the lead (or bass) line goes
+// up or down over at least minNotes single notes, each within maxGapBeats. Asked for by ear (v38): people follow such a
+// run no more than chance does (40-50% of the steps go the melody's way on the train songs, random lanes 42%).
+const STAIRS = { minNotes: 3, maxGapBeats: 1, weight: 3 };
+// fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
+// ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
+// this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
+const FADE_OUT = { loud: 0.6, from: 0.5, quiet: 0.35, minSec: 4, keep: 0.5, barBeats: 4, hold: { minBeats: 1, releaseBeats: 0.5, lastBeats: 2 } };
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -223,6 +231,9 @@ const DIFFICULTIES = {
     quietLone: QUIET_LONE,
     soloLead: SOLO_LEAD,
     restBridge: MINI_RESTS,
+    copyFrom: COPY_FROM, // from v38 (train F1 0.7985 -> 0.8017)
+    fadeOut: FADE_OUT,
+    stairs: STAIRS,
   },
   hard: {
     grammar: "hard",
@@ -320,11 +331,13 @@ const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 module.exports = {
   BANDS,
   COPY_FROM,
+  FADE_OUT,
   FELT_TEMPO,
   FIGURES,
   MINI_RESTS,
   QUIET_LONE,
   SOLO_LEAD,
+  STAIRS,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,
   BUSY_MAX_FACTOR,
