@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 35;
+const GENERATOR_VERSION = 36;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -59,6 +59,9 @@ const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats
 // selection.js soloLeadRates, chords.js: a quiet phrase after the song's first loud one, drums hardly there and the lead
 // sure of itself (a piano alone, ASGORE 1:49), keeps this share of its lead line in its budget and plays one note at a time.
 const SOLO_LEAD = { drumsBelow: 0.3, leadFrom: 0.8, share: 0.6 };
+// bridges.js: a rest of Normal at least minBeats long where the music plays on keeps its best moment (a mini rest); one
+// where the music holds no moment that strong stays empty (a full rest).
+const MINI_RESTS = { minBeats: 1.5, playing: 0.25, score: 0, edgeBeats: 0.5 };
 
 // --- Per-difficulty parameters ---------------------------------------------
 
@@ -215,6 +218,7 @@ const DIFFICULTIES = {
     feltTempo: FELT_TEMPO,
     quietLone: QUIET_LONE,
     soloLead: SOLO_LEAD,
+    restBridge: MINI_RESTS,
   },
   hard: {
     grammar: "hard",
@@ -312,6 +316,7 @@ module.exports = {
   BANDS,
   FELT_TEMPO,
   FIGURES,
+  MINI_RESTS,
   QUIET_LONE,
   SOLO_LEAD,
   BEAT_INTERVAL_TOLERANCE,

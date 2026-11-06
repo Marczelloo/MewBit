@@ -190,13 +190,13 @@ describe("Normal picks its notes from the music", () => {
 
       const analysis = { getFeatures: async () => makeFeatures(), statusOf: () => null };
       const store = createChartStore({ dir, analysis, log: quietLog });
-      assert.strictEqual(GENERATOR_VERSION, 35);
+      assert.strictEqual(GENERATOR_VERSION, 36);
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
-      assert.strictEqual(charts.normal.version, 35);
+      assert.strictEqual(charts.normal.version, 36);
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file(35)));
+      assert.ok(fs.existsSync(file(36)));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -488,10 +488,17 @@ describe("the repeats of Normal", () => {
   const song = (repeatEnergy = QUIET) => layered({ energy: (ms) => (ms >= 24000 && ms < 32000 ? repeatEnergy : QUIET) });
   const momentsIn = (notes, p) => [...new Set(notes.filter((n) => n.t >= p.startMs && n.t < p.endMs).map((n) => n.t))].sort((a, b) => a - b);
 
-  // What these test is the plan against Normal's own budget: the floor under Easy lifts that budget, and has its own tests.
-  const notBelow = DIFFICULTIES.normal.notBelow;
-  beforeEach(() => { delete DIFFICULTIES.normal.notBelow; });
-  afterEach(() => { DIFFICULTIES.normal.notBelow = notBelow; });
+  // What these test is the plan against Normal's own budget: the floor under Easy lifts that budget, and the mini rests
+  // (bridges.js) fill the rests of source and repeat alike after the plan; both have their own tests.
+  const { notBelow, restBridge } = DIFFICULTIES.normal;
+  beforeEach(() => {
+    delete DIFFICULTIES.normal.notBelow;
+    delete DIFFICULTIES.normal.restBridge;
+  });
+  afterEach(() => {
+    DIFFICULTIES.normal.notBelow = notBelow;
+    DIFFICULTIES.normal.restBridge = restBridge;
+  });
 
   it("same loudness copies rhythm and lanes", () => {
     const features = song();
