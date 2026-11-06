@@ -55,3 +55,33 @@ describe("lanes on a second detector's melody (flag decoderLanes)", () => {
     }
   });
 });
+
+describe("moments on a second detector's melody (flag decoderPick)", () => {
+  const { withMelody } = require("../../../helpers/mewbeat/charts/melodyPick");
+  const scored = [
+    { t: 1000, s: 0.2, score: 0 },
+    { t: 1500, s: 0.9, score: 0, raw: 1520 },
+    { t: 2000, s: 0.5, score: 0 },
+  ];
+
+  it("raises a moment where a melody note begins, by the sound it was heard at, and only a loud enough one", () => {
+    const melody = [{ t: 1010 }, { t: 1540 }, { t: 2200 }];
+    assert.deepEqual(withMelody(scored, melody, { bonus: 1, minStrength: 0 }).map((m) => m.score), [1, 1, 0]);
+    assert.deepEqual(withMelody(scored, melody, { bonus: 1, minStrength: 0.5 }).map((m) => m.score), [0, 1, 0]);
+    assert.equal(withMelody(scored, [], { bonus: 1, minStrength: 0 }), scored);
+  });
+
+  it("changes Normal alone, and only with the flag on and a melody decoded", () => {
+    const features = makeLayeredFeatures();
+    const melody = Array.from({ length: 120 }, (_, i) => ({ t: 1125 + i * 500, pitch: 60 }));
+    const decoded = { ...features, decodedMelody: melody };
+    const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+    const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
+    const plain = notesOf(generateAll(features, "k", {}));
+    assert.deepEqual(notesOf(generateAll(features, "k", { decoderPick: true })), plain);
+    assert.deepEqual(notesOf(generateAll(decoded, "k", {})), plain);
+    const on = notesOf(generateAll(decoded, "k", { decoderPick: true }));
+    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
+    assert.deepEqual(Object.keys(FLAGS.decoderPick.levels), ["normal"]);
+  });
+});

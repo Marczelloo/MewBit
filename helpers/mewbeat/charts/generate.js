@@ -10,6 +10,7 @@ const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime,
 const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
+const { withMelody } = require("./melodyPick");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
@@ -106,12 +107,22 @@ function leadersOf(ctx, diff) {
 // Whether the music plays at t: not in the lead-in, not in the silence.
 const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENERGY;
 
+// The moments a level that picks from the music scores, with the second detector's melody raised (diff.melodyPick,
+// melodyPick.js) where one was decoded (chartStore.js). Kept on the ctx, as every phrase asks.
+function scoredFor(ctx, diff) {
+  const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
+  if (!diff.melodyPick || !Array.isArray(ctx.features.decodedMelody)) return scored;
+  ctx.melodyScored ??= new Map();
+  if (!ctx.melodyScored.has(scored)) ctx.melodyScored.set(scored, withMelody(scored, ctx.features.decodedMelody, diff.melodyPick));
+  return ctx.melodyScored.get(scored);
+}
+
 // What phrase i of a level that picks its notes from the music may play: the moments the music plays, and `carry`, the sounds after `before` (the time of the last note of the phrases before) that this phrase's
 // start leaves. The phrase takes those too, so no stretch with a sound in it is left open across the seam.
 function momentsAround(ctx, i, diff, before) {
   const { phrases } = ctx;
   const phrase = phrases[i];
-  const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
+  const scored = scoredFor(ctx, diff);
   const times = scored.map((m) => m.t);
   const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
   const heard = scored.slice(lowerBound(times, i === 0 ? 0 : phrase.startMs), lowerBound(times, toMs)).filter((m) => playable(ctx, m.t));

@@ -22,6 +22,11 @@ const FLAGS = {
   // helpers/data/mewbeat/melody/<audio key>.json) instead of the lead line; the moments still come from the lead.
   // Train: a melody direction on 74% of single notes (lead 65%), stairs 1.9% (0.4%), lanes as close to people's.
   decoderLanes: { label: "Melodia z drugiego detektora (tory)", levels: { normal: { melodyLine: true } } },
+  // Normal's choice of moments leans on the same melody (melodyPick.js): a moment where it hears a melody note begin
+  // scores 1.25 more. Train (78 songs): F1 .8018 -> .8037, moments on a melody start 27.1 -> 29.8% (people 29.9%), the
+  // loudest fifth of moments kept as often (79.2 / 79.1%), loud 2-beat holes 278 -> 284 (people 325). A floor on how
+  // loud the moment must be (minStrength) only cost F1. Other levels unchanged. No test control: no audio to decode.
+  decoderPick: { label: "Melodia z drugiego detektora (wybór nut)", levels: { normal: { melodyPick: { bonus: 1.25, minStrength: 0 } } } },
   twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
 };
 
