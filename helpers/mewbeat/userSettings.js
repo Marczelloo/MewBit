@@ -25,7 +25,7 @@ const RESERVED_CODES = Object.freeze(["Space", "Escape"]);
 const KEY_CODE_PATTERN = /^[A-Za-z0-9]{1,32}$/;
 const LIVE_DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const EFFECT_LEVELS = ["full", "reduced", "off"];
-const HIT_SOUND_CHOICES = ["kick", "taiko", "drum", "tight", "osu"];
+const HIT_SOUND_CHOICES = ["kick", "taiko", "drum", "tight", "osu", "lazer"];
 const SETTING_FIELDS = Object.keys(DEFAULT_SETTINGS);
 
 function badRequest(message) {
@@ -53,7 +53,7 @@ const FIELD_CHECKS = {
   liveDifficulty: (value) => (LIVE_DIFFICULTIES.includes(value) ? null : "Live difficulty must be easy, normal, hard or hell."),
   effects: (value) => (EFFECT_LEVELS.includes(value) ? null : "Effects must be full, reduced or off."),
   hitSounds: (value) => (typeof value === "boolean" ? null : "Hit sounds must be on or off."),
-  hitSound: (value) => (HIT_SOUND_CHOICES.includes(value) ? null : "Hit sound must be kick, taiko, drum, tight or osu."),
+  hitSound: (value) => (HIT_SOUND_CHOICES.includes(value) ? null : "Hit sound must be kick, taiko, drum, tight, osu or lazer."),
   hitVolume: (value) => (isIntegerIn(value, LIMITS.hitVolume) ? null : `Hit sound volume must be a whole number from ${LIMITS.hitVolume[0]} to ${LIMITS.hitVolume[1]}.`),
   sfx: (value) => (typeof value === "boolean" ? null : "Sound effects must be on or off."),
   sfxVolume: (value) => (isIntegerIn(value, LIMITS.sfxVolume) ? null : `Sound effects volume must be a whole number from ${LIMITS.sfxVolume[0]} to ${LIMITS.sfxVolume[1]}.`),

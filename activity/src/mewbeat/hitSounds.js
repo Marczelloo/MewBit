@@ -5,7 +5,8 @@ export const HIT_SOUNDS = [
   { value: "taiko", label: "Taiko", name: "hit-taiko", level: 1 },
   { value: "drum", label: "Drum", name: "hit-drum", level: 1.5 },
   { value: "tight", label: "Tight", name: "hit-tight", level: 1.25 },
-  { value: "osu", label: "osu!", name: "hit-osu", level: 1.25 },
+  { value: "osu", label: "osu!", name: "hit-osu", level: 2 },
+  { value: "lazer", label: "osu! lazer", name: "hit-lazer", level: 1.5 },
 ];
 
 export function hitSoundOf(choice) {
