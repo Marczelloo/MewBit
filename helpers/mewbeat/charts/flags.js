@@ -21,6 +21,9 @@ const FLAGS = {
   // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, no chord; with quietLoneHold
   // (applied after quietLone, the names are sorted) that note holds until half a beat before the next moment.
   quietLone: { label: "Samotna nuta w ciszy bez akordu", levels: { normal: { quietLone: { gapBeats: 2, below: 0.25 } } } },
+  // selection.js soloLeadRates, chords.js: a quiet phrase after the song's first loud one, drums hardly there and the lead
+  // sure of itself (a piano alone), keeps this share of its lead line in its budget and plays one note at a time.
+  soloLead: { label: "Ciche solo melodii pojedynczymi nutami", levels: { normal: { soloLead: { drumsBelow: 0.3, leadFrom: 0.8, share: 0.6 } } } },
   quietLoneHold: { label: "Samotna nuta w ciszy jako hold", levels: { normal: { quietLone: { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } } } } },
 };
 

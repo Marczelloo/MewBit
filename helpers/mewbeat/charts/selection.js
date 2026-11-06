@@ -216,11 +216,31 @@ function openingLeadRates(ctx) {
   return ctx.openingLeadRates;
 }
 
+// The notes per audible second of the lead line in each phrase a quiet soloist leads after the song's first loud one, 0 in
+// the others (diff.soloLead = { drumsBelow, leadFrom, share }, generator flag "soloLead"): quieter than the opening's end
+// against the song, the drums' confidence under drumsBelow and the lead's at least leadFrom. On the train songs people's
+// Normal plays a chord on 19% of the moments of such a phrase, Normal on 44%. Kept on the ctx.
+function soloLeadRates(ctx, rule) {
+  if (!rule) return ctx.phrases.map(() => 0);
+  const key = `${rule.drumsBelow}:${rule.leadFrom}`;
+  ctx.soloLeadRates ??= {};
+  if (ctx.soloLeadRates[key]) return ctx.soloLeadRates[key];
+  const values = ctx.features.energy?.values ?? [];
+  const songLoudness = values.length > 0 ? mean(values) : 1;
+  const audible = ctx.phrases.map((p) => audibleOf(ctx, p, songLoudness));
+  const firstLoud = audible.findIndex((a) => a.seconds > 0 && a.loudness >= BUDGET.openingLoudness);
+  const lead = (ctx.features.lead ?? []).map((n) => n.t);
+  const solo = (p, k) => firstLoud >= 0 && k > firstLoud && audible[k].seconds > 0 && audible[k].loudness < BUDGET.openingLoudness && p.confidence && p.confidence.drums < rule.drumsBelow && p.confidence.lead >= rule.leadFrom;
+  ctx.soloLeadRates[key] = ctx.phrases.map((p, k) => (solo(p, k) ? lead.filter((t) => t >= p.startMs && t < p.endMs).length / audible[k].seconds : 0));
+  return ctx.soloLeadRates[key];
+}
+
 // phraseBudget(phrase, ctx, diff) -> the most moments the phrase gets: the seconds the music plays in it at the rate the
 // music calls for (a song and a phrase the music fills get more than the median, a thin one fewer), times diff.budgetScale,
 // and never above diff.maxNpsCeiling moments per second. A quiet phrase before the song's first loud one keeps a higher floor
-// than one later on, and with diff.openingLead at least that share of the notes of its lead line (generator flag "lead"). A
-// budget is a limit; selectMoments leaves it unused where the music has less to offer.
+// than one later on, and with diff.openingLead at least that share of the notes of its lead line (generator flag "lead"); a
+// quiet soloist later in the song (soloLeadRates) keeps diff.soloLead.share of its line. A budget is a limit; selectMoments
+// leaves it unused where the music has less to offer.
 function phraseBudget(phrase, ctx, diff) {
   const { fitted, song, seconds: played, openingEnd } = budgetModelOf(ctx, diff);
   const own = fitted[phrase.index];
@@ -231,7 +251,8 @@ function phraseBudget(phrase, ctx, diff) {
   const floor = phrase.index < openingEnd ? BUDGET.openingMinRatio : BUDGET.minRatio;
   const byPhrase = Math.pow(clamp(own / song, floor, Infinity), BUDGET.delta);
   const lead = (diff.openingLead ?? 0) * openingLeadRates(ctx)[phrase.index] * seconds;
-  return Math.max(0, Math.min(most, Math.round(Math.max(lead, BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale))));
+  const solo = (diff.soloLead?.share ?? 0) * soloLeadRates(ctx, diff.soloLead)[phrase.index] * seconds;
+  return Math.max(0, Math.min(most, Math.round(Math.max(lead, solo, BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale))));
 }
 
 // --- choosing the moments --------------------------------------------------------------------
@@ -395,4 +416,4 @@ function extraMoments(phrase, scored, kept, extra, diff, timing, edges = {}) {
   return chosen.sort(byTime).map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { audibleOf, extraMoments, openingLeadRates, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments };
+module.exports = { audibleOf, extraMoments, openingLeadRates, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };

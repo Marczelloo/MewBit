@@ -11,6 +11,7 @@ const { groupByTime, slotRank } = require("./difficultyFilter");
 const { beatMsOf } = require("./holds");
 const { isRepeatOf } = require("./phrases");
 const { sourceTime } = require("./repeats");
+const { soloLeadRates } = require("./selection");
 const { strengthAt } = require("./rhythm");
 const { opensOnChord } = require("./sections");
 const { nearestIndex } = require("./util");
@@ -144,6 +145,7 @@ function planChords(notes, ctx, diff, upper = null) {
   const strength = strengthScales(moments, ctx);
   const opening = new Set(sections.filter((s) => opensOnChord(s, diff, energy)).map((s) => s.t));
   const quietLone = quietLoneMoments(moments, ctx, diff.quietLone);
+  const solo = diff.soloLead && phrases.length > 0 ? soloLeadRates(ctx, diff.soloLead) : null;
   const carry = [0, 0, 0, 0]; // what each place in the bar has saved towards its next chord
   const carryNew = [0, 0, 0, 0];
   const carryTriple = [0, 0, 0, 0];
@@ -215,7 +217,8 @@ function planChords(notes, ctx, diff, upper = null) {
     const asked = want;
     want = Math.min(want, Math.max(cap, Math.min(holds.length, 2)));
     // A lone moment in quiet music plays one note, but counts as planned: the chords around it stay where they were.
-    if (quietLone.has(t) && !opens) want = Math.min(want, Math.max(1, Math.min(holds.length, 2)));
+    // So does a moment of a phrase a quiet soloist leads (selection.js soloLeadRates): one note at a time follows the line.
+    if ((quietLone.has(t) || solo?.[phraseAt] > 0) && !opens) want = Math.min(want, Math.max(1, Math.min(holds.length, 2)));
 
     const kept = [...holds, ...moment.filter((n) => !(n.len > 0))].slice(0, want);
     const added = freeLanes(kept, want - kept.length).map((lane) => ({ t, lane }));
