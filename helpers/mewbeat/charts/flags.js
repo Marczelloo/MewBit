@@ -26,6 +26,12 @@ const FLAGS = {
   // scores 1.25 more. Train (78 songs): F1 .8018 -> .8037, moments on a melody start 27.1 -> 29.8% (people 29.9%), the
   // loudest fifth of moments kept as often (79.2 / 79.1%), loud 2-beat holes 278 -> 284 (people 325). A floor on how
   // loud the moment must be (minStrength) only cost F1. Other levels unchanged. No test control: no audio to decode.
+  // decoderLanes and decoderPick on a tuned line of the same decoder (scripts/mewbeat-melody/line.js, base .2 and jump .5
+  // against .62 and .05): train, notes 1.9 -> 2.3/s, steps of up to 5 semitones 65 -> 81%, octave leaps 15 -> 6%. People's
+  // maps do not tell melody from backing (they play both as often), so the shape of a melody was the target. With
+  // decoderPick, train Normal: F1 .8036 (.8037 on the old line), moments on the melody 36.6% (people 37.0%), loud holes 269
+  // (278 without the flags). Changes nothing without decoderLanes or decoderPick, or where no tuned line was decoded.
+  melodyTuned: { label: "Dostrojona linia melodii (dekoder)", levels: { normal: { melodyTuned: true } } },
   decoderPick: { label: "Melodia z drugiego detektora (wybór nut)", levels: { normal: { melodyPick: { bonus: 1.25, minStrength: 0 } } } },
   twoKeyTrill: { label: "Tryl na naprzemiennych nutach", levels: { normal: { twoKeyTrill: { minNotes: 4, maxGapBeats: 0.6, weight: 3 } } } },
 };

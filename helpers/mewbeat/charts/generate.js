@@ -107,14 +107,24 @@ function leadersOf(ctx, diff) {
 // Whether the music plays at t: not in the lead-in, not in the silence.
 const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENERGY;
 
+// The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one.
+function decodedMelodyOf(ctx, diff) {
+  const { decodedMelody, decodedMelodyTuned } = ctx.features;
+  if (diff.melodyTuned && Array.isArray(decodedMelodyTuned)) return decodedMelodyTuned;
+  return Array.isArray(decodedMelody) ? decodedMelody : null;
+}
+
 // The moments a level that picks from the music scores, with the second detector's melody raised (diff.melodyPick,
 // melodyPick.js) where one was decoded (chartStore.js). Kept on the ctx, as every phrase asks.
 function scoredFor(ctx, diff) {
   const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
-  if (!diff.melodyPick || !Array.isArray(ctx.features.decodedMelody)) return scored;
+  const melody = decodedMelodyOf(ctx, diff);
+  if (!diff.melodyPick || !melody) return scored;
   ctx.melodyScored ??= new Map();
-  if (!ctx.melodyScored.has(scored)) ctx.melodyScored.set(scored, withMelody(scored, ctx.features.decodedMelody, diff.melodyPick));
-  return ctx.melodyScored.get(scored);
+  ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
+  const byScored = ctx.melodyScored.get(melody);
+  if (!byScored.has(scored)) byScored.set(scored, withMelody(scored, melody, diff.melodyPick));
+  return byScored.get(scored);
 }
 
 // What phrase i of a level that picks its notes from the music may play: the moments the music plays, and `carry`, the sounds after `before` (the time of the last note of the phrases before) that this phrase's
@@ -345,8 +355,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const chorded = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   // decoderLanes: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.
-  const decoded = diff.melodyLine && Array.isArray(ctx.features.decodedMelody);
-  const laneCtx = decoded ? { ...ctx, features: { ...ctx.features, melodyLine: ctx.features.decodedMelody } } : ctx;
+  const decoded = diff.melodyLine ? decodedMelodyOf(ctx, diff) : null;
+  const laneCtx = decoded ? { ...ctx, features: { ...ctx.features, melodyLine: decoded } } : ctx;
   const laid = step("lanes", chorded, layLanes(chorded, laneCtx, diff, upper));
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.

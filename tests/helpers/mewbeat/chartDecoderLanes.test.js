@@ -47,9 +47,16 @@ describe("lanes on a second detector's melody (flag decoderLanes)", () => {
       assert.equal(seen[0].decodedMelody, undefined);
       fs.rmSync(path.join(dir, "charts"), { recursive: true, force: true }); // the first call left an uncharted marker
       fs.mkdirSync(path.join(dir, "melody"));
-      fs.writeFileSync(path.join(dir, "melody", `${audioKeyFile(audioKeyOf(track))}.json`), JSON.stringify({ notes: [{ t: 1000, pitch: 60, conf: 1 }] }));
+      const melodyFile = path.join(dir, "melody", `${audioKeyFile(audioKeyOf(track))}.json`);
+      fs.writeFileSync(melodyFile, JSON.stringify({ notes: [{ t: 1000, pitch: 60, conf: 1 }] }));
       await createChartStore({ dir, analysis, generate, log: quietLog }).getCharts({ ...track }, "node");
       assert.equal(seen.at(-1).decodedMelody?.length, 1);
+      assert.equal(seen.at(-1).decodedMelodyTuned, undefined);
+      fs.rmSync(path.join(dir, "charts"), { recursive: true, force: true });
+      fs.writeFileSync(melodyFile, JSON.stringify({ notes: [{ t: 1000, pitch: 60 }], tuned: [{ t: 1000, pitch: 60 }, { t: 1250, pitch: 62 }] }));
+      await createChartStore({ dir, analysis, generate, log: quietLog }).getCharts({ ...track }, "node");
+      assert.equal(seen.at(-1).decodedMelody?.length, 1);
+      assert.equal(seen.at(-1).decodedMelodyTuned?.length, 2);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -83,5 +90,33 @@ describe("moments on a second detector's melody (flag decoderPick)", () => {
     const on = notesOf(generateAll(decoded, "k", { decoderPick: true }));
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
     assert.deepEqual(Object.keys(FLAGS.decoderPick.levels), ["normal"]);
+  });
+});
+
+describe("the tuned melody line (flag melodyTuned)", () => {
+  const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+  const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
+  const flat = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 60, conf: 1 }));
+  const rising = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 48 + (i % 12), conf: 1 }));
+  const features = { ...makeLayeredFeatures(), decodedMelody: flat, decodedMelodyTuned: rising };
+
+  it("takes the tuned line in place of the decoder's own, for decoderLanes", () => {
+    const own = notesOf(generateAll(features, "k", { decoderLanes: true }));
+    const tuned = notesOf(generateAll(features, "k", { decoderLanes: true, melodyTuned: true }));
+    const asRising = notesOf(generateAll({ ...features, decodedMelody: rising }, "k", { decoderLanes: true }));
+    assert.deepEqual(tuned, asRising);
+    assert.ok(tuned.normal.some((n, i) => n.lane !== own.normal[i].lane));
+    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(tuned[level], own[level], level);
+  });
+
+  it("changes nothing alone, nor without a tuned line decoded", () => {
+    const plain = notesOf(generateAll(features, "k", {}));
+    assert.deepEqual(notesOf(generateAll(features, "k", { melodyTuned: true })), plain);
+    const { decodedMelodyTuned, ...untuned } = features;
+    assert.deepEqual(
+      notesOf(generateAll(untuned, "k", { decoderLanes: true, melodyTuned: true })),
+      notesOf(generateAll(untuned, "k", { decoderLanes: true })),
+    );
+    assert.deepEqual(Object.keys(FLAGS.melodyTuned.levels), ["normal"]);
   });
 });

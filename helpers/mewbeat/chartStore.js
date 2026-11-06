@@ -157,8 +157,10 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   function withDecodedMelody(features, key) {
     if (!features) return features;
     try {
-      const notes = JSON.parse(fs.readFileSync(path.join(dir, "melody", `${audioKeyFile(key)}.json`), "utf8"))?.notes;
-      return Array.isArray(notes) ? { ...features, decodedMelody: notes } : features;
+      const melody = JSON.parse(fs.readFileSync(path.join(dir, "melody", `${audioKeyFile(key)}.json`), "utf8"));
+      if (!Array.isArray(melody?.notes)) return features;
+      // `tuned`: the same decoder's line drawn denser and smoother (scripts/mewbeat-melody), for the melodyTuned flag
+      return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}) };
     } catch {
       return features;
     }
