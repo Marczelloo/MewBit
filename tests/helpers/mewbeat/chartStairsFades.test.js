@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { COPY_FROM, DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { fadeOutOf, holdFadeOut, thinFadeOut } = require("../../../helpers/mewbeat/charts/fades");
 const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
 const { stairSteps } = require("../../../helpers/mewbeat/charts/laneRules");
@@ -99,12 +99,13 @@ describe("the fade-out at the end of a song (fades.js, flag fadeOut)", () => {
   });
 });
 
-describe("a repeat copied only when it is very like its source (flags copyStrict, copyStrictHard)", () => {
-  it("sets the least similarity of a copy on its own level, off by default", () => {
-    assert.equal(withFlags(DIFFICULTIES.normal, "normal", { copyStrict: true }).copyFrom, 0.95);
-    assert.equal(withFlags(DIFFICULTIES.hard, "hard", { copyStrictHard: true }).copyFrom, 0.95);
+describe("a repeat copied only when it is very like its source (Hard, flag copyStrict for Normal)", () => {
+  it("is part of Hard since v37 and Normal's with the flag", () => {
+    assert.equal(DIFFICULTIES.hard.copyFrom, COPY_FROM);
+    assert.equal(COPY_FROM, 0.95);
+    for (const level of ["easy", "normal", "hell"]) assert.equal(DIFFICULTIES[level].copyFrom, undefined, level);
+    assert.equal(withFlags(DIFFICULTIES.normal, "normal", { copyStrict: true }).copyFrom, COPY_FROM);
     assert.deepEqual(Object.keys(FLAGS.copyStrict.levels), ["normal"]);
-    assert.deepEqual(Object.keys(FLAGS.copyStrictHard.levels), ["hard"]);
-    for (const level of ["easy", "normal", "hard", "hell"]) assert.equal(DIFFICULTIES[level].copyFrom, undefined, level);
+    assert.equal(FLAGS.copyStrictHard, undefined);
   });
 });

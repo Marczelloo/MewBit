@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 36;
+const GENERATOR_VERSION = 37;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -53,6 +53,10 @@ const FIRST_SOUND = { strong: 0.8, nearBeats: 1 / 8 };
 // place in the beat keeps the song's own tolerance in ms (keepTolerance), so a piano slowing down a little off the grid
 // stays on the beat (ASGORE 1:47.7).
 const FELT_TEMPO = { belowBpm: 115, keepTolerance: true };
+// generate.js copiedRepeat: a repeat phrase copies its source's notes only when at least this similar (phrases.js counts
+// one from 0.85); else it is charted from its own music, where people often play other notes. Hard, from v37 (train F1
+// 0.7678 -> 0.7712); Easy, cut from v26's Normal and so from Hard, moved 0.7166 -> 0.7167 on train, 0.7576 -> 0.7554 on test.
+const COPY_FROM = 0.95;
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -263,6 +267,7 @@ const DIFFICULTIES = {
     laneSearch: HARD_LANE_SEARCH,
     openingLead: 1.2,
     firstSound: FIRST_SOUND,
+    copyFrom: COPY_FROM,
   },
   // For fun, beyond Hard. Charted from the music like Hard, not by stacking notes on it: the extra notes are the
   // music's own sixteenths and accents (finer onsets kept at a lower strength, chords on more of the loud hits,
@@ -314,6 +319,7 @@ const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 
 module.exports = {
   BANDS,
+  COPY_FROM,
   FELT_TEMPO,
   FIGURES,
   MINI_RESTS,

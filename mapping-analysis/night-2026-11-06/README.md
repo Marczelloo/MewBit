@@ -46,3 +46,8 @@ Wpisy 17–19 w `mapping-analysis/TEST_USAGE.md`:
 - 17: `stairs` i `fadeOut`;
 - 18: `copyStrict`, liczone trzy razy, bo pierwsza wspólna flaga obniżyła Easy i została rozdzielona; próg bez zmian;
 - 19: `fadeOut` po przeniesieniu za wybór torów.
+
+## Po nocy
+
+- `fadeOut` poprawiony po ocenie Bad Piggies (0ba79db): zaczyna się, gdzie energia spada pod 0,5, i tnie połowę każdego taktu osobno.
+- `copyStrictHard` od v37 jest częścią Hard (`difficulty.js COPY_FROM`), na życzenie użytkownika bez grania; Easy zmienia się razem z nim.
