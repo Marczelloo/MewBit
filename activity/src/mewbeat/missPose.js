@@ -1,8 +1,8 @@
 // How long Mewbit reacts to a miss. A miss that breaks a combo of CRUSH_COMBO or more plays the
-// crushed pose (28 frames at 24 fps, about 1.17 s, then it holds its last frame), so its window is
+// crushed pose (28 frames at 36 fps, about 0.8 s, then it holds its last frame), so its window is
 // longer than the plain miss pose. CRUSHED_POSE_MS leaves the fall room to land and hold a moment.
 export const MISS_POSE_MS = 600;
-export const CRUSHED_POSE_MS = 1500;
+export const CRUSHED_POSE_MS = 1000;
 export const CRUSH_COMBO = 25;
 
 // The pose state after a miss. `combo` is the combo the miss breaks; `crushed` and `until` are the

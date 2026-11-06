@@ -27,12 +27,13 @@ const DIFFICULTIES = [
   { id: "hard", label: "Hard", tone: "pink" },
   { id: "hell", label: "Hell", tone: "hell" },
 ];
-const IDLE_BEATS = [
-  { pose: "stretch", text: "warming up the paws…" },
-  { pose: "adjust", text: "*adjusts headphones*" },
-  { pose: "stretch", text: "waiting for my song~" },
-];
-const IDLE_BEAT_MS = 6000;
+// While idle Mewbit runs the manifest's "idle" routine (neutral for a while, then a stretch or a headphone
+// adjust); the bubble follows whichever of those is on screen.
+const IDLE_TEXT = {
+  neutral: "waiting for my song~",
+  stretch: "warming up the paws…",
+  adjust: "*adjusts headphones*",
+};
 const TOAST_MS = 4500;
 
 // Re-renders on an interval with performance.now(), for the clocks that count down on screen.
@@ -56,7 +57,7 @@ function Avatar({ name, url }) {
 // Mewbit on the stage with a speech bubble. The "go" pose carries its own bubble. Every new `tick` (the clock's
 // second) sends a ring out from Mewbit, and in the final seconds it bumps too: swapping between two identical
 // animations restarts the bump, and the ring restarts by remounting.
-function StageMewbit({ pose, text, effects, tick = null, final = false }) {
+function StageMewbit({ pose, text, effects, tick = null, final = false, onShow = null }) {
   const beat = final ? ` mb-lobby-beat-${tick % 2 ? "a" : "b"}` : "";
   return (
     <div className="mb-lobby-mew">
@@ -64,7 +65,7 @@ function StageMewbit({ pose, text, effects, tick = null, final = false }) {
       <div className={`mb-lobby-mewbox${beat}`}>
         <div className="mb-lobby-spot" aria-hidden="true" />
         {tick != null ? <span key={tick} className={`mb-lobby-ring${final ? " mb-lobby-ring-final" : ""}`} aria-hidden="true" /> : null}
-        <Mewbit pose={pose} effects={effects} />
+        <Mewbit pose={pose} effects={effects} onShow={onShow} />
       </div>
     </div>
   );
@@ -138,6 +139,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   // Per-difficulty stars, notes and my best of the hero song. Kept per song, so a new song shows names only
   // until its numbers arrive, and the old ones stay put while a refetch (after a round) is in flight.
   const [songStats, setSongStats] = useState({ key: null, stats: null });
+  const [mewShown, setMewShown] = useState(null); // the pose Mewbit has on screen, for the idle bubble
 
   useEffect(() => {
     mounted.current = true;
@@ -189,11 +191,9 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   // onto the local clock, so it stays in step with the server.
   const second = left != null ? Math.max(0, Math.ceil(left / 1000)) : null;
   const digit = !watching && left != null ? countdownDigit(serverToPerf(room.nextAt, mapping), nowPerf) : null;
-  // Mewbit: hyped in the final seconds, peeking when the round is close, otherwise the idle poses in turn.
-  const pose = lobbyPose({ remainingMs: left, digit });
-  const beat = IDLE_BEATS[Math.floor(nowPerf / IDLE_BEAT_MS) % IDLE_BEATS.length];
-  const stagePose = pose === "idle" ? beat.pose : pose;
-  const stageText = pose === "idle" ? beat.text : { hype: "get ready~", peek: "it's almost our turn!" }[pose] ?? null;
+  // Mewbit: hyped in the final seconds, peeking when the round is close, otherwise the idle routine.
+  const stagePose = lobbyPose({ remainingMs: left, digit });
+  const stageText = stagePose === "idle" ? IDLE_TEXT[mewShown] ?? null : { hype: "get ready~", peek: "it's almost our turn!" }[stagePose] ?? null;
 
   const canChange = Boolean(me) && !active;
   const spectating = Boolean(me?.watching); // chose to watch; a member who only joined mid-round is a plain spectator
@@ -269,7 +269,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               <LiveBoard store={board} session="room" meId={userId} label="Round" />
             </div>
           ) : showMewbit ? (
-            <StageMewbit pose={stagePose} text={stageText} effects={effects} tick={second} final={digit != null} />
+            <StageMewbit pose={stagePose} text={stageText} effects={effects} tick={second} final={digit != null} onShow={setMewShown} />
           ) : null}
         </div>
 
