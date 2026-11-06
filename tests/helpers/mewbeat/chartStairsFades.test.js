@@ -62,30 +62,33 @@ const fadeContext = () => ({ timing, phrases: [], durationMs: DURATION_MS, energ
 const every = (fromMs, toMs, stepMs) => Array.from({ length: Math.ceil((toMs - fromMs) / stepMs) }, (_, i) => ({ t: fromMs + i * stepMs, lane: 0 }));
 
 describe("the fade-out at the end of a song (fades.js, flag fadeOut)", () => {
-  it("runs from the last loud moment to the last sound", () => {
+  it("runs from where the energy falls under `from` (else the last loud moment) to the last sound", () => {
     const fade = fadeOutOf(fadeContext(), FADE);
-    assert.ok(Math.abs(fade.startMs - 52500) <= 50, `${fade.startMs}`);
+    assert.ok(Math.abs(fade.startMs - 53750) <= 50, `${fade.startMs}`);
     assert.ok(Math.abs(fade.endMs - 59375) <= 50, `${fade.endMs}`);
+    assert.ok(Math.abs(fadeOutOf(fadeContext(), { ...FADE, from: undefined }).startMs - 52500) <= 50);
     assert.equal(fadeOutOf({ ...fadeContext(), energy: { at: () => 0.8 } }, FADE), null);
   });
 
-  it("keeps half the moments of the fade-out, the ones on the beat, and nothing else changes", () => {
-    const notes = every(40000, 59000, BEAT_MS / 2);
-    const out = thinFadeOut(notes, fadeContext(), FADE);
+  it("keeps half the moments of every bar of the fade-out, the ones on the beat, and nothing else changes", () => {
     const fade = fadeOutOf(fadeContext(), FADE);
-    const inside = (list) => list.filter((n) => n.t >= fade.startMs && n.t < fade.endMs);
-    assert.equal(inside(out).length, Math.ceil(inside(notes).length / 2));
-    for (const n of inside(out)) assert.equal(n.t % BEAT_MS, 0, `${n.t}`);
+    // a dense bar (half beats) and then sparse ones (a beat and a half apart)
+    const notes = [...every(40000, 54000, BEAT_MS / 2), ...every(54000, 56000, BEAT_MS / 2), ...every(56000, 59000, 1.5 * BEAT_MS)];
+    const out = thinFadeOut(notes, fadeContext(), FADE);
+    const count = (list, a, b) => list.filter((n) => n.t >= a && n.t < b).length;
+    const first = notes.find((n) => n.t >= fade.startMs).t;
+    for (let a = first; a < fade.endMs; a += 4 * BEAT_MS) assert.equal(count(out, a, a + 4 * BEAT_MS), Math.ceil(count(notes, a, a + 4 * BEAT_MS) / 2), `${a}`);
+    for (const n of out.filter((x) => x.t >= fade.startMs && x.t < 56000)) assert.equal(n.t % BEAT_MS, 0, `${n.t}`);
     assert.deepEqual(out.filter((n) => n.t < fade.startMs), notes.filter((n) => n.t < fade.startMs));
   });
 
   it("holds a lone tap with a beat of room until half a beat before the next one, the last for two beats", () => {
-    const notes = every(53000, 59000, 2 * BEAT_MS);
+    const notes = every(54000, 59000, 2 * BEAT_MS);
     const held = holdFadeOut(notes, fadeContext(), FADE);
     assert.deepEqual(held.slice(0, -1).map((n) => n.len), held.slice(0, -1).map(() => 2 * BEAT_MS - BEAT_MS / 2));
     assert.equal(held.at(-1).len, 2 * BEAT_MS);
     // a beat apart there is no room, but for the last one (until the sound ends)
-    const tight = holdFadeOut(every(53000, 59000, BEAT_MS), fadeContext(), FADE).filter((n) => n.len > 0);
+    const tight = holdFadeOut(every(54000, 59000, BEAT_MS), fadeContext(), FADE).filter((n) => n.len > 0);
     assert.deepEqual(tight.map((n) => n.t), [58500]);
     assert.ok(Math.abs(tight[0].t + tight[0].len - fadeOutOf(fadeContext(), FADE).endMs) <= 1);
   });
