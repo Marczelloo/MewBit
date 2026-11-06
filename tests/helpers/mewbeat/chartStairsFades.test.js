@@ -95,3 +95,13 @@ describe("the fade-out at the end of a song (fades.js, flag fadeOut)", () => {
     assert.deepEqual(Object.keys(FLAGS.fadeOut.levels), ["normal"]);
   });
 });
+
+describe("a repeat copied only when it is very like its source (flags copyStrict, copyStrictHard)", () => {
+  it("sets the least similarity of a copy on its own level, off by default", () => {
+    assert.equal(withFlags(DIFFICULTIES.normal, "normal", { copyStrict: true }).copyFrom, 0.95);
+    assert.equal(withFlags(DIFFICULTIES.hard, "hard", { copyStrictHard: true }).copyFrom, 0.95);
+    assert.deepEqual(Object.keys(FLAGS.copyStrict.levels), ["normal"]);
+    assert.deepEqual(Object.keys(FLAGS.copyStrictHard.levels), ["hard"]);
+    for (const level of ["easy", "normal", "hard", "hell"]) assert.equal(DIFFICULTIES[level].copyFrom, undefined, level);
+  });
+});

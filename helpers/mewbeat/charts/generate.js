@@ -82,6 +82,7 @@ function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
   const phrase = phrases[i];
   if (!isRepeatOf(phrase, i)) return null;
+  if (diff.copyFrom && phrase.heard !== true && !(phrase.similarity >= diff.copyFrom)) return null;
   const { from, to } = sourceWindow(phrase, phrases[phrase.repeatOf], timing);
   const sourceNotes = inWindow(all, from, to);
   if (sourceNotes.length === 0) return null;

@@ -22,6 +22,12 @@ const FLAGS = {
     label: "Spokojniejszy fade-out (rzadziej, holdy)",
     levels: { normal: { fadeOut: { loud: 0.6, quiet: 0.35, minSec: 4, keep: 0.5, hold: { minBeats: 1, releaseBeats: 0.5, lastBeats: 2 } } } },
   },
+  // A repeat phrase of Normal and Hard copies its source's notes only when it is at least this similar (generate.js
+  // copiedRepeat; phrases.js REPEAT_SIMILARITY is 0.85), else it is charted from its own music. Where we copy, people
+  // often play other notes: train F1 Normal 0.7985 -> 0.8016, Hard 0.7678 -> 0.7712 (0.9: .8007, .7706; never: .8018, .7717).
+  // Hard has its own flag: Easy is cut from v26's Normal, which is cut from Hard, so Hard's copies reach Easy too.
+  copyStrict: { label: "Kopia powtórzeń tylko przy bardzo podobnych frazach (Normal)", levels: { normal: { copyFrom: 0.95 } } },
+  copyStrictHard: { label: "Kopia powtórzeń tylko przy bardzo podobnych frazach (Hard, zmienia też Easy)", levels: { hard: { copyFrom: 0.95 } } },
   // Normal's figures (difficulty.js FIGURES) on quarter beats too, where people follow a figure far less often (27% of
   // these, about 5% of an unrepeated onset; 0% on the test songs). The level's least gap keeps them to songs under about
   // 150 BPM, most to the slow ones, which lack quarter beats the most.
