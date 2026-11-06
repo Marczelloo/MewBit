@@ -330,14 +330,14 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const capped = step("holdShare", floored, ctx.phrases.length === 0
     ? limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare)
     : holdsCappedByPhrase(floored, ctx, diff, isSustain));
-  const faded = diff.fadeOut ? step("fadeOut", capped, thinFadeOut(capped, ctx, diff.fadeOut)) : capped;
-  const planned = step("chords", faded, planChords(faded, ctx, diff, upper));
-  const lone = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
-  const chorded = diff.fadeOut?.hold ? step("fadeOutHold", lone, holdFadeOut(lone, ctx, diff.fadeOut)) : lone;
+  const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
+  const chorded = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   const laid = step("lanes", chorded, layLanes(chorded, ctx, diff, upper));
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
-  return step("finalFloors", limited, enforceFloors(limited, diff, ctx.timing));
+  // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
+  const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut), ctx, diff.fadeOut)) : limited;
+  return step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing));
 }
 
 // Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
