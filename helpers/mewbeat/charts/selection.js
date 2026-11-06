@@ -55,27 +55,30 @@ function meterOf(timing, t) {
   const toHalf = Math.abs(u - 0.5);
   const toQuarter = Math.min(Math.abs(u - 0.25), Math.abs(u - 0.75));
   const grid = Math.min(toBeat, toHalf, toQuarter);
-  if (toBeat < METER_TOLERANCE) {
+  const tolerance = timing.meterTolerance ?? METER_TOLERANCE;
+  if (toBeat < tolerance) {
     const near = beats[i] + Math.round(position) * span;
     const downbeats = timing.downbeats ?? [];
     const d = nearestIndex(downbeats, near);
     return { metric: 0, down: d >= 0 && Math.abs(downbeats[d] - near) < DOWNBEAT_MS ? 1 : 0, grid };
   }
-  if (toHalf < METER_TOLERANCE) return { metric: 1, down: 0, grid };
-  return { metric: toQuarter < METER_TOLERANCE ? 2 : 3, down: 0, grid };
+  if (toHalf < tolerance) return { metric: 1, down: 0, grid };
+  return { metric: toQuarter < tolerance ? 2 : 3, down: 0, grid };
 }
 
 // The beats a moment's place is read on. With diff.feltTempo (generator flag "feltTempo") a song slower than its belowBpm is
 // read at twice the tempo, its half beats as beats: on the train songs people's Normal plays about 4.3 notes a second at any
 // tempo, and under 115 BPM a third of its notes on quarter beats (34%, against 4% over 170 BPM), so a slow song is played as a
-// song twice as fast. The downbeats stay; the grid the moments snap to is the song's own.
+// song twice as fast. The downbeats stay; the grid the moments snap to is the song's own. With felt.keepTolerance (generator
+// flag "feltTolerance") a place in the beat keeps the tolerance in ms it has at the song's own tempo: the halved beat would
+// halve it, and a sound 18-37 ms off the grid, which snaps, would be read as off the beat.
 function meterTimingOf(timing, felt) {
   if (!felt || !timing?.snapped || 60000 / timing.medianMs >= felt.belowBpm) return timing;
-  return { ...timing, beats: timing.gridPoints(2), medianMs: timing.medianMs / 2 };
+  return { ...timing, beats: timing.gridPoints(2), medianMs: timing.medianMs / 2, meterTolerance: felt.keepTolerance ? 2 * METER_TOLERANCE : METER_TOLERANCE };
 }
 
 // The key the scores of a level are kept under on the ctx: a level read at its felt tempo is scored apart.
-const scoreKey = (level, felt) => (felt ? `${level}:felt${felt.belowBpm}` : level);
+const scoreKey = (level, felt) => (felt ? `${level}:felt${felt.belowBpm}${felt.keepTolerance ? "t" : ""}` : level);
 
 // Within-song rank in (0, 1]: ties share the mean of their ranks. A column of at most two distinct values stays as it is.
 function rankColumn(values) {

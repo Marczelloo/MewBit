@@ -3,7 +3,7 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
-const { FIGURES } = require("./difficulty");
+const { FELT_TEMPO, FIGURES } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
@@ -24,6 +24,9 @@ const FLAGS = {
   // selection.js soloLeadRates, chords.js: a quiet phrase after the song's first loud one, drums hardly there and the lead
   // sure of itself (a piano alone), keeps this share of its lead line in its budget and plays one note at a time.
   soloLead: { label: "Ciche solo melodii pojedynczymi nutami", levels: { normal: { soloLead: { drumsBelow: 0.3, leadFrom: 0.8, share: 0.6 } } } },
+  // selection.js meterTimingOf: a slow song read at twice its tempo keeps the song's own tolerance in ms for a place in the
+  // beat, so a sound 18-37 ms off the grid still counts as on it (ASGORE 1:47.73, a piano slowing down).
+  feltTolerance: { label: "Wolne utwory: ta sama tolerancja rytmu", levels: { normal: { feltTempo: { ...FELT_TEMPO, keepTolerance: true } } } },
   quietLoneHold: { label: "Samotna nuta w ciszy jako hold", levels: { normal: { quietLone: { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } } } } },
 };
 
