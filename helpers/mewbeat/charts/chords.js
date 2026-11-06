@@ -52,6 +52,20 @@ function barScales(moments, ctx) {
   return (t) => scale.get(barOf(t));
 }
 
+// diff.chordLoudness: the chord rate's scale at an energy, linear between the [energy, scale] points (sorted by energy)
+// and flat past both ends; 1 without it. barScales ranks a song's bars against each other only, so a quiet opening
+// plays as many chords as the song's middle; people's chords follow how loud the music is.
+function loudnessScale(points, e) {
+  if (!points?.length) return 1;
+  if (e <= points[0][0]) return points[0][1];
+  for (let i = 1; i < points.length; i++) {
+    const [e1, s1] = points[i];
+    const [e0, s0] = points[i - 1];
+    if (e <= e1) return s0 + ((s1 - s0) * (e - e0)) / (e1 - e0);
+  }
+  return points[points.length - 1][1];
+}
+
 // How strong the sound at each moment is against the song's mean, within limits.
 function strengthScales(moments, ctx) {
   const heard = moments.map((m) => strengthAt(ctx, m[0].t));
@@ -185,7 +199,7 @@ function planChords(notes, ctx, diff, upper = null) {
     } else if (canChord) {
       const scale = strength[m] * (nearest < FAST_BEATS * beatMs ? FAST_SCALE : 1) * flowScale(diff.chordFlow, moments, sizes, m, beatMs);
       if (diff.chordRates) {
-        carry[rank] += diff.chordRates[rank] * barScale(t) * scale;
+        carry[rank] += diff.chordRates[rank] * barScale(t) * scale * loudnessScale(diff.chordLoudness, energy.at(t));
       } else if ((upper?.at.get(t)?.length ?? 0) >= 2) {
         carry[rank] += (diff.chordKeep?.[rank] ?? 0) * scale;
       } else {

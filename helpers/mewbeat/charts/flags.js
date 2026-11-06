@@ -12,6 +12,10 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // firstSound in v33 (difficulty.js, phrases.js onGrid), feltTempo in v34, quietLoneHold, soloLead and feltTolerance in v35,
 // miniRests in v36, copyStrictHard (difficulty.js COPY_FROM) in v37, copyStrict, fadeOut and stairs in v38.
 const FLAGS = {
+  // Normal's chord rate scales with how loud the music is (chords.js loudnessScale): bars were ranked against the
+  // song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 / -0.45 / -0.6 /
+  // louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, the flag 8 / 8 / 15 / 21 / 29%. F1 unchanged.
+  chordLoudness: { label: "Akordy za głośnością", levels: { normal: { chordLoudness: [[0.2, 0.1], [0.3, 0.12], [0.45, 0.35], [0.6, 0.6], [0.75, 1.4]] } } },
   // Normal's figures (difficulty.js FIGURES) on quarter beats too, where people follow a figure far less often (27% of
   // these, about 5% of an unrepeated onset; 0% on the test songs). The level's least gap keeps them to songs under about
   // 150 BPM, most to the slow ones, which lack quarter beats the most.
