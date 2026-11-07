@@ -3,7 +3,9 @@
 // Each <decoder output dir>/<audio key file>.json is { notes: [[t, len, midi, vel, conf, onset, layer, ghost, wob]],
 // fg: [note indices] } (research decoder, decoder.py). Writes `notes`, the decoder's own foreground line, and `tuned`,
 // the line drawn again with line.js TUNED (Normal's melodyTuned). Both are shifted by the song's median offset to our
-// lead line, as the two detectors place a note's start differently.
+// lead line, as the two detectors place a note's start differently. `onsetShiftMs` is the shift to the nearest onset of any
+// of our layers (drums, bass, lead) instead, read with Normal's flag melodyOnsetShift: the lead's same-pitch matches are
+// few on some songs (Rude Buster, Camellia remix: its line sat 30 ms early on the grid), the onsets take 90% of the notes.
 const fs = require("node:fs");
 const path = require("node:path");
 const { TUNED, foreground } = require("./line");
@@ -30,6 +32,24 @@ function medianOffset(line, lead) {
   return offs.length ? offs[offs.length >> 1] : 0;
 }
 
+// The median of (decoded start - nearest onset) over decoded notes with one of our onsets within 60 ms.
+function medianOnsetOffset(line, features) {
+  const onsets = [...(features.drums || []), ...(features.bass || []), ...(features.lead || [])].map((o) => o.t).sort((a, b) => a - b);
+  const offs = [];
+  for (const m of line) {
+    let lo = 0, hi = onsets.length;
+    while (lo < hi) {
+      const k = (lo + hi) >> 1;
+      if (onsets[k] < m[0]) lo = k + 1;
+      else hi = k;
+    }
+    const d = [onsets[lo - 1], onsets[lo]].filter((t) => t !== undefined).map((t) => m[0] - t).sort((a, b) => Math.abs(a) - Math.abs(b))[0];
+    if (d !== undefined && Math.abs(d) < 60) offs.push(d);
+  }
+  offs.sort((a, b) => a - b);
+  return offs.length ? offs[offs.length >> 1] : 0;
+}
+
 fs.mkdirSync(outDir, { recursive: true });
 for (const file of fs.readdirSync(decDir).filter((f) => f.endsWith(".json"))) {
   const featFile = path.join(featDir, file);
@@ -38,13 +58,15 @@ for (const file of fs.readdirSync(decDir).filter((f) => f.endsWith(".json"))) {
     continue;
   }
   const d = JSON.parse(fs.readFileSync(path.join(decDir, file), "utf8"));
-  const lead = JSON.parse(fs.readFileSync(featFile, "utf8")).lead || [];
+  const features = JSON.parse(fs.readFileSync(featFile, "utf8"));
+  const lead = features.lead || [];
   const fg = (d.fg || []).map((i) => d.notes[i]);
   const shift = -medianOffset(fg, lead);
+  const onsetShift = -medianOnsetOffset(fg, features);
   const out = (n) => ({ t: Math.round(n[0] + shift), pitch: n[2], conf: 1, len: Math.round(n[1]) });
   const notes = fg.map(out);
   const tuned = foreground(d.notes, TUNED).map((i) => out(d.notes[i]));
   const source = "basic-pitch foreground line (research decoder, decoder.py); tuned: scripts/mewbeat-melody/line.js TUNED";
-  fs.writeFileSync(path.join(outDir, file), JSON.stringify({ source, shiftMs: Math.round(shift), notes, tuned }));
-  console.log(file, "notes", notes.length, "tuned", tuned.length, "shift", Math.round(shift));
+  fs.writeFileSync(path.join(outDir, file), JSON.stringify({ source, shiftMs: Math.round(shift), onsetShiftMs: Math.round(onsetShift), notes, tuned }));
+  console.log(file, "notes", notes.length, "tuned", tuned.length, "shift", Math.round(shift), "onset shift", Math.round(onsetShift));
 }

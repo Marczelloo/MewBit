@@ -12,6 +12,7 @@ const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { thinDips } = require("./dips");
+const { thinDrumless } = require("./drumless");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
@@ -109,10 +110,15 @@ function leadersOf(ctx, diff) {
 const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENERGY;
 
 // The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one.
+// With diff.melodyOnsetShift it is moved by features.decodedMelodyShift (chartStore.js: the export's shift to the onsets of
+// all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once.
 function decodedMelodyOf(ctx, diff) {
-  const { decodedMelody, decodedMelodyTuned } = ctx.features;
-  if (diff.melodyTuned && Array.isArray(decodedMelodyTuned)) return decodedMelodyTuned;
-  return Array.isArray(decodedMelody) ? decodedMelody : null;
+  const { decodedMelody, decodedMelodyTuned, decodedMelodyShift } = ctx.features;
+  const line = diff.melodyTuned && Array.isArray(decodedMelodyTuned) ? decodedMelodyTuned : Array.isArray(decodedMelody) ? decodedMelody : null;
+  if (!line || !diff.melodyOnsetShift || !Number.isFinite(decodedMelodyShift) || decodedMelodyShift === 0) return line;
+  ctx.shiftedMelody ??= new Map();
+  if (!ctx.shiftedMelody.has(line)) ctx.shiftedMelody.set(line, line.map((n) => ({ ...n, t: n.t + decodedMelodyShift })));
+  return ctx.shiftedMelody.get(line);
 }
 
 // The moments a level that picks from the music scores, with the second detector's melody raised (diff.melodyPick,
@@ -354,7 +360,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
-  const thinned = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin)) : ran;
+  const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin)) : ran;
+  const thinned = diff.drumless ? step("drumless", dipped, thinDrumless(dipped, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : dipped;
   const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);

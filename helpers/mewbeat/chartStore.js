@@ -159,8 +159,10 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     try {
       const melody = JSON.parse(fs.readFileSync(path.join(dir, "melody", `${audioKeyFile(key)}.json`), "utf8"));
       if (!Array.isArray(melody?.notes)) return features;
-      // `tuned`: the same decoder's line drawn denser and smoother (scripts/mewbeat-melody), which Normal reads
-      return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}) };
+      // `tuned`: the same decoder's line drawn denser and smoother (scripts/mewbeat-melody), which Normal reads;
+      // `onsetShiftMs`: the line's shift to our onsets, which flag melodyOnsetShift puts in place of `shiftMs`
+      const shift = Number.isFinite(melody.onsetShiftMs) && Number.isFinite(melody.shiftMs) ? { decodedMelodyShift: melody.onsetShiftMs - melody.shiftMs } : {};
+      return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}), ...shift };
     } catch {
       return features;
     }
