@@ -26,7 +26,7 @@ const { accentSections, openWithFirstSound, sectionStarts } = require("./section
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { holdFadeOut, thinFadeOut } = require("./fades");
-const { extraMoments, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -171,9 +171,9 @@ function keptShare(ctx, diff) {
 }
 
 // The notes of a phrase with the slower seconds inside it thinned (diff.localThin), and never fewer moments than the level
-// below plays there (diff.notBelow).
+// below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned.
 function followingTheMusic(ctx, notes, phrase, diff) {
-  if (!diff.localThin) return notes;
+  if (!diff.localThin || isFlatLoud(ctx, diff)) return notes;
   const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
   return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below));
 }

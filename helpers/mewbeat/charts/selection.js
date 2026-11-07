@@ -174,19 +174,31 @@ function audibleOf(ctx, p, songLoudness) {
   return { seconds: (heard.length * hop) / 1000, loudness: heard.length > 0 && songLoudness > 0 ? mean(heard) / songLoudness : 1 };
 }
 
+// isFlatLoud(ctx, diff) -> with diff.flatLoud = { fromBpm, ref }, whether the song is fromBpm or faster and its mean energy
+// over ref: loud all through (Coffin Dance, Camellia Remix: 0.79), so no part of it is louder than its own mean and its loud
+// parts got a median song's rate, where GHOST's (0.69) stand out of its quiet ones. Such a song reads its phrases' loudness
+// against ref (budgetModelOf), and its seconds are not thinned on the high band alone (generate.js followingTheMusic): the
+// band drops out for seconds while the kick and the rest play on.
+function isFlatLoud(ctx, diff) {
+  if (!diff.flatLoud || !ctx.timing?.snapped || !(ctx.timing.medianMs > 0)) return false;
+  const values = ctx.features.energy?.values ?? [];
+  return 60000 / ctx.timing.medianMs >= diff.flatLoud.fromBpm && values.length > 0 && mean(values) > diff.flatLoud.ref;
+}
+
 // What the music offers each phrase of the song (momentWeights.js BUDGET): [fitted rate] over the audible part of the
 // phrase, that part's seconds, and the song's mean rate, weighted by the audible seconds of the phrases long enough to say
-// something. Kept on the ctx.
+// something. Kept on the ctx. In a song isFlatLoud calls so, the phrases' loudness is read against diff.flatLoud.ref.
 function budgetModelOf(ctx, diff) {
   ctx.budgets ??= {};
-  const key = scoreKey(diff.scoreLevel, diff.feltTempo);
+  const flat = isFlatLoud(ctx, diff);
+  const key = scoreKey(diff.scoreLevel, diff.feltTempo) + (flat ? `:flat${diff.flatLoud.ref}` : "");
   if (ctx.budgets[key]) return ctx.budgets[key];
   const scored = scoreMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const ranked = scored.map((m) => m.score).sort((a, b) => a - b);
   const salientFrom = ranked.length > 0 ? ranked[Math.min(ranked.length - 1, Math.floor(BUDGET.q * ranked.length))] : Infinity;
   const times = scored.map((m) => m.t);
   const values = ctx.features.energy?.values ?? [];
-  const songLoudness = values.length > 0 ? mean(values) : 1;
+  const songLoudness = flat ? diff.flatLoud.ref : values.length > 0 ? mean(values) : 1;
   const audible = ctx.phrases.map((p) => audibleOf(ctx, p, songLoudness));
   const fitted = ctx.phrases.map((p, k) => {
     let salient = 0;
@@ -424,4 +436,4 @@ function extraMoments(phrase, scored, kept, extra, diff, timing, edges = {}) {
   return chosen.sort(byTime).map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { audibleOf, extraMoments, openingLeadRates, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
+module.exports = { audibleOf, extraMoments, isFlatLoud, openingLeadRates, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };

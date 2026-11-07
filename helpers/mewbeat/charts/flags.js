@@ -29,6 +29,10 @@ const FLAGS = {
   // Quiet parts of slow songs get more notes against the loud ones (selection.js phraseBudget): people play 3.26 moments a second in the
   // quiet ones and 4.68 in the loud, Normal 2.00 and 4.79.
   slowDynamics: { label: "Mniejsze różnice głośności na wolnych", levels: { normal: { slowDynamics: { belowBpm: 145, delta: 1 } } } },
+  // A fast song loud all through reads its loudness against a typical song's, not its own mean (selection.js budgetModelOf):
+  // Coffin Dance (Camellia Remix) played 5.0-5.6 moments a second in its loud parts, GHOST 6.3-6.8, over music as busy. Set
+  // by ear, not by people: on the train songs people play their loud phrases at about 4.8 a second however loud the song.
+  flatLoud: { label: "Gęściej w szybkich, cały czas głośnych", levels: { normal: { flatLoud: { fromBpm: 145, ref: 0.7 } } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
