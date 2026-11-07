@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 42;
+const GENERATOR_VERSION = 43;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -112,6 +112,21 @@ const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, c
 // dips.js silentUpper: Normal drops the moments in an energy dip where the upper bands go quiet for a second or more:
 // REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear. From v42.
 const DIP_SILENCE = { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] };
+// chords.js slowChords: people play more chords the slower the song, Normal's rates did not follow. Train, chord against
+// tap at the moments both play: under 115 BPM 68.1% -> 72.9% agree (chords 16% -> 33%, people 42%), 115-145 BPM 63.2% ->
+// 66.8% (22% -> 30%, people 44%). From v43 (flag chordSlow, played).
+const CHORD_SLOW = { refBpm: 145, power: 3, max: 3.5, maxShare: 0.5 };
+// holds.js slowHolds: the shortest hold of a song under belowBpm is at most minMs, not a beat (460 ms at 130 BPM, 600 ms
+// at 100); people's median there is half a beat. From v43 (flag holdSlow, played).
+const HOLD_SLOW = { belowBpm: 145, minMs: 300 };
+// selection.js phraseBudget: the quiet parts of a song under belowBpm get more notes against the loud ones (people 3.26
+// moments a second in the quiet ones and 4.68 in the loud, Normal 2.00 and 4.79). From v43 (flag slowDynamics, played).
+const SLOW_DYNAMICS = { belowBpm: 145, delta: 1 };
+// selection.js budgetModelOf, isFlatLoud: a song from fromBpm loud all through (mean energy over ref) reads its loudness
+// against ref, not its own mean, and skips localThin: Coffin Dance (Camellia Remix) played 5.0-5.6 moments a second in its
+// loud parts, GHOST 6.3-6.8, over music as busy. Set by ear, not by people (they play loud phrases at about 4.8 a second
+// however loud the song); train F1 .7984 -> .8039. From v43 (flag flatLoud, played).
+const FLAT_LOUD = { fromBpm: 145, ref: 0.7 };
 // fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
@@ -297,6 +312,10 @@ const DIFFICULTIES = {
     drumless: DRUMLESS,
     melodyOnly: MELODY_ONLY,
     dipSilence: DIP_SILENCE,
+    chordSlow: CHORD_SLOW, // from v43, with the next three
+    holdSlow: HOLD_SLOW,
+    slowDynamics: SLOW_DYNAMICS,
+    flatLoud: FLAT_LOUD,
   },
   hard: {
     grammar: "hard",
@@ -394,6 +413,7 @@ const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 module.exports = {
   BANDS,
   CHORD_LOUDNESS,
+  CHORD_SLOW,
   COPY_FROM,
   DIP_SILENCE,
   DIP_THIN,
@@ -401,11 +421,14 @@ module.exports = {
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,
+  FLAT_LOUD,
+  HOLD_SLOW,
   MELODY_ONLY,
   MELODY_PICK,
   MELODY_RUNS,
   MINI_RESTS,
   QUIET_LONE,
+  SLOW_DYNAMICS,
   SOLO_LEAD,
   STAIRS,
   SUSTAIN_HOLDS,

@@ -10,7 +10,7 @@ const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { stairSteps } = require("../../../helpers/mewbeat/charts/laneRules");
 const { STAIRS } = require("../../../helpers/mewbeat/charts/difficulty");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const quietLog = { warning() {} };
 const times = Array.from({ length: 6 }, (_, i) => 1000 + i * 250);
@@ -81,8 +81,10 @@ describe("Normal's moments on a second detector's melody (v39)", () => {
     const decoded = { ...features, decodedMelody: melody };
     const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
     const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
-    const plain = notesOf(generateAll(features, "k", {}));
-    const on = notesOf(generateAll(decoded, "k", {}));
+    // On v42's chords: with chordSlow (v43) this 120 BPM fixture chords the moments the melody would raise.
+    const without = flagWithout("withoutchordslow", "chordSlow");
+    const plain = notesOf(generateAll(features, "k", without));
+    const on = notesOf(generateAll(decoded, "k", without));
     assert.notDeepEqual(on.normal, plain.normal);
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
   });

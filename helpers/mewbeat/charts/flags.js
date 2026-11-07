@@ -11,7 +11,8 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // miniRests in v36, copyStrictHard (difficulty.js COPY_FROM) in v37, copyStrict, fadeOut and stairs in v38, decoderLanes,
 // decoderPick and melodyTuned in v39 (difficulty.js MELODY_PICK), chordLoudness, twoKeyTrill, melodyRuns and dipThin in v40,
 // sustainHolds and sustainPads in v41 (difficulty.js SUSTAIN_HOLDS), melodyOnsetShift, drumless, feltTempoUp, melodyOnly and
-// dipSilence in v42 (difficulty.js DRUMLESS, MELODY_ONLY, DIP_SILENCE, FELT_TEMPO).
+// dipSilence in v42 (difficulty.js DRUMLESS, MELODY_ONLY, DIP_SILENCE, FELT_TEMPO), chordSlow, holdSlow, slowDynamics and
+// flatLoud in v43 (difficulty.js CHORD_SLOW, HOLD_SLOW, SLOW_DYNAMICS, FLAT_LOUD).
 // figuresQuarter was dropped (0% of its notes hit on the test songs).
 
 const FLAGS = {
@@ -19,20 +20,6 @@ const FLAGS = {
   // with the tempo, Normal's rose with it (train, loud parts: under 170 BPM people 4.75 / Normal 4.51, over 190 BPM 4.98 /
   // 5.68). Train F1 .8005 -> .8018; over 190 BPM 4.82 -> 4.63 moments a second (people 4.35), 145-170 4.16 -> 4.23 (4.34).
   tempoBudget: { label: "Gęstość od tempa", levels: { normal: { tempoBudget: { refBpm: 175, power: 0.5 } } } },
-  // Slow songs (agents/slow): people play more chords the slower the song, Normal's rates do not follow (chords.js slowChords).
-  // Train, chord against tap at the moments both play: under 115 BPM 68.1% -> 72.9% agree (chords 16% -> 33%, people 42%), 115-145 BPM
-  // 63.2% -> 66.8% (22% -> 30%, people 44%); over 145 BPM unchanged.
-  chordSlow: { label: "Akordy na wolnych piosenkach", levels: { normal: { chordSlow: { refBpm: 145, power: 3, max: 3.5, maxShare: 0.5 } } } },
-  // The shortest hold of Normal is a beat, 460 ms at 130 BPM and 600 ms at 100; people's median on those songs is half a beat
-  // (holds.js slowHolds). The shortest hold is at most 300 ms.
-  holdSlow: { label: "Krótsze holdy na wolnych piosenkach", levels: { normal: { holdSlow: { belowBpm: 145, minMs: 300 } } } },
-  // Quiet parts of slow songs get more notes against the loud ones (selection.js phraseBudget): people play 3.26 moments a second in the
-  // quiet ones and 4.68 in the loud, Normal 2.00 and 4.79.
-  slowDynamics: { label: "Mniejsze różnice głośności na wolnych", levels: { normal: { slowDynamics: { belowBpm: 145, delta: 1 } } } },
-  // A fast song loud all through reads its loudness against a typical song's, not its own mean (selection.js budgetModelOf):
-  // Coffin Dance (Camellia Remix) played 5.0-5.6 moments a second in its loud parts, GHOST 6.3-6.8, over music as busy. Set
-  // by ear, not by people: on the train songs people play their loud phrases at about 4.8 a second however loud the song.
-  flatLoud: { label: "Gęściej w szybkich, cały czas głośnych", levels: { normal: { flatLoud: { fromBpm: 145, ref: 0.7 } } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

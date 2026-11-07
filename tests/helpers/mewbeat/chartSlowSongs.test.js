@@ -1,14 +1,15 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { CHORD_SLOW, DIFFICULTIES, HOLD_SLOW } = require("../../../helpers/mewbeat/charts/difficulty");
 const { slowChords } = require("../../../helpers/mewbeat/charts/chords");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { slowHolds } = require("../../../helpers/mewbeat/charts/holds");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
-const SLOW_FLAGS = ["chordSlow", "holdSlow", "slowDynamics"];
+const SLOW = ["chordSlow", "holdSlow", "slowDynamics"];
+// Normal without one of them, or without all three: the behaviour before v43.
+const without = (...names) => flagWithout(`without${names.join("")}`, ...names);
 const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
 const chartsOf = (bpm, flags) => notesOf(generateAll(makeLayeredFeatures({ bpm, durationMs: 64000 }), "k", flags));
 const chordShare = (notes) => {
@@ -18,40 +19,40 @@ const chordShare = (notes) => {
 };
 const timingAt = (bpm) => ({ snapped: true, medianMs: 60000 / bpm });
 
-describe("slow songs (flags chordSlow, holdSlow, slowDynamics)", () => {
-  it("are off by default and act on Normal alone", () => {
-    for (const name of SLOW_FLAGS) {
-      assert.deepEqual(Object.keys(FLAGS[name].levels), ["normal"], name);
-      assert.equal(DIFFICULTIES.normal[name], undefined, name);
+describe("slow songs (Normal's chordSlow, holdSlow, slowDynamics, v43)", () => {
+  it("are Normal's alone", () => {
+    for (const name of SLOW) {
+      assert.ok(DIFFICULTIES.normal[name], name);
+      for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level][name], undefined, `${level} ${name}`);
     }
   });
 
   it("leave Easy, Hard and Hell byte-identical, on a slow song and a fast one", () => {
     for (const bpm of [95, 130, 180]) {
-      const plain = chartsOf(bpm, undefined);
-      for (const flags of [...SLOW_FLAGS.map((name) => ({ [name]: true })), Object.fromEntries(SLOW_FLAGS.map((name) => [name, true]))]) {
-        const on = chartsOf(bpm, flags);
-        for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], `${bpm} BPM ${level} ${Object.keys(flags)}`);
+      const on = chartsOf(bpm, undefined);
+      for (const names of [...SLOW.map((name) => [name]), SLOW]) {
+        const plain = chartsOf(bpm, without(...names));
+        for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], `${bpm} BPM ${level} ${names}`);
       }
     }
   });
 
   it("leave Normal as it is on a song at or above 145 BPM", () => {
     for (const bpm of [150, 180]) {
-      const plain = chartsOf(bpm, undefined);
-      for (const name of SLOW_FLAGS) assert.deepEqual(chartsOf(bpm, { [name]: true }).normal, plain.normal, `${bpm} BPM ${name}`);
+      const on = chartsOf(bpm, undefined);
+      for (const name of SLOW) assert.deepEqual(chartsOf(bpm, without(name)).normal, on.normal, `${bpm} BPM ${name}`);
     }
   });
 
   it("chordSlow plays more chords on a slow song, found against the old behaviour", () => {
-    const plain = chordShare(chartsOf(95, undefined).normal), on = chordShare(chartsOf(95, { chordSlow: true }).normal);
+    const plain = chordShare(chartsOf(95, without("chordSlow")).normal), on = chordShare(chartsOf(95, undefined).normal);
     assert.ok(on > plain + 0.05, `${on} against ${plain}`);
   });
 
   it("slowChords grows the rates, the share and the 8-beat window with the tempo gap, at most max", () => {
-    const rule = FLAGS.chordSlow.levels.normal.chordSlow;
-    const diff = { ...DIFFICULTIES.normal, chordSlow: rule };
-    assert.equal(slowChords(DIFFICULTIES.normal, timingAt(100)), DIFFICULTIES.normal);
+    const rule = CHORD_SLOW;
+    const diff = DIFFICULTIES.normal, plain = { ...diff, chordSlow: undefined };
+    assert.equal(slowChords(plain, timingAt(100)), plain);
     assert.equal(slowChords(diff, timingAt(145)), diff);
     assert.equal(slowChords(diff, timingAt(200)), diff);
     assert.equal(slowChords(diff, { snapped: false, medianMs: 600 }), diff);
@@ -63,9 +64,9 @@ describe("slow songs (flags chordSlow, holdSlow, slowDynamics)", () => {
   });
 
   it("slowHolds shortens the minimum hold of a slow song to minMs and leaves others alone", () => {
-    const rule = FLAGS.holdSlow.levels.normal.holdSlow;
-    const diff = { ...DIFFICULTIES.normal, holdSlow: rule };
-    assert.equal(slowHolds(DIFFICULTIES.normal, timingAt(100)), DIFFICULTIES.normal);
+    const rule = HOLD_SLOW;
+    const diff = DIFFICULTIES.normal, plain = { ...diff, holdSlow: undefined };
+    assert.equal(slowHolds(plain, timingAt(100)), plain);
     assert.equal(slowHolds(diff, timingAt(150)), diff);
     assert.equal(slowHolds(diff, { snapped: false, medianMs: 600 }), diff);
     const slow = slowHolds(diff, timingAt(100));

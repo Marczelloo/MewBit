@@ -10,6 +10,7 @@ const { DIFFICULTIES, LEAD_IN_MS, SILENCE_ENERGY, levelOf } = require("../../../
 const { GENERATOR_VERSION, analyse, generateChart, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { BUDGET, METER_TOLERANCE } = require("../../../helpers/mewbeat/charts/momentWeights");
 const selection = require("../../../helpers/mewbeat/charts/selection");
+const { slowChords } = require("../../../helpers/mewbeat/charts/chords");
 
 const { audibleOf, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments } = selection;
 const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
@@ -190,13 +191,13 @@ describe("Normal picks its notes from the music", () => {
 
       const analysis = { getFeatures: async () => makeFeatures(), statusOf: () => null };
       const store = createChartStore({ dir, analysis, log: quietLog });
-      assert.strictEqual(GENERATOR_VERSION, 42);
+      assert.strictEqual(GENERATOR_VERSION, 43);
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
-      assert.strictEqual(charts.normal.version, 42);
+      assert.strictEqual(charts.normal.version, 43);
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file(42)));
+      assert.ok(fs.existsSync(file(43)));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -448,8 +449,10 @@ describe("what Normal still guarantees", () => {
       for (const n of notes) moments.set(n.t, (moments.get(n.t) ?? 0) + 1);
 
       it("has chords on at most maxChordShare of its moments, two notes each", () => {
+        // The share of the song's tempo: a slow song may chord more (chords.js slowChords, v43).
+        const share = slowChords(NORMAL, analyse(features).timing).maxChordShare;
         const chords = [...moments.values()].filter((c) => c > 1).length;
-        assert.ok(chords / moments.size <= NORMAL.maxChordShare + 1e-9, `${chords} of ${moments.size}`);
+        assert.ok(chords / moments.size <= share + 1e-9, `${chords} of ${moments.size}`);
         assert.ok([...moments.values()].every((c) => c <= 2));
       });
 
@@ -488,16 +491,19 @@ describe("the repeats of Normal", () => {
   const song = (repeatEnergy = QUIET) => layered({ energy: (ms) => (ms >= 24000 && ms < 32000 ? repeatEnergy : QUIET) });
   const momentsIn = (notes, p) => [...new Set(notes.filter((n) => n.t >= p.startMs && n.t < p.endMs).map((n) => n.t))].sort((a, b) => a - b);
 
-  // What these test is the plan against Normal's own budget: the floor under Easy lifts that budget, and the mini rests
-  // (bridges.js) fill the rests of source and repeat alike after the plan; both have their own tests.
-  const { notBelow, restBridge } = DIFFICULTIES.normal;
+  // What these test is the plan against Normal's own budget: the floor under Easy lifts that budget, the mini rests
+  // (bridges.js) fill the rests of source and repeat alike after the plan, and on this 120 BPM song slowDynamics (v43)
+  // narrows loud against quiet; all three have their own tests.
+  const { notBelow, restBridge, slowDynamics } = DIFFICULTIES.normal;
   beforeEach(() => {
     delete DIFFICULTIES.normal.notBelow;
     delete DIFFICULTIES.normal.restBridge;
+    delete DIFFICULTIES.normal.slowDynamics;
   });
   afterEach(() => {
     DIFFICULTIES.normal.notBelow = notBelow;
     DIFFICULTIES.normal.restBridge = restBridge;
+    DIFFICULTIES.normal.slowDynamics = slowDynamics;
   });
 
   it("same loudness copies rhythm and lanes", () => {
