@@ -6,6 +6,8 @@
 const { lowerBound } = require("./util");
 const { drumlessWindows } = require("./drumless");
 
+const PAD_CHAIN_BEATS = 4; // a pad hold steps from the one before when it starts this soon after it ends
+
 const longNotes = (ctx, rule) => (ctx.features.decodedNotes ?? []).filter((n) => n.len >= rule.longMs && n.vel >= rule.minVel && n.pitch < rule.lowBelow);
 
 // The share of each rule.windowMs window that long low notes (pitch under rule.lowBelow, at least rule.longMs, velocity
@@ -169,21 +171,68 @@ function longLine(ctx, rule) {
   return out.filter((n) => n.len >= rule.longMs);
 }
 
+// The indexes of the rule.drumless.windowMs windows of a quiet pad (rule.pad): the high band plays under
+// rule.pad.highBelow onsets a second (no cymbals or hats, though the high-mid may be busy) and the mean energy is under
+// rule.pad.quietBelow x the song's 80th percentile. GHOST 2:06-2:16, organ chords of about 2 s in an energy dip, by ear.
+function padWindows(ctx, rule) {
+  const { windowMs } = rule.drumless, { highBelow, quietBelow } = rule.pad;
+  const high = (ctx.features.bands ?? []).find((b) => b.name === "high")?.onsets;
+  const { hopMs, values } = ctx.features.energy ?? {};
+  const out = new Set();
+  if (!Array.isArray(high) || !(hopMs > 0) || !Array.isArray(values) || values.length === 0) return out;
+  const level = [...values].sort((a, b) => a - b)[Math.floor(values.length * 0.8)];
+  const count = new Map();
+  for (const o of high) count.set(Math.floor(o.t / windowMs), (count.get(Math.floor(o.t / windowMs)) ?? 0) + 1);
+  const per = windowMs / hopMs;
+  for (let w = 0; w * per < values.length; w++) {
+    const frames = values.slice(Math.round(w * per), Math.round((w + 1) * per));
+    const mean = frames.reduce((s, v) => s + v, 0) / frames.length;
+    if ((count.get(w) ?? 0) / (windowMs / 1000) < highBelow && mean < quietBelow * level) out.add(w);
+  }
+  return out;
+}
+
+// A pad's chords as one line: the lowest long note (longLine) sounding, a new chord where a long note starts as the lowest;
+// where the lowest changes with no note starting (a voice ends, one above it is left), the chord before runs on. Chords
+// shorter than rule.longMs go. An organ's voices come in one by one, so the legato line of longLine would hold each.
+function padLine(ctx, rule) {
+  const longs = longLine(ctx, rule);
+  const cuts = [...new Set(longs.flatMap((n) => [n.t, n.t + n.len]))].sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const [a, b] = [cuts[i], cuts[i + 1]];
+    const low = longs.filter((n) => n.t <= a && n.t + n.len >= b).reduce((m, n) => (m && m.pitch <= n.pitch ? m : n), null);
+    if (!low) continue;
+    const last = out[out.length - 1];
+    if (last && last.end === a && (low.pitch === last.pitch || low.t !== a)) last.end = b;
+    else if (low.t === a) out.push({ t: a, end: b, pitch: low.pitch, vel: low.vel });
+  }
+  return out.filter((c) => c.end - c.t >= rule.longMs).map(({ t, end, pitch, vel }) => ({ t, len: end - t, pitch, vel }));
+}
+
 // holdSustains(notes, ctx, rule, timing) -> notes where each long note (longLine) starting in a drumless window
 // (drumless.js, rule.drumless; a lone window between two such counts too, a cymbal does not end the passage) is held: the
 // moment nearest its start within rule.headMs becomes a hold, or one is put at the start, and the moments from rule.headMs
 // before it to its release go (our onsets hear the brass's attack up to 130 ms before the decoder's pitch). The hold runs
 // to the note's end or rule.releaseBeats before the next long note's head, and is kept only if it lasts rule.minBeats. A
 // note that starts inside an earlier hold is left as it is. Where such a passage plays (a drumless window with a hold), a
-// moment is one note: a lone instrument plays no chords.
+// moment is one note: a lone instrument plays no chords. With rule.pad, the windows of a quiet pad (padWindows) count too,
+// and there the chords of padLine are held.
 function holdSustains(notes, ctx, rule, timing) {
   if (!rule) return notes;
-  const windows = drumlessWindows(ctx, rule.drumless);
+  const drumless = drumlessWindows(ctx, rule.drumless);
+  const pads = rule.pad ? padWindows(ctx, rule) : new Set();
+  const windows = pads.size ? new Set([...drumless, ...pads]) : drumless;
   if (windows.size === 0) return notes;
   const beat = timing?.medianMs > 0 ? timing.medianMs : 500, release = beat * rule.releaseBeats;
   const windowOf = (t) => Math.floor(t / rule.drumless.windowMs);
-  const quiet = (w) => windows.has(w) || (windows.has(w - 1) && windows.has(w + 1));
-  const sustains = longLine(ctx, rule).filter((n) => quiet(windowOf(n.t)));
+  const quietIn = (set, w) => set.has(w) || (set.has(w - 1) && set.has(w + 1));
+  const quiet = (w) => quietIn(windows, w);
+  const padded = (t) => !quietIn(drumless, windowOf(t)) && quietIn(pads, windowOf(t));
+  const sustains = [
+    ...longLine(ctx, rule).filter((n) => quietIn(drumless, windowOf(n.t))),
+    ...(pads.size ? padLine(ctx, rule).filter((n) => padded(n.t)) : []),
+  ].sort((a, b) => a.t - b.t);
   let out = [...notes].sort((a, b) => a.t - b.t);
   let heldUntil = -Infinity; // where the last hold let go, with its release
   const passages = new Set();
@@ -211,6 +260,32 @@ function holdSustains(notes, ctx, rule, timing) {
   });
 }
 
+// padLanes(notes, ctx, rule) -> notes with the lanes laid, where each hold of a quiet pad (padWindows) that follows another
+// within PAD_CHAIN_BEATS steps from its lane the way the held note's pitch moves: one lane, two for a fifth or more, back the other
+// way at the edge; the same pitch keeps the lane. The lane search cannot: the chords change every 2 s or so, further than
+// the melody it reads looks back. Nothing else plays inside those holds (holdSustains), so a lane may change freely.
+function padLanes(notes, ctx, rule, timing) {
+  if (!rule?.pad) return notes;
+  const windows = padWindows(ctx, rule);
+  if (windows.size === 0) return notes;
+  const beat = timing?.medianMs > 0 ? timing.medianMs : 500;
+  const sustains = padLine(ctx, rule);
+  let last = null; // the pad hold before: { end, lane, pitch }
+  return [...notes].sort((a, b) => a.t - b.t).map((n) => {
+    const s = n.len > 0 && windows.has(Math.floor(n.t / rule.drumless.windowMs)) ? sustains.find((x) => Math.abs(x.t - n.t) <= rule.headMs) : undefined;
+    if (!s) return n;
+    let lane = n.lane;
+    const chained = last && n.t - last.end <= beat * PAD_CHAIN_BEATS;
+    if (chained && last.pitch !== s.pitch) {
+      const move = Math.sign(s.pitch - last.pitch) * (Math.abs(s.pitch - last.pitch) >= 7 ? 2 : 1);
+      lane = last.lane + move;
+      if (lane < 0 || lane > 3) lane = Math.min(3, Math.max(0, last.lane - Math.sign(move)));
+    } else if (chained) lane = last.lane;
+    last = { end: n.t + n.len, lane, pitch: s.pitch };
+    return lane === n.lane ? n : { ...n, lane };
+  });
+}
+
 // withShortLine(melody, ctx, rule) -> the melody the lanes follow, with the short-note line in place of it in the
 // melodyOnlyWindows windows (passageLine), so the lanes follow what those windows play.
 function withShortLine(melody, ctx, rule) {
@@ -221,4 +296,4 @@ function withShortLine(melody, ctx, rule) {
   return [...(melody ?? []).filter((n) => !inWindow(n.t)), ...line].sort((a, b) => a.t - b.t);
 }
 
-module.exports = { coverOf, melodyOnlyWindows, keepMelodyOnly, holdSustains, withShortLine };
+module.exports = { coverOf, melodyOnlyWindows, keepMelodyOnly, holdSustains, padLanes, padWindows, withShortLine };

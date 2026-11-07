@@ -4,7 +4,7 @@ const { describe, it } = require("node:test");
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
-const { holdSustains, keepMelodyOnly, melodyOnlyWindows } = require("../../../helpers/mewbeat/charts/sustain");
+const { holdSustains, keepMelodyOnly, melodyOnlyWindows, padLanes } = require("../../../helpers/mewbeat/charts/sustain");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const HOLDS = FLAGS.sustainHolds.levels.normal.sustainHolds;
@@ -55,6 +55,45 @@ describe("long notes held where no drums play (flag sustainHolds)", () => {
     const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { sustainHolds: true }));
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
     assert.equal(DIFFICULTIES.normal.sustainHolds, undefined);
+  });
+});
+
+describe("a quiet pad's chords held, the lane moving with the pitch (flag sustainPads)", () => {
+  const PADS = FLAGS.sustainPads.levels.normal.sustainHolds;
+  const taps = every(250, 0, 12000).map(({ t }) => ({ t, lane: 0 }));
+  // 12 s: the high-mid busy throughout (not drumless), no hats or cymbals and a quiet energy under 6 s, loud after.
+  const padCtx = (decodedNotes) => ({
+    durationMs: 12000,
+    features: {
+      durationMs: 12000,
+      bands: [{ name: "low", onsets: every(250, 0, 12000) }, { name: "highmid", onsets: every(125, 0, 12000) }, { name: "high", onsets: every(250, 6000, 12000) }],
+      energy: { hopMs: 500, values: [...new Array(12).fill(0.3), ...new Array(12).fill(1)] },
+      bass: [],
+      lead: [],
+      decodedNotes,
+    },
+  });
+  // C3 under a G3 that comes in later and outlasts it, then D3.
+  const chords = [{ t: 500, len: 2000, pitch: 48, vel: 0.5 }, { t: 2000, len: 2000, pitch: 55, vel: 0.5 }, { t: 4100, len: 1900, pitch: 50, vel: 0.5 }];
+
+  it("holds one hold per chord, an inner voice coming in held by the chord under it", () => {
+    const out = holdSustains(taps, padCtx(chords), PADS, TIMING);
+    assert.deepEqual(out.filter((n) => n.len > 0).map((n) => [n.t, n.t + n.len]), [[500, 3875], [4000, 6000]]);
+    assert.deepEqual(out.filter((n) => n.t >= 6125), taps.filter((n) => n.t >= 6125));
+    assert.deepEqual(holdSustains(taps, padCtx(chords), HOLDS, TIMING), taps);
+  });
+
+  it("steps the lane the way the chord moves, back the other way at the edge", () => {
+    const holds = (lane) => [{ t: 500, lane, len: 3375 }, { t: 4000, lane, len: 2000 }];
+    assert.deepEqual(padLanes(holds(2), padCtx(chords), PADS, TIMING).map((n) => n.lane), [2, 3]);
+    assert.deepEqual(padLanes(holds(3), padCtx(chords), PADS, TIMING).map((n) => n.lane), [3, 2]);
+  });
+
+  it("changes Normal alone, and only with the flag on", () => {
+    const features = { ...makeLayeredFeatures(), decodedNotes: chords };
+    const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { sustainPads: true }));
+    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
+    assert.deepEqual(PADS, { ...HOLDS, minVel: 0.35, pad: { highBelow: 1, quietBelow: 0.6 } });
   });
 });
 

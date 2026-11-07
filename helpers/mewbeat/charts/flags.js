@@ -11,6 +11,7 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // miniRests in v36, copyStrictHard (difficulty.js COPY_FROM) in v37, copyStrict, fadeOut and stairs in v38, decoderLanes,
 // decoderPick and melodyTuned in v39 (difficulty.js MELODY_PICK), chordLoudness, twoKeyTrill, melodyRuns and dipThin in v40.
 // figuresQuarter was dropped (0% of its notes hit on the test songs).
+const SUSTAIN_HOLDS = { longMs: 800, minVel: 0.4, joinMs: 250, headMs: 150, releaseBeats: 0.25, minBeats: 1, drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 } };
 const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80 };
 
 const FLAGS = {
@@ -32,9 +33,13 @@ const FLAGS = {
   // Normal holds the decoder's long notes where no drum kit plays (sustain.js holdSustains): REVOLVANIA's opening brass,
   // by ear: one hold per sound, no chords where it holds. Train Normal F1 .8024 -> .8022 (with the decoded melody), 11 of
   // 78 songs changed; bot songs 6 of 36.
-  sustainHolds: {
-    label: "Holdy na długich nutach bez perkusji",
-    levels: { normal: { sustainHolds: { longMs: 800, minVel: 0.4, joinMs: 250, headMs: 150, releaseBeats: 0.25, minBeats: 1, drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 } } } },
+  sustainHolds: { label: "Holdy na długich nutach bez perkusji", levels: { normal: { sustainHolds: SUSTAIN_HOLDS } } },
+  // sustainHolds also where the hats and cymbals stop in a quiet stretch though something still beats (sustain.js
+  // padWindows), with each hold's lane moving with its pitch (padLanes): GHOST 2:06-2:16, organ chords of about 2 s, by ear.
+  // On, it turns sustainHolds on too.
+  sustainPads: {
+    label: "Holdy organów w cichych partiach",
+    levels: { normal: { sustainHolds: { ...SUSTAIN_HOLDS, minVel: 0.35, pad: { highBelow: 1, quietBelow: 0.6 } } } },
   },
   // Normal plays the decoder's short-note line alone where it runs over a held bed in a loud passage of 8 s or more
   // (sustain.js keepMelodyOnly): REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear. The line comes from the
