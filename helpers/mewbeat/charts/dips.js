@@ -86,7 +86,7 @@ function silentUpper(notes, ctx, rule) {
   if (!rule) return notes;
   const dips = energyDipsOf(ctx, rule);
   if (dips.length === 0) return notes;
-  const upper = (ctx.features.bands ?? []).filter((b) => rule.bands.includes(b.name)).flatMap((b) => b.onsets.map((o) => o.t)).sort((x, y) => x - y);
+  const upper = (ctx.features.bands ?? []).filter((b) => rule.bands.includes(b?.name) && Array.isArray(b.onsets)).flatMap((b) => b.onsets.map((o) => o.t)).sort((x, y) => x - y);
   const gaps = [];
   for (let i = 0; i + 1 < upper.length; i++) if (upper[i + 1] - upper[i] >= rule.gapMs && upper[i + 1] - upper[i] <= rule.maxGapMs) gaps.push([upper[i] + NEAR_MS, upper[i + 1] - NEAR_MS]);
   const silent = (t) => gaps.some(([a, b]) => t > a && t < b) && dips.some(([a, b]) => t >= a && t < b);

@@ -12,7 +12,7 @@ function drumlessWindows(ctx, rule) {
   ctx.drumless ??= new Map();
   const key = `${rule.windowMs}:${rule.highBelow}:${rule.highmidBelow}`;
   if (ctx.drumless.has(key)) return ctx.drumless.get(key);
-  const band = (name) => (ctx.features.bands ?? []).find((b) => b.name === name)?.onsets;
+  const band = (name) => (ctx.features.bands ?? []).find((b) => b?.name === name)?.onsets;
   const high = band("high"), highmid = band("highmid");
   const out = new Set();
   if (Array.isArray(high) && Array.isArray(highmid)) {

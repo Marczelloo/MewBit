@@ -19,8 +19,8 @@ describe("slow songs read at twice the tempo (Normal's feltTempo)", () => {
     for (const [a, b] of moved) assert.ok((a === 1 && b === 0) || (a === 2 && b === 1) || (a === 3 && b >= 2), `${a} -> ${b}`);
   });
 
-  it("leaves a song at 115 BPM or over as it is", () => {
-    const ctx = analyse(makeLayeredFeatures({ bpm: 120, durationMs: 64000 }));
+  it("leaves a song at 145 BPM or over as it is", () => {
+    const ctx = analyse(makeLayeredFeatures({ bpm: 150, durationMs: 64000 }));
     assert.deepEqual(scoreMoments(ctx, "normal", FELT), scoreMoments(ctx, "normal"));
   });
 

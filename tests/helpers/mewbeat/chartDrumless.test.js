@@ -1,15 +1,25 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, FELT_TEMPO } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { drumlessWindows, thinDrumless } = require("../../../helpers/mewbeat/charts/drumless");
 const { phraseBudget } = require("../../../helpers/mewbeat/charts/selection");
 const { makeLayeredFeatures } = require("./fixtures");
 
-const RULE = FLAGS.drumless.levels.normal.drumless;
+const RULE = DIFFICULTIES.normal.drumless;
 const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
+// The charts with Normal's `key` set to `value` for the call (undefined: Normal without it).
+function chartsWith(features, key, value) {
+  const saved = DIFFICULTIES.normal[key];
+  DIFFICULTIES.normal[key] = value;
+  try {
+    return notesOf(generateAll(features, "k"));
+  } finally {
+    DIFFICULTIES.normal[key] = saved;
+  }
+}
 
 // 8 s: hats and cymbals in the first 4 s only, a kick every 125 ms throughout, a bass note every 500 ms.
 const every = (ms, from, to) => Array.from({ length: Math.floor((to - from) / ms) }, (_, i) => ({ t: from + i * ms, s: 0.5 }));
@@ -23,7 +33,7 @@ const ctxOf = () => ({
   },
 });
 
-describe("no drum kit playing (flag drumless)", () => {
+describe("no drum kit playing (Normal's drumless, v42)", () => {
   it("finds the windows with no cymbals or hats", () => {
     assert.deepEqual([...drumlessWindows(ctxOf(), RULE)], [2, 3]);
   });
@@ -35,12 +45,11 @@ describe("no drum kit playing (flag drumless)", () => {
     assert.deepEqual(thinDrumless(notes, ctxOf(), RULE, [{ t: 4125 }]).map((n) => n.t), [1125, 1500, 4125, 4500, 4625, 5000]);
   });
 
-  it("changes Normal alone, and only with the flag on", () => {
+  it("is part of Normal alone", () => {
     const features = makeLayeredFeatures();
-    const plain = notesOf(generateAll(features, "k", {}));
-    const on = notesOf(generateAll(features, "k", { drumless: true }));
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.equal(DIFFICULTIES.normal.drumless, undefined);
+    const on = notesOf(generateAll(features, "k")), off = chartsWith(features, "drumless", undefined);
+    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], off[level], level);
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].drumless, undefined, level);
   });
 });
 
@@ -56,24 +65,27 @@ describe("a budget that follows the felt pace (flag tempoBudget)", () => {
   });
 });
 
-describe("the decoded melody moved to our onsets (flag melodyOnsetShift)", () => {
-  it("moves the melody Normal reads by the stored shift, only with the flag on", () => {
+describe("the decoded melody moved to our onsets (Normal's melodyOnsetShift, v42)", () => {
+  it("moves the melody Normal reads by the stored shift", () => {
     const features = makeLayeredFeatures();
     const run = Array.from({ length: 120 }, (_, i) => ({ t: 1000 + i * 250, pitch: 60 + (i % 5) }));
     const decoded = { ...features, decodedMelody: run, decodedMelodyTuned: run };
-    const plain = notesOf(generateAll(decoded, "k", { melodyOnsetShift: true }));
-    assert.deepEqual(plain, notesOf(generateAll(decoded, "k", {})));
-    const moved = notesOf(generateAll({ ...decoded, decodedMelodyShift: 125 }, "k", { melodyOnsetShift: true }));
+    const plain = notesOf(generateAll(decoded, "k"));
+    assert.deepEqual(plain, chartsWith(decoded, "melodyOnsetShift", undefined));
+    const shifted = { ...decoded, decodedMelodyShift: 125 };
+    const moved = notesOf(generateAll(shifted, "k"));
+    assert.deepEqual(chartsWith(shifted, "melodyOnsetShift", undefined).normal, plain.normal);
     assert.notDeepEqual(moved.normal, plain.normal);
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(moved[level], plain[level], level);
   });
 });
 
-describe("half beats up to 145 BPM (flag feltTempoUp)", () => {
-  it("changes Normal alone, on a 130 BPM song and not on a 160 BPM one", () => {
+describe("half beats up to 145 BPM (Normal's feltTempo, v42)", () => {
+  it("changes Normal alone against the old 115 BPM bound, on a 130 BPM song and not on a 160 BPM one", () => {
+    assert.equal(FELT_TEMPO.belowBpm, 145);
     for (const [bpm, changes] of [[130, true], [160, false]]) {
       const features = makeLayeredFeatures({ bpm, durationMs: 64000 });
-      const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { feltTempoUp: true }));
+      const plain = chartsWith(features, "feltTempo", { ...FELT_TEMPO, belowBpm: 115 }), on = notesOf(generateAll(features, "k"));
       for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], `${bpm} ${level}`);
       assert.equal(JSON.stringify(on.normal) !== JSON.stringify(plain.normal), changes, `${bpm} BPM`);
     }

@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 41;
+const GENERATOR_VERSION = 42;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -51,8 +51,9 @@ const FIRST_SOUND = { strong: 0.8, nearBeats: 1 / 8 };
 // selection.js meterTimingOf: Normal reads a song under belowBpm at twice its tempo, so its quarter beats count as half
 // beats. People's Normal plays about 4.3 notes a second at any tempo, a third of them on quarter beats under 115 BPM. A
 // place in the beat keeps the song's own tolerance in ms (keepTolerance), so a piano slowing down a little off the grid
-// stays on the beat (ASGORE 1:47.7).
-const FELT_TEMPO = { belowBpm: 115, keepTolerance: true };
+// stays on the beat (ASGORE 1:47.7). Under 145 BPM, not 115, from v42 (flag feltTempoUp, played): train 115-145 BPM
+// quarter-beat gaps 1.3 -> 27% (people 20%), 3.65 -> 4.09 moments a second (4.32), F1 .8005 -> .7970, test .8310 -> .8248.
+const FELT_TEMPO = { belowBpm: 145, keepTolerance: true };
 // generate.js copiedRepeat: a repeat phrase copies its source's notes only when at least this similar (phrases.js counts
 // one from 0.85); else it is charted from its own music, where people often play other notes. Hard, from v37 (train F1
 // 0.7678 -> 0.7712); Easy, cut from v26's Normal and so from Hard, moved 0.7166 -> 0.7167 on train, 0.7576 -> 0.7554 on test.
@@ -100,6 +101,17 @@ const SUSTAIN_HOLDS = {
   drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 },
   pad: { highBelow: 1, quietBelow: 0.6 },
 };
+// drumless.js: Normal drops what only the drums layer's "kicks" gave it where no cymbals or hats play: REVOLVANIA's opening
+// brass read as kicks. Train Normal F1 .8005 -> .8007, 11 songs changed, the dropped moments people's 14%. From v42.
+const DRUMLESS = { windowMs: 2000, highBelow: 1, highmidBelow: 4 };
+// sustain.js keepMelodyOnly: Normal plays the decoder's short-note line alone where it runs over a held bed in a loud
+// passage of 8 s or more (REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear), not in a phrase the drums
+// lead. The line comes from the decoder's low-threshold run where the melody file has one. It fires on 5 of 36 bot songs
+// and 1 of 78 train songs. From v42.
+const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80, notLedBy: "drums" };
+// dips.js silentUpper: Normal drops the moments in an energy dip where the upper bands go quiet for a second or more:
+// REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear. From v42.
+const DIP_SILENCE = { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] };
 // fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
@@ -281,6 +293,10 @@ const DIFFICULTIES = {
     melodyRuns: MELODY_RUNS,
     dipThin: DIP_THIN,
     sustainHolds: SUSTAIN_HOLDS, // from v41, with the pads
+    melodyOnsetShift: true, // from v42: the decoded melody moved to our onsets (generate.js decodedMelodyOf), with the next three
+    drumless: DRUMLESS,
+    melodyOnly: MELODY_ONLY,
+    dipSilence: DIP_SILENCE,
   },
   hard: {
     grammar: "hard",
@@ -379,10 +395,13 @@ module.exports = {
   BANDS,
   CHORD_LOUDNESS,
   COPY_FROM,
+  DIP_SILENCE,
   DIP_THIN,
+  DRUMLESS,
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,
+  MELODY_ONLY,
   MELODY_PICK,
   MELODY_RUNS,
   MINI_RESTS,

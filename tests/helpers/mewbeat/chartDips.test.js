@@ -4,7 +4,6 @@ const { describe, it } = require("node:test");
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { energyDipsOf, silentUpper, thinDips } = require("../../../helpers/mewbeat/charts/dips");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const RULE = DIFFICULTIES.normal.dipThin;
@@ -43,8 +42,8 @@ describe("slowing down in a dip of the music (dipThin, v40)", () => {
   });
 });
 
-describe("silence where the upper bands stop in a dip (flag dipSilence)", () => {
-  const SILENCE = FLAGS.dipSilence.levels.normal.dipSilence;
+describe("silence where the upper bands stop in a dip (Normal's dipSilence, v42)", () => {
+  const SILENCE = DIFFICULTIES.normal.dipSilence;
   // hats every 250 ms but for a gap from 3500 to `to`; a low rumble the generator played on every beat
   const ctxWith = (to) => ({ features: { energy: { hopMs: 500, values }, bands: [{ name: "high", onsets: onsets.filter((o) => o.t <= 3500 || o.t >= to) }] } });
   const notes = [3000, 3750, 4000, 4250, 4500, 5250].map((t) => ({ t, lane: 0 }));
@@ -59,10 +58,16 @@ describe("silence where the upper bands stop in a dip (flag dipSilence)", () => 
     assert.deepEqual(silentUpper(notes, long, SILENCE), notes);
   });
 
-  it("changes Normal alone, and only with the flag on", () => {
+  it("is part of Normal alone", () => {
     const features = makeLayeredFeatures();
-    const plain = generateAll(features, "k", {}), on = generateAll(features, "k", { dipSilence: true });
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level].notes, plain[level].notes, level);
-    assert.equal(DIFFICULTIES.normal.dipSilence, undefined);
+    const on = generateAll(features, "k");
+    DIFFICULTIES.normal.dipSilence = undefined;
+    try {
+      const off = generateAll(features, "k");
+      for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level].notes, off[level].notes, level);
+    } finally {
+      DIFFICULTIES.normal.dipSilence = SILENCE;
+    }
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].dipSilence, undefined, level);
   });
 });

@@ -137,7 +137,7 @@ function longLine(ctx, rule) {
 // rule.pad.quietBelow x the song's 80th percentile. GHOST 2:06-2:16, organ chords of about 2 s in an energy dip, by ear.
 function padWindows(ctx, rule) {
   const { windowMs } = rule.drumless, { highBelow, quietBelow } = rule.pad;
-  const high = (ctx.features.bands ?? []).find((b) => b.name === "high")?.onsets;
+  const high = (ctx.features.bands ?? []).find((b) => b?.name === "high")?.onsets;
   const { hopMs, values } = ctx.features.energy ?? {};
   const out = new Set();
   if (!Array.isArray(high) || !(hopMs > 0) || !Array.isArray(values) || values.length === 0) return out;

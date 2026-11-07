@@ -2,14 +2,13 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { holdSustains, keepMelodyOnly, melodyOnlyWindows, padLanes } = require("../../../helpers/mewbeat/charts/sustain");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const HOLDS = DIFFICULTIES.normal.sustainHolds;
 const { pad: _pad, ...NO_PAD } = HOLDS;
-const MELODY = FLAGS.melodyOnly.levels.normal.melodyOnly;
+const MELODY = DIFFICULTIES.normal.melodyOnly;
 const TIMING = { medianMs: 500 };
 const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
 const every = (ms, from, to, extra = {}) => Array.from({ length: Math.floor((to - from) / ms) }, (_, i) => ({ t: from + i * ms, s: 0.5, ...extra }));
@@ -115,7 +114,7 @@ describe("a quiet pad's chords held, the lane moving with the pitch (sustainHold
   });
 });
 
-describe("the short-note line alone over a held bed (flag melodyOnly)", () => {
+describe("the short-note line alone over a held bed (Normal's melodyOnly, v42)", () => {
   // 48 s, loud throughout: a long bass under 8-24 s, a short note every 400 ms throughout (a chord of two after 32 s).
   const line = every(400, 0, 48000).flatMap(({ t }) => {
     const n = { t, len: 150, pitch: 50 + ((t / 400) % 5), vel: 0.5 };
@@ -163,10 +162,16 @@ describe("the short-note line alone over a held bed (flag melodyOnly)", () => {
     assert.deepEqual([...melodyOnlyWindows(ctx, MELODY)], [2, 3, 4, 5]);
   });
 
-  it("changes Normal alone, and only with the flag on", () => {
+  it("is part of Normal alone", () => {
     const features = { ...makeLayeredFeatures(), decodedNotes: ctxOf(8000, 24000).features.decodedNotes };
-    const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { melodyOnly: true }));
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.equal(DIFFICULTIES.normal.melodyOnly, undefined);
+    const on = notesOf(generateAll(features, "k"));
+    DIFFICULTIES.normal.melodyOnly = undefined;
+    try {
+      const off = notesOf(generateAll(features, "k"));
+      for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], off[level], level);
+    } finally {
+      DIFFICULTIES.normal.melodyOnly = MELODY;
+    }
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].melodyOnly, undefined, level);
   });
 });

@@ -127,15 +127,17 @@ describe("holds on sustained notes of a non-leader layer", () => {
   });
 
   it("a short or unsure bass note stays out", () => {
-    // Without the floor under Easy: its extra notes bring holds of their own into the gaps, none of them this note's.
-    const notBelow = DIFFICULTIES.normal.notBelow;
+    // Without the floor under Easy: its extra notes bring holds of their own into the gaps, none of them this note's. And
+    // without the felt tempo (from v42 under 145 BPM): on half beats the gap after the note's moment is held as a gap.
+    const { notBelow, feltTempo } = DIFFICULTIES.normal;
     delete DIFFICULTIES.normal.notBelow;
+    delete DIFFICULTIES.normal.feltTempo;
     try {
       for (const weak of [{ len: BEAT_MS }, { conf: 0.6 }]) {
         assert.equal(holdsOf(generateChart(withBassNote(weak), "normal", "k")).length, 0, JSON.stringify(weak));
       }
     } finally {
-      DIFFICULTIES.normal.notBelow = notBelow;
+      Object.assign(DIFFICULTIES.normal, { notBelow, feltTempo });
     }
   });
 

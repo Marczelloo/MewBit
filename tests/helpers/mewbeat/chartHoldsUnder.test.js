@@ -202,7 +202,8 @@ describe("under holds adds no moments", () => {
   }
   const songs = {
     layeredHolds: () => makeLayeredFeatures({ bpm: 100, durationMs: 96000, structure: "ABAC", holdsEveryBeats: 4 }),
-    layeredSustain: () => makeLayeredFeatures({ bpm: 140, durationMs: 80000, structure: "AABB", sustainAtBeats: [4, 10] }),
+    // Over 145 BPM: Normal reads a slower song on half beats (feltTempo), where its gap holds take sixteenths.
+    layeredSustain: () => makeLayeredFeatures({ bpm: 150, durationMs: 80000, structure: "AABB", sustainAtBeats: [4, 10] }),
   };
 
   // What is checked: holds on Normal bring no moment the chart lacks without them, lose at most 1% of the moments it has
