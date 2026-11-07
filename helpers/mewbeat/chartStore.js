@@ -10,11 +10,15 @@ const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
 const { GENERATOR_VERSION, generateAll } = require("./charts/generate");
 const { FLAGS_FILE_NAME, flagsKey, normalFlags } = require("./charts/flags");
 const { withMelodyFile } = require("./charts/melodyFile");
+const { createMelodyDecoder } = require("./melodyDecoder");
+const { audioStore } = require("./sharedAudio");
 
 const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const MEMORY_CAPACITY = 16;
 const NO_AUDIO_KEY = "no_audio_key";
 const TOO_FEW_NOTES = "too_few_notes";
+// How long a request for a new song waits for its melody to be decoded before the charts are made without it.
+const MELODY_WAIT_MS = 120_000;
 
 // The generator version is part of the file name, so a version bump simply
 // stops finding the old files and regenerates from the cached features.
@@ -76,7 +80,10 @@ function withPace(charts) {
 const READY = (charts) => ({ status: "ready", charts });
 const UNCHARTED = (reason) => ({ status: "uncharted", reason });
 
-function createChartStore({ dir, analysis, generate = generateAll, log = Log }) {
+// `melodyDecoder` (melodyDecoder.js) decodes the melody of a song that has no melody file: a new song waits for it (up to
+// `melodyWaitMs`), a song with stored charts keeps them until the decode is done and then has them generated again. Without one
+// a melody file is only read when it is there.
+function createChartStore({ dir, analysis, generate = generateAll, log = Log, melodyDecoder = null, melodyWaitMs = MELODY_WAIT_MS }) {
   const chartsByKey = new Map(); // keyed by memoryKey: the audio key and the flags
   const unchartedByKey = new Map(); // memoryKey -> reason
   const pendingByKey = new Map();
@@ -194,6 +201,46 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     }
   }
 
+  // Charts made without a melody are dropped once it is decoded: the files of every combination of flags for this audio, the
+  // uncharted markers too, and what is in memory, so the next request generates them again with the melody.
+  async function dropCharts(key) {
+    for (const map of [chartsByKey, unchartedByKey]) {
+      for (const id of [...map.keys()]) if (id === key || id.startsWith(`${key}|`)) map.delete(id);
+    }
+    const chartsDir = path.join(dir, "charts");
+    const prefix = `${audioKeyFile(key)}.v`;
+    let names;
+    try {
+      names = await fsPromises.readdir(chartsDir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (!name.startsWith(prefix) || !VERSIONED_CHART_FILE.test(name)) continue;
+      await fsPromises.unlink(path.join(chartsDir, name)).catch((error) => {
+        log.warning("mewbeat could not remove charts made without the melody", name, error?.message);
+      });
+    }
+  }
+
+  // A melody that comes after the charts were made replaces them.
+  function replaceWhenDecoded(decoding, key) {
+    decoding.then((result) => (result === "decoded" ? dropCharts(key) : undefined)).catch((error) => {
+      log.warning("mewbeat could not replace charts after decoding the melody", error?.message);
+    });
+  }
+
+  // A new song waits for its melody, for `melodyWaitMs` at most; the decode then goes on and replaces the charts made without it.
+  async function waitForMelody(track, key, node, features) {
+    const decoding = melodyDecoder.ensure(key, track, node, features);
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve("late"), melodyWaitMs);
+    });
+    const result = await Promise.race([decoding, late]).finally(() => clearTimeout(timer));
+    if (result === "late") replaceWhenDecoded(decoding, key);
+  }
+
   async function resolve(track, key, node, { flags, key: flagged }) {
     const id = memoryKey(key, flagged);
     await sweepOldVersions();
@@ -203,6 +250,11 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
         unchartedByKey.set(id, stored.reason);
         return UNCHARTED(stored.reason);
       }
+      // Not bound to the request: the charts on disk are served as they are.
+      if (melodyDecoder && !melodyDecoder.has(key)) {
+        const features = analysis.peek?.(track);
+        if (features) replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features), key);
+      }
       return remember(id, stored);
     }
     if (stored === false) {
@@ -211,8 +263,10 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
       });
     }
 
-    const features = withDecodedMelody(await analysis.getFeatures(track, node), key);
-    if (!features) return statusWithoutFeatures(track);
+    const analysed = await analysis.getFeatures(track, node);
+    if (!analysed) return statusWithoutFeatures(track);
+    if (melodyDecoder && !melodyDecoder.has(key)) await waitForMelody(track, key, node, analysed);
+    const features = withDecodedMelody(analysed, key);
 
     const charts = generate(features, key, flags);
     if (!charts) {
@@ -275,10 +329,14 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   return { getCharts, peekCharts };
 }
 
+const DATA_DIR = path.join(__dirname, "..", "data", "mewbeat");
+
 module.exports = {
   chartStore: createChartStore({
     analysis: analysisClient,
-    dir: path.join(__dirname, "..", "data", "mewbeat"),
+    dir: DATA_DIR,
+    // MEWBEAT_MELODY_DECODER=off leaves melodies to files made by hand.
+    melodyDecoder: createMelodyDecoder({ dir: DATA_DIR, audio: audioStore }),
   }),
   createChartStore,
 };

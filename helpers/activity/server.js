@@ -59,8 +59,8 @@ const Log = require("../logs/log");
 const { markAlive, releaseSession, startHeartbeat } = require("./socketLifecycle");
 const { createMewbeatChannel } = require("../mewbeat/activityChannel");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
-const { createAudioStore } = require("../mewbeat/audioStore");
 const { chartStore } = require("../mewbeat/chartStore");
+const { audioStore } = require("../mewbeat/sharedAudio");
 const { getClient } = require("../clientRegistry");
 const { createInvitePoster } = require("../mewbeat/invites");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
@@ -706,7 +706,6 @@ function readMewbeatPlayback(guildId) {
 }
 
 const soloTracks = createSoloTracks();
-const audioStore = createAudioStore({ dir: path.join(__dirname, "..", "data", "mewbeat", "audio") });
 
 // A search result or history entry as an encoded track for solo play. A link
 // resolves as is; anything else is searched on `source` (YouTube by default).
