@@ -50,10 +50,6 @@ const FLAGS = {
     label: "Sama melodia nad długim basem",
     levels: { normal: { melodyOnly: MELODY_ONLY } },
   },
-  // melodyOnly with the line from a transcription that names each note's instrument (MuScriptor, scripts/mewbeat-melody
-  // lead.js; sustain.js passageLine): the lead alone, not the bass under it. REVOLVANIA 0:20-0:40, the plain bars of the
-  // motif: 56 of 60 notes with 13 others, the short-note line 53 with 20. On, it turns melodyOnly on too.
-  transcribedLead: { label: "Melodia z transkrypcji instrumentów", levels: { normal: { melodyOnly: { ...MELODY_ONLY, lead: true, splitMs: 120 } } } },
   // Normal drops the moments in an energy dip where the upper bands go quiet for a second or more (dips.js silentUpper):
   // REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear.
   dipSilence: { label: "Cisza w spadku energii", levels: { normal: { dipSilence: { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] } } } },

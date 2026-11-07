@@ -61,51 +61,6 @@ function shortLine(ctx, rule, quiet = false) {
   return out;
 }
 
-// The windows as [fromMs, toMs] runs.
-function runsOf(windows, rule) {
-  const runs = [];
-  for (const w of [...windows].sort((a, b) => a - b)) {
-    const last = runs[runs.length - 1];
-    if (last && last[1] === w * rule.windowMs) last[1] += rule.windowMs;
-    else runs.push([w * rule.windowMs, (w + 1) * rule.windowMs]);
-  }
-  return runs;
-}
-
-// The line the melodyOnlyWindows windows play: the short-note line, or with rule.lead and a transcription with an
-// instrument per note (features.leadNotes, MuScriptor) the notes of the instrument with the most notes in each passage,
-// drums and basses aside. A note held across a re-attack of its pitch class among the decoder's short notes is split
-// there, rule.splitMs apart at least: the transcription keeps one note per instrument and pitch, so REVOLVANIA's
-// repeated D# came as one. A passage the transcription has no such instrument in keeps the short-note line.
-function passageLine(ctx, rule, windows) {
-  const inWindow = (t) => windows.has(Math.floor(t / rule.windowMs));
-  const short = shortLine(ctx, rule, true).filter((n) => inWindow(n.t));
-  const lead = rule.lead ? ctx.features.leadNotes ?? [] : [];
-  if (lead.length === 0) return short;
-  const attacks = (ctx.features.decodedShortNotes ?? []).filter((x) => x.len < rule.shortMs && x.vel >= rule.minVel);
-  const out = [];
-  for (const [from, to] of runsOf(windows, rule)) {
-    const here = lead.filter((n) => n.t >= from && n.t < to && !/drums|bass/.test(n.instrument));
-    const counts = new Map();
-    for (const n of here) counts.set(n.instrument, (counts.get(n.instrument) ?? 0) + 1);
-    const top = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
-    if (top === undefined) {
-      out.push(...short.filter((n) => n.t >= from && n.t < to));
-      continue;
-    }
-    for (const n of here.filter((x) => x.instrument === top)) {
-      out.push(n);
-      let last = n.t;
-      for (const a of attacks) {
-        if (a.t - last < rule.splitMs || a.t >= n.t + n.len - rule.sameMs || (a.pitch - n.pitch) % 12 !== 0) continue;
-        out.push({ ...n, t: a.t });
-        last = a.t;
-      }
-    }
-  }
-  return out.sort((a, b) => a.t - b.t);
-}
-
 // The loud windows (energy at least rule.loudAbove) where a held bed plays (long low notes cover rule.cover or more) under
 // a single line: short notes at rule.linePerSec a second or more, at most rule.chordShare of them with another at once
 // (a riff of chords is no lone melody), in a phrase not led by rule.notLedBy (ctx.leaders): GHOST 4:22-4:35 is a drum
@@ -152,7 +107,7 @@ function keepMelodyOnly(notes, ctx, rule, timing) {
   const inWindow = (t) => windows.has(Math.floor(t / rule.windowMs));
   const times = [...new Set(notes.map((n) => n.t))].sort((x, y) => x - y);
   const added = [];
-  for (const n of passageLine(ctx, rule, windows)) {
+  for (const n of shortLine(ctx, rule, true).filter((x) => inWindow(x.t))) {
     const t = nearestOf(times, n.t, rule.snapMs);
     if (!(added.length && t <= added[added.length - 1].t)) added.push({ t, lane: 0 });
   }
@@ -303,12 +258,12 @@ function padLanes(notes, ctx, rule, timing) {
 }
 
 // withShortLine(melody, ctx, rule) -> the melody the lanes follow, with the short-note line in place of it in the
-// melodyOnlyWindows windows (passageLine), so the lanes follow what those windows play.
+// melodyOnlyWindows windows, so the lanes follow what those windows play.
 function withShortLine(melody, ctx, rule) {
   const windows = melodyOnlyWindows(ctx, rule);
   if (windows.size === 0) return melody;
   const inWindow = (t) => windows.has(Math.floor(t / rule.windowMs));
-  const line = passageLine(ctx, rule, windows).map(({ t, len, pitch }) => ({ t, len, pitch, conf: 1 }));
+  const line = shortLine(ctx, rule, true).filter((n) => inWindow(n.t)).map(({ t, len, pitch }) => ({ t, len, pitch, conf: 1 }));
   return [...(melody ?? []).filter((n) => !inWindow(n.t)), ...line].sort((a, b) => a.t - b.t);
 }
 

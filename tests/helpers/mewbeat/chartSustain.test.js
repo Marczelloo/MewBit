@@ -158,19 +158,6 @@ describe("the short-note line alone over a held bed (flag melodyOnly)", () => {
     assert.deepEqual([...melodyOnlyWindows(ctx, MELODY)], [2, 3, 4, 5]);
   });
 
-  it("with flag transcribedLead plays the transcribed lead, not the bass, split at a re-attack of its pitch", () => {
-    const LEAD = FLAGS.transcribedLead.levels.normal.melodyOnly;
-    const ctx = ctxOf(8000, 24000);
-    const guitar = every(800, 8000, 24000).map(({ t }) => ({ t, len: 700, pitch: 60, instrument: "distorted_electric_guitar" }));
-    const bass = every(400, 0, 48000).map(({ t }) => ({ t: t + 200, len: 150, pitch: 36, instrument: "electric_bass" }));
-    ctx.features.leadNotes = [...guitar, ...bass].sort((a, b) => a.t - b.t);
-    ctx.features.decodedShortNotes = [{ t: 8400, len: 100, pitch: 48, vel: 0.5 }, { t: 9300, len: 100, pitch: 50, vel: 0.5 }];
-    const notes = every(100, 0, 48000).map(({ t }) => ({ t, lane: 0 }));
-    const there = keepMelodyOnly(notes, ctx, LEAD, TIMING).filter((n) => n.t >= 8000 && n.t < 24000).map((n) => n.t);
-    assert.deepEqual(there, [8000, 8400, ...guitar.slice(1).map((n) => n.t)]);
-    assert.deepEqual(FLAGS.transcribedLead.levels.normal.melodyOnly, { ...MELODY, lead: true, splitMs: 120 });
-  });
-
   it("changes Normal alone, and only with the flag on", () => {
     const features = { ...makeLayeredFeatures(), decodedNotes: ctxOf(8000, 24000).features.decodedNotes };
     const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { melodyOnly: true }));
