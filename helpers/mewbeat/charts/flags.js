@@ -34,13 +34,13 @@ const FLAGS = {
     label: "Holdy na długich nutach bez perkusji",
     levels: { normal: { sustainHolds: { longMs: 800, minVel: 0.4, joinMs: 250, headMs: 150, releaseBeats: 0.25, minBeats: 1, drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 } } } },
   },
-  // Normal plays the decoded melody alone in a loud passage held on a long bass, in a song whose loud parts are not
-  // (sustain.js keepMelodyOnly): REVOLVANIA 0:20-0:42, by ear. Train people play such windows at 4.5 moments a second,
-  // not lighter than the rest, so the corpus does not back it. Passages of 16 s or more only: lone windows cut holes in
-  // GHOST (by ear). It now fires on REVOLVANIA alone (0:20-0:40, 1.3 notes a second), on no train song.
+  // Normal plays the decoder's short-note line alone where it runs over a held bed in a loud passage of 8 s or more
+  // (sustain.js keepMelodyOnly): REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear. A rule, no song named:
+  // it fires on 5 of 36 bot songs (REVOLVANIA 0:20-0:40, GHOST 4:24-4:32, MEGALOVANIA Camellia 4:36-4:44, Live My Life
+  // 0:32-0:40, FIRESTARTER 2:04-2:12) and on 1 of 78 train songs, too few to say what people play there: the ear decides.
   melodyOnly: {
     label: "Sama melodia nad długim basem",
-    levels: { normal: { melodyOnly: { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.4, cover: 0.55, edgeCover: 0.4, songCoverBelow: 0.05, loudAbove: 0.8, melodyPerSec: 0.75, minRun: 4, snapMs: 80, holdBeats: 2, releaseBeats: 0.25 } } },
+    levels: { normal: { melodyOnly: { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80 } } },
   },
 };
 

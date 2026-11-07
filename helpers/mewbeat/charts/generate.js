@@ -13,7 +13,7 @@ const { withMergedLead } = require("./legato");
 const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
-const { holdSustains, keepMelodyOnly } = require("./sustain");
+const { holdSustains, keepMelodyOnly, withShortLine } = require("./sustain");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
@@ -374,10 +374,12 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   // After the hold cap and the chords (sustain.js): the long notes it holds are not cut back to taps, and the passages it
   // rewrites play one note at a time.
   const heldLong = diff.sustainHolds ? step("sustainHolds", quietHeld, holdSustains(quietHeld, ctx, diff.sustainHolds, ctx.timing)) : quietHeld;
-  const chorded = diff.melodyOnly ? step("melodyOnly", heldLong, keepMelodyOnly(heldLong, ctx, diff.melodyOnly, decodedMelodyOf(ctx, diff), ctx.timing)) : heldLong;
+  const chorded = diff.melodyOnly ? step("melodyOnly", heldLong, keepMelodyOnly(heldLong, ctx, diff.melodyOnly, ctx.timing)) : heldLong;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   // diff.melodyLine: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.
-  const decoded = diff.melodyLine ? decodedMelodyOf(ctx, diff) : null;
+  // With diff.melodyOnly, the windows it rewrites follow its short-note line instead (sustain.js).
+  const line = diff.melodyLine ? decodedMelodyOf(ctx, diff) : null;
+  const decoded = line && diff.melodyOnly ? withShortLine(line, ctx, diff.melodyOnly) : line;
   const laneCtx = decoded ? { ...ctx, features: { ...ctx.features, melodyLine: decoded } } : ctx;
   const laid = step("lanes", chorded, layLanes(chorded, laneCtx, diff, upper));
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
