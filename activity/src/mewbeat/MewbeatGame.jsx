@@ -677,7 +677,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [soloWent]);
   // Mewbit on the board counts a solo run in, bumping and sending a ring out on every step, as in the room.
   const boardTick = soloCount ?? (soloWent ? 0 : null);
-  const boardPose = soloCount != null ? "hype" : soloWent ? "go" : mewbitPose;
+  const boardPose = soloCount >= 1 && soloCount <= 3 ? `count${soloCount}` : soloCount != null ? "hype" : soloWent ? "go" : mewbitPose;
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
   useEffect(() => {
@@ -863,7 +863,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
         className={`mb-stage${stageUnder ? " mb-stage-under" : ""}${hud.feverActive ? " mb-fever" : ""}${pulseClass}`}
         style={{ "--mb-vibe": stageVibe }}
       >
-        <Stage />
+        <Stage track={track} />
         {hud.feverActive ? <div className="mb-feverbanner" aria-hidden="true">FEVER!</div> : null}
         {endBanner ? <div className="mb-feverbanner mb-endbanner" role="status">{endBanner}</div> : null}
         {readoutHud.judgement?.kind === "miss" && effectsLevel !== "off" ? (
