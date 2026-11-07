@@ -33,16 +33,22 @@ function coverOf(ctx, rule) {
   return out;
 }
 
-// The decoder's short notes (under rule.shortMs, velocity rule.minVel), one per rule.sameMs (the loudest; `voices` counts
-// the notes it stands for): over a held bed this is the line the ear follows. REVOLVANIA 0:20-0:42: the MEGALOVANIA motif
+// The decoder's short notes (under rule.shortMs, velocity rule.minVel), without those on the pitch of a long note sounding
+// then (its retriggers), one per rule.sameMs (the loudest; `voices` counts the notes it stands for): over a held bed this
+// is the line the ear follows. `quiet`: from its low-threshold run where there is one (features.decodedShortNotes), which
+// hears 17 of the motif's 20 notes where the first run hears 12, and more chords from the bed; the windows are found on
+// the first run, the line played from this one. REVOLVANIA 0:20-0:42: the MEGALOVANIA motif
 // on a low synth, in the brass's register, which the melody line (decoder.py, line.js) loses to the long notes. Kept on
 // the ctx.
-function shortLine(ctx, rule) {
+function shortLine(ctx, rule, quiet = false) {
   ctx.shortLine ??= new Map();
-  const key = `${rule.shortMs}:${rule.minVel}:${rule.sameMs}`;
+  const key = `${rule.shortMs}:${rule.minVel}:${rule.sameMs}:${quiet}`;
   if (ctx.shortLine.has(key)) return ctx.shortLine.get(key);
   const out = [];
-  for (const n of (ctx.features.decodedNotes ?? []).filter((x) => x.len < rule.shortMs && x.vel >= rule.minVel).sort((x, y) => x.t - y.t)) {
+  const held = (ctx.features.decodedNotes ?? []).filter((x) => x.len >= rule.longMs);
+  const onBed = (n) => held.some((h) => h.pitch === n.pitch && n.t > h.t + rule.sameMs && n.t < h.t + h.len);
+  const source = (quiet && ctx.features.decodedShortNotes) || ctx.features.decodedNotes || [];
+  for (const n of source.filter((x) => x.len < rule.shortMs && x.vel >= rule.minVel && !onBed(x)).sort((x, y) => x.t - y.t)) {
     const last = out[out.length - 1];
     if (last && n.t - last.t < rule.sameMs) {
       last.voices++;
@@ -94,7 +100,7 @@ function keepMelodyOnly(notes, ctx, rule, timing) {
   const times = [...new Set(notes.map((n) => n.t))].sort((x, y) => x - y);
   const heldUntil = Math.max(-Infinity, ...kept.filter((n) => n.len > 0 && inWindow(n.t + n.len)).map((n) => n.t + n.len + beat / 4));
   const added = [];
-  for (const n of shortLine(ctx, rule).filter((x) => inWindow(x.t))) {
+  for (const n of shortLine(ctx, rule, true).filter((x) => inWindow(x.t))) {
     const t = nearestOf(times, n.t, rule.snapMs);
     if (t >= heldUntil && !(added.length && t <= added[added.length - 1].t)) added.push({ t, lane: 0 });
   }
@@ -161,7 +167,7 @@ function withShortLine(melody, ctx, rule) {
   const windows = melodyOnlyWindows(ctx, rule);
   if (windows.size === 0) return melody;
   const inWindow = (t) => windows.has(Math.floor(t / rule.windowMs));
-  const line = shortLine(ctx, rule).filter((n) => inWindow(n.t)).map(({ t, len, pitch }) => ({ t, len, pitch, conf: 1 }));
+  const line = shortLine(ctx, rule, true).filter((n) => inWindow(n.t)).map(({ t, len, pitch }) => ({ t, len, pitch, conf: 1 }));
   return [...(melody ?? []).filter((n) => !inWindow(n.t)), ...line].sort((a, b) => a.t - b.t);
 }
 

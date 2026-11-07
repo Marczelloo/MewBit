@@ -1,10 +1,12 @@
 // Decoded songs -> helpers/data/mewbeat/melody/<audio key file>.json, which the chart store reads (chartStore.js).
-// Usage: node scripts/mewbeat-melody/export.js <decoder output dir> [features dir] [melody dir]
+// Usage: node scripts/mewbeat-melody/export.js <decoder output dir> [features dir] [melody dir] [--short <dir>]
 // Each <decoder output dir>/<audio key file>.json is { notes: [[t, len, midi, vel, conf, onset, layer, ghost, wob]],
 // fg: [note indices] } (research decoder, decoder.py). Writes `notes`, the decoder's own foreground line, and `tuned`,
 // the line drawn again with line.js TUNED (Normal's melodyTuned). Both are shifted by the song's median offset to our
 // lead line, as the two detectors place a note's start differently. `all` keeps every decoded note as [t, len, pitch, velocity]
-// (sustain.js reads the long ones). `onsetShiftMs` is the shift to the nearest onset of any
+// (sustain.js reads the long ones). With --short, `short` keeps the short notes of a second decoder run at a lower onset
+// threshold (<dir>/<audio key file>.json, { notes: [[t, len, midi, vel]] }): a quiet line under a loud bed, which the
+// first run misses (REVOLVANIA 0:20-0:42, a low synth: 12 of the motif's 20 notes at .5, 17 at .35). `onsetShiftMs` is the shift to the nearest onset of any
 // of our layers (drums, bass, lead) instead, read with Normal's flag melodyOnsetShift: the lead's same-pitch matches are
 // few on some songs (Rude Buster, Camellia remix: its line sat 30 ms early on the grid), the onsets take 90% of the notes.
 const fs = require("node:fs");
@@ -12,7 +14,10 @@ const path = require("node:path");
 const { TUNED, foreground } = require("./line");
 
 const root = path.join(__dirname, "..", "..", "helpers", "data", "mewbeat");
-const [decDir, featDir = path.join(root, "features"), outDir = path.join(root, "melody")] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const shortAt = args.indexOf("--short");
+const shortDir = shortAt >= 0 ? args.splice(shortAt, 2)[1] : null;
+const [decDir, featDir = path.join(root, "features"), outDir = path.join(root, "melody")] = args;
 if (!decDir) {
   console.error("usage: node scripts/mewbeat-melody/export.js <decoder output dir> [features dir] [melody dir]");
   process.exit(1);
@@ -68,7 +73,9 @@ for (const file of fs.readdirSync(decDir).filter((f) => f.endsWith(".json"))) {
   const notes = fg.map(out);
   const tuned = foreground(d.notes, TUNED).map((i) => out(d.notes[i]));
   const all = d.notes.map((n) => [Math.round(n[0] + shift), Math.round(n[1]), n[2], Math.round(n[3] * 100) / 100]);
+  const shortFile = shortDir && path.join(shortDir, file);
+  const short = shortFile && fs.existsSync(shortFile) ? JSON.parse(fs.readFileSync(shortFile, "utf8")).notes.map(([t, len, midi, vel]) => [Math.round(t + shift), len, midi, vel]) : null;
   const source = "basic-pitch foreground line (research decoder, decoder.py); tuned: scripts/mewbeat-melody/line.js TUNED";
-  fs.writeFileSync(path.join(outDir, file), JSON.stringify({ source, shiftMs: Math.round(shift), onsetShiftMs: Math.round(onsetShift), notes, tuned, all }));
+  fs.writeFileSync(path.join(outDir, file), JSON.stringify({ source, shiftMs: Math.round(shift), onsetShiftMs: Math.round(onsetShift), notes, tuned, all, ...(short ? { short } : {}) }));
   console.log(file, "notes", notes.length, "tuned", tuned.length, "shift", Math.round(shift), "onset shift", Math.round(onsetShift));
 }

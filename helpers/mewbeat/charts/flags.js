@@ -35,8 +35,9 @@ const FLAGS = {
     levels: { normal: { sustainHolds: { longMs: 800, minVel: 0.4, joinMs: 250, headMs: 150, releaseBeats: 0.25, minBeats: 1, drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 } } } },
   },
   // Normal plays the decoder's short-note line alone where it runs over a held bed in a loud passage of 8 s or more
-  // (sustain.js keepMelodyOnly): REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear. A rule, no song named:
-  // it fires on 5 of 36 bot songs (REVOLVANIA 0:20-0:40, GHOST 4:24-4:32, MEGALOVANIA Camellia 4:36-4:44, Live My Life
+  // (sustain.js keepMelodyOnly): REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear. The line comes from the
+  // decoder's low-threshold run where the melody file has one (60 of the motif's 77 notes in 0:20-0:40, the first run 38).
+  // A rule, no song named: it fires on 5 of 36 bot songs (REVOLVANIA 0:20-0:40, GHOST 4:24-4:32, MEGALOVANIA Camellia 4:36-4:44, Live My Life
   // 0:32-0:40, FIRESTARTER 2:04-2:12) and on 1 of 78 train songs, too few to say what people play there: the ear decides.
   melodyOnly: {
     label: "Sama melodia nad długim basem",

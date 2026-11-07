@@ -84,6 +84,16 @@ describe("the short-note line alone over a held bed (flag melodyOnly)", () => {
     assert.deepEqual(out.filter((n) => n.t < 8000 || n.t >= 24000), notes.filter((n) => n.t < 8000 || n.t >= 24000));
   });
 
+  it("finds the passage on the first run and plays the low-threshold run's line, without the bed's retriggers", () => {
+    const ctx = ctxOf(8000, 24000);
+    const quiet = every(200, 8000, 24000).map(({ t }) => ({ t, len: 100, pitch: 55, vel: 0.4 }));
+    ctx.features.decodedShortNotes = [...quiet, { t: 9100, len: 100, pitch: 40, vel: 0.9 }];
+    const notes = every(100, 0, 48000).map(({ t }) => ({ t, lane: 0 }));
+    const there = keepMelodyOnly(notes, ctx, MELODY, TIMING).filter((n) => n.t >= 8000 && n.t < 24000).map((n) => n.t);
+    assert.deepEqual(there, quiet.map((n) => n.t));
+    assert.deepEqual([...melodyOnlyWindows(ctx, MELODY)], [2, 3, 4, 5]);
+  });
+
   it("changes Normal alone, and only with the flag on", () => {
     const features = { ...makeLayeredFeatures(), decodedNotes: ctxOf(8000, 24000).features.decodedNotes };
     const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { melodyOnly: true }));

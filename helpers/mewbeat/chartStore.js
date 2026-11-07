@@ -163,7 +163,10 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
       // `onsetShiftMs`: the line's shift to our onsets, which flag melodyOnsetShift puts in place of `shiftMs`
       const shift = Number.isFinite(melody.onsetShiftMs) && Number.isFinite(melody.shiftMs) ? { decodedMelodyShift: melody.onsetShiftMs - melody.shiftMs } : {};
       // `all`: every decoded note as [t, len, pitch, velocity], which sustain.js reads for long notes
-      const all = Array.isArray(melody.all) ? { decodedNotes: melody.all.map(([t, len, pitch, vel]) => ({ t, len, pitch, vel })) } : {};
+      // `short`: the short notes of a run at a lower onset threshold, which sustain.js reads for a quiet line
+      const asNotes = (rows) => rows.map(([t, len, pitch, vel]) => ({ t, len, pitch, vel }));
+      const all = Array.isArray(melody.all) ? { decodedNotes: asNotes(melody.all) } : {};
+      if (Array.isArray(melody.short)) all.decodedShortNotes = asNotes(melody.short);
       return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}), ...shift, ...all };
     } catch {
       return features;
