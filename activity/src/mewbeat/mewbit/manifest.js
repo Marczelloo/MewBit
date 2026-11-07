@@ -24,10 +24,10 @@ export const MEWBIT_POSES = {
   vibe1: pose("vibe1", "game", run(64), 24, { rest: true, bubble: "nyaa~!" }),
   vibe2: pose("vibe2", "game", run(64), 24, { rest: true, bubble: "wooo!!" }),
   vibe3: pose("vibe3", "game", run(48), 24, { bubble: "SUGOI!!" }),
-  // These three fit MISS_POSE_MS, CRUSHED_POSE_MS and MILESTONE_POSE_MS in useMewbeatGame.js; crushed (hands
-  // over her eyes, sobbing) runs its full second and holds the last sob a little longer.
+  // These three fit MISS_POSE_MS, CRUSHED_POSE_MS and MILESTONE_POSE_MS in useMewbeatGame.js; crushed (a deeper
+  // miss: she sinks, head down, the gloom over her brow) plays in under a second and holds the gloom.
   miss: pose("miss", "game", run(14), 24, { hold: true, bubble: "eep!" }),
-  crushed: pose("crushed", "game", run(36), 36, { hold: true, bubble: "nyoo… ;-;" }),
+  crushed: pose("crushed", "game", run(26), 30, { hold: true, bubble: "mou~" }),
   milestone: pose("milestone", "game", run(21), 24, { hold: true }),
   fever: pose("fever", "game", run(48), 24, { bubble: "FEVER!!! ✦" }),
   charting: pose("charting", "game", run(48), 12, { rest: true, bubble: "charting…" }),
