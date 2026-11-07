@@ -145,7 +145,12 @@ function playedSnapshots(sha) {
 
 function featuresOf(id) {
   if (isPreview(id)) return readJson(join(PREVIEW, `${previewSlug(id)}.json`)).features;
-  if (isPlayed(id)) return readJson(join(BOT_DATA, "features", `${playedSha(id)}.json`));
+  if (isPlayed(id)) {
+    // With the melody decoded offline for it, as the bot charts it (chartStore.js withDecodedMelody).
+    const features = readJson(join(BOT_DATA, "features", `${playedSha(id)}.json`));
+    const melody = join(BOT_DATA, "melody", `${playedSha(id)}.json`);
+    return existsSync(melody) ? require(join(CHARTS, "melodyFile.js")).withMelodyFile(features, readJson(melody)) : features;
+  }
   return readJson(join(DATA, "features", `${id}.json`));
 }
 

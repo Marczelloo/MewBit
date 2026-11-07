@@ -9,6 +9,7 @@ const { analysisClient } = require("./analysisClient");
 const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
 const { GENERATOR_VERSION, generateAll } = require("./charts/generate");
 const { FLAGS_FILE_NAME, flagsKey, normalFlags } = require("./charts/flags");
+const { withMelodyFile } = require("./charts/melodyFile");
 
 const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const MEMORY_CAPACITY = 16;
@@ -158,16 +159,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     if (!features) return features;
     try {
       const melody = JSON.parse(fs.readFileSync(path.join(dir, "melody", `${audioKeyFile(key)}.json`), "utf8"));
-      if (!Array.isArray(melody?.notes)) return features;
-      // `tuned`: the same decoder's line drawn denser and smoother (scripts/mewbeat-melody), which Normal reads;
-      // `onsetShiftMs`: the line's shift to our onsets, which flag melodyOnsetShift puts in place of `shiftMs`
-      const shift = Number.isFinite(melody.onsetShiftMs) && Number.isFinite(melody.shiftMs) ? { decodedMelodyShift: melody.onsetShiftMs - melody.shiftMs } : {};
-      // `all`: every decoded note as [t, len, pitch, velocity], which sustain.js reads for long notes
-      // `short`: the short notes of a run at a lower onset threshold, which sustain.js reads for a quiet line
-      const asNotes = (rows) => rows.map(([t, len, pitch, vel]) => ({ t, len, pitch, vel }));
-      const all = Array.isArray(melody.all) ? { decodedNotes: asNotes(melody.all) } : {};
-      if (Array.isArray(melody.short)) all.decodedShortNotes = asNotes(melody.short);
-      return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}), ...shift, ...all };
+      return withMelodyFile(features, melody);
     } catch {
       return features;
     }
