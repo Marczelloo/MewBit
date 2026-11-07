@@ -4,9 +4,9 @@ const { bridgeRests } = require("./bridges");
 const { withFittedBeats } = require("./beatFit");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { CALM_ENOUGH, calmLookup, shareOver } = require("./calm");
-const { holdQuietLone, limitChordShare, planChords } = require("./chords");
+const { holdQuietLone, limitChordShare, planChords, slowChords } = require("./chords");
 const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
-const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds } = require("./holds");
+const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds, slowHolds } = require("./holds");
 const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
@@ -391,7 +391,7 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
 }
 
 // Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
-const diffOf = (ctx, difficulty) => effectiveDifficulty(withFlags(levelOf(difficulty), difficulty, ctx.flags), ctx.busy);
+const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(withFlags(levelOf(difficulty), difficulty, ctx.flags), ctx.busy), ctx.timing), ctx.timing);
 
 const notesFor = (ctx, difficulty, trace = null) => {
   const diff = diffOf(ctx, difficulty);

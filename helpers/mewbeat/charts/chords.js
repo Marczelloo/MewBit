@@ -150,6 +150,22 @@ function giveBack(plan, m, limit, timing) {
   }
 }
 
+// slowChords(diff, timing) -> diff: with diff.chordSlow = { refBpm, power, max } a song slower than refBpm plays more chords. People's
+// beats are chords more often the slower the song (train: 77% of the beats at 100-120 BPM, 67% at 140-160, 38% at 180-200), the
+// rates here do not follow. The rates, the share and the 8-beat window all grow by (refBpm / bpm) ^ power, at most max.
+function slowChords(diff, timing) {
+  const rule = diff.chordSlow;
+  if (!rule || !diff.chordRates || !timing?.snapped || !(timing.medianMs > 0)) return diff;
+  const factor = clamp(Math.pow(rule.refBpm / (60000 / timing.medianMs), rule.power), 1, rule.max);
+  if (factor <= 1) return diff;
+  return {
+    ...diff,
+    chordRates: diff.chordRates.map((r) => r * factor),
+    maxChordShare: diff.maxChordShare ? Math.min(rule.maxShare ?? 0.5, diff.maxChordShare * factor) : diff.maxChordShare,
+    maxChordsPer8Beats: diff.maxChordsPer8Beats > 0 ? Math.round(diff.maxChordsPer8Beats * factor) : diff.maxChordsPer8Beats,
+  };
+}
+
 // planChords(notes, ctx, diff, upper) -> notes with every moment at the size it plays.
 // `upper` (rhythm.js) is the level above, for a level cut from it.
 function planChords(notes, ctx, diff, upper = null) {
@@ -268,4 +284,4 @@ function limitChordShare(notes, timing, diff) {
   return notes.filter((n) => !dropped.has(n));
 }
 
-module.exports = { holdQuietLone, limitChordShare, planChords };
+module.exports = { holdQuietLone, limitChordShare, planChords, slowChords };

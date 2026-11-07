@@ -244,7 +244,9 @@ function soloLeadRates(ctx, rule) {
 // quiet soloist later in the song (soloLeadRates) keeps diff.soloLead.share of its line. With diff.tempoBudget = { refBpm,
 // power } the music's rate is times (bpm / refBpm) ^ -power: people's Normal plays about 4.3 moments a second at any tempo,
 // where the fitted rate follows the beats (train, loud parts over 190 BPM: people 4.98, Normal 5.68). A budget is a limit; selectMoments
-// leaves it unused where the music has less to offer.
+// leaves it unused where the music has less to offer. With diff.slowDynamics = { belowBpm, delta } a song slower than belowBpm
+// stretches its phrases' rates less round the song's (BUDGET.delta): people's quiet parts of slow songs are denser against
+// the loud ones than the generator's (train, 115-145 BPM, Normal: quiet 2.00 / loud 4.79 moments a second, people 3.26 / 4.68).
 function phraseBudget(phrase, ctx, diff) {
   const { fitted, song, seconds: played, openingEnd } = budgetModelOf(ctx, diff);
   const own = fitted[phrase.index];
@@ -253,7 +255,8 @@ function phraseBudget(phrase, ctx, diff) {
   if (!(song > 0) || !Number.isFinite(own)) return Math.min(most, Math.round(BUDGET.medianRate * seconds * diff.budgetScale));
   const bySong = Math.pow(song / BUDGET.refModel, BUDGET.gamma);
   const floor = phrase.index < openingEnd ? BUDGET.openingMinRatio : BUDGET.minRatio;
-  const byPhrase = Math.pow(clamp(own / song, floor, Infinity), BUDGET.delta);
+  const slow = diff.slowDynamics && ctx.timing?.snapped && ctx.timing.medianMs > 0 && 60000 / ctx.timing.medianMs < diff.slowDynamics.belowBpm;
+  const byPhrase = Math.pow(clamp(own / song, floor, Infinity), slow ? diff.slowDynamics.delta : BUDGET.delta);
   const lead = (diff.openingLead ?? 0) * openingLeadRates(ctx)[phrase.index] * seconds;
   const solo = (diff.soloLead?.share ?? 0) * soloLeadRates(ctx, diff.soloLead)[phrase.index] * seconds;
   const byTempo = diff.tempoBudget && ctx.timing?.medianMs > 0 ? Math.pow(60000 / ctx.timing.medianMs / diff.tempoBudget.refBpm, -diff.tempoBudget.power) : 1;

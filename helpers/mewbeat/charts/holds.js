@@ -541,4 +541,16 @@ function addGapHolds(notes, features, diff, timing, energy, limitMs = Infinity, 
   return out;
 }
 
-module.exports = { SHORT_HOLD_CLASS, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, spacedBlocked, underHoldFlagged };
+// slowHolds(diff, timing) -> diff: with diff.holdSlow = { belowBpm, minMs } a song slower than belowBpm gets the shortest hold
+// (holdMinBeats, sustainMinBeats) at most minMs long. The minimums are in beats, so a slow song's shortest hold is far longer in milliseconds than a fast
+// one's; people's holds on 115-145 BPM songs are 0.5 beat at the median (train), and the generator's one beat.
+function slowHolds(diff, timing) {
+  const rule = diff.holdSlow;
+  if (!rule || !timing?.snapped || !(timing.medianMs > 0) || 60000 / timing.medianMs >= rule.belowBpm) return diff;
+  const cap = rule.minMs / timing.medianMs;
+  const out = { ...diff };
+  for (const key of ["holdMinBeats", "sustainMinBeats"]) if (out[key] > cap) out[key] = cap;
+  return out;
+}
+
+module.exports = { SHORT_HOLD_CLASS, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, slowHolds, spacedBlocked, underHoldFlagged };
