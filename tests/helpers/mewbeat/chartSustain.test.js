@@ -28,14 +28,20 @@ const drumlessCtx = (decodedNotes) => ({
 describe("long notes held where no drums play (flag sustainHolds)", () => {
   const taps = every(250, 0, 12000).map(({ t }) => ({ t, lane: 0 }));
 
-  it("holds each long note of a legato line and drops the taps inside it", () => {
-    const ctx = drumlessCtx([{ t: 500, len: 2000, pitch: 40, vel: 0.8 }, { t: 2500, len: 2000, pitch: 38, vel: 0.8 }]);
+  it("holds each long note of a legato line, one hold per sound, and drops the taps inside it", () => {
+    const ctx = drumlessCtx([{ t: 500, len: 2000, pitch: 40, vel: 0.8 }, { t: 2500, len: 1000, pitch: 38, vel: 0.8 }, { t: 3600, len: 1000, pitch: 38, vel: 0.8 }]);
     const out = holdSustains(taps, ctx, HOLDS, TIMING);
     const holds = out.filter((n) => n.len > 0);
-    assert.deepEqual(holds.map((n) => n.t), [500, 2500]);
-    assert.ok(holds[0].t + holds[0].len + 250 <= 2500 - HOLDS.headMs, "the first lets go before the second's head");
-    assert.equal(out.filter((n) => n.t > 500 && n.t < 2500).length, 0);
+    assert.deepEqual(holds.map((n) => [n.t, n.t + n.len]), [[500, 2375], [2500, 4600]]);
+    assert.deepEqual(out.filter((n) => n.t >= 500 && n.t < 4700), holds);
     assert.deepEqual(out.filter((n) => n.t >= 6000), taps.filter((n) => n.t >= 6000));
+  });
+
+  it("plays one note a moment where it holds", () => {
+    const chords = [...taps, { t: 5000, lane: 2 }, { t: 9000, lane: 2 }];
+    const out = holdSustains(chords, drumlessCtx([{ t: 500, len: 2000, pitch: 40, vel: 0.8 }]), HOLDS, TIMING);
+    assert.equal(out.filter((n) => n.t === 5000).length, 1);
+    assert.equal(out.filter((n) => n.t === 9000).length, 2);
   });
 
   it("leaves long notes where the drums play, short or quiet ones, and a song with no decoded notes", () => {
@@ -53,28 +59,33 @@ describe("long notes held where no drums play (flag sustainHolds)", () => {
 });
 
 describe("the melody alone over a long bass (flag melodyOnly)", () => {
-  // 16 s, loud throughout: a long bass under 4-8 s only, a melody note every 500 ms.
-  const melody = every(500, 0, 16000, { pitch: 64 });
+  // 48 s, loud throughout: a long bass under 8-24 s only, a melody note every 1000 ms (the one at 10 s lasting 1.5 s, held up to the next).
+  const melody = every(1000, 0, 48000, { pitch: 64, len: 200 });
+  melody[10].len = 1500;
   const ctxOf = (bassFrom, bassTo) => ({
-    durationMs: 16000,
-    features: { durationMs: 16000, energy: { hopMs: 500, values: new Array(32).fill(0.9) }, decodedNotes: [{ t: bassFrom, len: bassTo - bassFrom, pitch: 40, vel: 0.8 }] },
+    durationMs: 48000,
+    features: { durationMs: 48000, energy: { hopMs: 500, values: new Array(96).fill(0.9) }, decodedNotes: [{ t: bassFrom, len: bassTo - bassFrom, pitch: 40, vel: 0.8 }] },
   });
 
-  it("finds the loud window held on a bass, not in a song held on it throughout", () => {
-    assert.deepEqual([...melodyOnlyWindows(ctxOf(4000, 8000), MELODY, melody)], [1]);
-    assert.equal(melodyOnlyWindows(ctxOf(0, 16000), MELODY, melody).size, 0);
-    assert.equal(melodyOnlyWindows(ctxOf(4000, 8000), MELODY, []).size, 0);
+  it("finds a loud passage held on a bass, not a lone bar of it nor a song held on it throughout", () => {
+    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 24000), MELODY, melody)], [2, 3, 4, 5]);
+    assert.equal(melodyOnlyWindows(ctxOf(8000, 12000), MELODY, melody).size, 0);
+    assert.equal(melodyOnlyWindows(ctxOf(0, 48000), MELODY, melody).size, 0);
+    assert.equal(melodyOnlyWindows(ctxOf(8000, 24000), MELODY, []).size, 0);
   });
 
-  it("keeps the melody's moments and the holds there, and everything elsewhere", () => {
-    const notes = [4250, 4500, 5000, 5100, 9250].map((t) => ({ t, lane: 0 }));
-    notes[3].len = 600;
-    assert.deepEqual(keepMelodyOnly(notes, ctxOf(4000, 8000), MELODY, melody).map((n) => n.t), [4500, 5000, 5100, 9250]);
+  it("plays the melody alone there, one note per melody note on the nearest moment, the long ones held", () => {
+    const notes = every(250, 0, 48000).map(({ t }) => ({ t: t + 30, lane: 0 }));
+    const out = keepMelodyOnly(notes, ctxOf(8000, 24000), MELODY, melody, TIMING);
+    const there = out.filter((n) => n.t >= 8000 && n.t < 24000);
+    assert.deepEqual(there.map((n) => n.t), Array.from({ length: 16 }, (_, i) => 8030 + i * 1000));
+    assert.deepEqual(there.filter((n) => n.len > 0).map((n) => [n.t, n.len]), [[10030, 875]]);
+    assert.deepEqual(out.filter((n) => n.t < 8000 || n.t >= 24000), notes.filter((n) => n.t < 8000 || n.t >= 24000));
   });
 
   it("changes Normal alone, and only with the flag on", () => {
     const features = makeLayeredFeatures();
-    const decoded = { ...features, decodedMelody: melody, decodedMelodyTuned: melody, decodedNotes: [{ t: 4000, len: 4000, pitch: 40, vel: 0.8 }] };
+    const decoded = { ...features, decodedMelody: melody, decodedMelodyTuned: melody, decodedNotes: [{ t: 8000, len: 16000, pitch: 40, vel: 0.8 }] };
     const plain = notesOf(generateAll(decoded, "k", {})), on = notesOf(generateAll(decoded, "k", { melodyOnly: true }));
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
     assert.equal(DIFFICULTIES.normal.melodyOnly, undefined);

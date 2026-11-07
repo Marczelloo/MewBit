@@ -6,8 +6,6 @@
 const { lowerBound } = require("./util");
 const { drumlessWindows } = require("./drumless");
 
-const NEAR_MS = 35; // the onset a note plays
-
 const longNotes = (ctx, rule) => (ctx.features.decodedNotes ?? []).filter((n) => n.len >= rule.longMs && n.vel >= rule.minVel && n.pitch < rule.lowBelow);
 
 // The share of each rule.windowMs window that long low notes (pitch under rule.lowBelow, at least rule.longMs, velocity
@@ -37,74 +35,114 @@ function coverOf(ctx, rule) {
 
 // The loud windows (energy at least rule.loudAbove) where long low notes cover rule.cover or more while the song's loud
 // windows are covered under rule.songCoverBelow at the median (a song held on a bass throughout has no such contrast),
-// and the melody starts rule.melodyPerSec notes a second or more; a loud window next to one with rule.edgeCover counts too.
+// and the melody starts rule.melodyPerSec notes a second or more, in runs of rule.minRun windows or longer (a passage,
+// not a bar: single windows fired on GHOST and cut holes in it); a loud window next to a run with rule.edgeCover counts too.
 function melodyOnlyWindows(ctx, rule, melody) {
   const { cover, energy } = coverOf(ctx, rule);
   const loud = cover.filter((_, w) => energy[w] >= rule.loudAbove).sort((a, b) => a - b);
   const out = new Set();
   if (!loud.length || !(loud[loud.length >> 1] < rule.songCoverBelow) || !melody?.length) return out;
   const starts = melody.map((n) => n.t).sort((a, b) => a - b), sec = rule.windowMs / 1000;
-  for (let w = 0; w < cover.length; w++) {
-    if (energy[w] < rule.loudAbove || cover[w] < rule.cover) continue;
-    const from = lowerBound(starts, w * rule.windowMs), to = lowerBound(starts, (w + 1) * rule.windowMs);
-    if ((to - from) / sec >= rule.melodyPerSec) out.add(w);
+  const held = cover.map((c, w) => {
+    if (energy[w] < rule.loudAbove || c < rule.cover) return false;
+    return (lowerBound(starts, (w + 1) * rule.windowMs) - lowerBound(starts, w * rule.windowMs)) / sec >= rule.melodyPerSec;
+  });
+  for (let w = 0; w < held.length; ) {
+    let end = w;
+    while (end < held.length && held[end]) end++;
+    if (end - w >= rule.minRun) {
+      for (let v = w; v < end; v++) out.add(v);
+      for (const v of [w - 1, end]) if (energy[v] >= rule.loudAbove && cover[v] >= rule.edgeCover) out.add(v);
+    }
+    w = Math.max(end, w + 1);
   }
-  // A passage's edge window, held a little less, goes with it.
-  for (const w of [...out]) for (const v of [w - 1, w + 1]) if (!out.has(v) && energy[v] >= rule.loudAbove && cover[v] >= rule.edgeCover) out.add(v);
   return out;
 }
 
-// keepMelodyOnly(notes, ctx, rule, melody) -> notes without the moments in a melodyOnlyWindows window that no melody note
-// starts within NEAR_MS of. Holds stay. rule = diff.melodyOnly; melody = the decoded melody the level reads, or null.
-function keepMelodyOnly(notes, ctx, rule, melody) {
+// The time nearest t among the sorted times within reach, or t.
+function nearestOf(times, t, reach) {
+  const i = lowerBound(times, t);
+  const best = [times[i - 1], times[i]].filter((x) => x !== undefined && Math.abs(x - t) <= reach).sort((a, b) => Math.abs(a - t) - Math.abs(b - t))[0];
+  return best ?? t;
+}
+
+// keepMelodyOnly(notes, ctx, rule, melody, timing) -> notes where every melodyOnlyWindows window plays the melody and nothing
+// else: one note per melody note, on the moment nearest it within rule.snapMs (or at the note), held when the note lasts
+// rule.holdBeats or more, to its end or rule.releaseBeats before the next one. A hold from before the window runs on.
+// rule = diff.melodyOnly; melody = the decoded melody the level reads, or null.
+function keepMelodyOnly(notes, ctx, rule, melody, timing) {
   if (!rule || !melody?.length) return notes;
   const windows = melodyOnlyWindows(ctx, rule, melody);
   if (windows.size === 0) return notes;
-  const starts = melody.map((n) => n.t).sort((a, b) => a - b);
-  const plays = (t) => {
-    const i = lowerBound(starts, t - NEAR_MS);
-    return i < starts.length && starts[i] <= t + NEAR_MS;
-  };
-  const dropped = new Set(notes.filter((n) => !(n.len > 0) && windows.has(Math.floor(n.t / rule.windowMs)) && !plays(n.t)).map((n) => n.t));
-  const held = new Set(notes.filter((n) => n.len > 0).map((n) => n.t));
-  return dropped.size ? notes.filter((n) => !dropped.has(n.t) || held.has(n.t)) : notes;
+  const beat = timing?.medianMs > 0 ? timing.medianMs : 500, release = beat * rule.releaseBeats;
+  const inWindow = (t) => windows.has(Math.floor(t / rule.windowMs));
+  const kept = notes.filter((n) => !inWindow(n.t));
+  const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
+  const heldUntil = Math.max(-Infinity, ...kept.filter((n) => n.len > 0).map((n) => n.t + n.len + release).filter((end) => windows.has(Math.floor(end / rule.windowMs))));
+  const line = melody.filter((n) => inWindow(n.t)).sort((a, b) => a.t - b.t);
+  const heads = line.map((n) => nearestOf(times, n.t, rule.snapMs));
+  const added = [];
+  line.forEach((n, i) => {
+    const t = heads[i];
+    if (t < heldUntil || (added.length && t <= added[added.length - 1].t)) return;
+    const end = Math.min(n.t + (n.len ?? 0), i + 1 < line.length ? heads[i + 1] - release : Infinity);
+    added.push(n.len >= beat * rule.holdBeats && end - t >= beat ? { t, lane: 0, len: Math.round(end - t) } : { t, lane: 0 });
+  });
+  return [...kept, ...added].sort((a, b) => a.t - b.t);
 }
 
-// holdSustains(notes, ctx, rule, timing) -> notes where each long note (at least rule.longMs, velocity rule.minVel, any
-// pitch) starting in a drumless window (drumless.js, rule.drumless; a lone window between two such counts too, a cymbal
-// does not end the passage) is held: the moment nearest its start within rule.headMs becomes a hold, or a tap is put at the
-// start, and the moments inside the hold go (our onsets hear the brass's attack up to 130 ms before the decoder's pitch).
-// The hold lets go rule.releaseBeats after it, or before the next long note, and is kept only if it lasts rule.minBeats.
-// A note that starts inside an earlier hold is left as it is.
+// Long decoded notes of rule.longMs or more (velocity rule.minVel), one sound split in two joined: the next starts within
+// rule.joinMs of the end on the same pitch.
+function longLine(ctx, rule) {
+  const out = [];
+  for (const n of (ctx.features.decodedNotes ?? []).filter((x) => x.vel >= rule.minVel).sort((a, b) => a.t - b.t)) {
+    const last = out[out.length - 1];
+    if (last && n.t >= last.t + last.len - rule.joinMs && n.t <= last.t + last.len + rule.joinMs && n.pitch === last.pitch) last.len = Math.max(last.len, n.t + n.len - last.t);
+    else out.push({ ...n });
+  }
+  return out.filter((n) => n.len >= rule.longMs);
+}
+
+// holdSustains(notes, ctx, rule, timing) -> notes where each long note (longLine) starting in a drumless window
+// (drumless.js, rule.drumless; a lone window between two such counts too, a cymbal does not end the passage) is held: the
+// moment nearest its start within rule.headMs becomes a hold, or one is put at the start, and the moments from rule.headMs
+// before it to its release go (our onsets hear the brass's attack up to 130 ms before the decoder's pitch). The hold runs
+// to the note's end or rule.releaseBeats before the next long note's head, and is kept only if it lasts rule.minBeats. A
+// note that starts inside an earlier hold is left as it is. Where such a passage plays (a drumless window with a hold), a
+// moment is one note: a lone instrument plays no chords.
 function holdSustains(notes, ctx, rule, timing) {
   if (!rule) return notes;
   const windows = drumlessWindows(ctx, rule.drumless);
   if (windows.size === 0) return notes;
-  const beat = timing?.medianMs > 0 ? timing.medianMs : 500;
+  const beat = timing?.medianMs > 0 ? timing.medianMs : 500, release = beat * rule.releaseBeats;
+  const windowOf = (t) => Math.floor(t / rule.drumless.windowMs);
   const quiet = (w) => windows.has(w) || (windows.has(w - 1) && windows.has(w + 1));
-  const sustains = (ctx.features.decodedNotes ?? [])
-    .filter((n) => n.len >= rule.longMs && n.vel >= rule.minVel && quiet(Math.floor(n.t / rule.drumless.windowMs)))
-    .sort((a, b) => a.t - b.t);
-  const release = beat * rule.releaseBeats;
+  const sustains = longLine(ctx, rule).filter((n) => quiet(windowOf(n.t)));
   let out = [...notes].sort((a, b) => a.t - b.t);
   let heldUntil = -Infinity; // where the last hold let go, with its release
+  const passages = new Set();
+  const headOf = (s) => nearestOf([...new Set(out.map((n) => n.t))], s.t, rule.headMs);
   sustains.forEach((s, i) => {
-    const times = [...new Set(out.map((n) => n.t))];
-    const near = times.filter((t) => Math.abs(t - s.t) <= rule.headMs).sort((a, b) => Math.abs(a - s.t) - Math.abs(b - s.t));
-    const head = near[0] ?? s.t;
-    if (head < heldUntil || out.some((n) => n.len > 0 && n.t < head && n.t + n.len >= head - release)) return;
+    const head = headOf(s);
+    if (head < heldUntil || out.some((n) => n.len > 0 && n.t < head && n.t + n.len > head - release)) return;
     // A legato line: the hold lets go before the next long note's head, so that one is held too.
     const after = sustains.slice(i + 1).find((x) => x.t - rule.headMs > head + beat * rule.minBeats + release);
-    const end = Math.min(s.t + s.len, after ? after.t - rule.headMs - release : Infinity);
+    const end = Math.min(s.t + s.len, after ? headOf(after) - release : Infinity);
     if (end - head < beat * rule.minBeats) return;
-    const inside = (t) => t > head && t < end + release;
-    const kept = out.filter((n) => !inside(n.t));
-    const atHead = kept.filter((n) => n.t === head);
-    const hold = { ...(atHead[0] ?? { t: head, lane: 0 }), len: Math.round(end - head) };
-    out = [...kept.filter((n) => n.t !== head), hold].sort((a, b) => a.t - b.t);
+    const inside = (t) => t >= Math.min(head, s.t - rule.headMs) && t < end + release;
+    const hold = { ...(out.find((n) => n.t === head) ?? { t: head, lane: 0 }), len: Math.round(end - head) };
+    out = [...out.filter((n) => !inside(n.t)), hold].sort((a, b) => a.t - b.t);
+    passages.add(windowOf(head));
     heldUntil = end + release;
   });
-  return out;
+  if (!passages.size) return out;
+  const played = new Set();
+  return out.filter((n) => {
+    if (!quiet(windowOf(n.t)) || ![...passages].some((w) => Math.abs(w - windowOf(n.t)) <= 2)) return true;
+    if (played.has(n.t)) return false;
+    played.add(n.t);
+    return true;
+  });
 }
 
 module.exports = { coverOf, melodyOnlyWindows, keepMelodyOnly, holdSustains };
