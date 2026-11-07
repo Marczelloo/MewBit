@@ -89,6 +89,13 @@ describe("a quiet pad's chords held, the lane moving with the pitch (flag sustai
     assert.deepEqual(padLanes(holds(3), padCtx(chords), PADS, TIMING).map((n) => n.lane), [3, 2]);
   });
 
+  it("steps the lane too for a chord in a lone window with a few hats between two quiet ones", () => {
+    const ctx = padCtx([{ t: 500, len: 1900, pitch: 48, vel: 0.5 }, { t: 2600, len: 2000, pitch: 50, vel: 0.5 }]);
+    ctx.features.bands[2].onsets.unshift(...[2100, 2600, 3100].map((t) => ({ t, s: 0.5 })));
+    const holds = [{ t: 500, lane: 2, len: 1975 }, { t: 2600, lane: 2, len: 2000 }];
+    assert.deepEqual(padLanes(holds, ctx, PADS, TIMING).map((n) => n.lane), [2, 3]);
+  });
+
   it("changes Normal alone, and only with the flag on", () => {
     const features = { ...makeLayeredFeatures(), decodedNotes: chords };
     const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { sustainPads: true }));

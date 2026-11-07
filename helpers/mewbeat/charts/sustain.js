@@ -210,6 +210,17 @@ function padLine(ctx, rule) {
   return out.filter((c) => c.end - c.t >= rule.longMs).map(({ t, end, pitch, vel }) => ({ t, len: end - t, pitch, vel }));
 }
 
+const quietIn = (set, w) => set.has(w) || (set.has(w - 1) && set.has(w + 1)); // a lone window between two counts too
+
+// The chords of padLine that start in a quiet pad (padWindows), not where the drums stop (drumless.js): there the long
+// notes are held one by one.
+function padChords(ctx, rule) {
+  const pads = padWindows(ctx, rule);
+  if (pads.size === 0) return [];
+  const drumless = drumlessWindows(ctx, rule.drumless), windowOf = (t) => Math.floor(t / rule.drumless.windowMs);
+  return padLine(ctx, rule).filter((n) => !quietIn(drumless, windowOf(n.t)) && quietIn(pads, windowOf(n.t)));
+}
+
 // holdSustains(notes, ctx, rule, timing) -> notes where each long note (longLine) starting in a drumless window
 // (drumless.js, rule.drumless; a lone window between two such counts too, a cymbal does not end the passage) is held: the
 // moment nearest its start within rule.headMs becomes a hold, or one is put at the start, and the moments from rule.headMs
@@ -226,13 +237,8 @@ function holdSustains(notes, ctx, rule, timing) {
   if (windows.size === 0) return notes;
   const beat = timing?.medianMs > 0 ? timing.medianMs : 500, release = beat * rule.releaseBeats;
   const windowOf = (t) => Math.floor(t / rule.drumless.windowMs);
-  const quietIn = (set, w) => set.has(w) || (set.has(w - 1) && set.has(w + 1));
   const quiet = (w) => quietIn(windows, w);
-  const padded = (t) => !quietIn(drumless, windowOf(t)) && quietIn(pads, windowOf(t));
-  const sustains = [
-    ...longLine(ctx, rule).filter((n) => quietIn(drumless, windowOf(n.t))),
-    ...(pads.size ? padLine(ctx, rule).filter((n) => padded(n.t)) : []),
-  ].sort((a, b) => a.t - b.t);
+  const sustains = [...longLine(ctx, rule).filter((n) => quietIn(drumless, windowOf(n.t))), ...(pads.size ? padChords(ctx, rule) : [])].sort((a, b) => a.t - b.t);
   let out = [...notes].sort((a, b) => a.t - b.t);
   let heldUntil = -Infinity; // where the last hold let go, with its release
   const passages = new Set();
@@ -260,19 +266,18 @@ function holdSustains(notes, ctx, rule, timing) {
   });
 }
 
-// padLanes(notes, ctx, rule) -> notes with the lanes laid, where each hold of a quiet pad (padWindows) that follows another
+// padLanes(notes, ctx, rule) -> notes with the lanes laid, where each hold of a pad chord (padChords) that follows another
 // within PAD_CHAIN_BEATS steps from its lane the way the held note's pitch moves: one lane, two for a fifth or more, back the other
 // way at the edge; the same pitch keeps the lane. The lane search cannot: the chords change every 2 s or so, further than
 // the melody it reads looks back. Nothing else plays inside those holds (holdSustains), so a lane may change freely.
 function padLanes(notes, ctx, rule, timing) {
   if (!rule?.pad) return notes;
-  const windows = padWindows(ctx, rule);
-  if (windows.size === 0) return notes;
+  const sustains = padChords(ctx, rule);
+  if (sustains.length === 0) return notes;
   const beat = timing?.medianMs > 0 ? timing.medianMs : 500;
-  const sustains = padLine(ctx, rule);
   let last = null; // the pad hold before: { end, lane, pitch }
   return [...notes].sort((a, b) => a.t - b.t).map((n) => {
-    const s = n.len > 0 && windows.has(Math.floor(n.t / rule.drumless.windowMs)) ? sustains.find((x) => Math.abs(x.t - n.t) <= rule.headMs) : undefined;
+    const s = n.len > 0 ? sustains.find((x) => Math.abs(x.t - n.t) <= rule.headMs) : undefined;
     if (!s) return n;
     let lane = n.lane;
     const chained = last && n.t - last.end <= beat * PAD_CHAIN_BEATS;
