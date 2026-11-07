@@ -13,6 +13,7 @@ const { withMergedLead } = require("./legato");
 const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
+const { holdSung, leadOutsideSung, outsideSung, withMusic } = require("./musicFirst");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
@@ -114,6 +115,12 @@ const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENER
 // With diff.melodyOnsetShift it is moved by features.decodedMelodyShift (chartStore.js: the export's shift to the onsets of
 // all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once.
 function decodedMelodyOf(ctx, diff) {
+  const line = shiftedMelodyOf(ctx, diff);
+  // diff.musicFirst: in a sung phrase nothing follows the melody (musicFirst.js): no bonus on its notes, no lane direction.
+  return diff.musicFirst ? outsideSung(line, ctx, diff.musicFirst) : line;
+}
+
+function shiftedMelodyOf(ctx, diff) {
   const { decodedMelody, decodedMelodyTuned, decodedMelodyShift } = ctx.features;
   const line = diff.melodyTuned && Array.isArray(decodedMelodyTuned) ? decodedMelodyTuned : Array.isArray(decodedMelody) ? decodedMelody : null;
   if (!line || !diff.melodyOnsetShift || !Number.isFinite(decodedMelodyShift) || decodedMelodyShift === 0) return line;
@@ -125,6 +132,11 @@ function decodedMelodyOf(ctx, diff) {
 // The moments a level that picks from the music scores, with the second detector's melody raised (diff.melodyPick,
 // melodyPick.js) where one was decoded (chartStore.js). Kept on the ctx, as every phrase asks.
 function scoredFor(ctx, diff) {
+  const picked = melodyScoredFor(ctx, diff);
+  return diff.musicFirst ? withMusic(picked, ctx, diff.musicFirst) : picked;
+}
+
+function melodyScoredFor(ctx, diff) {
   const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const melody = decodedMelodyOf(ctx, diff);
   if (!diff.melodyPick || !melody) return scored;
@@ -355,7 +367,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const accented = diff.firstSound ? step("firstSound", sectioned, openWithFirstSound(sectioned, ctx.onsets, diff, ctx.timing, ctx.energy)) : sectioned;
   const upper = upperRhythm(ctx, diff);
   const inside = upper ? step("nested", accented, nested(accented, upper)) : accented;
-  const released = step("settleHolds", inside, settleHolds(inside, diff, ctx.timing, ctx.durationMs));
+  const sung = diff.musicFirst?.minBeats ? step("holdSung", inside, holdSung(inside, ctx, diff.musicFirst, ctx.timing, sustained)) : inside;
+  const released = step("settleHolds", sung, settleHolds(sung, diff, ctx.timing, ctx.durationMs));
   // With the holds let go, a rest is what the player feels: a mini rest keeps its best moment (bridges.js).
   const settled = diff.restBridge
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
@@ -379,7 +392,7 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   // diff.melodyLine: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.
   // With diff.melodyOnly, the windows it rewrites follow its short-note line instead (sustain.js).
-  const line = diff.melodyLine ? decodedMelodyOf(ctx, diff) : null;
+  const line = diff.melodyLine ? decodedMelodyOf(ctx, diff) ?? (diff.musicFirst ? leadOutsideSung(ctx, diff.musicFirst) : null) : null;
   const decoded = line && diff.melodyOnly ? withShortLine(line, ctx, diff.melodyOnly) : line;
   const laneCtx = decoded ? { ...ctx, features: { ...ctx.features, melodyLine: decoded } } : ctx;
   const searched = step("lanes", chorded, layLanes(chorded, laneCtx, diff, upper));
