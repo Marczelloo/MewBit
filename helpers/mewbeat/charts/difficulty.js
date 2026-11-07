@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 40;
+const GENERATOR_VERSION = 41;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -84,6 +84,22 @@ const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
 // around, v39 21%, this 41%. Dropping every off-beat moment where the energy falls under `deep` of the level around, as
 // the user heard it, costs train F1 .8018 -> .8005 and test .8337 -> .8309.
 const DIP_THIN = { drop: 0.7, level: 0.3, below: 0.7, offBeatBelow: 0.9, deep: 0.6 };
+// sustain.js holdSustains: Normal holds the decoder's long notes where no drum kit plays (REVOLVANIA's opening brass, one
+// hold per sound), and the chords of a quiet pad where the hats and cymbals stop though something still beats, the lane
+// moving with the pitch (padWindows, padLine, padLanes: GHOST 2:06-2:16 organs). Both asked for by ear; the corpus does
+// not back the pads (in their windows people hold 18% of the time, and play more taps). Train F1 .8024 -> .8020, 16 of 78
+// songs changed, Easy, Hard and Hell none. Songs with no melody file (no decoded notes) are charted as before. Played and approved in
+// v41 (flags sustainHolds and sustainPads).
+const SUSTAIN_HOLDS = {
+  longMs: 800,
+  minVel: 0.35,
+  joinMs: 250,
+  headMs: 150,
+  releaseBeats: 0.25,
+  minBeats: 1,
+  drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 },
+  pad: { highBelow: 1, quietBelow: 0.6 },
+};
 // fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
@@ -264,6 +280,7 @@ const DIFFICULTIES = {
     twoKeyTrill: TWO_KEY_TRILL,
     melodyRuns: MELODY_RUNS,
     dipThin: DIP_THIN,
+    sustainHolds: SUSTAIN_HOLDS, // from v41, with the pads
   },
   hard: {
     grammar: "hard",
@@ -372,6 +389,7 @@ module.exports = {
   QUIET_LONE,
   SOLO_LEAD,
   STAIRS,
+  SUSTAIN_HOLDS,
   TWO_KEY_TRILL,
   BEAT_INTERVAL_TOLERANCE,
   BEAT_TOLERANCE_MS,

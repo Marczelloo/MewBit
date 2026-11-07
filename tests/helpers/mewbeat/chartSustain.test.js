@@ -7,7 +7,8 @@ const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { holdSustains, keepMelodyOnly, melodyOnlyWindows, padLanes } = require("../../../helpers/mewbeat/charts/sustain");
 const { makeLayeredFeatures } = require("./fixtures");
 
-const HOLDS = FLAGS.sustainHolds.levels.normal.sustainHolds;
+const HOLDS = DIFFICULTIES.normal.sustainHolds;
+const { pad: _pad, ...NO_PAD } = HOLDS;
 const MELODY = FLAGS.melodyOnly.levels.normal.melodyOnly;
 const TIMING = { medianMs: 500 };
 const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
@@ -25,7 +26,7 @@ const drumlessCtx = (decodedNotes) => ({
   },
 });
 
-describe("long notes held where no drums play (flag sustainHolds)", () => {
+describe("long notes held where no drums play (sustainHolds, v41)", () => {
   const taps = every(250, 0, 12000).map(({ t }) => ({ t, lane: 0 }));
 
   it("holds each long note of a legato line, one hold per sound, and drops the taps inside it", () => {
@@ -50,16 +51,22 @@ describe("long notes held where no drums play (flag sustainHolds)", () => {
     assert.deepEqual(holdSustains(taps, drumlessCtx(undefined), HOLDS, TIMING), taps);
   });
 
-  it("changes Normal alone, and only with the flag on", () => {
+  it("is part of Normal alone (v41): Easy, Hard and Hell are charted as without it", () => {
     const features = { ...makeLayeredFeatures(), decodedNotes: [{ t: 2000, len: 3000, pitch: 40, vel: 0.8 }] };
-    const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { sustainHolds: true }));
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.equal(DIFFICULTIES.normal.sustainHolds, undefined);
+    const on = notesOf(generateAll(features, "k"));
+    DIFFICULTIES.normal.sustainHolds = undefined;
+    try {
+      const off = notesOf(generateAll(features, "k"));
+      for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], off[level], level);
+    } finally {
+      DIFFICULTIES.normal.sustainHolds = HOLDS;
+    }
+    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].sustainHolds, undefined, level);
   });
 });
 
-describe("a quiet pad's chords held, the lane moving with the pitch (flag sustainPads)", () => {
-  const PADS = FLAGS.sustainPads.levels.normal.sustainHolds;
+describe("a quiet pad's chords held, the lane moving with the pitch (sustainHolds.pad, v41)", () => {
+  const PADS = HOLDS;
   const taps = every(250, 0, 12000).map(({ t }) => ({ t, lane: 0 }));
   // 12 s: the high-mid busy throughout (not drumless), no hats or cymbals and a quiet energy under 6 s, loud after.
   const padCtx = (decodedNotes) => ({
@@ -80,7 +87,7 @@ describe("a quiet pad's chords held, the lane moving with the pitch (flag sustai
     const out = holdSustains(taps, padCtx(chords), PADS, TIMING);
     assert.deepEqual(out.filter((n) => n.len > 0).map((n) => [n.t, n.t + n.len]), [[500, 3875], [4000, 6000]]);
     assert.deepEqual(out.filter((n) => n.t >= 6125), taps.filter((n) => n.t >= 6125));
-    assert.deepEqual(holdSustains(taps, padCtx(chords), HOLDS, TIMING), taps);
+    assert.deepEqual(holdSustains(taps, padCtx(chords), NO_PAD, TIMING), taps);
   });
 
   it("starts a new hold where the next bass note comes in just before the one under it lets go", () => {
@@ -102,11 +109,9 @@ describe("a quiet pad's chords held, the lane moving with the pitch (flag sustai
     assert.deepEqual(padLanes(holds, ctx, PADS, TIMING).map((n) => n.lane), [2, 3]);
   });
 
-  it("changes Normal alone, and only with the flag on", () => {
-    const features = { ...makeLayeredFeatures(), decodedNotes: chords };
-    const plain = notesOf(generateAll(features, "k", {})), on = notesOf(generateAll(features, "k", { sustainPads: true }));
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
-    assert.deepEqual(PADS, { ...HOLDS, minVel: 0.35, pad: { highBelow: 1, quietBelow: 0.6 } });
+  it("is Normal's setting from v41", () => {
+    assert.deepEqual(PADS.pad, { highBelow: 1, quietBelow: 0.6 });
+    assert.equal(PADS.minVel, 0.35);
   });
 });
 
