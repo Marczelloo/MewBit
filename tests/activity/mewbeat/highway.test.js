@@ -6,9 +6,10 @@ const { pathToFileURL } = require("node:url");
 let approachMsFor;
 let noteY;
 let tempoScrollFactor;
+let scrollFactor;
 
 test.before(async () => {
-  ({ approachMsFor, noteY, tempoScrollFactor } = await import(
+  ({ approachMsFor, noteY, scrollFactor, tempoScrollFactor } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/highway.js")).href
   ));
 });
@@ -38,4 +39,13 @@ test("tempoScrollFactor follows the tempo gently, within bounds", () => {
   assert.ok(Math.abs(tempoScrollFactor(150) - Math.sqrt(150 / 120)) < 1e-9);
   assert.equal(tempoScrollFactor(200), 1.2);
   assert.equal(tempoScrollFactor(70), 1);
+});
+
+test("scrollFactor takes the larger of the tempo's and the pace's nudge, within the same bounds", () => {
+  assert.ok(Math.abs(scrollFactor({ bpm: 132, pace: 6 }) - Math.sqrt(6 / 4.2)) < 1e-9);
+  assert.equal(scrollFactor({ bpm: 220, pace: 4 }), 1.2);
+  assert.equal(scrollFactor({ bpm: 90, pace: 3 }), 1);
+  assert.equal(scrollFactor({ bpm: 100, pace: 20 }), 1.2);
+  assert.equal(scrollFactor({ bpm: 132 }), tempoScrollFactor(132));
+  assert.equal(scrollFactor(null), 1);
 });

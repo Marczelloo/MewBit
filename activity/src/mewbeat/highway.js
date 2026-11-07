@@ -16,6 +16,16 @@ export function tempoScrollFactor(bpm) {
   return Math.min(TEMPO_FACTOR_MAX, Math.max(TEMPO_FACTOR_MIN, Math.sqrt(bpm / TEMPO_BASE_BPM)));
 }
 
+// The same nudge from how busy the song plays (chart.pace, chartStore.js: Normal's moments a second in its busier parts),
+// taken where it is the larger: a dense song at a middling tempo falls like a fast one (Rude Buster, 132 BPM, 6 a
+// second: 1.20 rather than 1.05). A pace at a typical Normal's 4.2 keeps the speed.
+const PACE_BASE = 4.2;
+export function scrollFactor(chart) {
+  const pace = chart?.pace;
+  const byPace = Number.isFinite(pace) && pace > 0 ? Math.min(TEMPO_FACTOR_MAX, Math.max(TEMPO_FACTOR_MIN, Math.sqrt(pace / PACE_BASE))) : 1;
+  return Math.max(tempoScrollFactor(chart?.bpm), byPace);
+}
+
 // Vertical position of a note: 0 at the top when it is approachMs away, hitLineY on the line,
 // below it once it is past.
 export function noteY(t, heardMs, approachMs, hitLineY) {

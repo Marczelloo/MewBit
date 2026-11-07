@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { effectiveEffects } from "./effects.js";
-import { approachMsFor, createHighwayRenderer, tempoScrollFactor } from "./highway.js";
+import { approachMsFor, createHighwayRenderer, scrollFactor } from "./highway.js";
 import { SOUND_URLS } from "./sfx/index.js";
 import { createSounds } from "./sounds.js";
 import { hitSoundOf } from "./hitSounds.js";
@@ -412,7 +412,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         failSwap();
         return;
       }
-      const tempo = cfgRef.current.tempoScroll === false ? 1 : tempoScrollFactor(chartRef.current?.bpm);
+      const tempo = cfgRef.current.tempoScroll === false ? 1 : scrollFactor(chartRef.current);
       const approachMs = Math.floor(approachMsFor(cfgRef.current.scrollSpeed) / tempo);
       if (!run.swapChart(chart, songMs, approachMs)) {
         failSwap();
@@ -689,7 +689,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       const run = runRef.current;
       const current = phaseRef.current;
       const renderer = rendererRef.current;
-      const tempo = cfgRef.current.tempoScroll === false ? 1 : tempoScrollFactor(chartRef.current?.bpm);
+      const tempo = cfgRef.current.tempoScroll === false ? 1 : scrollFactor(chartRef.current);
       const approachMs = Math.floor(approachMsFor(cfgRef.current.scrollSpeed) / tempo);
 
       function drawRun(heardMs) {

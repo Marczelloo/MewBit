@@ -76,6 +76,16 @@ describe("mewbeat chart store", () => {
     assert.ok(fs.existsSync(chartsPath()));
   });
 
+  it("gives every level the pace of Normal's busier windows, and keeps it off the file", async () => {
+    const { charts } = await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
+    const times = [...new Set(charts.normal.notes.map((n) => n.t))].sort((a, b) => a - b);
+    const counts = [];
+    for (let from = times[0]; from <= times[times.length - 1]; from += 4000) counts.push(times.filter((t) => t >= from && t < from + 4000).length / 4);
+    const pace = counts.sort((a, b) => a - b)[Math.floor(counts.length * 0.75)];
+    for (const level of ["easy", "normal", "hard", "hell"]) assert.strictEqual(charts[level].pace, pace, level);
+    assert.strictEqual(JSON.parse(fs.readFileSync(chartsPath(), "utf8")).normal.pace, undefined);
+  });
+
   it("serves charts from disk to a fresh store without analysing", async () => {
     await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
     const analysis = fakeAnalysis();
@@ -111,7 +121,8 @@ describe("mewbeat chart store", () => {
     assert.ok(charts.normal.notes.length > 0);
     const backups = fs.readdirSync(chartsDir()).filter((name) => name.includes(".corrupt-"));
     assert.strictEqual(backups.length, 1);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(chartsPath(), "utf8")), charts);
+    const unpaced = Object.fromEntries(Object.entries(charts).map(([level, { pace: _pace, ...chart }]) => [level, chart]));
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(chartsPath(), "utf8")), unpaced);
   });
 
   it("treats charts for other audio as corrupt", async () => {

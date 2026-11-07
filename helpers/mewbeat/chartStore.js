@@ -50,6 +50,29 @@ function parseChartsFile(text, key) {
 // Group 1 is the generator version, whatever flags follow it. `.corrupt-` backups end differently and never match.
 const VERSIONED_CHART_FILE = /\.v(\d+)(?:-[\w-]+)?\.json$/;
 
+// How busy a song plays: Normal's moments a second in its busier 4 s windows (the 75th percentile), one number for every
+// level, so the activity's fall speed follows it and a live change of level does not change the speed. The tempo alone
+// undersold a dense song at a middling tempo: Rude Buster (Camellia, 132 BPM) plays 6 moments a second there like GHOST
+// (220 BPM), yet fell 14% slower. Added as the charts enter the memory cache, not stored: charts on disk stay as generated.
+const PACE_WINDOW_MS = 4000;
+function paceOf(notes) {
+  const times = [...new Set((notes ?? []).map((n) => n.t))].sort((a, b) => a - b);
+  if (times.length < 2) return null;
+  const counts = [];
+  for (let from = times[0], i = 0; from <= times[times.length - 1]; from += PACE_WINDOW_MS) {
+    let n = 0;
+    while (i < times.length && times[i] < from + PACE_WINDOW_MS) i++, n++;
+    counts.push(n / (PACE_WINDOW_MS / 1000));
+  }
+  return counts.sort((a, b) => a - b)[Math.floor(counts.length * 0.75)];
+}
+
+function withPace(charts) {
+  const pace = charts?.normal?.notes ? paceOf(charts.normal.notes) : null;
+  if (pace === null) return charts;
+  return Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart && typeof chart === "object" ? { ...chart, pace } : chart]));
+}
+
 const READY = (charts) => ({ status: "ready", charts });
 const UNCHARTED = (reason) => ({ status: "uncharted", reason });
 
@@ -111,6 +134,13 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     return sweep;
   }
 
+  // Charts held in memory carry their pace, so a cache hit returns the very object the first request got.
+  function remember(id, charts) {
+    const paced = withPace(charts);
+    writeMemory(id, paced);
+    return READY(paced);
+  }
+
   function readMemory(id) {
     const charts = chartsByKey.get(id);
     if (charts) {
@@ -149,8 +179,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
       unchartedByKey.set(id, stored.reason);
       return UNCHARTED(stored.reason);
     }
-    writeMemory(id, stored);
-    return READY(stored);
+    return remember(id, stored);
   }
 
   // A melody from a second detector, where one was decoded offline for this audio (melody/<audio key file>.json): the
@@ -174,8 +203,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
         unchartedByKey.set(id, stored.reason);
         return UNCHARTED(stored.reason);
       }
-      writeMemory(id, stored);
-      return READY(stored);
+      return remember(id, stored);
     }
     if (stored === false) {
       await backupCorruptFile(chartsPathOf(dir, key, flagged)).catch((error) => {
@@ -194,9 +222,9 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
       return UNCHARTED(TOO_FEW_NOTES);
     }
 
-    writeMemory(id, charts);
+    const ready = remember(id, charts);
     await persist(key, flagged, charts, "charts");
-    return READY(charts);
+    return ready;
   }
 
   async function persist(key, flagged, value, what) {
@@ -218,7 +246,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
     const key = audioKeyOf(track);
     if (!key) return Promise.resolve(UNCHARTED(NO_AUDIO_KEY));
     // The calibration clicks are charted from their identifier, never analysed.
-    if (isCalibrationTrack(track)) return Promise.resolve(READY(calibrationCharts(track)));
+    if (isCalibrationTrack(track)) return Promise.resolve(READY(withPace(calibrationCharts(track))));
     const state = currentFlags();
     const id = memoryKey(key, state.key);
     const cached = readMemory(id);
@@ -237,7 +265,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
   function peekCharts(track) {
     const key = audioKeyOf(track);
     if (!key) return null;
-    if (isCalibrationTrack(track)) return READY(calibrationCharts(track));
+    if (isCalibrationTrack(track)) return READY(withPace(calibrationCharts(track)));
     const verdict = known(key, currentFlags().key);
     if (verdict) return verdict;
     const status = analysis.statusOf(track);
