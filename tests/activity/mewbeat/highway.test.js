@@ -37,5 +37,5 @@ test("tempoScrollFactor follows the tempo gently, within bounds", () => {
   assert.equal(tempoScrollFactor(null), 1);
   assert.ok(Math.abs(tempoScrollFactor(150) - Math.sqrt(150 / 120)) < 1e-9);
   assert.equal(tempoScrollFactor(200), 1.2);
-  assert.equal(tempoScrollFactor(70), 0.85);
+  assert.equal(tempoScrollFactor(70), 1);
 });

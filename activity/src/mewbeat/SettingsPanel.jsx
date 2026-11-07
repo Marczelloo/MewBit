@@ -319,7 +319,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                   onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
                 />
                 <div className="mb-row-foot">
-                  <p className="mb-row-help">By tempo: faster songs fall a little faster, slower ones a little slower.</p>
+                  <p className="mb-row-help">By tempo: faster songs fall a little faster.</p>
                   <Segmented label="Scroll speed mode" options={TEMPO_SCROLL} value={valueOf("tempoScroll") !== false} onChange={(value) => send({ tempoScroll: value })} />
                 </div>
               </section>
