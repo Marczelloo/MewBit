@@ -1,6 +1,7 @@
 // Poses for Mewbit. A "frames" pose plays an image sequence: `order` lists the 1-based files in
 // frames/<pose>/ as played (a loop may revisit a frame), `hold` makes it a one-shot that stays on
-// its last frame, and `group` is the screen whose poses are preloaded together. `rest` marks a loop that
+// its last frame, and `group` is the screen whose poses are preloaded together (`also` names more screens
+// that preload it). `rest` marks a loop that
 // starts and ends on the rest pose, so two of them can hand over on a cycle boundary without a fade (see
 // Mewbit.jsx). An optional `motion` is a CSS class from mewbeat.css on top of the frames. A { kind: "placeholder", motion }
 // pose animates the single PNG with that class instead. New art only needs this file.
@@ -34,16 +35,17 @@ export const MEWBIT_POSES = {
   emerge: pose("emerge", "unlock", run(38), 24, { hold: true }),
   reveal: pose("reveal", "unlock", run(30), 24, { hold: true, motion: "mb-motion-reveal", bubble: "you found me!" }),
   // Lobby poses from the design spec: the room lobby idles (below), peeks before a round, is hyped on the
-  // countdown digits, counts the last three on her fingers and goes on GO. count3 raises the hand in half a
+  // countdown digits, counts the last three on her fingers and goes on GO; Solo's count-in plays them over the
+// game screen, so they preload with it too. count3 raises the hand in half a
   // second (Solo's count-in step); count2 and count1 fold a finger from where it left her, then hold.
   stretch: pose("stretch", "lobby", run(64), 16, { rest: true }),
   adjust: pose("adjust", "lobby", run(48), 16, { rest: true }),
   peek: pose("peek", "lobby", run(48), 16, { rest: true }),
-  hype: pose("hype", "lobby", run(32), 24),
-  count3: pose("count3", "lobby", run(14), 28, { hold: true }),
-  count2: pose("count2", "lobby", run(12), 24, { hold: true }),
-  count1: pose("count1", "lobby", run(12), 24, { hold: true }),
-  go: pose("go", "lobby", run(22), 24, { hold: true, bubble: "nyaa~ ✦" }),
+  hype: pose("hype", "lobby", run(32), 24, { also: ["game"] }),
+  count3: pose("count3", "lobby", run(14), 28, { hold: true, also: ["game"] }),
+  count2: pose("count2", "lobby", run(12), 24, { hold: true, also: ["game"] }),
+  count1: pose("count1", "lobby", run(12), 24, { hold: true, also: ["game"] }),
+  go: pose("go", "lobby", run(22), 24, { hold: true, also: ["game"], bubble: "nyaa~ ✦" }),
   // The lobby idle: neutral for a random 5–11 s, then one cycle of stretch or adjust, then neutral again.
   idle: { kind: "routine", group: "lobby", base: "neutral", fidgets: ["stretch", "adjust"], restMs: [5000, 11000] },
   cheer: pose("cheer", "results", run(32), 24),
