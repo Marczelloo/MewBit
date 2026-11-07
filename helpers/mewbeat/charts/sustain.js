@@ -89,21 +89,26 @@ function nearestOf(times, t, reach) {
 
 // keepMelodyOnly(notes, ctx, rule, timing) -> notes where every melodyOnlyWindows window plays its short-note line and
 // nothing else: one note per line note, on the moment nearest it within rule.snapMs (or at the note). A hold from before
-// the window runs on, and the line waits for it. rule = diff.melodyOnly.
+// lets go a quarter beat before the line's next note, or is a tap where that leaves it under half a beat: the line's
+// first note is the motif's (REVOLVANIA 0:20.4, under the brass held from 0:19.2). rule = diff.melodyOnly.
 function keepMelodyOnly(notes, ctx, rule, timing) {
   if (!rule) return notes;
   const windows = melodyOnlyWindows(ctx, rule);
   if (windows.size === 0) return notes;
   const beat = timing?.medianMs > 0 ? timing.medianMs : 500;
   const inWindow = (t) => windows.has(Math.floor(t / rule.windowMs));
-  const kept = notes.filter((n) => !inWindow(n.t));
   const times = [...new Set(notes.map((n) => n.t))].sort((x, y) => x - y);
-  const heldUntil = Math.max(-Infinity, ...kept.filter((n) => n.len > 0 && inWindow(n.t + n.len)).map((n) => n.t + n.len + beat / 4));
   const added = [];
   for (const n of shortLine(ctx, rule, true).filter((x) => inWindow(x.t))) {
     const t = nearestOf(times, n.t, rule.snapMs);
-    if (t >= heldUntil && !(added.length && t <= added[added.length - 1].t)) added.push({ t, lane: 0 });
+    if (!(added.length && t <= added[added.length - 1].t)) added.push({ t, lane: 0 });
   }
+  const kept = notes.filter((n) => !inWindow(n.t)).map((n) => {
+    const next = n.len > 0 ? added.find((a) => a.t > n.t) : undefined;
+    if (!next || n.t + n.len + beat / 4 <= next.t) return n;
+    const { len: _len, ...tap } = n;
+    return next.t - beat / 4 - n.t >= beat / 2 ? { ...n, len: Math.round(next.t - beat / 4 - n.t) } : tap;
+  });
   return [...kept, ...added].sort((x, y) => x.t - y.t);
 }
 

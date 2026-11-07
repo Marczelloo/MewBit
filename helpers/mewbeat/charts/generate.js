@@ -11,7 +11,7 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
-const { thinDips } = require("./dips");
+const { silentUpper, thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, withShortLine } = require("./sustain");
 const { patternEvents } = require("./patterns");
@@ -362,7 +362,8 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
     : released;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
   const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin)) : ran;
-  const thinned = diff.drumless ? step("drumless", dipped, thinDrumless(dipped, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : dipped;
+  const hushed = diff.dipSilence ? step("dipSilence", dipped, silentUpper(dipped, ctx, diff.dipSilence)) : dipped;
+  const thinned = diff.drumless ? step("drumless", hushed, thinDrumless(hushed, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : hushed;
   const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);

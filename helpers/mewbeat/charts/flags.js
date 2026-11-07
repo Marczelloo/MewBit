@@ -43,6 +43,9 @@ const FLAGS = {
     label: "Sama melodia nad długim basem",
     levels: { normal: { melodyOnly: { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80 } } },
   },
+  // Normal drops the moments in an energy dip where the upper bands go quiet for a second or more (dips.js silentUpper):
+  // REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear.
+  dipSilence: { label: "Cisza w spadku energii", levels: { normal: { dipSilence: { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] } } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

@@ -78,4 +78,19 @@ function thinDips(notes, ctx, rule) {
   return dropped.size ? notes.filter((n) => !dropped.has(n.t) || held.has(n.t)) : notes;
 }
 
-module.exports = { energyDipsOf, thinDips };
+// silentUpper(notes, ctx, rule) -> notes without the moments in an energy dip where the upper bands (rule.bands) hear no
+// onset for rule.gapMs to rule.maxGapMs: the music stops but for a low boom or rumble, which the low bands still hear as onsets
+// on every beat (REVOLVANIA 0:41.5-0:43, after the bass drum, by ear). Holds that started before run on.
+// rule = diff.dipSilence = { drop, level, gapMs, maxGapMs, bands }. A longer gap is a passage of its own, a drumless intro.
+function silentUpper(notes, ctx, rule) {
+  if (!rule) return notes;
+  const dips = energyDipsOf(ctx, rule);
+  if (dips.length === 0) return notes;
+  const upper = (ctx.features.bands ?? []).filter((b) => rule.bands.includes(b.name)).flatMap((b) => b.onsets.map((o) => o.t)).sort((x, y) => x - y);
+  const gaps = [];
+  for (let i = 0; i + 1 < upper.length; i++) if (upper[i + 1] - upper[i] >= rule.gapMs && upper[i + 1] - upper[i] <= rule.maxGapMs) gaps.push([upper[i] + NEAR_MS, upper[i + 1] - NEAR_MS]);
+  const silent = (t) => gaps.some(([a, b]) => t > a && t < b) && dips.some(([a, b]) => t >= a && t < b);
+  return gaps.length ? notes.filter((n) => !silent(n.t)) : notes;
+}
+
+module.exports = { energyDipsOf, silentUpper, thinDips };

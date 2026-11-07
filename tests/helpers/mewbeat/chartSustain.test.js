@@ -84,6 +84,13 @@ describe("the short-note line alone over a held bed (flag melodyOnly)", () => {
     assert.deepEqual(out.filter((n) => n.t < 8000 || n.t >= 24000), notes.filter((n) => n.t < 8000 || n.t >= 24000));
   });
 
+  it("lets a hold from before go a quarter beat before the line's first note, or makes it a tap", () => {
+    const notes = [{ t: 6000, lane: 1, len: 2500 }, { t: 7700, lane: 2, len: 800 }, ...every(200, 8000, 24000).map(({ t }) => ({ t, lane: 0 }))];
+    const out = keepMelodyOnly(notes, ctxOf(8000, 24000), MELODY, TIMING);
+    assert.deepEqual(out.filter((n) => n.t < 8000), [{ t: 6000, lane: 1, len: 1875 }, { t: 7700, lane: 2 }]);
+    assert.equal(out.filter((n) => n.t >= 8000 && n.t < 24000)[0].t, 8000);
+  });
+
   it("finds the passage on the first run and plays the low-threshold run's line, without the bed's retriggers", () => {
     const ctx = ctxOf(8000, 24000);
     const quiet = every(200, 8000, 24000).map(({ t }) => ({ t, len: 100, pitch: 55, vel: 0.4 }));
