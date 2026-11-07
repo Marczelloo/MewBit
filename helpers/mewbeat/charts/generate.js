@@ -13,6 +13,7 @@ const { withMergedLead } = require("./legato");
 const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
+const { holdSustains, keepMelodyOnly } = require("./sustain");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
@@ -362,13 +363,16 @@ function finish(ctx, { notes, sustained }, diff, trace = null) {
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
   const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin)) : ran;
   const thinned = diff.drumless ? step("drumless", dipped, thinDrumless(dipped, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : dipped;
-  const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
+  const melodic = diff.melodyOnly ? step("melodyOnly", thinned, keepMelodyOnly(thinned, ctx, diff.melodyOnly, decodedMelodyOf(ctx, diff))) : thinned;
+  const spaced = step("spacedMoments", melodic, spacedMoments(melodic, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const capped = step("holdShare", floored, ctx.phrases.length === 0
     ? limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare)
     : holdsCappedByPhrase(floored, ctx, diff, isSustain));
-  const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
+  // After the hold cap, so the long notes it holds are not cut back to taps (sustain.js).
+  const heldLong = diff.sustainHolds ? step("sustainHolds", capped, holdSustains(capped, ctx, diff.sustainHolds, ctx.timing)) : capped;
+  const planned = step("chords", heldLong, planChords(heldLong, ctx, diff, upper));
   const chorded = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   const layLanes = diff.laneSearch ? searchLanes : assignLanes;
   // diff.melodyLine: the lanes follow the second detector's melody where one was decoded (chartStore.js); the moments do not.

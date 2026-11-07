@@ -27,6 +27,20 @@ const FLAGS = {
   // reach. Train 115-145 BPM: quarter-beat gaps 1.3 -> 27% (people 20%), 3.65 -> 4.09 moments a second (4.32), but F1
   // .8005 -> .7970: the ear decides.
   feltTempoUp: { label: "Szesnastki do 145 BPM", levels: { normal: { feltTempo: { belowBpm: 145, keepTolerance: true } } } },
+  // Normal holds the decoder's long notes where no drum kit plays (sustain.js holdSustains): REVOLVANIA's opening brass,
+  // by ear. Train Normal F1 .8024 -> .8023 (with the decoded melody), 8 of 78 songs changed; bot songs 5 of 36.
+  sustainHolds: {
+    label: "Holdy na długich nutach bez perkusji",
+    levels: { normal: { sustainHolds: { longMs: 800, minVel: 0.4, headMs: 150, releaseBeats: 0.5, minBeats: 1, drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 } } } },
+  },
+  // Normal plays the decoded melody alone in a loud passage held on a long bass, in a song whose loud parts are not
+  // (sustain.js keepMelodyOnly): REVOLVANIA 0:20-0:42, by ear. Train people play such windows at 4.5 moments a second,
+  // not lighter than the rest, so the corpus does not back it: F1 .8024 -> .8015, 9 of 78 songs changed, bot songs 10 of
+  // 36 (GHOST 3:00 and 4:25, FIRESTARTER 2:00-2:15). The ear decides.
+  melodyOnly: {
+    label: "Sama melodia nad długim basem",
+    levels: { normal: { melodyOnly: { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.4, cover: 0.55, edgeCover: 0.4, songCoverBelow: 0.05, loudAbove: 0.8, melodyPerSec: 0.75 } } },
+  },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

@@ -162,7 +162,9 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log }) 
       // `tuned`: the same decoder's line drawn denser and smoother (scripts/mewbeat-melody), which Normal reads;
       // `onsetShiftMs`: the line's shift to our onsets, which flag melodyOnsetShift puts in place of `shiftMs`
       const shift = Number.isFinite(melody.onsetShiftMs) && Number.isFinite(melody.shiftMs) ? { decodedMelodyShift: melody.onsetShiftMs - melody.shiftMs } : {};
-      return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}), ...shift };
+      // `all`: every decoded note as [t, len, pitch, velocity], which sustain.js reads for long notes
+      const all = Array.isArray(melody.all) ? { decodedNotes: melody.all.map(([t, len, pitch, vel]) => ({ t, len, pitch, vel })) } : {};
+      return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}), ...shift, ...all };
     } catch {
       return features;
     }

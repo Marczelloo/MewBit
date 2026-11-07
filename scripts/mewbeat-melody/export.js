@@ -3,7 +3,8 @@
 // Each <decoder output dir>/<audio key file>.json is { notes: [[t, len, midi, vel, conf, onset, layer, ghost, wob]],
 // fg: [note indices] } (research decoder, decoder.py). Writes `notes`, the decoder's own foreground line, and `tuned`,
 // the line drawn again with line.js TUNED (Normal's melodyTuned). Both are shifted by the song's median offset to our
-// lead line, as the two detectors place a note's start differently. `onsetShiftMs` is the shift to the nearest onset of any
+// lead line, as the two detectors place a note's start differently. `all` keeps every decoded note as [t, len, pitch, velocity]
+// (sustain.js reads the long ones). `onsetShiftMs` is the shift to the nearest onset of any
 // of our layers (drums, bass, lead) instead, read with Normal's flag melodyOnsetShift: the lead's same-pitch matches are
 // few on some songs (Rude Buster, Camellia remix: its line sat 30 ms early on the grid), the onsets take 90% of the notes.
 const fs = require("node:fs");
@@ -66,7 +67,8 @@ for (const file of fs.readdirSync(decDir).filter((f) => f.endsWith(".json"))) {
   const out = (n) => ({ t: Math.round(n[0] + shift), pitch: n[2], conf: 1, len: Math.round(n[1]) });
   const notes = fg.map(out);
   const tuned = foreground(d.notes, TUNED).map((i) => out(d.notes[i]));
+  const all = d.notes.map((n) => [Math.round(n[0] + shift), Math.round(n[1]), n[2], Math.round(n[3] * 100) / 100]);
   const source = "basic-pitch foreground line (research decoder, decoder.py); tuned: scripts/mewbeat-melody/line.js TUNED";
-  fs.writeFileSync(path.join(outDir, file), JSON.stringify({ source, shiftMs: Math.round(shift), onsetShiftMs: Math.round(onsetShift), notes, tuned }));
+  fs.writeFileSync(path.join(outDir, file), JSON.stringify({ source, shiftMs: Math.round(shift), onsetShiftMs: Math.round(onsetShift), notes, tuned, all }));
   console.log(file, "notes", notes.length, "tuned", tuned.length, "shift", Math.round(shift), "onset shift", Math.round(onsetShift));
 }
