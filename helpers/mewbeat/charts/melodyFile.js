@@ -11,6 +11,9 @@ function withMelodyFile(features, melody) {
   const asNotes = (rows) => rows.map(([t, len, pitch, vel]) => ({ t, len, pitch, vel }));
   const all = Array.isArray(melody.all) ? { decodedNotes: asNotes(melody.all) } : {};
   if (Array.isArray(melody.short)) all.decodedShortNotes = asNotes(melody.short);
+  // `lead`: a transcription with an instrument per note (MuScriptor, scripts/mewbeat-melody/lead.js), which sustain.js
+  // reads for the line a passage plays
+  if (Array.isArray(melody.lead)) all.leadNotes = melody.lead.map(([t, len, pitch, instrument]) => ({ t, len, pitch, instrument }));
   return { ...features, decodedMelody: melody.notes, ...(Array.isArray(melody.tuned) ? { decodedMelodyTuned: melody.tuned } : {}), ...shift, ...all };
 }
 

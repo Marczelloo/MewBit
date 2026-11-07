@@ -11,6 +11,8 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // miniRests in v36, copyStrictHard (difficulty.js COPY_FROM) in v37, copyStrict, fadeOut and stairs in v38, decoderLanes,
 // decoderPick and melodyTuned in v39 (difficulty.js MELODY_PICK), chordLoudness, twoKeyTrill, melodyRuns and dipThin in v40.
 // figuresQuarter was dropped (0% of its notes hit on the test songs).
+const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80 };
+
 const FLAGS = {
   // Normal's melody (generate.js decodedMelodyOf) is shifted to the onsets of all our layers, not to the same-pitch notes of
   // the lead line, which are few on some songs: the export's two shifts differ by 20-90 ms on 17 of the 38 decoded songs
@@ -41,8 +43,12 @@ const FLAGS = {
   // 0:32-0:40, FIRESTARTER 2:04-2:12) and on 1 of 78 train songs, too few to say what people play there: the ear decides.
   melodyOnly: {
     label: "Sama melodia nad długim basem",
-    levels: { normal: { melodyOnly: { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80 } } },
+    levels: { normal: { melodyOnly: MELODY_ONLY } },
   },
+  // melodyOnly with the line from a transcription that names each note's instrument (MuScriptor, scripts/mewbeat-melody
+  // lead.js; sustain.js passageLine): the lead alone, not the bass under it. REVOLVANIA 0:20-0:40, the plain bars of the
+  // motif: 56 of 60 notes with 13 others, the short-note line 53 with 20. On, it turns melodyOnly on too.
+  transcribedLead: { label: "Melodia z transkrypcji instrumentów", levels: { normal: { melodyOnly: { ...MELODY_ONLY, lead: true, splitMs: 120 } } } },
   // Normal drops the moments in an energy dip where the upper bands go quiet for a second or more (dips.js silentUpper):
   // REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear.
   dipSilence: { label: "Cisza w spadku energii", levels: { normal: { dipSilence: { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] } } } },
