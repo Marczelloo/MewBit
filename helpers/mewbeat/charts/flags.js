@@ -15,8 +15,6 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // figuresQuarter was dropped (0% of its notes hit on the test songs).
 
 const FLAGS = {
-  // Sung phrases of Normal follow the music, not the voice (musicFirst.js). Train: Normal F1 .7984 -> .7955 (P 77.8, R 82.0 -> 81.3); Easy, Hard and Hell unchanged; thresholds kept from the first try (a sweep of narrower/wider windows and weights only moved F1 within .004).
-  musicFirst: { label: "Muzyka przed śpiewem", levels: { normal: { musicFirst: { minConf: 0.7, minRate: 0.6, minActivity: 0.12, musicBonus: 0.75, voicePenalty: 0.75, holdConf: 0.7, minBeats: 1, headMs: 100, maxBeats: 4 } } } },
   // Normal's phrase budget follows the felt pace, not the beats (selection.js phraseBudget): people's density hardly moves
   // with the tempo, Normal's rose with it (train, loud parts: under 170 BPM people 4.75 / Normal 4.51, over 190 BPM 4.98 /
   // 5.68). Train F1 .8005 -> .8018; over 190 BPM 4.82 -> 4.63 moments a second (people 4.35), 145-170 4.16 -> 4.23 (4.34).
