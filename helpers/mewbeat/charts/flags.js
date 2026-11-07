@@ -12,7 +12,7 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // decoderPick and melodyTuned in v39 (difficulty.js MELODY_PICK), chordLoudness, twoKeyTrill, melodyRuns and dipThin in v40.
 // figuresQuarter was dropped (0% of its notes hit on the test songs).
 const SUSTAIN_HOLDS = { longMs: 800, minVel: 0.4, joinMs: 250, headMs: 150, releaseBeats: 0.25, minBeats: 1, drumless: { windowMs: 2000, highBelow: 1, highmidBelow: 4 } };
-const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80 };
+const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80, notLedBy: "drums" };
 
 const FLAGS = {
   // Normal's melody (generate.js decodedMelodyOf) is shifted to the onsets of all our layers, not to the same-pitch notes of

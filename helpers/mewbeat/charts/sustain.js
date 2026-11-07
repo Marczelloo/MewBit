@@ -108,12 +108,18 @@ function passageLine(ctx, rule, windows) {
 
 // The loud windows (energy at least rule.loudAbove) where a held bed plays (long low notes cover rule.cover or more) under
 // a single line: short notes at rule.linePerSec a second or more, at most rule.chordShare of them with another at once
-// (a riff of chords is no lone melody). Only runs of rule.minRun windows or more count: a passage, not a bar.
+// (a riff of chords is no lone melody), in a phrase not led by rule.notLedBy (ctx.leaders): GHOST 4:22-4:35 is a drum
+// passage with no lead heard (its phrases led by the drums, the lead's confidence 0), REVOLVANIA 0:20-0:40 is led by its
+// lead. Only runs of rule.minRun windows or more count: a passage, not a bar.
 function melodyOnlyWindows(ctx, rule) {
   const { cover, energy } = coverOf(ctx, rule);
   const line = shortLine(ctx, rule), sec = rule.windowMs / 1000;
+  const ledBy = (w) => {
+    const mid = (w + 0.5) * rule.windowMs, i = (ctx.phrases ?? []).findIndex((p) => p.startMs <= mid && p.endMs > mid);
+    return i < 0 ? undefined : ctx.leaders?.[i];
+  };
   const lone = cover.map((c, w) => {
-    if (energy[w] < rule.loudAbove || c < rule.cover) return false;
+    if (energy[w] < rule.loudAbove || c < rule.cover || (rule.notLedBy && ledBy(w) === rule.notLedBy)) return false;
     const notes = line.slice(lowerBound(line.map((n) => n.t), w * rule.windowMs), lowerBound(line.map((n) => n.t), (w + 1) * rule.windowMs));
     return notes.length / sec >= rule.linePerSec && notes.filter((n) => n.voices > 1).length <= rule.chordShare * notes.length;
   });
@@ -193,8 +199,10 @@ function padWindows(ctx, rule) {
 }
 
 // A pad's chords as one line: the lowest long note (longLine) sounding, a new chord where a long note starts as the lowest;
-// where the lowest changes with no note starting (a voice ends, one above it is left), the chord before runs on. Chords
-// shorter than rule.longMs go. An organ's voices come in one by one, so the legato line of longLine would hold each.
+// where the lowest changes with no note starting (a voice ends, one above it is left), the chord before runs on, unless that
+// note came in within rule.joinMs before (the decoder's notes overlap at a legato change: Devourer of Gods 0:33, 0:36 and
+// 4:40 were held as one with the chord before). Chords shorter than rule.longMs go. An organ's voices come in one by one,
+// so the legato line of longLine would hold each.
 function padLine(ctx, rule) {
   const longs = longLine(ctx, rule);
   const cuts = [...new Set(longs.flatMap((n) => [n.t, n.t + n.len]))].sort((a, b) => a - b);
@@ -204,7 +212,10 @@ function padLine(ctx, rule) {
     const low = longs.filter((n) => n.t <= a && n.t + n.len >= b).reduce((m, n) => (m && m.pitch <= n.pitch ? m : n), null);
     if (!low) continue;
     const last = out[out.length - 1];
-    if (last && last.end === a && (low.pitch === last.pitch || low.t !== a)) last.end = b;
+    if (last && last.end === a && low.pitch !== last.pitch && low.t < a && a - low.t <= rule.joinMs && low.t > last.t) {
+      last.end = low.t;
+      out.push({ t: low.t, end: b, pitch: low.pitch, vel: low.vel });
+    } else if (last && last.end === a && (low.pitch === last.pitch || low.t !== a)) last.end = b;
     else if (low.t === a) out.push({ t: a, end: b, pitch: low.pitch, vel: low.vel });
   }
   return out.filter((c) => c.end - c.t >= rule.longMs).map(({ t, end, pitch, vel }) => ({ t, len: end - t, pitch, vel }));

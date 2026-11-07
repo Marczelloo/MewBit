@@ -83,6 +83,12 @@ describe("a quiet pad's chords held, the lane moving with the pitch (flag sustai
     assert.deepEqual(holdSustains(taps, padCtx(chords), HOLDS, TIMING), taps);
   });
 
+  it("starts a new hold where the next bass note comes in just before the one under it lets go", () => {
+    const legato = [{ t: 500, len: 2000, pitch: 48, vel: 0.5 }, { t: 2400, len: 2000, pitch: 50, vel: 0.5 }];
+    const out = holdSustains(taps, padCtx(legato), PADS, TIMING);
+    assert.deepEqual(out.filter((n) => n.len > 0).map((n) => [n.t, n.t + n.len]), [[500, 2375], [2500, 4400]]);
+  });
+
   it("steps the lane the way the chord moves, back the other way at the edge", () => {
     const holds = (lane) => [{ t: 500, lane, len: 3375 }, { t: 4000, lane, len: 2000 }];
     assert.deepEqual(padLanes(holds(2), padCtx(chords), PADS, TIMING).map((n) => n.lane), [2, 3]);
@@ -120,6 +126,11 @@ describe("the short-note line alone over a held bed (flag melodyOnly)", () => {
     assert.equal(melodyOnlyWindows(ctxOf(8000, 12000), MELODY).size, 0);
     assert.equal(melodyOnlyWindows(ctxOf(32000, 48000), MELODY).size, 0);
     assert.equal(melodyOnlyWindows(ctxOf(8000, 24000, []), MELODY).size, 0);
+  });
+
+  it("leaves a phrase the drums lead: no lead is heard there to play alone", () => {
+    const ctx = { ...ctxOf(8000, 24000), phrases: [{ startMs: 0, endMs: 16000 }, { startMs: 16000, endMs: 48000 }], leaders: ["lead", "drums"] };
+    assert.deepEqual([...melodyOnlyWindows(ctx, MELODY)], [2, 3]);
   });
 
   it("plays the line alone there, one note per line note on the nearest moment", () => {
