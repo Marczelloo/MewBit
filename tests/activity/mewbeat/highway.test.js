@@ -41,11 +41,12 @@ test("tempoScrollFactor follows the tempo gently, within bounds", () => {
   assert.equal(tempoScrollFactor(70), 1);
 });
 
-test("scrollFactor takes the larger of the tempo's and the pace's nudge, within the same bounds", () => {
-  assert.ok(Math.abs(scrollFactor({ bpm: 132, pace: 6 }) - Math.sqrt(6 / 4.2)) < 1e-9);
+test("scrollFactor takes the larger of the tempo's and the pace's nudge, the pace's in step up to 1.4", () => {
+  assert.ok(Math.abs(scrollFactor({ bpm: 132, pace: 5.25 }) - 1.25) < 1e-9);
+  assert.equal(scrollFactor({ bpm: 132, pace: 6 }), 1.4);
   assert.equal(scrollFactor({ bpm: 220, pace: 4 }), 1.2);
   assert.equal(scrollFactor({ bpm: 90, pace: 3 }), 1);
-  assert.equal(scrollFactor({ bpm: 100, pace: 20 }), 1.2);
+  assert.equal(scrollFactor({ bpm: 100, pace: 20 }), 1.4);
   assert.equal(scrollFactor({ bpm: 132 }), tempoScrollFactor(132));
   assert.equal(scrollFactor(null), 1);
 });
