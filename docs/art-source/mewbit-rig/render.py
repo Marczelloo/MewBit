@@ -4,7 +4,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
 import rig
@@ -12,7 +12,7 @@ from anims import ANIMS
 from armcut import cut_key, left_plate, right_plate
 from armcuts import CUTS, DRAWN_R
 from arms import SIGN, back_map, between, turned
-from rig import ELBOW, EYE_ELLIPSES, EYE_OUTLINES, HEAD_CROP, SHOULDER_L, WRIST, aligned_patch, bone_arm, bone_body, bone_head, bone_chest, bone_jacket, build_layers, compose, head_variants, outline_mask, to_game, warp
+from rig import CENTER_X, FEET_Y, FIGURE_HEIGHT, OUT_FEET_Y, OUT_SIZE, SOURCE_FIGURE, ELBOW, EYE_ELLIPSES, EYE_OUTLINES, HEAD_CROP, SHOULDER_L, WRIST, aligned_patch, bone_arm, bone_body, bone_head, bone_chest, bone_jacket, build_layers, compose, head_variants, outline_mask, to_game, warp
 from segment import SOURCE, cut_drawing, load
 
 ORDER = [("hairBack", bone_head), ("body", bone_body), ("hairFront", bone_head), ("jacket", bone_jacket), ("arm", bone_arm), ("head", bone_head)]
@@ -29,6 +29,50 @@ SPECK = 80
 # Eyes with brows, then the mouth.
 FACE_PARTS = [(360, 172, 34, 34), (422, 164, 38, 34), (398, 216, 28, 17)]
 WINK_EYE = 1
+
+
+# Kage: the anime shadow of gloom over her brow, vertical strokes falling from the top of her face over a cold shade.
+GLOOM_BOX = (80, 270, 320, 500)
+GLOOM_CENTER, GLOOM_RADII = (410, 172), (60, 62)
+GLOOM_TOP, GLOOM_BOTTOM = 112, 206
+GLOOM_TINT = np.array([0.30, 0.26, 0.62], np.float32)
+GLOOM_INK = np.array([0.24, 0.16, 0.46], np.float32)
+_gloom_strokes = []
+
+
+def gloomed(head, g):
+    """The head under the gloom at weight g (0..1): the strokes grow down from the top as it comes."""
+    if not _gloom_strokes:
+        rng = np.random.default_rng(11)
+        x = GLOOM_CENTER[0] - GLOOM_RADII[0] + 8
+        while x < GLOOM_CENTER[0] + GLOOM_RADII[0] - 6:
+            _gloom_strokes.append((x, rng.uniform(0.55, 1.0), rng.choice([2.8, 3.4, 4.2])))
+            x += rng.uniform(8, 12)
+    y0, y1, x0, x1 = GLOOM_BOX
+    yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+    cx, cy = GLOOM_CENTER
+    rx, ry = GLOOM_RADII
+    face = np.clip((1 - ((xx - cx) / rx) ** 2 - ((yy - cy) / ry) ** 2) / 0.3, 0, 1)
+    out = head.copy()
+    part = out[y0:y1, x0:x1]
+    alpha = part[..., 3:4]
+    fall = np.clip((GLOOM_BOTTOM + 30 - yy) / 90, 0, 1)
+    shade = (g * 0.75 * face * fall)[..., None]
+    part[..., :3] = part[..., :3] * (1 - shade) + part[..., :3] * GLOOM_TINT * 1.25 * shade
+    grow = min(1.0, g * 1.4)
+    lines = np.zeros_like(yy)
+    for x, length, width in _gloom_strokes:
+        end = GLOOM_TOP + (GLOOM_BOTTOM - GLOOM_TOP) * length * grow
+        across = np.clip((width / 2 + 0.5 - np.abs(xx - x)), 0, 1)
+        along = np.clip((end - yy) / max(1.0, (end - GLOOM_TOP) * 0.6), 0, 1) * (yy >= GLOOM_TOP)
+        lines = np.maximum(lines, across * along)
+    ink = (g * 0.95 * lines * np.clip(face * 1.6, 0, 1))[..., None]
+    part[..., :3] = part[..., :3] * (1 - ink) + GLOOM_INK * alpha * ink
+    return out
+
+
+# Where between the drawing (0) and a two-armed key (1) a key's face patch starts to show.
+FACE_FROM = 0.6
 
 
 def elevation(direction):
@@ -95,6 +139,11 @@ class Scene:
         self.alpha = alpha
         self.layers = dark_lining(build_layers(self.color, alpha, self.labels, np.load("body_silhouette.npy")))
         self.heads = expressions(self.color, self.layers["head"], head_variants(self.color, self.layers["head"]))
+        # Star eyes open wide over the laughing mouth.
+        yy, xx = np.mgrid[0 : self.color.shape[0], 0 : self.color.shape[1]].astype(np.float32)
+        cx, cy, rx, ry = FACE_PARTS[-1]
+        mouth = ndi.gaussian_filter((((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 < 1).astype(np.float32), 2.5)[..., None]
+        self.heads["star"] = (self.heads["open"] * (1 - mouth) + self.heads["happy"] * mouth).astype(np.float32)
         self.keys = {}
         self._plate = None
         self._left = None
@@ -205,12 +254,195 @@ def two_armed(anim, name):
     return bool(named) and "R" in CUTS[named[0]]
 
 
+# --- combo tiers: star eyes, blush, sparkles and the aura ---
+STAR_EYES = [(362.0, 184.0, 22.0, 0.90), (420.0, 171.0, 24.0, 1.0)]  # cx, cy, radius, width (the far eye is narrower)
+STAR_BOX = (322, 130, 472, 232)  # x0, y0, x1, y1 in head space
+STAR_TILT = -10.0
+STAR_SS = 4
+STAR_LINE = (46, 16, 84)
+STAR_TONES = [
+    ((255, 196, 34), (255, 244, 170)),   # gold
+    ((255, 74, 190), (255, 214, 244)),   # magenta
+    ((42, 226, 255), (214, 250, 255)),   # cyan
+]
+BLUSH = [(366.0, 208.0, 14.0, 6.5), (443.0, 194.0, 13.0, 6.5)]
+BLUSH_PINK = np.array([1.0, 0.36, 0.52], np.float32)
+
+
+def star_polygon(cx, cy, radius, inner, angle, width):
+    out = []
+    tilt = np.radians(STAR_TILT)
+    for i in range(10):
+        a = np.radians(angle - 90 + i * 36)
+        r = radius if i % 2 == 0 else radius * inner
+        x, y = r * np.cos(a) * width, r * np.sin(a)
+        out.append((cx + x * np.cos(tilt) - y * np.sin(tilt), cy + x * np.sin(tilt) + y * np.cos(tilt)))
+    return out
+
+
+def star_tone(hue):
+    """The two star colours at hue 0..1 around gold, magenta and cyan; None stays gold."""
+    if hue is None:
+        return STAR_TONES[0]
+    place = (hue % 1.0) * len(STAR_TONES)
+    i = int(place)
+    mix = place - i
+    a, b = STAR_TONES[i], STAR_TONES[(i + 1) % len(STAR_TONES)]
+    return tuple(tuple(int(round(p + (q - p) * mix)) for p, q in zip(c, d)) for c, d in zip(a, b))
+
+
+def starred(head, size, spin, hue, blush):
+    """Stars over both eyes, in head space so they turn and bob with it, and the cheeks flushed."""
+    x0, y0, x1, y1 = STAR_BOX
+    out = head.copy()
+    part = out[y0:y1, x0:x1]
+    if blush > 0:
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        skin = np.clip((part[..., :3].min(2) - 0.55) / 0.2, 0, 1)
+        cheek = np.zeros_like(xx)
+        for cx, cy, rx, ry in BLUSH:
+            cheek = np.maximum(cheek, np.clip(1.25 - ((xx - cx) / rx) ** 2 - ((yy - cy) / ry) ** 2, 0, 1))
+            for k in (-7.5, 0, 7.5):
+                # The three little slashes anime cheeks get.
+                along = (xx - cx - k) + (yy - cy) * 0.62
+                cheek = np.maximum(cheek, 1.5 * np.clip(1.3 - np.abs(along), 0, 1) * (np.abs(yy - cy) < 5.5))
+        amount = (np.clip(cheek, 0, 1) * skin * blush * 0.72)[..., None]
+        part[..., :3] = part[..., :3] * (1 - amount) + BLUSH_PINK * part[..., 3:4] * amount
+    w, h = (x1 - x0) * STAR_SS, (y1 - y0) * STAR_SS
+    sheet = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(sheet)
+    rim, core = star_tone(hue)
+    at = lambda points: [((px - x0) * STAR_SS, (py - y0) * STAR_SS) for px, py in points]
+    for cx, cy, radius, width in STAR_EYES:
+        r = radius * size
+        draw.polygon(at(star_polygon(cx, cy, r + 2.8, 0.56, spin, width)), fill=STAR_LINE + (255,))
+        draw.polygon(at(star_polygon(cx, cy, r, 0.52, spin, width)), fill=rim + (255,))
+        draw.polygon(at(star_polygon(cx, cy, r * 0.62, 0.52, spin, width)), fill=core + (255,))
+        gx, gy = (cx - r * 0.2 - x0) * STAR_SS, (cy - r * 0.26 - y0) * STAR_SS
+        g = r * 0.17 * STAR_SS
+        draw.ellipse((gx - g, gy - g, gx + g, gy + g), fill=(255, 255, 255, 255))
+    sheet = sheet.resize((x1 - x0, y1 - y0), Image.LANCZOS)
+    star = np.array(sheet, np.float32) / 255
+    if size < 1.0:
+        # Small stars sit in the eye: the lashes and hair above it stay in front of them.
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        ink = np.clip((0.3 - part[..., :3].max(2)) / 0.12, 0, 1)
+        above = np.zeros_like(xx)
+        for cx, cy, _, _ in STAR_EYES:
+            above = np.maximum(above, ((np.abs(xx - cx) < 34) & (yy < cy - 7)).astype(np.float32))
+        star[..., 3] *= 1 - ink * above
+    star[..., :3] *= star[..., 3:4]
+    part[..., :3] = star[..., :3] + part[..., :3] * (1 - star[..., 3:4])
+    part[..., 3:4] = np.maximum(part[..., 3:4], star[..., 3:4])
+    return out
+
+
+def sparkle_polygon(cx, cy, r, turn):
+    out = []
+    for i in range(8):
+        a = np.radians(turn + i * 45)
+        q = r if i % 2 == 0 else r * 0.16
+        out.append((cx + q * np.cos(a), cy + q * np.sin(a)))
+    return out
+
+
+# dx, dy from the head in frame pixels, size, phase, tone (index into STAR_TONES).
+SPARKLES = {
+    1: [(-128, -58, 30, 0.00, 0), (122, -92, 36, 0.30, 0), (-98, -128, 20, 0.58, 2), (150, 8, 24, 0.80, 0)],
+    2: [(-142, -40, 36, 0.00, 0), (128, -106, 44, 0.20, 0), (-96, -142, 26, 0.45, 1), (160, -12, 30, 0.66, 2),
+        (-176, 40, 24, 0.33, 2), (178, 74, 26, 0.86, 1), (-30, -168, 22, 0.75, 0), (64, -160, 18, 0.10, 2)],
+    3: [(-150, -52, 44, 0.00, 0), (136, -116, 52, 0.17, 1), (-104, -150, 34, 0.40, 2), (172, -14, 38, 0.62, 0),
+        (-192, 36, 32, 0.30, 1), (196, 72, 34, 0.84, 2), (-34, -180, 28, 0.72, 0), (70, -172, 24, 0.08, 1),
+        (-214, 130, 26, 0.52, 0), (218, 170, 28, 0.25, 0), (-170, 214, 22, 0.92, 2), (170, 248, 20, 0.46, 1)],
+}
+FX_SS = 3
+HEAD_ANCHOR = np.array([[405.0, 165.0]], np.float64)
+_fx_noise = None
+
+
+def to_frame_point(p):
+    scale = FIGURE_HEIGHT / SOURCE_FIGURE
+    return round(OUT_SIZE / 2 - CENTER_X * scale) + p[0] * scale, round(OUT_FEET_Y - FEET_Y * scale) + p[1] * scale
+
+
+def with_sparkles(image, tier, t):
+    head_x, head_y = to_frame_point(bone_head(HEAD_ANCHOR, t)[0])
+    sheet = Image.new("RGBA", (OUT_SIZE * FX_SS, OUT_SIZE * FX_SS), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(sheet)
+    for dx, dy, size, phase, tone in SPARKLES[tier]:
+        # Two twinkles per loop, each growing out of nothing and gone again.
+        live = float(np.sin(np.pi * ((t * 2 + phase) % 1.0)) ** 1.6)
+        if live < 0.04:
+            continue
+        cx, cy, r, turn = (head_x + dx) * FX_SS, (head_y + dy) * FX_SS, size * live * FX_SS, 18 * np.sin(2 * np.pi * (t + phase))
+        draw.polygon(sparkle_polygon(cx, cy, r * 1.14, turn), fill=STAR_TONES[tone][0] + (255,))
+        draw.polygon(sparkle_polygon(cx, cy, r * 0.72, turn), fill=(255, 255, 255, 255))
+    return Image.alpha_composite(image, sheet.resize((OUT_SIZE, OUT_SIZE), Image.LANCZOS))
+
+
+def with_aura(image, t, hue):
+    """Flames licking up off her outline, behind her. The noise scrolls one whole tile per loop."""
+    global _fx_noise
+    if _fx_noise is None:
+        rng = np.random.default_rng(23)
+        tile = (384, OUT_SIZE)
+        coarse = ndi.gaussian_filter(rng.standard_normal(tile), (26, 5), mode="wrap")
+        fine = ndi.gaussian_filter(rng.standard_normal(tile), (10, 2.2), mode="wrap")
+        field = coarse / coarse.std() + 0.55 * fine / fine.std()
+        _fx_noise = (field / field.std()).astype(np.float32)
+    figure = np.array(image, np.float32) / 255
+    solid = figure[..., 3] > 0.5
+    # Flames rise, so the outline it burns from is smeared upward.
+    smeared = solid.copy()
+    for lift in range(6, 49, 6):
+        smeared |= np.roll(solid, -lift, axis=0)
+    dist = ndi.distance_transform_edt(~smeared).astype(np.float32)
+    scroll = int(round(float(t) * _fx_noise.shape[0]))
+    noise = np.tile(np.roll(_fx_noise, -scroll, axis=0), (2, 1))[:OUT_SIZE]
+    # It burns from the shoulders up and dies out along the legs.
+    fade = np.clip((500 - np.arange(OUT_SIZE, dtype=np.float32)) / 230, 0.12, 1)[:, None]
+    reach = (12 + 10 * noise) * fade
+    heat = ndi.gaussian_filter(np.clip((reach - dist) / 12, 0, 1), 1.1)
+    rim, core = star_tone(hue)
+    outer = np.array(rim, np.float32) / 255
+    inner = (np.array(core, np.float32) + np.array(rim, np.float32)) / 510
+    a = np.clip(heat * 1.25, 0, 1)[..., None] ** 1.3 * 0.78
+    mix = np.clip(heat * 2.2 - 1.3, 0, 1)[..., None]
+    flame = np.dstack([(outer * (1 - mix) + inner * mix) * a, a])
+    figure[..., :3] *= figure[..., 3:4]
+    done = figure + flame * (1 - figure[..., 3:4])
+    a_out = done[..., 3:4]
+    straight = np.where(a_out > 1e-4, done[..., :3] / np.maximum(a_out, 1e-4), 0)
+    return Image.fromarray((np.dstack([straight, a_out]).clip(0, 1) * 255 + 0.5).astype(np.uint8), "RGBA")
+
+
+def with_fx(image, anim, t):
+    fx = getattr(anim, "fx", None)
+    if not fx:
+        return image
+    if fx.get("aura"):
+        image = with_aura(image, t, fx["aura"](t))
+    if fx.get("sparkles"):
+        image = with_sparkles(image, fx["sparkles"], t)
+    return image
+
+
 def render_frame(anim, frame, scene):
+    return with_fx(figure_frame(anim, frame, scene), anim, np.float64(frame / anim.frames))
+
+
+def figure_frame(anim, frame, scene):
     anim.at_frame(frame)
     t = np.float64(frame / anim.frames)
     name = pick(anim, frame, scene)
     base = scene.layers
-    head = warp(scene.heads[anim.eyes[frame]], bone_head, t, 60, 3)
+    face = scene.heads[anim.eyes[frame]]
+    gloom = float(anim.gloom(t)) if getattr(anim, "gloom", None) else 0.0
+    star = getattr(anim, "star", None)
+    if star and anim.eyes[frame] == "star":
+        hue = star["hue"](t) if star.get("hue") else None
+        face = starred(face, float(star["size"](t)), float(star["spin"](t)), hue, star["blush"])
+    head = warp(gloomed(face, gloom) if gloom > 0.01 else face, bone_head, t, 60, 3)
     at = lambda layer, bone: warp(layer, bone, t, 60, 3)
     two = two_armed(anim, name)
     drawn = None
@@ -231,7 +463,7 @@ def render_frame(anim, frame, scene):
     stack = [at(left["hairBack"], bone_head), at(base["body"], bone_body), at(left["hairFront"], bone_head), at(left["under"], bone_jacket)]
     if two:
         stack.append(at(plate["under"], bone_jacket))
-    hanging, hands = [], []
+    hanging, hands, faces = [], [], []
     if name:
         layers, cuts, _ = scene.key(name)
         for side, cut in cuts.items():
@@ -241,6 +473,11 @@ def render_frame(anim, frame, scene):
             (hanging if cut.get("over") else stack).append(arm)
             if f"hand{side}" in layers:
                 hands.append(warp(layers[f"hand{side}"], bone_chest, t, LIMB_MARGIN, 3, turn))
+        if "face" in layers:
+            # It shows once the arms have arrived; on the way up the hands are still the limbs'.
+            arrived = float(np.clip((float(anim.elev(t)) - FACE_FROM) / (1 - FACE_FROM), 0, 1))
+            if arrived > 0:
+                faces.append(warp(layers["face"] * (arrived * arrived * (3 - 2 * arrived)), bone_head, t, 60, 3))
         stack.append(at(jacket, bone_jacket))
         if two:
             stack.append(at(plate["panel"], bone_jacket))
@@ -250,7 +487,7 @@ def render_frame(anim, frame, scene):
         for side, (src, dst) in drawn.items():
             layer, bone = (base["arm"], bone_arm) if side == "L" else (plate["arm"], bone_jacket)
             stack.append(warp(layer, bone, t, LIMB_MARGIN, 3, (back_map(src, dst, clearance), dst)))
-    return drop_specks(to_game(compose(stack + hanging + [head] + hands)))
+    return drop_specks(to_game(compose(stack + hanging + [head] + faces + hands)))
 
 
 def main():

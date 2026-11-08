@@ -177,7 +177,7 @@ def miss():
     return a
 
 
-def crushed():
+def crushed_old():
     n = 28
     a = Anim(
         n, 24, loop=False,
@@ -320,11 +320,110 @@ def hype():
         hip_x=wave(1, 7), hip_drop=beat(2, 16), knee=beat(2, 5), chest_tilt=wave(1, -1.2), head_tilt=wave(1, 3, 0.03),
         head_bob=beat(2, 1), nod=beat(2, 8), lift=beat(2, 14, 0.5), hair_x=wave(1, 13), hair_y=beat(2, 10, 0.08),
     )
-    eyes_blink(a, 22, "happy")
+    eyes_blink(a, 22)
     return a
 
 
 def go():
+    # GO: straight on from count1's raised hand, the finger turns into a paw with a wink.
+    n = 22
+    a = Anim(
+        n, 24, loop=False,
+        series=(("arm_mid", 75), ("arm_paw", 128)), key_at={0: "arm_one", 1: "arm_one"},
+        elev=track(n, (0, 128), (2, 140), (5, 117), (9, 135), (12, 125), (15, 129), (21, 128)),
+        hip_drop=track(n, (0, 3), (2, 13), (6, 0), (10, 8), (14, 2), (21, 3)), knee=track(n, (0, 0), (2, 3), (6, 0), (21, 0)),
+        lean=const(-0.6),
+        head_tilt=track(n, (0, -3), (2, -1), (9, -4.5), (14, -2.5), (21, -3)), nod=track(n, (0, 0), (2, 4), (7, -2), (11, 3), (21, 0)),
+        hip_x=track(n, (0, -3), (9, -6), (21, -3)), hair_x=track(n, (0, 0), (5, 8), (12, -7), (21, 0)), hair_y=track(n, (0, 0), (2, 4), (7, -5), (12, 5), (21, 0)),
+    )
+    eyes_shut(a, 10, None, "wink", ("wink1", "wink2"))
+    return a
+
+
+def count3():
+    # The count-in starts: the hand comes up beside her cheek holding three fingers, in half a second.
+    n = 14
+    a = Anim(
+        n, 28, loop=False,
+        series=((None, 16), ("arm_low", None), ("arm_fore", 50), ("arm_mid", 75), ("arm_three", None)),
+        rests={"arm_three": 128},
+        elev=track(n, (0, 16), (2, 12), (4, 36), (8, 124), (10, 136), (12, 126), (13, 128)),
+        hip_drop=track(n, (0, 0), (2, 10), (5, 0), (9, 7), (13, 3)), knee=track(n, (0, 0), (2, 3), (5, 0), (13, 0)),
+        hip_x=track(n, (0, 0), (8, -5), (13, -3)), lean=track(n, (0, 0), (8, -0.8), (13, -0.6)),
+        head_tilt=track(n, (0, 0), (2, 1), (8, -4), (13, -3)), nod=track(n, (0, 0), (2, 4), (6, -2), (9, 3), (13, 0)),
+        hair_x=track(n, (0, 0), (4, 7), (9, -7), (13, 0)), hair_y=track(n, (0, 0), (2, 4), (6, -5), (10, 4), (13, 0)),
+    )
+    return a
+
+
+def count_step(key, before=None):
+    # One finger folds down on the beat: the tick lands on the previous count's hand, the next frame shows it folded,
+    # while the hand pumps and she bobs with it, then holds where count3 left her.
+    n = 12
+    steps = {f: key for f in range(n)}
+    if before:
+        steps[0] = before
+    return Anim(
+        n, 24, loop=False,
+        series=(("arm_mid", 75), (key, 128)), key_at=steps,
+        elev=track(n, (0, 128), (2, 140), (5, 121), (8, 131), (11, 128)),
+        hip_drop=track(n, (0, 3), (2, 11), (5, 0), (8, 5), (11, 3)), knee=track(n, (0, 0), (2, 3), (5, 0), (11, 0)),
+        hip_x=const(-3), lean=const(-0.6),
+        head_tilt=track(n, (0, -3), (2, -1.5), (6, -4), (11, -3)), nod=track(n, (0, 0), (2, 4), (5, -2), (8, 1), (11, 0)),
+        hair_x=track(n, (0, 0), (3, 5), (7, -4), (11, 0)), hair_y=track(n, (0, 0), (2, 4), (5, -5), (8, 3), (11, 0)),
+    )
+
+
+def count2():
+    return count_step("arm_two", before="arm_three")
+
+
+def count1():
+    return count_step("arm_one", before="arm_two")
+
+
+def crushed_cry():
+    # Crushed: she folds forward, both hands fly up over her eyes and she sobs, shoulders shaking.
+    n = 36
+    a = Anim(
+        n, 36, loop=False,
+        series=((None, 0), ("both_eyes", 1)), elev=track(n, (0, 0), (2, 0.04), (8, 1), (35, 1)),
+        lean=track(n, (0, 0), (3, -0.8), (10, 1.6), (14, 1.3), (35, 1.4)),
+        hip_drop=track(n, (0, 0), (3, 5), (10, 18), (13, 14), (16, 19), (19, 15), (22, 20), (25, 16), (28, 20), (31, 16), (35, 18)),
+        knee=track(n, (0, 0), (10, 6), (35, 5)),
+        slump=track(n, (0, 0), (3, 3), (10, 16), (13, 13), (16, 17), (19, 14), (22, 17), (25, 14), (28, 17), (31, 14), (35, 16)),
+        nod=track(n, (0, 0), (2, -3), (10, 8), (13, 6), (16, 8), (19, 6), (22, 8), (25, 6), (28, 8), (31, 7), (35, 7)),
+        head_squash=track(n, (0, 0), (2, 0), (10, 0.05), (35, 0.045)),
+        head_tilt=track(n, (0, 0), (3, 1.5), (10, -1), (16, -1.8), (22, -0.8), (28, -1.8), (35, -1.2)),
+        hair_x=track(n, (0, 0), (3, 9), (9, -7), (16, 3), (23, -2), (35, 0)), hair_y=track(n, (0, 0), (4, -8), (11, 13), (14, 7), (17, 11), (20, 7), (23, 11), (26, 7), (29, 10), (35, 9)),
+        wob_l=track(n, (0, 0), (6, -4), (10, 3), (13, 0), (16, 2), (19, 0), (22, 2), (25, 0), (28, 2), (35, 0)),
+        wob_r=track(n, (0, 0), (6, -5), (10, 3), (13, 0), (16, 2), (19, 0), (22, 2), (25, 0), (28, 2), (35, 0)),
+    )
+    a.eyes = ["open", "lid1", "lid2"] + ["wince"] * (n - 3)
+    return a
+
+
+def crushed():
+    # Like miss, only it does not bounce back: she sinks, her shoulders go, her head drops and stays down, and the gloom falls over her brow.
+    n = 26
+    a = Anim(
+        n, 30, loop=False,
+        lean=track(n, (0, 0), (2, -2.0), (6, -0.6), (12, 0.9), (25, 0.8)), hip_x=track(n, (0, 0), (2, -8), (10, -3), (25, -3)),
+        hip_drop=track(n, (0, 0), (2, 10), (5, 7), (11, 22), (14, 18), (18, 21), (25, 20)),
+        knee=track(n, (0, 0), (2, 3), (11, 6), (25, 5.5)),
+        slump=track(n, (0, 0), (2, 2), (11, 11), (14, 9), (18, 11), (25, 10.5)),
+        nod=track(n, (0, 0), (2, -5), (5, 3), (11, 13), (14, 11), (18, 12.5), (25, 12)),
+        head_squash=track(n, (0, 0), (5, 0), (11, 0.035), (25, 0.03)),
+        head_tilt=track(n, (0, 0), (2, 4), (8, 1), (13, -2.5), (25, -2)),
+        sleeve=track(n, (0, 0), (2, 7), (6, -2), (12, 3), (25, 2)), hand=track(n, (0, 0), (2, 10), (7, -3), (12, 3), (25, 2)),
+        hair_x=track(n, (0, 0), (2, 16), (6, -9), (11, 4), (16, -2), (25, 0)), hair_y=track(n, (0, 0), (3, -8), (8, 4), (12, 12), (16, 7), (25, 9)),
+        gloom=track(n, (0, 0), (7, 0), (15, 1), (25, 1)),
+    )
+    a.eyes = ["open", "lid2"] + ["wince"] * 6 + ["sad"] * (n - 8)
+    return a
+
+
+def go_old():
     n = 22
     a = Anim(
         n, 24, loop=False,
@@ -390,8 +489,74 @@ def newbest():
     return a
 
 
+def combo_common(a, size, spin, blush, hue=None):
+    a.eyes = ["star"] * a.frames
+    a.star = {"size": size, "spin": spin, "blush": blush, "hue": hue}
+    return a
+
+
+def combo_motion():
+    # A variant of vibe3 for long streaks: the fist sweeps side to side like a light stick at a concert,
+    # pumping on the beat, and her whole body follows it. The tiers share this motion and differ in effects.
+    return Anim(
+        48, 24,
+        series=(("arm_up", None),), elev=const(172), wob_l=plus(const(-8), wave(2, 16), beat(4, 5, 0.92)),
+        hip_x=wave(2, -13), hip_drop=beat(4, 20), hip_tilt=wave(2, -1.3), chest_tilt=wave(2, 1.6), lean=wave(2, 0.9),
+        head_tilt=wave(2, 6, 0.03), head_bob=beat(4, 1.3), nod=beat(4, 10), knee=beat(4, 5.5), arm_swing=wave(2, 1.4),
+        hair_x=wave(2, 26), hair_y=beat(4, 11), lift=beat(4, 11, 0.5),
+    )
+
+
+def combo100():
+    a = combo_motion()
+    combo_common(a, plus(const(0.70), beat(4, 0.10, 0.9)), wave(2, 7), 0.55)
+    a.fx = {"sparkles": 1}
+    return a
+
+
+def combo200():
+    a = combo_motion()
+    combo_common(a, plus(const(0.80), beat(4, 0.16, 0.9)), wave(2, 11), 0.85)
+    a.fx = {"sparkles": 2}
+    return a
+
+
+def combo300():
+    a = combo_motion()
+    hue = lambda t: float(t)
+    combo_common(a, plus(const(1.0), beat(4, 0.22, 0.9)), lambda t: 360.0 * float(t), 1.0, hue)
+    a.fx = {"sparkles": 3, "aura": hue}
+    return a
+
+
+def fever100():
+    # FEVER as it is, with the combo's look on top.
+    a = fever()
+    combo_common(a, plus(const(0.70), beat(4, 0.10, 0.9)), wave(2, 7), 0.55)
+    a.fx = {"sparkles": 1}
+    return a
+
+
+def fever200():
+    a = fever()
+    combo_common(a, plus(const(0.80), beat(4, 0.16, 0.9)), wave(2, 11), 0.85)
+    a.fx = {"sparkles": 2}
+    return a
+
+
+def fever300():
+    a = fever()
+    hue = lambda t: float(t)
+    combo_common(a, plus(const(1.0), beat(4, 0.22, 0.9)), lambda t: 360.0 * float(t), 1.0, hue)
+    a.fx = {"sparkles": 3, "aura": hue}
+    return a
+
+
 ANIMS = {
-    "neutral": neutral, "vibe1": vibe1, "vibe2": vibe2, "vibe3": vibe3, "fever": fever, "miss": miss, "crushed": crushed,
+    "neutral": neutral, "vibe1": vibe1, "vibe2": vibe2, "vibe3": vibe3, "fever": fever, "miss": miss, "crushed": crushed, "crushed_cry": crushed_cry,
     "milestone": milestone, "charting": charting, "emerge": emerge, "reveal": reveal, "stretch": stretch, "adjust": adjust,
-    "peek": peek, "hype": hype, "go": go, "cheer": cheer, "okay": okay, "sad": sad, "newbest": newbest,
+    "peek": peek, "hype": hype, "go": go, "go_old": go_old, "count3": count3, "count2": count2, "count1": count1, "crushed_old": crushed_old, "cheer": cheer, "okay": okay, "sad": sad, "newbest": newbest,
+    "combo100": combo100, "combo200": combo200, "combo300": combo300,
+    "fever100": fever100, "fever200": fever200, "fever300": fever300,
 }
+

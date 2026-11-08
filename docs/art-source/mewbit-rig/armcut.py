@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
-from armcuts import CUTS, L_HAIR, L_HAIR_KEY, R_HAIR, R_HAIR_KEY, R_PANEL, R_PLATE, R_PLATE_KEY
+from armcuts import CUTS, FACES, L_HAIR, L_HAIR_KEY, R_HAIR, R_HAIR_KEY, R_PANEL, R_PLATE, R_PLATE_KEY
 from keys import aligned, hands_of, limbs_of, segmap_of, yellow_of
 from rig import match_colors, premultiply, smoothstep
 from segment import HAIR, JACKET, classes, cut_alpha
@@ -42,6 +42,10 @@ class Sheet:
         drawing = color * alpha[..., None] + 1 - alpha[..., None]
         self.drawn, self.shift = aligned(sorted(glob.glob(f"key-{name}-7/*.png"))[0], drawing)
         self.seg = np.roll(segmap_of(name, color.shape), self.shift, (0, 1))
+        # Klein can draw the segmentation a few pixels off its key; slide it back onto the drawing's silhouette.
+        seg_figure, key_figure = self.seg.min(2) < 225, self.drawn.min(2) < 0.85
+        overlap = lambda dy, dx: (np.roll(seg_figure, (dy, dx), (0, 1)) & key_figure).sum() / (np.roll(seg_figure, (dy, dx), (0, 1)) | key_figure).sum()
+        self.seg = np.roll(self.seg, max(((dy, dx) for dy in range(-8, 9) for dx in range(-8, 9)), key=lambda d: overlap(*d)), (0, 1))
         rgb, key_alpha = cut_alpha(self.drawn * 255)
         # A gap between arm and body is closed off from the border, so it comes back opaque white; the segmentation knows it is empty.
         gap = ndi.binary_opening((self.seg.min(2) > 225) & (rgb.min(2) > 0.86), iterations=1)
@@ -145,6 +149,10 @@ def cut_key(name, color, alpha):
             box = ndi.gaussian_filter(polygon(cut["hand"], strength.shape).astype(np.float32), 0.7)
             layers[f"hand{side}"] = premultiply(rgb, strength * box)
         skeletons[side] = cut
+    if name in FACES:
+        # Hands over the face: that whole patch of the key rides the head, over the drawing's own face.
+        inside = ndi.gaussian_filter(polygon(FACES[name], sheet.alpha.shape).astype(np.float32), 1.5)
+        layers["face"] = premultiply(rgb, np.clip(inside, 0, 1) * sheet.alpha)
     return layers, skeletons, limbs_of(hands_of(name, sheet.seg))
 
 
