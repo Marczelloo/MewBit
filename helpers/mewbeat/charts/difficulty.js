@@ -177,6 +177,22 @@ const EASY_FROM_NORMAL = { cutFrom: "normal", keepShare: [[145, 0.66], [190, 0.8
 // holds.js keptHolds (flag normalHolds): Easy and Hard keep Normal's holds of at least minBeats.
 const NORMAL_HOLDS = { keepNormalHolds: { minBeats: 2 } };
 
+// rhythm.js sameCuts (flag easySameCuts): the bars Normal plays alike keep the same moments in Easy after the floors too, a
+// place kept where at least keep of the family's bars still play it. Train against people's Easy (65% same drops where Normal
+// repeats a bar, 2.39 / 2.88 / 2.97 moments/s under 145 / 145-190 / over 190 BPM): v44 39.1%, 2.07 / 2.81 / 3.18, F1 .7332;
+// keep .34 / .4 / .5 alone 68.7 / 73.5 / 79.4%, F1 .7381 / .7392 / .7395, but 2.58 moments/s at 145-190 (the cuts are half
+// beats); keep .4 with keepShare .72 / .9 / .85 (v44 .66 / .8 / .85): 65.8%, 2.13 / 2.68 / 2.97, F1 .7374. Less beat bonus, to
+// bring the share of Easy on the beat (87%) to people's (74%), cost F1 (.7332 -> .6980 at no bonus) and was dropped.
+const EASY_SAME_CUTS = { sameCuts: { keep: 0.4 }, keepShare: [[145, 0.72], [190, 0.9], [Infinity, 0.85]] };
+
+// generate.js plusNotes (flag hardHolds): Hard built on Normal laid no holds of its own and let go of Normal's on its extras:
+// train, holds 4.6% of its notes against people's 11.6%, held 12% of the song against 27%. plusHolds lays its sustain and gap
+// holds as a Hard charted from the music did, holdRelease "free" lets a hold go with its sound as Normal's do, and the hold
+// shares go up. Under 145 / 145-190 / over 190 BPM: holds .042 / .046 / .050 -> .101 / .089 / .090 of the notes (people .120 /
+// .116 / .079), held time .10 / .12 / .14 -> .30 / .23 / .24 (people .34 / .27 / .24), F1 unchanged (.808 / .816 / .805). Shares
+// .25 / .4 went past people (.19 holds), without "free" .12 holds but shorter.
+const HARD_HOLDS = { plusHolds: { gaps: true }, holdRelease: "free", holdsByCalm: holdsByCalm({ loud: 0.18, quiet: 0.3 }, { loud: 0.2, quiet: 0.4 }) };
+
 // generate.js plusNotes (flag hellPlus): Hell starts from the moments of Hard and adds its own, as Hard does on Normal. There are
 // no people's Hell maps, so the targets are the user's: about Hard x1.4 moments in the median, only +15-20% on dense songs, and
 // where the room runs out half the extra notes as sixteenth bursts, half as chords of 2-3 keys on strong hits.
@@ -506,10 +522,12 @@ module.exports = {
   DRUMLESS,
   EASY_FIGURES,
   EASY_FROM_NORMAL,
+  EASY_SAME_CUTS,
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,
   FLAT_LOUD,
+  HARD_HOLDS,
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,

@@ -21,7 +21,7 @@ const { withIntensity } = require("./intensity");
 const { localKeep, thinned } = require("./localThin");
 const { flagsKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
-const { laneTheRest, nested, rhythmOf, sortedOnsets, withBeats } = require("./rhythm");
+const { laneTheRest, nested, rhythmOf, sameCuts, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
@@ -259,7 +259,15 @@ function plusNotes(ctx, diff) {
     extras.push(...placed(chosen, null));
   });
   const key = (n) => `${n.t}:${n.lane}`;
-  return { notes: [...normal, ...extras, ...keyed].sort(byTime), sustained: new Set(normal.filter((n) => n.len > 0).map(key)), protect: new Set(moments) };
+  const all = [...normal, ...extras, ...keyed].sort(byTime);
+  const sustained = new Set(normal.filter((n) => n.len > 0).map(key));
+  if (!diff.plusHolds) return { notes: all, sustained, protect: new Set(moments) };
+  // diff.plusHolds (flag hardHolds): the level's own holds on top of the ones it was built on, as a level charted from the
+  // music lays them: long bass and lead notes held, then rests held up to its gap-hold share
+  const own = addSustainHolds(all, ctx.features, diff, ctx.timing, ctx.durationMs).map(({ gapHold, ...n }) => n);
+  for (const n of own) if (n.len > 0) sustained.add(key(n));
+  const notes = diff.plusHolds.gaps ? addGapHolds(own, ctx.features, diff, ctx.timing, ctx.energy, ctx.durationMs, -Infinity, calmOf(ctx, diff)).map(({ gapHold, ...n }) => n) : own;
+  return { notes, sustained, protect: new Set(moments) };
 }
 
 // The keys a dense phrase of a level built on another adds as chords (diff.plusDense): one more key, up to `keys`, on the
@@ -461,7 +469,10 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut), ctx, diff.fadeOut)) : limited;
-  return step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing));
+  const final = step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing));
+  if (!(diff.sameCuts && diff.cutFrom)) return final;
+  const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);
+  return step("sameCuts", final, sameCuts(final, above, ctx.timing, diff.sameCuts));
 }
 
 // Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
@@ -477,7 +488,8 @@ const notesFor = (ctx, difficulty, trace = null) => {
 
 // A level built on another (diff.buildOn) must keep every moment it was built on. Where the lanes find no free one for such a
 // moment (a chord just before it and another just after it, closer than the lane gap), the extras around it give way and the
-// moments within two lane gaps play only the size they were built with (chords.js diff.sizedAsBuilt): finish runs untraced
+// moments within two lane gaps play only the size they were built with (chords.js diff.sizedAsBuilt), and with diff.plusHolds a
+// hold over it lets go of it (a tap where it was charted as a hold): finish runs untraced
 // until no moment is lost, and the notes and diff it was happy with are what the real run gets.
 function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
   const reach = Math.max(diff.minLaneGapMs ?? 0, diff.minNoteGapMs ?? 0);
@@ -489,7 +501,11 @@ function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
     const have = new Set(done.map((n) => n.t));
     const lost = [...protect].filter((t) => !have.has(t));
     if (lost.length === 0) break;
-    const next = kept.filter((n) => protect.has(n.t) || !lost.some((t) => Math.abs(n.t - t) < reach));
+    // ...and with diff.plusHolds a hold running over such a moment (or ending too near it for its lane) plays as a tap
+    const over = new Set(!diff.plusHolds ? [] : done.filter((h) => h.len > 0 && lost.some((t) => t > h.t && t < h.t + h.len + reach)).map((h) => h.t));
+    const next = kept
+      .filter((n) => protect.has(n.t) || !lost.some((t) => Math.abs(n.t - t) < reach))
+      .map((n) => (n.len > 0 && over.has(n.t) ? (({ len, ...tap }) => tap)(n) : n));
     for (const n of kept) if (lost.some((t) => Math.abs(n.t - t) < 2 * reach)) sized.add(n.t);
     kept = next;
     used = { ...diff, sizedAsBuilt: new Set(sized) };

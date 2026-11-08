@@ -3,6 +3,8 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
+const { EASY_SAME_CUTS, HARD_HOLDS } = require("./difficulty");
+
 const FLAGS_FILE_NAME = "generator-flags.json";
 
 // name -> { label, levels: { <level name, public or internal>: { <difficulty parameter>: value } } }
@@ -17,7 +19,12 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear). hardPlus, plusFigures, easyFromNormal,
 // easyFigures, normalHolds and hellPlus became part of Easy, Hard and Hell in v44 (difficulty.js EASY_FROM_NORMAL,
 // EASY_FIGURES, HARD_PLUS, PLUS_FIGURES, NORMAL_HOLDS, HELL_PLUS).
-const FLAGS = {};
+const FLAGS = {
+  // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
+  easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
+  // Hard: its own holds on sustains and rests, let go with the sound (generate.js plusNotes). Hell, built on Hard, follows.
+  hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
+};
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
 

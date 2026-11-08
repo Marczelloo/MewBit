@@ -282,4 +282,38 @@ function nested(notes, rhythm) {
   return out;
 }
 
-module.exports = { MID_ENERGY, budgeted, cutToRhythm, figureMoments, laneTheRest, metricLevel, nested, rhythmOf, sortedOnsets, strengthAt, withBeats };
+// sameCuts(notes, upper, timing, { keep }) -> notes: the bars the level above plays alike (`upper`, its sorted times) end up
+// with the same moments (diff.sameCuts, flag easySameCuts). figureMoments makes the budget cut alike, but the floors after
+// it (density, gaps) drop single moments where a bar happens to run dense, so a family of such bars keeps a place only
+// where at least `keep` of its bars still play it, and drops it from the others. Only taps go; holds and bars with no family
+// stay as they are. No downbeats or snapped grid: the notes as they are.
+function sameCuts(notes, upper, timing, { keep }) {
+  const downbeats = timing?.downbeats ?? [];
+  if (!timing?.snapped || downbeats.length < 2) return notes;
+  const grid = timing.gridPoints(POSITIONS_PER_BEAT);
+  const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
+  const families = new Map();
+  for (let k = 0; k + 1 < downbeats.length; k++) {
+    const from = downbeats[k] - BAR_EDGE_MS, to = downbeats[k + 1] - BAR_EDGE_MS;
+    const first = nearestIndex(grid, downbeats[k]);
+    const slot = (t) => nearestIndex(grid, t) - first;
+    const above = upper.slice(lowerBound(upper, from), lowerBound(upper, to));
+    if (above.length < 2) continue;
+    const key = `${nearestIndex(grid, downbeats[k + 1]) - first}|${above.map(slot).join(",")}`;
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(new Map(times.slice(lowerBound(times, from), lowerBound(times, to)).map((t) => [slot(t), t])));
+  }
+  const held = new Set(notes.filter((n) => n.len > 0).map((n) => n.t));
+  const drop = new Set();
+  for (const bars of families.values()) {
+    if (bars.length < 2) continue;
+    for (const s of new Set(bars.flatMap((bar) => [...bar.keys()]))) {
+      const playing = bars.filter((bar) => bar.has(s));
+      if (playing.length >= keep * bars.length) continue;
+      for (const bar of playing) if (!held.has(bar.get(s))) drop.add(bar.get(s));
+    }
+  }
+  return drop.size === 0 ? notes : notes.filter((n) => !drop.has(n.t));
+}
+
+module.exports = { MID_ENERGY, budgeted, cutToRhythm, figureMoments, sameCuts, laneTheRest, metricLevel, nested, rhythmOf, sortedOnsets, strengthAt, withBeats };
