@@ -150,11 +150,12 @@ function framesOf(entry) {
   return entry?.kind === "frames" && entry.frames?.length ? entry.frames : [placeholderUrl];
 }
 
-// Poses a group needs: its own, plus the members of its routines (the lobby idle borrows the game's neutral).
+// Poses a group needs: its own and those that list it in `also`, plus the members of its routines (the lobby
+// idle borrows the game's neutral).
 function posesOfGroup(group) {
   const names = new Set();
   for (const [name, entry] of Object.entries(MEWBIT_POSES)) {
-    if (entry.group !== group) continue;
+    if (entry.group !== group && !entry.also?.includes(group)) continue;
     if (entry.kind === "routine") [entry.base, ...entry.fidgets].forEach((member) => names.add(member));
     else names.add(name);
   }
@@ -266,7 +267,7 @@ export function createPlayer(onShown) {
     }
     const toBoundary = cycleMs(cur.entry) - ((now - cur.start) % cycleMs(cur.entry));
     const fits = join || (canJoin(cur.entry, entry) && toBoundary <= MAX_JOIN_WAIT_MS);
-    player.pending = { name, join: fits };
+    player.pending = { name, join: fits, at: now };
   }
 
   function want(name, now) {
@@ -309,7 +310,9 @@ export function createPlayer(onShown) {
       }
       pending.join = false;
     }
-    const start = startOf(pending.name, entry, now);
+    // A one-shot keeps the time it was asked for, so one whose frame decoded late skips ahead instead of
+    // trailing whatever it follows (the count-in digits).
+    const start = entry.hold ? pending.at : startOf(pending.name, entry, now);
     const first = frames[indexOf({ entry, start }, now)];
     requestFrame(first, true);
     if (readyFrame(first)) show(pending.name, entry, start, now, true);

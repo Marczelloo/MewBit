@@ -15,9 +15,9 @@ test("a miss that breaks a long combo crushes Mewbit for the whole fall", () => 
   assert.deepEqual(result, { crushed: true, until: 1000 + CRUSHED_POSE_MS });
 });
 
-test("the crushed window outlasts the 28 frames at 36 fps and holds the last one", () => {
+test("the crushed window outlasts the 26 frames at 30 fps and holds the last one", () => {
   const { CRUSHED_POSE_MS } = mod;
-  assert.ok(CRUSHED_POSE_MS > (28 / 36) * 1000 + 200);
+  assert.ok(CRUSHED_POSE_MS > (26 / 30) * 1000 + 200);
 });
 
 test("a short combo gets the plain miss pose", () => {

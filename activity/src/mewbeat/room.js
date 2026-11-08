@@ -93,7 +93,8 @@ export function formatClock(ms) {
 // Mewbit's pose on the lobby stage. "idle" lets the caller cycle its idle poses.
 export function lobbyPose({ remainingMs: left = null, digit = null } = {}) {
   if (digit === 0) return "go";
-  if (digit != null && digit >= 1 && digit <= 5) return "hype";
+  if (digit != null && digit >= 1 && digit <= 3) return `count${digit}`;
+  if (digit != null && digit >= 4 && digit <= 5) return "hype";
   if (left != null && left <= PEEK_WINDOW_MS) return "peek";
   return "idle";
 }

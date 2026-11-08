@@ -92,7 +92,9 @@ test("formatClock", () => {
 });
 
 test("lobbyPose follows the mockup rules", () => {
-  assert.equal(lobbyPose({ phase: "countdown", digit: 3 }), "hype");
+  assert.equal(lobbyPose({ phase: "countdown", digit: 5 }), "hype");
+  assert.equal(lobbyPose({ phase: "countdown", digit: 3 }), "count3");
+  assert.equal(lobbyPose({ phase: "countdown", digit: 1 }), "count1");
   assert.equal(lobbyPose({ phase: "countdown", digit: 0 }), "go");
   assert.equal(lobbyPose({ phase: "intermission", remainingMs: 15_000 }), "peek");
   assert.equal(lobbyPose({ phase: "intermission", remainingMs: 40_000 }), "idle");
