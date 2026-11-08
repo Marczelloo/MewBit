@@ -3,7 +3,7 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
-const { EASY_FIGURES, HARD_PLUS, NORMAL_HOLDS, PLUS_FIGURES } = require("./difficulty");
+const { EASY_FIGURES, HARD_PLUS, HELL_PLUS, NORMAL_HOLDS, PLUS_FIGURES } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
@@ -44,6 +44,8 @@ const FLAGS = {
   easyFigures: { label: "Easy: te same cięcia w powtarzanych taktach", levels: { easy: { ...EASY_FIGURES } } },
   // Easy and Hard keep Normal's long holds: no extra cuts them, Easy keeps their moments (holds.js keptHolds).
   normalHolds: { label: "Easy i Hard: długie holdy z Normal zostają", levels: { easy: { ...NORMAL_HOLDS }, hard: { ...NORMAL_HOLDS }, hardBase: {} } },
+  // Hell = every moment of Hard plus extras, sixteenths and chords on top (generate.js plusNotes). Only Hell changes.
+  hellPlus: { label: "Hell zbudowany na Hard", levels: { hell: { ...HELL_PLUS } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

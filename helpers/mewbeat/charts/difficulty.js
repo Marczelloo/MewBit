@@ -172,6 +172,28 @@ const EASY_FIGURES = { keepFigures: true, keepShareScale: 0.85 };
 // holds.js keptHolds (flag normalHolds): Easy and Hard keep Normal's holds of at least minBeats.
 const NORMAL_HOLDS = { keepNormalHolds: { minBeats: 2 } };
 
+// generate.js plusNotes (flag hellPlus): Hell starts from the moments of Hard and adds its own, as Hard does on Normal. There are
+// no people's Hell maps, so the targets are the user's: about Hard x1.4 moments in the median, only +15-20% on dense songs, and
+// where the room runs out half the extra notes as sixteenth bursts, half as chords of 2-3 keys on strong hits.
+// Train (78 songs, with the bot's flags), Hell/Hard moments in the median: budgetScale 1.8 / 2.0 / 2.2 gave 1.29 / 1.40 / 1.48,
+// but as much on fast songs as on slow ones, and 66-76% of the extra notes were moments. plusDense (generate.js plusNotes) cuts
+// a phrase's new moments from sparseShare of its Hard moments at fromNps Hard moments/s to denseShare at toNps, and gives the
+// rest of its room to chord keys: with 2.2 and 5-9 / .7-.17, phrases under 5/s x1.44, 5-7 x1.42, 7-9 x1.32 (51% of the extra
+// notes chord keys), 9 and up x1.17 (64%); median 1.39, 8.2 moments/s (Hard 6.0), 12.7 notes/s (Hard 8.7). Where Hard already
+// plays every sixteenth (slow songs) no moment fits and the room goes to chords. No Hard moment is lost.
+const HELL_PLUS = {
+  buildOn: "hard",
+  scoreLevel: "hard",
+  keepSizes: true,
+  budgetScale: 2.2,
+  plusFloor: 0.15,
+  plusDense: { fromNps: 5, toNps: 9, sparseShare: 0.7, denseShare: 0.17 },
+  chordRates: [1.0, 0.9, 0.3, 0.3],
+  copyFrom: COPY_FROM,
+  ...PLUS_FIGURES,
+  ...NORMAL_HOLDS,
+};
+
 // --- Per-difficulty parameters ---------------------------------------------
 
 // Levels the generator charts but does not offer: DIFFICULTIES (and generateAll) stay the public ones.
@@ -475,6 +497,7 @@ module.exports = {
   FIGURES,
   FLAT_LOUD,
   HARD_PLUS,
+  HELL_PLUS,
   HOLD_SLOW,
   MELODY_ONLY,
   MELODY_PICK,

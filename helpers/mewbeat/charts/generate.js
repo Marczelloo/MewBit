@@ -5,7 +5,7 @@ const { withFittedBeats } = require("./beatFit");
 const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { CALM_ENOUGH, calmLookup, shareOver } = require("./calm");
 const { holdQuietLone, limitChordShare, planChords, slowChords } = require("./chords");
-const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
+const { applyDifficulty, enforceFloors, groupByTime, spacedMoments } = require("./difficultyFilter");
 const { addGapHolds, addSustainHolds, clipHolds, keptHolds, limitHoldShare, longHolds, oneHoldAtATime, settleHolds, slowHolds } = require("./holds");
 const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
@@ -238,6 +238,7 @@ function plusNotes(ctx, diff) {
   // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left
   const heldShare = (phrase) => held.reduce((sum, h) => sum + Math.max(0, Math.min(h.t + h.len, phrase.endMs) - Math.max(h.t, phrase.startMs)), 0) / Math.max(1, phrase.endMs - phrase.startMs);
   const extras = [];
+  const keyed = []; // the chord keys of diff.plusDense, kept apart from the extras a repeat copies
   phrases.forEach((phrase, i) => {
     const fromMs = i === 0 ? 0 : phrase.startMs;
     const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
@@ -245,15 +246,46 @@ function plusNotes(ctx, diff) {
     const open = held.length > 0 ? 1 - Math.min(1, heldShare(phrase)) : 1;
     const room = Math.round(open * Math.max(Math.ceil((diff.plusFloor ?? 0) * mine), budgetOf(ctx, phrase, diff) - mine));
     if (room === 0) return;
+    // diff.plusDense (flag hellPlus): the denser the phrase already is, the fewer moments it takes on top, and the room it does not
+    // fill with moments (cut here, or no sound left where one fits) goes to chords on its strongest moments, never more keys than
+    // the share of moments it could have taken
+    const dense = diff.plusDense;
+    const rate = mine / Math.max(1, (phrase.endMs - phrase.startMs) / 1000);
+    const w = dense ? Math.min(1, Math.max(0, (rate - dense.fromNps) / (dense.toNps - dense.fromNps))) : 0;
+    const most = dense ? Math.round(mine * (dense.sparseShare + w * (dense.denseShare - dense.sparseShare))) : Infinity;
     const copy = copiedRepeat(ctx, extras, i, diff);
     const heard = scored.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter(free);
     const candidates = copy ? copy.notes.filter(free).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
-    const chosen = diff.plusFigures ? plusFigures(candidates, occupied, room, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, room, diff, ctx.timing);
+    const take = Math.min(room, most);
+    const chosen = take === 0 ? [] : diff.plusFigures ? plusFigures(candidates, occupied, take, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, take, diff, ctx.timing);
     for (const m of chosen) occupied.splice(lowerBound(occupied, m.t), 0, m.t);
+    if (dense) keyed.push(...chordKeys(normal, scored, scoredTimes, fromMs, toMs, Math.min(room - chosen.length, most), ctx.timing));
     extras.push(...placed(chosen, null));
   });
   const key = (n) => `${n.t}:${n.lane}`;
-  return { notes: [...normal, ...extras].sort(byTime), sustained: new Set(normal.filter((n) => n.len > 0).map(key)), protect: new Set(moments) };
+  return { notes: [...normal, ...extras, ...keyed].sort(byTime), sustained: new Set(normal.filter((n) => n.len > 0).map(key)), protect: new Set(moments) };
+}
+
+// The keys a dense phrase of a level built on another adds as chords (diff.plusDense): one more key, up to `keys`, on the
+// strongest moments of [fromMs, toMs) the level was built on, singles first, then two-key chords becoming three; strongest
+// by the score of their sound, a beat before a half beat before the rest. A moment with a hold is left as it is. keepSizes in
+// chords.js plays the moment at its new size.
+function chordKeys(built, scored, scoredTimes, fromMs, toMs, keys, timing) {
+  if (keys <= 0) return [];
+  const scoreAt = (t) => {
+    const i = lowerBound(scoredTimes, t);
+    return scoredTimes[i] === t ? scored[i].score : -Infinity;
+  };
+  const grid = timing?.snapped ? [timing.gridPoints(1), timing.gridPoints(2)].map((g) => new Set(g)) : [new Set(), new Set()];
+  const place = (t) => (grid[0].has(t) ? 0 : grid[1].has(t) ? 1 : 2);
+  const moments = groupByTime(built.filter((n) => n.t >= fromMs && n.t < toMs));
+  const open = moments.filter((m) => m.length < 3 && !m.some((n) => n.len > 0));
+  const rank = (m) => [m.length, place(m[0].t), -scoreAt(m[0].t)];
+  const order = open.sort((a, b) => {
+    const [x, y] = [rank(a), rank(b)];
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a[0].t - b[0].t;
+  });
+  return order.slice(0, keys).map((m) => ({ t: m[0].t, lane: [0, 1, 2, 3].find((l) => !m.some((n) => n.lane === l)) }));
 }
 
 // One difficulty's rhythm charted from the music, phrase by phrase: { notes, sustained }. A difficulty with diff.cutFrom
