@@ -312,7 +312,9 @@ export function createPlayer(onShown) {
     }
     // A one-shot keeps the time it was asked for, so one whose frame decoded late skips ahead instead of
     // trailing whatever it follows (the count-in digits).
-    const start = entry.hold ? pending.at : startOf(pending.name, entry, now);
+    // Loops that move alike stay in step, so only the look changes.
+    const inStep = entry.sync && entry.sync === cur.entry.sync;
+    const start = entry.hold ? pending.at : inStep ? cur.start : startOf(pending.name, entry, now);
     const first = frames[indexOf({ entry, start }, now)];
     requestFrame(first, true);
     if (readyFrame(first)) show(pending.name, entry, start, now, true);

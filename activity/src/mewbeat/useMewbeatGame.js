@@ -63,12 +63,19 @@ function settingsOf(settings) {
 
 // Which Mewbit pose to show. FEVER beats a recent miss, which beats a multiplier milestone,
 // which beats the combo-driven vibe levels.
+// The highest combo tier reached, or 0 below the first one. Each tier has its own pose, in and out of FEVER.
+function comboTier(combo) {
+  return [300, 200, 100].find((tier) => combo >= tier) ?? 0;
+}
+
 export function poseFor({ phase, feverActive, now, missUntil, crushed, milestoneUntil, combo }) {
   if (phase === "charting") return "charting";
   if (phase !== "playing") return "neutral";
-  if (feverActive) return "fever";
+  const tier = comboTier(combo);
+  if (feverActive) return tier ? `fever${tier}` : "fever";
   if (now < missUntil) return crushed ? "crushed" : "miss";
   if (now < milestoneUntil) return "milestone";
+  if (tier) return `combo${tier}`;
   if (combo >= 50) return "vibe3";
   if (combo >= 25) return "vibe2";
   if (combo >= 10) return "vibe1";
