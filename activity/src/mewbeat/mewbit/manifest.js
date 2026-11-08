@@ -3,7 +3,7 @@
 // its last frame, and `group` is the screen whose poses are preloaded together (`also` names more screens
 // that preload it). `rest` marks a loop that
 // starts and ends on the rest pose, so two of them can hand over on a cycle boundary without a fade (see
-// Mewbit.jsx). An optional `motion` is a CSS class from mewbeat.css on top of the frames. A { kind: "placeholder", motion }
+// Mewbit.jsx). Loops with the same `sync` move identically, so switching between them keeps the phase. An optional `motion` is a CSS class from mewbeat.css on top of the frames. A { kind: "placeholder", motion }
 // pose animates the single PNG with that class instead. New art only needs this file.
 const FRAME_URLS = import.meta.glob("./frames/*/*.webp", { eager: true, query: "?url", import: "default" });
 
@@ -24,12 +24,18 @@ export const MEWBIT_POSES = {
   vibe1: pose("vibe1", "game", run(64), 24, { rest: true, bubble: "nyaa~!" }),
   vibe2: pose("vibe2", "game", run(64), 24, { rest: true, bubble: "wooo!!" }),
   vibe3: pose("vibe3", "game", run(48), 24, { bubble: "SUGOI!!" }),
+  combo100: pose("combo100", "game", run(48), 24, { sync: "combo", bubble: "KIRA KIRA~!" }),
+  combo200: pose("combo200", "game", run(48), 24, { sync: "combo", bubble: "SUGOOOI!!" }),
+  combo300: pose("combo300", "game", run(48), 24, { sync: "combo", bubble: "KAMI!!! ✦" }),
   // These three fit MISS_POSE_MS and CRUSHED_POSE_MS in missPose.js and MILESTONE_POSE_MS in useMewbeatGame.js;
   // crushed (a deeper miss: she sinks, head down, the gloom over her brow) plays in under a second and holds the gloom.
   miss: pose("miss", "game", run(14), 24, { hold: true, bubble: "eep!" }),
   crushed: pose("crushed", "game", run(26), 30, { hold: true, bubble: "mou~" }),
   milestone: pose("milestone", "game", run(21), 24, { hold: true }),
-  fever: pose("fever", "game", run(48), 24, { bubble: "FEVER!!! ✦" }),
+  fever: pose("fever", "game", run(48), 24, { sync: "fever", bubble: "FEVER!!! ✦" }),
+  fever100: pose("fever100", "game", run(48), 24, { sync: "fever", bubble: "FEVER!!! ✦" }),
+  fever200: pose("fever200", "game", run(48), 24, { sync: "fever", bubble: "FEVER!!! ✦" }),
+  fever300: pose("fever300", "game", run(48), 24, { sync: "fever", bubble: "FEVER!!! ✦" }),
   charting: pose("charting", "game", run(48), 12, { rest: true, bubble: "charting…" }),
   // Climbs out of the unlock glitch; its last frame is the first of reveal.
   emerge: pose("emerge", "unlock", run(38), 24, { hold: true }),
