@@ -113,10 +113,13 @@ function opensOnChord({ t, rise }, diff, energy) {
   return rise >= (diff.sectionChordRise ?? Infinity) && energy.at(t) >= (diff.sectionChordEnergy ?? 0);
 }
 
-// accentSections(notes, sections, diff, timing, energy) -> notes: a section opens on a note. What stands too near that
+// accentSections(notes, sections, diff, timing, energy, protect) -> notes: a section opens on a note. What stands too near that
 // moment gives way to it, more so before a chord. Holds are settled afterwards, so one running over the moment lets go
-// on it. A new note's lane only holds its place until the moments are laid out (lanes.js).
-function accentSections(notes, sections, diff, timing, energy) {
+// on it. A new note's lane only holds its place until the moments are laid out (lanes.js). `protect` (optional, a set of
+// times) names moments that never give way (hardPlus: Normal's moments in Hard): a section whose note would have to push one
+// aside opens without a note of its own.
+function accentSections(notes, sections, diff, timing, energy, protect = null) {
+  const kept = (n) => protect !== null && protect.has(n.t);
   let out = [...notes];
   const noteGap = diff.minNoteGapMs ?? 0;
   for (const section of sections) {
@@ -124,11 +127,14 @@ function accentSections(notes, sections, diff, timing, energy) {
     if (t < LEAD_IN_MS || energy.at(t) < SILENCE_ENERGY) continue;
     const beat = beatMsOf(timing, t);
     const clear = Math.max(noteGap, (diff.gapBeats ?? 0) * beat * SNAPPED_FLOOR_SLACK, opensOnChord(section, diff, energy) ? (diff.chordGapBeats ?? 0) * beat * GAP_SLACK : 0);
-    const near = out.filter((n) => n.t !== t && Math.abs(n.t - t) < clear);
+    const near = out.filter((n) => n.t !== t && Math.abs(n.t - t) < clear && !kept(n));
     const at = out.filter((n) => n.t === t);
+    if (at.length === 0 && out.some((n) => kept(n) && Math.abs(n.t - t) < clear)) continue;
     let without = near.length > 0 ? out.filter((n) => !near.includes(n)) : out;
     if (at.length === 0 && crowded(without, t, 1, diff)) {
-      const nearest = without.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
+      const loose = without.filter((n) => !kept(n));
+      if (loose.length === 0) continue;
+      const nearest = loose.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
       without = without.filter((n) => n !== nearest);
     }
     out = at.length === 0 ? [...without, { t, lane: 0 }] : without;

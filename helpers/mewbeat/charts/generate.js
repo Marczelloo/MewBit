@@ -26,7 +26,7 @@ const { accentSections, openWithFirstSound, sectionStarts } = require("./section
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { holdFadeOut, thinFadeOut } = require("./fades");
-const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, repeatPlan, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusMoments, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -36,6 +36,7 @@ const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
 const MIN_COPY_SHARE = 0.5; // a repeat keeping less of its source than this is charted fresh
 const PLAYS_ON_ENERGY = 0.35; // a phrase at least this loud plays on, for a level cut from a harder one
+const MAX_CROWDING_ROUNDS = 4; // withoutCrowding: tries at keeping every moment the level is built on
 const SAME_MOMENT_MS = 3; // a note this close to a time in the source is the one copied from there
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
@@ -214,12 +215,42 @@ function repeatNotes(ctx, i, diff, trace, copied, extra, before = null) {
   return placed(extraMoments(phrase, heard, copied.map((n) => n.t), Math.min(extra, room), diff, ctx.timing, { before, carry }), trace);
 }
 
+// Hard built on Normal (diff.buildOn = "normal", flag hardPlus): every moment of that level's finished chart stays, with its size
+// and its hold, and each phrase takes extras on top, chosen from the music with this level's weights up to its own budget
+// (selection.js plusMoments). A repeat whose source took extras takes the same ones where the music repeats. finish then lays
+// holds, chords and lanes over the whole of it with this level's rules; `protect` holds the times it may not take a moment from.
+function plusNotes(ctx, diff) {
+  const { phrases } = ctx;
+  const normal = finalNotes(ctx, diff.buildOn).map((n) => ({ ...n }));
+  const moments = [...new Set(normal.map((n) => n.t))].sort((a, b) => a - b);
+  const occupied = [...moments];
+  const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
+  const scoredTimes = scored.map((m) => m.t);
+  const extras = [];
+  phrases.forEach((phrase, i) => {
+    const fromMs = i === 0 ? 0 : phrase.startMs;
+    const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
+    const mine = lowerBound(moments, toMs) - lowerBound(moments, fromMs);
+    const room = Math.max(Math.ceil((diff.plusFloor ?? 0) * mine), budgetOf(ctx, phrase, diff) - mine);
+    if (room === 0) return;
+    const copy = copiedRepeat(ctx, extras, i, diff);
+    const heard = scored.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter((m) => playable(ctx, m.t));
+    const candidates = copy ? copy.notes.filter((n) => playable(ctx, n.t)).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
+    const chosen = plusMoments(candidates, occupied, room, diff, ctx.timing);
+    for (const m of chosen) occupied.splice(lowerBound(occupied, m.t), 0, m.t);
+    extras.push(...placed(chosen, null));
+  });
+  const key = (n) => `${n.t}:${n.lane}`;
+  return { notes: [...normal, ...extras].sort(byTime), sustained: new Set(normal.filter((n) => n.len > 0).map(key)), protect: new Set(moments) };
+}
+
 // One difficulty's rhythm charted from the music, phrase by phrase: { notes, sustained }. A difficulty with diff.cutFrom
 // takes its moments from that harder level (rhythm.js). The lanes here only hold a place: chords and lanes are laid out
 // over the finished moments (finish). `sustained` holds the keys ("t:lane") of the real sustain holds, which the hold
 // cap keeps longest.
 // `trace` (optional, trace.js) hears what every stage did.
 function chartNotes(ctx, diff, trace = null) {
+  if (diff.buildOn) return plusNotes(ctx, diff);
   const { features, timing, energy, phrases, durationMs } = ctx;
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const leaders = leadersOf(ctx, diff);
@@ -348,10 +379,10 @@ function holdsCappedByPhrase(notes, ctx, diff, isSustain) {
 // of the chart known, do holds let go on the next one. The hold share is capped per phrase (a cap over the whole song
 // would demote holds unevenly and break the repeats); real sustains are kept before gap holds. With the moments
 // settled, each one gets its size (chords.js) and its lanes (lanes.js).
-function finish(ctx, { notes, sustained }, diff, trace = null) {
+function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const held = step("clipHolds", notes, clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing));
-  const sectioned = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy));
+  const sectioned = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy, protect));
   const accented = diff.firstSound ? step("firstSound", sectioned, openWithFirstSound(sectioned, ctx.onsets, diff, ctx.timing, ctx.energy)) : sectioned;
   const upper = upperRhythm(ctx, diff);
   const inside = upper ? step("nested", accented, nested(accented, upper)) : accented;
@@ -395,13 +426,41 @@ const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(wit
 
 const notesFor = (ctx, difficulty, trace = null) => {
   const diff = diffOf(ctx, difficulty);
-  return finish(ctx, chartNotes(ctx, diff, trace), diff, trace);
+  const charted = chartNotes(ctx, diff, trace);
+  if (!charted.protect) return finish(ctx, charted, diff, trace);
+  const settled = withoutCrowding(ctx, charted, diff);
+  return finish(ctx, { ...charted, notes: settled.notes }, settled.diff, trace);
 };
+
+// A level built on another (diff.buildOn) must keep every moment it was built on. Where the lanes find no free one for such a
+// moment (a chord just before it and another just after it, closer than the lane gap), the extras around it give way and the
+// moments within two lane gaps play only the size they were built with (chords.js diff.sizedAsBuilt): finish runs untraced
+// until no moment is lost, and the notes and diff it was happy with are what the real run gets.
+function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
+  const reach = Math.max(diff.minLaneGapMs ?? 0, diff.minNoteGapMs ?? 0);
+  let kept = notes;
+  let used = diff;
+  const sized = new Set();
+  for (let round = 0; round < MAX_CROWDING_ROUNDS; round++) {
+    const done = finish(ctx, { notes: kept.map((n) => ({ ...n })), sustained, protect }, used);
+    const have = new Set(done.map((n) => n.t));
+    const lost = [...protect].filter((t) => !have.has(t));
+    if (lost.length === 0) break;
+    const next = kept.filter((n) => protect.has(n.t) || !lost.some((t) => Math.abs(n.t - t) < reach));
+    for (const n of kept) if (lost.some((t) => Math.abs(n.t - t) < 2 * reach)) sized.add(n.t);
+    kept = next;
+    used = { ...diff, sizedAsBuilt: new Set(sized) };
+  }
+  return { notes: kept, diff: used };
+}
 
 // A level's finished notes, once per song: the levels below it are cut from them.
 function finalNotes(ctx, difficulty) {
-  ctx.final[difficulty] ??= notesFor(ctx, difficulty);
-  return ctx.final[difficulty];
+  // hardBase is Hard without the flag hardPlus: where the flags leave it the Hard they give Hard, the one chart serves both
+  const same = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
+  const level = difficulty === "hardBase" && same(withFlags(levelOf("hardBase"), "hardBase", ctx.flags), withFlags(levelOf("hard"), "hard", ctx.flags)) ? "hard" : difficulty;
+  ctx.final[level] ??= notesFor(ctx, level);
+  return ctx.final[level];
 }
 
 // The moments diff is cut from, or null for a level charted straight from the music.

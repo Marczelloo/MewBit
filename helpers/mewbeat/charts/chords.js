@@ -167,7 +167,8 @@ function slowChords(diff, timing) {
 }
 
 // planChords(notes, ctx, diff, upper) -> notes with every moment at the size it plays.
-// `upper` (rhythm.js) is the level above, for a level cut from it.
+// `upper` (rhythm.js) is the level above, for a level cut from it. With diff.keepSizes the notes come with their sizes
+// (Normal's, under hardPlus): a moment that came as a chord stays one, as far as the hands are free.
 function planChords(notes, ctx, diff, upper = null) {
   const { timing, phrases, sections, energy } = ctx;
   const moments = groupByTime(notes);
@@ -249,6 +250,10 @@ function planChords(notes, ctx, diff, upper = null) {
     // A lone moment in quiet music plays one note, but counts as planned: the chords around it stay where they were.
     // So does a moment of a phrase a quiet soloist leads (selection.js soloLeadRates): one note at a time follows the line.
     if ((quietLone.has(t) || solo?.[phraseAt] > 0) && !opens) want = Math.min(want, Math.max(1, Math.min(holds.length, 2)));
+    // hardPlus (diff.keepSizes): a moment comes in at the size Normal played it, and the rates above only add to it.
+    if (diff.keepSizes && handsFree) want = Math.max(want, moment.length);
+    // ...but where the lanes found no room for a moment it was built on (generate.js withoutCrowding), only its own size.
+    if (diff.keepSizes && diff.sizedAsBuilt?.has(t)) want = moment.length;
 
     const kept = [...holds, ...moment.filter((n) => !(n.len > 0))].slice(0, want);
     const added = freeLanes(kept, want - kept.length).map((lane) => ({ t, lane }));

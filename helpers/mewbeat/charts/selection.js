@@ -2,7 +2,7 @@
 // (momentWeights.js: its strength, its place in the bar), each phrase gets a budget from how much the music offers, and the
 // best moments of the phrase fill the budget. This file scores and budgets moments and selects them; generate.js charts
 // them.
-const { LEAD_IN_MS, MAX_SNAP_DISTANCE_MS, SILENCE_ENERGY } = require("./difficulty");
+const { DENSITY_WINDOW_MS, LEAD_IN_MS, MAX_SNAP_DISTANCE_MS, SILENCE_ENERGY } = require("./difficulty");
 const { beatMsOf } = require("./holds");
 const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE, REPEAT } = require("./momentWeights");
 const { hasSteadyPulse } = require("./phrases");
@@ -433,4 +433,34 @@ function extraMoments(phrase, scored, kept, extra, diff, timing, edges = {}) {
   return chosen.sort(byTime).map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
 
-module.exports = { audibleOf, extraMoments, isFlatLoud, openingLeadRates, phraseBudget, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
+// --- Hard built on Normal ---------------------------------------------------------------------
+
+// Would one more moment at t, among the sorted `times`, put more than `allowed` moments in a window of DENSITY_WINDOW_MS that has it?
+function crowdedAt(times, t, allowed) {
+  const starts = [t, ...times.slice(lowerBound(times, t - DENSITY_WINDOW_MS + 1e-9), lowerBound(times, t))];
+  return starts.some((from) => lowerBound(times, from + DENSITY_WINDOW_MS) - lowerBound(times, from) + 1 > allowed);
+}
+
+// plusMoments(scored, occupied, room, diff, timing) -> [{ t, s, reason, source }], time-ordered: the moments a phrase takes on
+// top of the ones `occupied` (the sorted times of every moment of the chart so far: Normal's, which stay, and the extras of the
+// phrases before), at most `room`, the best of `scored` first (a candidate with an infinite score is a copy from the repeat's
+// source, so it comes first). The level's gap holds against every moment and its density cap in the 2 s round the new one.
+function plusMoments(scored, occupied, room, diff, timing) {
+  const gapAt = gapOf(diff, timing);
+  const allowed = ((diff.maxNps ?? Infinity) * DENSITY_WINDOW_MS) / 1000;
+  const times = [...occupied];
+  const chosen = [];
+  const fits = (t) => {
+    const i = lowerBound(times, t);
+    return [times[i - 1], times[i]].every((n) => n === undefined || Math.abs(n - t) >= gapAt(t)) && !crowdedAt(times, t, allowed);
+  };
+  for (const c of [...scored].sort((a, b) => b.score - a.score || a.t - b.t)) {
+    if (chosen.length >= room) break;
+    if (c.score < (diff.extraFrom ?? -Infinity) || !fits(c.t)) continue;
+    times.splice(lowerBound(times, c.t), 0, c.t);
+    chosen.push({ t: c.t, s: c.s, reason: "plus", source: c.source });
+  }
+  return chosen.sort(byTime);
+}
+
+module.exports = { audibleOf, extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };

@@ -141,6 +141,20 @@ const SOLO_LEAD = { drumsBelow: 0.3, leadFrom: 0.8, share: 0.6 };
 // where the music holds no moment that strong stays empty (a full rest).
 const MINI_RESTS = { minBeats: 1.5, playing: 0.25, score: 0, edgeBeats: 0.5 };
 
+// generate.js plusNotes, selection.js plusMoments (flag hardPlus): Hard starts from the moments of Normal and adds its own.
+// Train sweep (train): budgetScale 1.2 / 1.3 / 1.4 gave Hard 5.95 / 6.17 / 6.24 moments/s (people 6.0) and median
+// F1 .826 / .828 / .823 (old Hard .767); plusFloor (the extras a dense Normal still gets, as a share of its moments) 0.1 / 0.18 / 0.28
+// gave 5.91 / 6.17 / 6.42 moments/s at 1.3. chordRates: Normal's chords stay chords (keepSizes) and these only add, 0.42 chord share
+// (people .42; Hard's own rates gave .54 on top of Normal's chords).
+const HARD_PLUS = {
+  buildOn: "normal",
+  scoreLevel: "hard",
+  keepSizes: true,
+  budgetScale: 1.3,
+  plusFloor: 0.18,
+  chordRates: [0.9, 0.8, 0.18, 0.21],
+};
+
 // --- Per-difficulty parameters ---------------------------------------------
 
 // Levels the generator charts but does not offer: DIFFICULTIES (and generateAll) stay the public ones.
@@ -162,7 +176,7 @@ const INTERNAL_LEVELS = {
     minGapBeats: 1 / 4,
     minNoteGapMs: 100,
     maxJack: 2,
-    cutFrom: "hard",
+    cutFrom: "hardBase", // Hard as it is without the flag hardPlus, so Easy (cut from this level) does not move with that flag
     cutLevel: 2,
     maxLevel: 1,
     halfBudget: [[110, 0.74], [135, 0.82], [160, 0.73], [185, 0.62], [Infinity, 0.46]],
@@ -407,6 +421,9 @@ const DIFFICULTIES = {
   },
 };
 
+// What normalV26, and so Easy, is cut from: Hard as generator v43 charts it. The flag hardPlus changes Hard only, never this.
+INTERNAL_LEVELS.hardBase = DIFFICULTIES.hard;
+
 // A level by name, public or internal.
 const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 
@@ -422,6 +439,7 @@ module.exports = {
   FELT_TEMPO,
   FIGURES,
   FLAT_LOUD,
+  HARD_PLUS,
   HOLD_SLOW,
   MELODY_ONLY,
   MELODY_PICK,
