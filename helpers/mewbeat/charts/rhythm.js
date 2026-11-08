@@ -140,7 +140,7 @@ const shareAt = (table, bpm) => table.find(([upTo]) => bpm < upTo)?.[1] ?? 0;
 
 // Keeps the `count` best of `moments` (times): strong, and at a place in the bar that is strong all phrase, so what is
 // left is a rhythm that comes back rather than scattered peaks. A note of the tune goes first.
-function bestMoments(moments, count, byMoment, timing) {
+function bestMoments(moments, count, byMoment, timing, bonusOf = null) {
   const positionOf = (t) => Math.round(beatInBar(timing, t) * POSITIONS_PER_BEAT);
   const strengthOf = (t) => Math.max(...byMoment.get(t).map((e) => e.s ?? 0));
   const sums = new Map();
@@ -151,7 +151,7 @@ function bestMoments(moments, count, byMoment, timing) {
   const scoreOf = (t) => {
     const { sum, n } = sums.get(positionOf(t));
     const events = byMoment.get(t);
-    return 0.5 * strengthOf(t) + (0.5 * sum) / n + (events.some((e) => TONAL_SOURCES.has(e.source)) ? TONAL_BONUS : 0) + (events.some((e) => e.upperChord) ? CHORD_BONUS : 0);
+    return 0.5 * strengthOf(t) + (0.5 * sum) / n + (events.some((e) => TONAL_SOURCES.has(e.source)) ? TONAL_BONUS : 0) + (events.some((e) => e.upperChord) ? CHORD_BONUS : 0) + (bonusOf ? bonusOf(t) : 0);
   };
   return moments
     .map((t) => ({ t, score: scoreOf(t) }))
@@ -160,12 +160,25 @@ function bestMoments(moments, count, byMoment, timing) {
     .map((m) => m.t);
 }
 
+// With diff.keepShare a level cut from Normal keeps a share of that level's own moments in the phrase (per tempo, as written
+// in diff.keepShare) rather than every beat and a budget of half beats: the beats and half beats compete for it, the beats with
+// diff.keepBeatBonus more score, so a weak beat can go where a strong half beat stays. `kept` already holds the moments where
+// the grid has a hole; the best of the rest are added up to the share.
+function keepShareOfUpper(kept, byMoment, diff, timing, { fromMs, toMs, rhythm }) {
+  const bpm = 60000 / timing.medianMs;
+  const upper = lowerBound(rhythm.moments, toMs) - lowerBound(rhythm.moments, fromMs);
+  const gridded = [...byMoment.keys()].filter((t) => !kept.has(t));
+  const count = Math.max(0, Math.round(shareAt(diff.keepShare, bpm) * upper) - kept.size);
+  const bonus = diff.keepBeatBonus ?? 0;
+  for (const t of bestMoments(gridded, count, byMoment, timing, (t) => (metricLevel(timing, t) === 0 ? bonus : 0))) kept.add(t);
+}
+
 // budgeted(items, diff, timing, { fromMs, toMs }, phraseEnergy) -> items: beats stay (in a quiet phrase only their
 // diff.quietBeats share); the half beats (and the quarter beats) a mapper of this level plays at this tempo, per beat of
 // the phrase, as written in diff.halfBudget and diff.quarterBudget and scaled by how loud the phrase is.
 // diff.maxHalfRun ends a run of half beats on the next beat.
-function budgeted(items, diff, timing, { fromMs, toMs }, phraseEnergy) {
-  if (!diff.halfBudget || !timing?.snapped) return items;
+function budgeted(items, diff, timing, { fromMs, toMs, rhythm }, phraseEnergy) {
+  if (!(diff.halfBudget || diff.keepShare) || !timing?.snapped) return items;
   const beats = Math.max(0, Math.min(toMs, timing.beats.at(-1)) - Math.max(fromMs, timing.beats[0])) / timing.medianMs;
   const bpm = 60000 / timing.medianMs;
   const scale = Number.isFinite(phraseEnergy) ? Math.min(LOUD_SCALE, Math.max(QUIET_SCALE, phraseEnergy / MID_ENERGY)) : 1;
@@ -178,14 +191,20 @@ function budgeted(items, diff, timing, { fromMs, toMs }, phraseEnergy) {
   const ofLevel = (level) => [...byMoment.keys()].filter((t) => timing.intervalOk(t) && metricLevel(timing, t) === level);
   const budgetedLevel = (t) => timing.intervalOk(t) && (metricLevel(timing, t) === 1 || metricLevel(timing, t) === 2);
   const kept = new Set([...byMoment.keys()].filter((t) => !budgetedLevel(t)));
-  if (diff.quietBeats > 0 && Number.isFinite(phraseEnergy) && phraseEnergy < MID_ENERGY) {
-    const onBeat = ofLevel(0);
-    const stay = new Set(bestMoments(onBeat, Math.round(onBeat.length * Math.max(diff.quietBeats, phraseEnergy / MID_ENERGY)), byMoment, timing));
-    for (const t of onBeat) if (!stay.has(t)) kept.delete(t);
+  if (diff.keepShare) {
+    kept.clear();
+    for (const t of byMoment.keys()) if (!timing.intervalOk(t)) kept.add(t);
+    keepShareOfUpper(kept, byMoment, diff, timing, { fromMs, toMs, rhythm });
+  } else {
+    if (diff.quietBeats > 0 && Number.isFinite(phraseEnergy) && phraseEnergy < MID_ENERGY) {
+      const onBeat = ofLevel(0);
+      const stay = new Set(bestMoments(onBeat, Math.round(onBeat.length * Math.max(diff.quietBeats, phraseEnergy / MID_ENERGY)), byMoment, timing));
+      for (const t of onBeat) if (!stay.has(t)) kept.delete(t);
+    }
+    for (const t of bestMoments(ofLevel(1), Math.round(shareAt(diff.halfBudget, bpm) * scale * beats), byMoment, timing)) kept.add(t);
+    const quarters = diff.quarterBudget ? Math.round(shareAt(diff.quarterBudget, bpm) * scale * 2 * beats) : Infinity;
+    for (const t of bestMoments(ofLevel(2), quarters, byMoment, timing)) kept.add(t);
   }
-  for (const t of bestMoments(ofLevel(1), Math.round(shareAt(diff.halfBudget, bpm) * scale * beats), byMoment, timing)) kept.add(t);
-  const quarters = diff.quarterBudget ? Math.round(shareAt(diff.quarterBudget, bpm) * scale * 2 * beats) : Infinity;
-  for (const t of bestMoments(ofLevel(2), quarters, byMoment, timing)) kept.add(t);
   if (diff.maxHalfRun > 0) {
     const beatMs = timing.medianMs;
     let run = 0;

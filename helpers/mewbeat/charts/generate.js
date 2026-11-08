@@ -156,12 +156,16 @@ function momentsAround(ctx, i, diff, before) {
   return { heard, carry };
 }
 
+// The level a level that must not play fewer moments than the one below it (diff.notBelow) reads. With the flag easyFromNormal
+// Easy is cut from Normal, so Normal reads Easy as it was (easyV26) and charts as it did without the flag.
+const belowOf = (ctx, diff) => (ctx.flags.easyFromNormal && diff.notBelow === "easy" ? "easyV26" : diff.notBelow);
+
 // The most moments phrase may take: what the music calls for, and at least as many as the level below plays there
 // (diff.notBelow), or a stretch of a harder level would play fewer notes than an easier one.
 function budgetOf(ctx, phrase, diff) {
   const own = phraseBudget(phrase, ctx, diff);
   if (!diff.notBelow) return own;
-  const below = new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size;
+  const below = new Set(inWindow(finalNotes(ctx, belowOf(ctx, diff)), phrase.startMs, phrase.endMs).map((n) => n.t)).size;
   return Math.max(own, below);
 }
 
@@ -175,7 +179,7 @@ function keptShare(ctx, diff) {
 // below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned.
 function followingTheMusic(ctx, notes, phrase, diff) {
   if (!diff.localThin || isFlatLoud(ctx, diff)) return notes;
-  const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
+  const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, belowOf(ctx, diff)), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
   return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below));
 }
 

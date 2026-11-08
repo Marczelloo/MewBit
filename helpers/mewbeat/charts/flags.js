@@ -19,9 +19,25 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear).
 // hardPlus is off by default: the user plays it first (generate.js plusNotes).
 
+// easyFromNormal (off): Easy is cut from today's Normal instead of from normalV26, the Normal of generator v26. Easy so far lacked
+// every later improvement of Normal (decoded melody, felt tempo, rests, figures, holds on sustains) and had moments Normal does
+// not play (train, median per song: 94% of Easy's moments were Normal's, the least 52%). The user wants Hard as "Normal plus" and
+// Easy as "Normal minus": with the flag every Easy moment is a Normal moment (100%, exact, on every train song), Normal's rests
+// stay rests, and Easy lays its own chords, holds and lanes on the moments it keeps. cutFrom "normal" makes the cut; keepShare
+// replaces the thinning a cut level had (every beat plus a budget of half beats, rhythm.js budgeted): per phrase Easy keeps this
+// share of Normal's moments by tempo (in BPM), the beats and half beats competing for it, the beats scoring keepBeatBonus more.
+// chordKeep and chordNew (Normal's chords Easy keeps, singles it makes chords) bring Easy's chord share back to people's .10,
+// where Normal's moments alone had it at .087. The shares, the bonus and the chord settings were tuned on the train songs
+// against people's Easy (the sweep is in the comment under easyV26 in difficulty.js).
+// Normal, Hard and Hell are not touched: Normal's floor under Easy (notBelow) reads the old Easy, easyV26, while this flag is on
+// (generate.js belowOf).
 const FLAGS = {
   // Hard = every moment of Normal plus extras (generate.js plusNotes). Only Hard changes.
   hardPlus: { label: "Hard zbudowany na Normal", levels: { hard: { ...HARD_PLUS }, hardBase: {} } },
+  easyFromNormal: {
+    label: "Easy wycięty z obecnego Normal",
+    levels: { easy: { cutFrom: "normal", keepShare: [[145, 0.66], [190, 0.8], [Infinity, 0.85]], keepBeatBonus: 0.6, chordKeep: [0.6, 0.14, 0, 0], chordNew: [0.14, 0, 0, 0] } },
+  },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

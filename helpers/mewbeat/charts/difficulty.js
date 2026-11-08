@@ -423,6 +423,23 @@ const DIFFICULTIES = {
 
 // What normalV26, and so Easy, is cut from: Hard as generator v43 charts it. The flag hardPlus changes Hard only, never this.
 INTERNAL_LEVELS.hardBase = DIFFICULTIES.hard;
+// easyV26 is Easy before the flag easyFromNormal: Normal never plays fewer moments than Easy (notBelow), and with the flag
+// on Easy is cut from Normal, so Normal reads this one instead (generate.js belowOf) and stays as it was.
+//
+// EASY_FROM_NORMAL, the settings the flag puts on Easy (flags.js), tuned on the 65 train songs that have a human Easy, never on
+// the test songs. Targets from people's Easy: 99% of its moments are Normal's, Easy/Normal 0.55 under 145 BPM, 0.66 at 145-190,
+// 0.69 above. keepShare is the share of Normal's moments Easy keeps per phrase, by tempo. Easy's own gaps, jacks and NPS cut
+// further, so the ratio that comes out is lower than the share, most above 190 BPM where it stays near 0.62 whatever the share:
+//   cutFrom "normal" alone (beats stay, half-beat budget as before): F1 .7327, ratio .589
+//   keepShare .60/.68/.70, keepBeatBonus 0:    F1 .6817   bonus .25: .7269   bonus .6: .7340   bonus -.15: .6346
+//   keepShare .66/.76/.80, keepBeatBonus .25:  F1 .7275, ratio .617   bonus .6: .7318   bonus 1: .7319 (flat above .6)
+//   keepShare .66/.85/.90, keepBeatBonus .6:   F1 .7285, ratio .622 (more share, no more F1: people drop the weak moments)
+//   a loudness scale on the share (what halfBudget has) lost F1, .7260, and was dropped.
+//   chosen .66/.80/.85, bonus .6: F1 .7305 (old Easy .7175), ratio .619 (people .648), 2.96 moments/s (people 2.89)
+// People keep the beats over the weak half beats, hence a beat bonus above 0; below 0 F1 falls by .09. Normal's moments alone
+// took Easy's chord share from .109 to .087 (people .102), so chordKeep .6 on the downbeat and chordNew .14 bring it to .102 at
+// the same F1; they are the third tuned setting.
+INTERNAL_LEVELS.easyV26 = DIFFICULTIES.easy;
 
 // A level by name, public or internal.
 const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
