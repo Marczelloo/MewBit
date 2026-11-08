@@ -13,14 +13,10 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // sustainHolds and sustainPads in v41 (difficulty.js SUSTAIN_HOLDS), melodyOnsetShift, drumless, feltTempoUp, melodyOnly and
 // dipSilence in v42 (difficulty.js DRUMLESS, MELODY_ONLY, DIP_SILENCE, FELT_TEMPO), chordSlow, holdSlow, slowDynamics and
 // flatLoud in v43 (difficulty.js CHORD_SLOW, HOLD_SLOW, SLOW_DYNAMICS, FLAT_LOUD).
-// figuresQuarter was dropped (0% of its notes hit on the test songs).
+// figuresQuarter was dropped (0% of its notes hit on the test songs), musicFirst (no gain by ear) and tempoBudget (it thinned
+// fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear).
 
-const FLAGS = {
-  // Normal's phrase budget follows the felt pace, not the beats (selection.js phraseBudget): people's density hardly moves
-  // with the tempo, Normal's rose with it (train, loud parts: under 170 BPM people 4.75 / Normal 4.51, over 190 BPM 4.98 /
-  // 5.68). Train F1 .8005 -> .8018; over 190 BPM 4.82 -> 4.63 moments a second (people 4.35), 145-170 4.16 -> 4.23 (4.34).
-  tempoBudget: { label: "Gęstość od tempa", levels: { normal: { tempoBudget: { refBpm: 175, power: 0.5 } } } },
-};
+const FLAGS = {};
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
 

@@ -2,10 +2,8 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, FELT_TEMPO } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { drumlessWindows, thinDrumless } = require("../../../helpers/mewbeat/charts/drumless");
-const { phraseBudget } = require("../../../helpers/mewbeat/charts/selection");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const RULE = DIFFICULTIES.normal.drumless;
@@ -50,18 +48,6 @@ describe("no drum kit playing (Normal's drumless, v42)", () => {
     const on = notesOf(generateAll(features, "k")), off = chartsWith(features, "drumless", undefined);
     for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], off[level], level);
     for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].drumless, undefined, level);
-  });
-});
-
-describe("a budget that follows the felt pace (flag tempoBudget)", () => {
-  it("gives a fast song's phrase fewer moments and a slow one's more", () => {
-    const rule = FLAGS.tempoBudget.levels.normal.tempoBudget;
-    for (const [bpm, fewer] of [[220, true], [120, false]]) {
-      const ctx = analyse(makeLayeredFeatures({ bpm, durationMs: 64000 }));
-      const phrase = ctx.phrases.find((p) => p.endMs - p.startMs > 4000);
-      const plain = phraseBudget(phrase, ctx, DIFFICULTIES.normal), paced = phraseBudget(phrase, ctx, { ...DIFFICULTIES.normal, tempoBudget: rule });
-      assert.ok(fewer ? paced < plain : paced > plain, `${bpm} BPM: ${paced} against ${plain}`);
-    }
   });
 });
 

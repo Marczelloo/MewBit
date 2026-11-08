@@ -253,9 +253,7 @@ function soloLeadRates(ctx, rule) {
 // music calls for (a song and a phrase the music fills get more than the median, a thin one fewer), times diff.budgetScale,
 // and never above diff.maxNpsCeiling moments per second. A quiet phrase before the song's first loud one keeps a higher floor
 // than one later on, and with diff.openingLead at least that share of the notes of its lead line (generator flag "lead"); a
-// quiet soloist later in the song (soloLeadRates) keeps diff.soloLead.share of its line. With diff.tempoBudget = { refBpm,
-// power } the music's rate is times (bpm / refBpm) ^ -power: people's Normal plays about 4.3 moments a second at any tempo,
-// where the fitted rate follows the beats (train, loud parts over 190 BPM: people 4.98, Normal 5.68). A budget is a limit; selectMoments
+// quiet soloist later in the song (soloLeadRates) keeps diff.soloLead.share of its line. A budget is a limit; selectMoments
 // leaves it unused where the music has less to offer. With diff.slowDynamics = { belowBpm, delta } a song slower than belowBpm
 // stretches its phrases' rates less round the song's (BUDGET.delta): people's quiet parts of slow songs are denser against
 // the loud ones than the generator's (train, 115-145 BPM, Normal: quiet 2.00 / loud 4.79 moments a second, people 3.26 / 4.68).
@@ -271,8 +269,7 @@ function phraseBudget(phrase, ctx, diff) {
   const byPhrase = Math.pow(clamp(own / song, floor, Infinity), slow ? diff.slowDynamics.delta : BUDGET.delta);
   const lead = (diff.openingLead ?? 0) * openingLeadRates(ctx)[phrase.index] * seconds;
   const solo = (diff.soloLead?.share ?? 0) * soloLeadRates(ctx, diff.soloLead)[phrase.index] * seconds;
-  const byTempo = diff.tempoBudget && ctx.timing?.medianMs > 0 ? Math.pow(60000 / ctx.timing.medianMs / diff.tempoBudget.refBpm, -diff.tempoBudget.power) : 1;
-  return Math.max(0, Math.min(most, Math.round(Math.max(lead, solo, BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale * byTempo))));
+  return Math.max(0, Math.min(most, Math.round(Math.max(lead, solo, BUDGET.medianRate * bySong * byPhrase * seconds * diff.budgetScale))));
 }
 
 // --- choosing the moments --------------------------------------------------------------------
