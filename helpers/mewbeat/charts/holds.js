@@ -553,4 +553,37 @@ function slowHolds(diff, timing) {
   return out;
 }
 
-module.exports = { SHORT_HOLD_CLASS, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, limitHoldShare, oneHoldAtATime, planHolds, settleHolds, slowHolds, spacedBlocked, underHoldFlagged };
+// longHolds(notes, minBeats, timing) -> the holds of a finished level at least minBeats long, time-sorted.
+const longHolds = (notes, minBeats, timing) => notes.filter((n) => n.len >= minBeats * beatMsOf(timing, n.t)).sort((a, b) => a.t - b.t);
+
+// keptHolds(notes, source, diff, timing, limitMs) -> notes: with diff.keepNormalHolds (flag normalHolds) a long hold of the
+// level this one is built on or cut from (`source`, its finished notes) plays as it does there. Hard's extras, accents and its
+// rule that a hold lets go on the next moment cut Normal's long holds on a slow passage to taps, and Easy dropped them or capped
+// them away, while the music still sounds there (GHOST 2:09-2:17). So under such a hold only the source's own moments stay, the
+// hold lets go before the next of them, and where this level does not play the hold's moment it gets it, unless it plays a
+// moment closer before it than its note gap.
+function keptHolds(notes, source, diff, timing, limitMs = Infinity) {
+  const sourceTimes = new Set(source.map((n) => n.t));
+  const last = limitMs - (diff.minLaneGapMs ?? 0);
+  const reach = Math.max(diff.minNoteGapMs ?? 0, diff.minLaneGapMs ?? 0);
+  let out = notes.map((n) => ({ ...n }));
+  for (const h of longHolds(source, diff.keepNormalHolds.minBeats, timing)) {
+    const beat = beatMsOf(timing, h.t);
+    const gap = Math.max(EARLY_RELEASE_BEATS * beat, reach);
+    const next = Math.min(h.t + h.len + gap, ...out.filter((n) => n.t > h.t && sourceTimes.has(n.t)).map((n) => n.t));
+    const len = Math.round(Math.min(next - gap, last) - h.t);
+    if (len < diff.holdMinBeats * beat) continue;
+    let here = out.filter((n) => n.t === h.t);
+    if (here.length === 0) {
+      if (out.some((n) => n.t < h.t && n.t > h.t - reach)) continue;
+      here = [{ t: h.t, lane: h.lane }];
+      out.push(here[0]);
+    }
+    out = out.filter((n) => !(n.t > h.t && n.t < h.t + len + gap) || sourceTimes.has(n.t));
+    const held = here.find((n) => n.len > 0) ?? here.find((n) => n.lane === h.lane) ?? here[0];
+    if (!(held.len >= len)) held.len = len;
+  }
+  return out.sort((a, b) => a.t - b.t || a.lane - b.lane);
+}
+
+module.exports = { SHORT_HOLD_CLASS, addGapHolds, addSustainHolds, beatMsOf, clipHolds, gapAfterHold, holdBlocks, holdSafe, isSupport, keptHolds, limitHoldShare, longHolds, oneHoldAtATime, planHolds, settleHolds, slowHolds, spacedBlocked, underHoldFlagged };

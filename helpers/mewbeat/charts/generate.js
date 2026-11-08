@@ -6,7 +6,7 @@ const { busyFactor, effectiveDifficulty } = require("./busyness");
 const { CALM_ENOUGH, calmLookup, shareOver } = require("./calm");
 const { holdQuietLone, limitChordShare, planChords, slowChords } = require("./chords");
 const { applyDifficulty, enforceFloors, spacedMoments } = require("./difficultyFilter");
-const { addGapHolds, addSustainHolds, clipHolds, limitHoldShare, oneHoldAtATime, settleHolds, slowHolds } = require("./holds");
+const { addGapHolds, addSustainHolds, clipHolds, keptHolds, limitHoldShare, longHolds, oneHoldAtATime, settleHolds, slowHolds } = require("./holds");
 const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
@@ -231,16 +231,23 @@ function plusNotes(ctx, diff) {
   const occupied = [...moments];
   const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const scoredTimes = scored.map((m) => m.t);
+  // diff.keepNormalHolds (flag normalHolds): no extra under a long hold of Normal or just after it, where it would cut it
+  const held = diff.keepNormalHolds ? longHolds(normal, diff.keepNormalHolds.minBeats, ctx.timing) : [];
+  const after = Math.max(diff.minNoteGapMs ?? 0, diff.minLaneGapMs ?? 0);
+  const free = (m) => playable(ctx, m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
+  // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left
+  const heldShare = (phrase) => held.reduce((sum, h) => sum + Math.max(0, Math.min(h.t + h.len, phrase.endMs) - Math.max(h.t, phrase.startMs)), 0) / Math.max(1, phrase.endMs - phrase.startMs);
   const extras = [];
   phrases.forEach((phrase, i) => {
     const fromMs = i === 0 ? 0 : phrase.startMs;
     const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
     const mine = lowerBound(moments, toMs) - lowerBound(moments, fromMs);
-    const room = Math.max(Math.ceil((diff.plusFloor ?? 0) * mine), budgetOf(ctx, phrase, diff) - mine);
+    const open = held.length > 0 ? 1 - Math.min(1, heldShare(phrase)) : 1;
+    const room = Math.round(open * Math.max(Math.ceil((diff.plusFloor ?? 0) * mine), budgetOf(ctx, phrase, diff) - mine));
     if (room === 0) return;
     const copy = copiedRepeat(ctx, extras, i, diff);
-    const heard = scored.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter((m) => playable(ctx, m.t));
-    const candidates = copy ? copy.notes.filter((n) => playable(ctx, n.t)).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
+    const heard = scored.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter(free);
+    const candidates = copy ? copy.notes.filter(free).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
     const chosen = diff.plusFigures ? plusFigures(candidates, occupied, room, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, room, diff, ctx.timing);
     for (const m of chosen) occupied.splice(lowerBound(occupied, m.t), 0, m.t);
     extras.push(...placed(chosen, null));
@@ -403,9 +410,12 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
-  const capped = step("holdShare", floored, ctx.phrases.length === 0
+  const shared = step("holdShare", floored, ctx.phrases.length === 0
     ? limitHoldShare(floored, Math.floor, isSustain, diff.maxHoldShare)
     : holdsCappedByPhrase(floored, ctx, diff, isSustain));
+  // diff.keepNormalHolds: a long hold of the level this one is built on or cut from plays as it does there (holds.js keptHolds).
+  const source = diff.keepNormalHolds && (diff.buildOn ?? diff.cutFrom);
+  const capped = source ? step("normalHolds", shared, keptHolds(shared, finalNotes(ctx, source), diff, ctx.timing, ctx.durationMs)) : shared;
   const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
   const quietHeld = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   // After the hold cap and the chords (sustain.js): the long notes it holds are not cut back to taps, and the passages it

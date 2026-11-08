@@ -169,6 +169,9 @@ const PLUS_FIGURES = { plusFigures: true, plusFamilyBonus: 0.3 };
 // keepShareScale scales keepShare, so the flag holds whatever keepShare easyFromNormal sets.
 const EASY_FIGURES = { keepFigures: true, keepShareScale: 0.85 };
 
+// holds.js keptHolds (flag normalHolds): Easy and Hard keep Normal's holds of at least minBeats.
+const NORMAL_HOLDS = { keepNormalHolds: { minBeats: 2 } };
+
 // --- Per-difficulty parameters ---------------------------------------------
 
 // Levels the generator charts but does not offer: DIFFICULTIES (and generateAll) stay the public ones.
@@ -477,6 +480,7 @@ module.exports = {
   MELODY_PICK,
   MELODY_RUNS,
   MINI_RESTS,
+  NORMAL_HOLDS,
   PLUS_FIGURES,
   QUIET_LONE,
   SLOW_DYNAMICS,
