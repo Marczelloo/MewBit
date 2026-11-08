@@ -463,4 +463,72 @@ function plusMoments(scored, occupied, room, diff, timing) {
   return chosen.sort(byTime);
 }
 
-module.exports = { audibleOf, extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
+const BAR_EDGE_MS = 30; // a moment this far before a downbeat belongs to the next bar
+
+// plusFigures(scored, occupied, room, diff, timing, fromMs, toMs) -> as plusMoments, but the extras follow the figures of the bars
+// (flag plusFigures). People's Hard repeats its extras where their Normal repeats a bar (train: the same extras in 50% of such
+// bars, ours by the best moments alone 6%), so the bars of the phrase with the same rhythm in `occupied` form a family, and a
+// family takes an extra at one place of the bar (a quarter beat of the grid) in each of its bars with a sound there that fits.
+// Places go best first by their mean score over the family's bars (a bar without a sound there adds nothing), plus
+// diff.plusFamilyBonus per extra the family already took per bar, so the extras gather in some figures as people's do (bars
+// with no extra and with four or more) rather than one or two in every bar; a place that would take the phrase over `room` is
+// skipped for a smaller one. Moments outside the downbeats, a phrase copying its source's extras (an infinite score), or no
+// snapped grid: plusMoments.
+function plusFigures(scored, occupied, room, diff, timing, fromMs, toMs) {
+  const downbeats = timing?.downbeats ?? [];
+  if (!timing?.snapped || downbeats.length < 2 || scored.some((c) => c.score === Infinity)) return plusMoments(scored, occupied, room, diff, timing);
+  const grid = timing.gridPoints(GRID_DIVISION);
+  const gapAt = gapOf(diff, timing);
+  const allowed = ((diff.maxNps ?? Infinity) * DENSITY_WINDOW_MS) / 1000;
+  const times = [...occupied];
+  const fits = (t) => {
+    const i = lowerBound(times, t);
+    return [times[i - 1], times[i]].every((n) => n === undefined || Math.abs(n - t) >= gapAt(t)) && !crowdedAt(times, t, allowed);
+  };
+  const families = new Map();
+  for (let k = 0; k + 1 < downbeats.length; k++) {
+    const from = downbeats[k] - BAR_EDGE_MS, to = downbeats[k + 1] - BAR_EDGE_MS;
+    if (to <= fromMs || from >= toMs) continue;
+    const first = nearestIndex(grid, downbeats[k]);
+    const slot = (t) => nearestIndex(grid, t) - first;
+    const own = occupied.slice(lowerBound(occupied, from), lowerBound(occupied, to)).map(slot);
+    const key = `${nearestIndex(grid, downbeats[k + 1]) - first}|${own.join(",")}`;
+    const places = new Map();
+    for (const c of scored) {
+      if (c.t < Math.max(from, fromMs) || c.t >= Math.min(to, toMs) || c.score < (diff.extraFrom ?? -Infinity)) continue;
+      const s = slot(c.t);
+      if (!places.has(s) || places.get(s).score < c.score) places.set(s, c);
+    }
+    if (!families.has(key)) families.set(key, { bars: [], extras: 0 });
+    families.get(key).bars.push(places);
+  }
+  const options = [];
+  for (const family of families.values()) {
+    for (const s of new Set(family.bars.flatMap((places) => [...places.keys()]))) {
+      const found = family.bars.map((places) => places.get(s)).filter(Boolean);
+      options.push({ family, found, value: found.reduce((sum, c) => sum + c.score, 0) / family.bars.length });
+    }
+  }
+  const bonus = diff.plusFamilyBonus ?? 0;
+  const worth = (o) => o.value + (bonus * o.family.extras) / o.family.bars.length;
+  const chosen = [];
+  while (chosen.length < room && options.length) {
+    let best = 0;
+    for (let i = 1; i < options.length; i++) {
+      const d = worth(options[i]) - worth(options[best]);
+      if (d > 0 || (d === 0 && options[i].found[0].t < options[best].found[0].t)) best = i;
+    }
+    const [{ family, found }] = options.splice(best, 1);
+    const taking = [];
+    for (const c of found) if (fits(c.t)) { taking.push(c); times.splice(lowerBound(times, c.t), 0, c.t); }
+    if (chosen.length + taking.length > room) {
+      for (const c of taking) times.splice(lowerBound(times, c.t), 1);
+      continue;
+    }
+    family.extras += taking.length;
+    chosen.push(...taking.map((c) => ({ t: c.t, s: c.s, reason: "plus", source: c.source })));
+  }
+  return chosen.sort(byTime);
+}
+
+module.exports = { audibleOf, extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };

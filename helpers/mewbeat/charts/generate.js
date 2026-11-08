@@ -26,7 +26,7 @@ const { accentSections, openWithFirstSound, sectionStarts } = require("./section
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { holdFadeOut, thinFadeOut } = require("./fades");
-const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusMoments, repeatPlan, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -221,8 +221,9 @@ function repeatNotes(ctx, i, diff, trace, copied, extra, before = null) {
 
 // Hard built on Normal (diff.buildOn = "normal", flag hardPlus): every moment of that level's finished chart stays, with its size
 // and its hold, and each phrase takes extras on top, chosen from the music with this level's weights up to its own budget
-// (selection.js plusMoments). A repeat whose source took extras takes the same ones where the music repeats. finish then lays
-// holds, chords and lanes over the whole of it with this level's rules; `protect` holds the times it may not take a moment from.
+// (selection.js plusMoments, or plusFigures with diff.plusFigures). A repeat whose source took extras takes the same ones
+// where the music repeats. finish then lays holds, chords and lanes over the whole of it with this level's rules; `protect`
+// holds the times it may not take a moment from.
 function plusNotes(ctx, diff) {
   const { phrases } = ctx;
   const normal = finalNotes(ctx, diff.buildOn).map((n) => ({ ...n }));
@@ -240,7 +241,7 @@ function plusNotes(ctx, diff) {
     const copy = copiedRepeat(ctx, extras, i, diff);
     const heard = scored.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter((m) => playable(ctx, m.t));
     const candidates = copy ? copy.notes.filter((n) => playable(ctx, n.t)).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
-    const chosen = plusMoments(candidates, occupied, room, diff, ctx.timing);
+    const chosen = diff.plusFigures ? plusFigures(candidates, occupied, room, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, room, diff, ctx.timing);
     for (const m of chosen) occupied.splice(lowerBound(occupied, m.t), 0, m.t);
     extras.push(...placed(chosen, null));
   });

@@ -155,6 +155,20 @@ const HARD_PLUS = {
   chordRates: [0.9, 0.8, 0.18, 0.21],
 };
 
+// selection.js plusFigures (flag plusFigures, with hardPlus): the extras follow the figures of the bars. Train against people's
+// Hard: where Normal repeats a bar, the same extras in 6% of those bars with hardPlus alone, 40% with figures (people 50%), the
+// bar rhythm repeating 1, 2 or 4 bars back 16.5% -> 32% (people 44%). familyBonus 0 / .15 / .3 / .5 / 1: bars with no extra
+// 16 / 24 / 33 / 40 / 46% and with four or more 9 / 12 / 14 / 16 / 18% (people 29% and 34%), F1 .8073 / .8069 / .8056 / .8022 /
+// .7981 (hardPlus alone .8097). A bonus for places next to filled ones (runs) lowered F1 and gathered nothing.
+const PLUS_FIGURES = { plusFigures: true, plusFamilyBonus: 0.3 };
+
+// rhythm.js figureMoments (flag easyFigures, with easyFromNormal): the bars Normal plays alike keep the same moments in Easy.
+// Train against people's Easy: where Normal repeats a bar, the same moments dropped in 26% of those bars before, 29% with the
+// figures alone (the density floor after the budget drops the rest one by one), 38% / 50% with easyFromNormal's keepShare times
+// .85 / .75 (people 65%); Easy F1 .7305 -> .7332 / .7320, Easy/Normal moments .603 -> .584 / .558 (people .648).
+// keepShareScale scales keepShare, so the flag holds whatever keepShare easyFromNormal sets.
+const EASY_FIGURES = { keepFigures: true, keepShareScale: 0.85 };
+
 // --- Per-difficulty parameters ---------------------------------------------
 
 // Levels the generator charts but does not offer: DIFFICULTIES (and generateAll) stay the public ones.
@@ -452,6 +466,7 @@ module.exports = {
   DIP_SILENCE,
   DIP_THIN,
   DRUMLESS,
+  EASY_FIGURES,
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,
@@ -462,6 +477,7 @@ module.exports = {
   MELODY_PICK,
   MELODY_RUNS,
   MINI_RESTS,
+  PLUS_FIGURES,
   QUIET_LONE,
   SLOW_DYNAMICS,
   SOLO_LEAD,

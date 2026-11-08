@@ -141,6 +141,16 @@ const shareAt = (table, bpm) => table.find(([upTo]) => bpm < upTo)?.[1] ?? 0;
 // Keeps the `count` best of `moments` (times): strong, and at a place in the bar that is strong all phrase, so what is
 // left is a rhythm that comes back rather than scattered peaks. A note of the tune goes first.
 function bestMoments(moments, count, byMoment, timing, bonusOf = null) {
+  const scoreOf = scorerOf(moments, byMoment, timing, bonusOf);
+  return moments
+    .map((t) => ({ t, score: scoreOf(t) }))
+    .sort((a, b) => b.score - a.score || a.t - b.t)
+    .slice(0, count)
+    .map((m) => m.t);
+}
+
+// The score bestMoments keeps the moments by: the moment's own strength and its place's strength over `moments`, plus bonuses.
+function scorerOf(moments, byMoment, timing, bonusOf) {
   const positionOf = (t) => Math.round(beatInBar(timing, t) * POSITIONS_PER_BEAT);
   const strengthOf = (t) => Math.max(...byMoment.get(t).map((e) => e.s ?? 0));
   const sums = new Map();
@@ -153,11 +163,43 @@ function bestMoments(moments, count, byMoment, timing, bonusOf = null) {
     const events = byMoment.get(t);
     return 0.5 * strengthOf(t) + (0.5 * sum) / n + (events.some((e) => TONAL_SOURCES.has(e.source)) ? TONAL_BONUS : 0) + (events.some((e) => e.upperChord) ? CHORD_BONUS : 0) + (bonusOf ? bonusOf(t) : 0);
   };
-  return moments
-    .map((t) => ({ t, score: scoreOf(t) }))
-    .sort((a, b) => b.score - a.score || a.t - b.t)
-    .slice(0, count)
-    .map((m) => m.t);
+  return scoreOf;
+}
+
+const BAR_EDGE_MS = 30; // a moment this far before a downbeat belongs to the next bar
+
+// As bestMoments, but the bars the level above plays alike keep the same places (diff.keepFigures, flag easyFigures). People's
+// Easy drops the same moments where their Normal repeats a bar (train: 65% of such bars, ours by the best moments alone 27%), so
+// the bars with the same moments of `upper` (the level above's sorted times) form a family, and a family keeps a place of the
+// bar in all its bars at once, best first by the mean score there; a place that would pass `count` is skipped for a smaller
+// one, and what is left of `count` goes to the best single moments. No downbeats or snapped grid: bestMoments.
+function figureMoments(moments, count, byMoment, timing, bonusOf, upper) {
+  const downbeats = timing?.downbeats ?? [];
+  if (!timing?.snapped || downbeats.length < 2) return bestMoments(moments, count, byMoment, timing, bonusOf);
+  const scoreOf = scorerOf(moments, byMoment, timing, bonusOf);
+  const grid = timing.gridPoints(POSITIONS_PER_BEAT);
+  const sorted = [...moments].sort((a, b) => a - b);
+  const families = new Map();
+  for (let k = 0; k + 1 < downbeats.length; k++) {
+    const from = downbeats[k] - BAR_EDGE_MS, to = downbeats[k + 1] - BAR_EDGE_MS;
+    const mine = sorted.slice(lowerBound(sorted, from), lowerBound(sorted, to));
+    if (!mine.length) continue;
+    const first = nearestIndex(grid, downbeats[k]);
+    const slot = (t) => nearestIndex(grid, t) - first;
+    const key = `${nearestIndex(grid, downbeats[k + 1]) - first}|${upper.slice(lowerBound(upper, from), lowerBound(upper, to)).map(slot).join(",")}`;
+    if (!families.has(key)) families.set(key, new Map());
+    const places = families.get(key);
+    for (const t of mine) {
+      if (!places.has(slot(t))) places.set(slot(t), []);
+      places.get(slot(t)).push(t);
+    }
+  }
+  const options = [...families.values()].flatMap((places) => [...places.values()].map((ts) => ({ ts, value: ts.reduce((sum, t) => sum + scoreOf(t), 0) / ts.length })));
+  options.sort((a, b) => b.value - a.value || a.ts[0] - b.ts[0]);
+  const chosen = new Set();
+  for (const { ts } of options) if (chosen.size + ts.length <= count) for (const t of ts) chosen.add(t);
+  const rest = bestMoments(moments.filter((t) => !chosen.has(t)), count - chosen.size, byMoment, timing, bonusOf);
+  return [...chosen, ...rest];
 }
 
 // With diff.keepShare a level cut from Normal keeps a share of that level's own moments in the phrase (per tempo, as written
@@ -168,9 +210,11 @@ function keepShareOfUpper(kept, byMoment, diff, timing, { fromMs, toMs, rhythm }
   const bpm = 60000 / timing.medianMs;
   const upper = lowerBound(rhythm.moments, toMs) - lowerBound(rhythm.moments, fromMs);
   const gridded = [...byMoment.keys()].filter((t) => !kept.has(t));
-  const count = Math.max(0, Math.round(shareAt(diff.keepShare, bpm) * upper) - kept.size);
+  const count = Math.max(0, Math.round(shareAt(diff.keepShare, bpm) * (diff.keepShareScale ?? 1) * upper) - kept.size);
   const bonus = diff.keepBeatBonus ?? 0;
-  for (const t of bestMoments(gridded, count, byMoment, timing, (t) => (metricLevel(timing, t) === 0 ? bonus : 0))) kept.add(t);
+  const bonusOf = (t) => (metricLevel(timing, t) === 0 ? bonus : 0);
+  const picked = diff.keepFigures ? figureMoments(gridded, count, byMoment, timing, bonusOf, rhythm.moments) : bestMoments(gridded, count, byMoment, timing, bonusOf);
+  for (const t of picked) kept.add(t);
 }
 
 // budgeted(items, diff, timing, { fromMs, toMs }, phraseEnergy) -> items: beats stay (in a quiet phrase only their
@@ -238,4 +282,4 @@ function nested(notes, rhythm) {
   return out;
 }
 
-module.exports = { MID_ENERGY, budgeted, cutToRhythm, laneTheRest, metricLevel, nested, rhythmOf, sortedOnsets, strengthAt, withBeats };
+module.exports = { MID_ENERGY, budgeted, cutToRhythm, figureMoments, laneTheRest, metricLevel, nested, rhythmOf, sortedOnsets, strengthAt, withBeats };

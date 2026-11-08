@@ -3,7 +3,7 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
-const { HARD_PLUS } = require("./difficulty");
+const { EASY_FIGURES, HARD_PLUS, PLUS_FIGURES } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
@@ -34,10 +34,14 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 const FLAGS = {
   // Hard = every moment of Normal plus extras (generate.js plusNotes). Only Hard changes.
   hardPlus: { label: "Hard zbudowany na Normal", levels: { hard: { ...HARD_PLUS }, hardBase: {} } },
+  // With hardPlus: the extras follow the figures of the bars, the same in each bar Normal plays alike (selection.js plusFigures).
+  plusFigures: { label: "Hard: dodatki powtarzają figury taktów", levels: { hard: { ...PLUS_FIGURES }, hardBase: {} } },
   easyFromNormal: {
     label: "Easy wycięty z obecnego Normal",
     levels: { easy: { cutFrom: "normal", keepShare: [[145, 0.66], [190, 0.8], [Infinity, 0.85]], keepBeatBonus: 0.6, chordKeep: [0.6, 0.14, 0, 0], chordNew: [0.14, 0, 0, 0] } },
   },
+  // With easyFromNormal: the bars Normal plays alike keep the same moments in Easy (rhythm.js figureMoments).
+  easyFigures: { label: "Easy: te same cięcia w powtarzanych taktach", levels: { easy: { ...EASY_FIGURES } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
