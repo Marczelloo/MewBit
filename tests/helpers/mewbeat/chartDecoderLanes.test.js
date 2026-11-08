@@ -12,6 +12,10 @@ const { stairSteps } = require("../../../helpers/mewbeat/charts/laneRules");
 const { STAIRS } = require("../../../helpers/mewbeat/charts/difficulty");
 const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
+// Since v44 Easy, Hard and Hell are cut from or built on Normal, so they move with its melody; the internal levels that stay as they
+// were (hardBase, easyV26) are what must not move.
+const UNMOVED = ["hardBase", "easyV26"];
+const internalOf = (features) => Object.fromEntries(UNMOVED.map((level) => [level, generateChart(features, level, "k").notes]));
 const quietLog = { warning() {} };
 const times = Array.from({ length: 6 }, (_, i) => 1000 + i * 250);
 const line = (pitches) => pitches.map((pitch, i) => ({ t: times[i], pitch, conf: 0.9 }));
@@ -80,28 +84,30 @@ describe("Normal's moments on a second detector's melody (v39)", () => {
     const melody = Array.from({ length: 120 }, (_, i) => ({ t: 1125 + i * 500, pitch: 60 }));
     const decoded = { ...features, decodedMelody: melody };
     const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
-    const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
+    const notesOf = (charts, from) => ({ ...Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes])), ...internalOf(from) });
     // On v42's chords: with chordSlow (v43) this 120 BPM fixture chords the moments the melody would raise.
     const without = flagWithout("withoutchordslow", "chordSlow");
-    const plain = notesOf(generateAll(features, "k", without));
-    const on = notesOf(generateAll(decoded, "k", without));
+    const plain = notesOf(generateAll(features, "k", without), features);
+    const on = notesOf(generateAll(decoded, "k", without), decoded);
     assert.notDeepEqual(on.normal, plain.normal);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], level);
+    // Easy, Hard and Hell are built on Normal since v44 and move with it; hardBase and easyV26 stay as they were
+    for (const level of UNMOVED) assert.deepEqual(on[level], plain[level], level);
   });
 });
 
 describe("the tuned melody line (v39)", () => {
   const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
-  const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
+  const notesOf = (charts, features) => ({ ...Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes])), ...internalOf(features) });
   const flat = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 60, conf: 1 }));
   const rising = Array.from({ length: 240 }, (_, i) => ({ t: 1000 + i * 250, pitch: 48 + (i % 12), conf: 1 }));
 
   it("is read in place of the decoder's own line, where there is one", () => {
     const features = makeLayeredFeatures();
-    const tuned = notesOf(generateAll({ ...features, decodedMelody: flat, decodedMelodyTuned: rising }, "k", {}));
-    assert.deepEqual(tuned, notesOf(generateAll({ ...features, decodedMelody: rising }, "k", {})));
-    const own = notesOf(generateAll({ ...features, decodedMelody: flat }, "k", {}));
+    const chartsOf = (extra) => notesOf(generateAll({ ...features, ...extra }, "k", {}), { ...features, ...extra });
+    const tuned = chartsOf({ decodedMelody: flat, decodedMelodyTuned: rising });
+    assert.deepEqual(tuned, chartsOf({ decodedMelody: rising }));
+    const own = chartsOf({ decodedMelody: flat });
     assert.ok(tuned.normal.some((n, i) => n.lane !== own.normal[i]?.lane));
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(tuned[level], own[level], level);
+    for (const level of UNMOVED) assert.deepEqual(tuned[level], own[level], level);
   });
 });

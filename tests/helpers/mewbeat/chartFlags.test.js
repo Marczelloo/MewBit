@@ -143,11 +143,12 @@ describe("mewbeat generator flags", () => {
 
     it("reach the levels a cut level reads its moments from", () => {
       const plain = generateAll(features(), KEY);
-      // Easy is cut from the internal normalV26; an override there must show in Easy.
+      // normalV26 is cut from hardBase and floors Normal (through easyV26), and Easy is cut from Normal; an override there must show in Easy.
       withOverrides("density", { normalV26: { maxNps: 0.8 } }, () => {
         const flagged = generateAll(features(), KEY, ["density"]);
         assert.notDeepStrictEqual(flagged.easy.notes, plain.easy.notes);
-        assert.deepStrictEqual(flagged.hell.notes, plain.hell.notes);
+        // Hell is no longer asserted unchanged: since v44 it is built on Hard, which is built on Normal, so it can move with it
+        assert.notDeepStrictEqual(flagged.normal.notes, plain.normal.notes);
       });
     });
 

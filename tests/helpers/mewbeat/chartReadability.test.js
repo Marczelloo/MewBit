@@ -156,11 +156,18 @@ describe("holds", () => {
     const charts = generateAll(song, "key");
     let heldUntil = -Infinity;
     for (const n of charts.easy.notes.filter((h) => h.len > 0)) {
-      assert.ok(n.t > heldUntil, `a hold starts at ${n.t} under another`);
+      // Since v44 Easy keeps Normal's long holds (keepNormalHolds), which may end on the very ms the next one starts (a hold
+      // released as another is pressed, in another lane): that touches but is no overlap, so the start may equal the end.
+      assert.ok(n.t >= heldUntil, `a hold starts at ${n.t} under another`);
       heldUntil = n.t + n.len;
     }
     const shareOf = (d) => charts[d].notes.filter((n) => n.len > 0).length / charts[d].notes.length;
-    assert.ok(shareOf("easy") > 0 && shareOf("easy") <= DIFFICULTIES.easy.maxHoldShare + 0.02, `easy: ${shareOf("easy")}`);
+    // Since v44 Easy keeps Normal's long holds (keepNormalHolds), so its cap (.2) is no bound on its chart either, as for Normal
+    // below: the cap trims only the excess. This song's share is .23, so .24 pins it; the cap itself is asserted on easyV26,
+    // the Easy charted on its own, which still holds to it.
+    assert.ok(shareOf("easy") > 0 && shareOf("easy") <= 0.24, `easy: ${shareOf("easy")}`);
+    const own = generateChart(song, "easyV26", "key").notes;
+    assert.ok(own.filter((n) => n.len > 0).length / own.length <= DIFFICULTIES.easy.maxHoldShare + 0.02, "easyV26 stays under the Easy cap");
     // Normal's cap (.35) is no bound on a chart: its holds are planned by the sound, and the cap only trims the excess.
     // This song rests every other beat, so its share (.31) is far above real music (.12); .32 pins it where the data is.
     assert.ok(shareOf("normal") > 0 && shareOf("normal") <= 0.32, `normal: ${shareOf("normal")}`);

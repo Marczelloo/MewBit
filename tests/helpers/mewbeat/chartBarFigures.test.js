@@ -1,8 +1,8 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, INTERNAL_LEVELS, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, EASY_FIGURES, INTERNAL_LEVELS, PLUS_FIGURES } = require("../../../helpers/mewbeat/charts/difficulty");
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { figureMoments } = require("../../../helpers/mewbeat/charts/rhythm");
 const { plusFigures, plusMoments } = require("../../../helpers/mewbeat/charts/selection");
@@ -23,10 +23,10 @@ const SONGS = {
   "120 BPM": () => makeLayeredFeatures({ bpm: 120, durationMs: 64000 }),
   "180 BPM": () => makeLayeredFeatures({ bpm: 180, durationMs: 64000 }),
 };
-const chartsOf = (song, flags) => Object.fromEntries(Object.entries(generateAll(SONGS[song](), "k", flags)).map(([level, c]) => [level, c.notes]));
+const chartsOf = (song) => Object.fromEntries(Object.entries(generateAll(SONGS[song](), "k")).map(([level, c]) => [level, c.notes]));
 const momentsOf = (notes) => [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
 
-describe("Hard's extras follow the bars' figures (flag plusFigures)", () => {
+describe("Hard's extras follow the bars' figures (part of Hard since v44, was the flag plusFigures)", () => {
   // bars 0 and 1 play the same rhythm in Normal; bar 2 another
   const occupied = [0, 1000, 2000, 3000, 4000, 4500, 5000];
   const scored = [
@@ -65,26 +65,28 @@ describe("Hard's extras follow the bars' figures (flag plusFigures)", () => {
     assert.deepEqual(plusFigures(scored, occupied, 2, HARD_GAPS, noBars, 0, 6000), plusMoments(scored, occupied, 2, HARD_GAPS, noBars));
   });
 
-  it("is off by default, changes Hard alone and only on top of hardPlus", () => {
-    assert.ok(FLAGS.plusFigures);
-    assert.equal(DIFFICULTIES.hard.plusFigures, undefined);
-    for (const level of ["easy", "normal", "hell"]) assert.equal(withFlags(levelOf(level), level, { plusFigures: true }), levelOf(level), level);
-    // hardBase is the Hard that normalV26 and the old Easy are cut from: the flag names it, with nothing to change
-    assert.deepEqual(FLAGS.plusFigures.levels.hardBase, {});
-    assert.deepEqual(withFlags(INTERNAL_LEVELS.hardBase, "hardBase", { plusFigures: true }), INTERNAL_LEVELS.hardBase);
+  it("is part of Hard and Hell (HELL_PLUS carries it), not of Easy, Normal or hardBase", () => {
+    assert.equal(FLAGS.plusFigures, undefined);
+    for (const level of ["hard", "hell"]) {
+      assert.equal(DIFFICULTIES[level].plusFigures, PLUS_FIGURES.plusFigures, level);
+      assert.equal(DIFFICULTIES[level].plusFamilyBonus, PLUS_FIGURES.plusFamilyBonus, level);
+    }
+    for (const level of ["easy", "normal"]) assert.equal(DIFFICULTIES[level].plusFigures, undefined, level);
+    for (const level of ["hardBase", "easyV26", "normalV26"]) assert.equal(INTERNAL_LEVELS[level].plusFigures, undefined, level);
+  });
+
+  it("keeps every moment of Normal in Hard, and the gaps", () => {
     for (const song of Object.keys(SONGS)) {
-      assert.deepEqual(chartsOf(song, { plusFigures: true }), chartsOf(song, undefined), `${song} without hardPlus`);
-      const plus = chartsOf(song, { hardPlus: true }), on = chartsOf(song, { hardPlus: true, plusFigures: true });
-      for (const level of ["easy", "normal", "hell"]) assert.deepEqual(on[level], plus[level], `${song} ${level}`);
-      const kept = new Set(momentsOf(on.hard));
-      assert.deepEqual(momentsOf(on.normal).filter((t) => !kept.has(t)), [], `${song}: Normal moments missing from Hard`);
-      const times = momentsOf(on.hard);
+      const charts = chartsOf(song);
+      const kept = new Set(momentsOf(charts.hard));
+      assert.deepEqual(momentsOf(charts.normal).filter((t) => !kept.has(t)), [], `${song}: Normal moments missing from Hard`);
+      const times = momentsOf(charts.hard);
       for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= DIFFICULTIES.hard.minNoteGapMs, `${song} ${times[i - 1]} to ${times[i]}`);
     }
   });
 });
 
-describe("Easy keeps the same moments in bars Normal plays alike (flag easyFigures)", () => {
+describe("Easy keeps the same moments in bars Normal plays alike (part of Easy since v44, was the flag easyFigures)", () => {
   const upper = [0, 500, 1000, 1500, 2000, 2500, 3000, 3500];
   const strength = { 0: 0.9, 500: 0.2, 1000: 0.6, 1500: 0.5, 2000: 0.9, 2500: 0.6, 3000: 0.2, 3500: 0.5 };
   const byMoment = new Map(upper.map((t) => [t, [{ t, s: strength[t], source: "drums" }]]));
@@ -99,15 +101,20 @@ describe("Easy keeps the same moments in bars Normal plays alike (flag easyFigur
     assert.deepEqual(figureMoments(upper, 0, byMoment, timing, null, upper), []);
   });
 
-  it("changes Easy alone, and only on top of easyFromNormal", () => {
-    assert.ok(FLAGS.easyFigures);
-    for (const level of ["normal", "hard", "hell"]) assert.equal(withFlags(levelOf(level), level, { easyFigures: true }), levelOf(level), level);
+  it("is part of Easy alone, on top of the cut from Normal", () => {
+    assert.equal(FLAGS.easyFigures, undefined);
+    assert.equal(DIFFICULTIES.easy.keepFigures, EASY_FIGURES.keepFigures);
+    assert.equal(DIFFICULTIES.easy.keepShareScale, EASY_FIGURES.keepShareScale);
+    assert.equal(DIFFICULTIES.easy.cutFrom, "normal");
+    for (const level of ["normal", "hard", "hell"]) assert.equal(DIFFICULTIES[level].keepFigures, undefined, level);
+    for (const level of ["easyV26", "hardBase", "normalV26"]) assert.equal(INTERNAL_LEVELS[level].keepFigures, undefined, level);
+  });
+
+  it("plays only moments Normal plays", () => {
     for (const song of Object.keys(SONGS)) {
-      assert.deepEqual(chartsOf(song, { easyFigures: true }), chartsOf(song, undefined), `${song} without easyFromNormal`);
-      const cut = chartsOf(song, { easyFromNormal: true }), on = chartsOf(song, { easyFromNormal: true, easyFigures: true });
-      for (const level of ["normal", "hard", "hell"]) assert.deepEqual(on[level], cut[level], `${song} ${level}`);
-      const normal = new Set(momentsOf(on.normal));
-      assert.deepEqual(momentsOf(on.easy).filter((t) => !normal.has(t)), [], `${song}: Easy moments Normal does not play`);
+      const charts = chartsOf(song);
+      const normal = new Set(momentsOf(charts.normal));
+      assert.deepEqual(momentsOf(charts.easy).filter((t) => !normal.has(t)), [], `${song}: Easy moments Normal does not play`);
     }
   });
 });

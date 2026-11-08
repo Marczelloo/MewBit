@@ -50,8 +50,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 43", () => {
-    assert.equal(GENERATOR_VERSION, 43);
+  it("is version 44", () => {
+    assert.equal(GENERATOR_VERSION, 44);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(LEVELS[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -109,8 +109,12 @@ describe("generator v4", () => {
 
       it("repeatsIdenticalOnEveryDifficulty: phrase 2 plays like 0 and 3 like 1", () => {
         const charts = generateAll(features, KEY, WITHOUT_SEARCH);
+        // Hard is built on Normal with extras since v44 and its repeats are not always exact: in a repeat the extras can differ
+        // (loud songs) and a hold can end differently (flat ones). hardBase is Hard as v43 charted it, so it stands for Hard here;
+        // Hell has no internal copy and is built on Hard, so it is not checked.
+        charts.hardBase = generateChart(features, "hardBase", KEY, WITHOUT_SEARCH);
         const { list } = features.phrases;
-        for (const d of DIFFS) {
+        for (const d of ["easy", "normal", "hardBase"]) {
           const { notes } = charts[d];
           let checked = 0;
           list.forEach((p, i) => {
@@ -123,12 +127,24 @@ describe("generator v4", () => {
           });
           assert.equal(checked, 6, d);
         }
+        // What Hard's repeat does keep: every moment of Normal's repeat, which is identical to its source
+        const times = (notes, p) => new Set(notesIn(notes, p.startMs + 1, p.endMs).map((n) => n.t));
+        list.forEach((p, i) => {
+          if (p.repeatOf === null) return;
+          const hard = times(charts.hard.notes, p);
+          for (const t of times(charts.normal.notes, p)) assert.ok(hard.has(t), `phrase ${i}: Normal moment ${t} missing from Hard`);
+        });
       });
 
-      it("easyChordsOnlyOnDownbeatsAndShortJacks", () => {
+      it("easyChordsOnlyOnBeatsAndShortJacks", () => {
         const { notes } = chartsOf(features).easy;
+        // Easy is cut from Normal since v44 and keeps some of its chords on the beats (chordKeep, chordNew), not only on downbeats;
+        // never on a half beat or finer. easyV26 kept to the downbeats.
+        const beats = new Set(features.tempo.beats);
+        for (const [t, count] of countsByTime(notes)) if (count > 1) assert.ok(beats.has(t), `chord at ${t}`);
+        const v26 = generateChart(features, "easyV26", KEY).notes;
         const downbeats = new Set(features.tempo.downbeats);
-        for (const [t, count] of countsByTime(notes)) if (count > 1) assert.ok(downbeats.has(t), `chord at ${t}`);
+        for (const [t, count] of countsByTime(v26)) if (count > 1) assert.ok(downbeats.has(t), `easyV26 chord at ${t}`);
         let run = 1;
         for (let i = 1; i < notes.length; i++) {
           run = notes[i].lane === notes[i - 1].lane ? run + 1 : 1;
@@ -155,8 +171,8 @@ describe("generator v4", () => {
         assert.ok(fuller >= 0, `${hard.notes.length} vs ${normal.notes.length}`);
         const inNormal = new Set(normal.notes.map((n) => n.t));
         const shared = easy.notes.filter((n) => inNormal.has(n.t)).length / easy.notes.length;
-        // Easy is cut from the v26 Normal, not from the public one: on the train songs 70 % of its times are in Normal (median).
-        assert.ok(shared >= 0.6, `easy times in normal: ${shared}`);
+        // Easy is cut from the public Normal since v44 (before, from the v26 one: 70 % of its times were in Normal, median).
+        assert.equal(shared, 1, `easy times in normal: ${shared}`);
       });
 
       it("keeps the gap floors, the lead-in and the same-lane limits", () => {
@@ -189,9 +205,13 @@ describe("generator v4", () => {
     const { list } = features.phrases;
     const copies = list.map((p, i) => [p, i]).filter(([p, i]) => p.repeatOf !== null && list[i - 1].repeatOf === null);
     assert.ok(copies.length > 0, "a repeat directly after a non-repeat phrase");
-    for (const chart of Object.values(generateAll(features, KEY, WITHOUT_SEARCH))) {
-      const p = DIFFICULTIES[chart.difficulty];
-      for (const [phrase, i] of copies) {
+    // Identical copies are checked on easy, normal and hardBase (Hard as v43 charted it): public Hard and Hell are built on Normal with
+    // extras since v44 and a repeat can differ there (see repeatsIdenticalOnEveryDifficulty); their floors are still checked.
+    const charts = generateAll(features, KEY, WITHOUT_SEARCH);
+    const identical = new Set(["easy", "normal", "hardBase"]);
+    for (const chart of [...Object.values(charts), generateChart(features, "hardBase", KEY, WITHOUT_SEARCH)]) {
+      const p = levelOf(chart.difficulty);
+      for (const [phrase, i] of identical.has(chart.difficulty) ? copies : []) {
         const source = list[phrase.repeatOf];
         const [got, expected] = repeatPair(chart.notes, phrase, source);
         assert.ok(expected.length > 0);

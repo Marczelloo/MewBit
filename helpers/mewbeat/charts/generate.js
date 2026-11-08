@@ -156,16 +156,12 @@ function momentsAround(ctx, i, diff, before) {
   return { heard, carry };
 }
 
-// The level a level that must not play fewer moments than the one below it (diff.notBelow) reads. With the flag easyFromNormal
-// Easy is cut from Normal, so Normal reads Easy as it was (easyV26) and charts as it did without the flag.
-const belowOf = (ctx, diff) => (ctx.flags.easyFromNormal && diff.notBelow === "easy" ? "easyV26" : diff.notBelow);
-
 // The most moments phrase may take: what the music calls for, and at least as many as the level below plays there
 // (diff.notBelow), or a stretch of a harder level would play fewer notes than an easier one.
 function budgetOf(ctx, phrase, diff) {
   const own = phraseBudget(phrase, ctx, diff);
   if (!diff.notBelow) return own;
-  const below = new Set(inWindow(finalNotes(ctx, belowOf(ctx, diff)), phrase.startMs, phrase.endMs).map((n) => n.t)).size;
+  const below = new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size;
   return Math.max(own, below);
 }
 
@@ -179,7 +175,7 @@ function keptShare(ctx, diff) {
 // below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned.
 function followingTheMusic(ctx, notes, phrase, diff) {
   if (!diff.localThin || isFlatLoud(ctx, diff)) return notes;
-  const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, belowOf(ctx, diff)), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
+  const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
   return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below));
 }
 
@@ -219,7 +215,7 @@ function repeatNotes(ctx, i, diff, trace, copied, extra, before = null) {
   return placed(extraMoments(phrase, heard, copied.map((n) => n.t), Math.min(extra, room), diff, ctx.timing, { before, carry }), trace);
 }
 
-// Hard built on Normal (diff.buildOn = "normal", flag hardPlus): every moment of that level's finished chart stays, with its size
+// Hard built on Normal (diff.buildOn = "normal", from v44), and Hell on Hard: every moment of that level's finished chart stays, with its size
 // and its hold, and each phrase takes extras on top, chosen from the music with this level's weights up to its own budget
 // (selection.js plusMoments, or plusFigures with diff.plusFigures). A repeat whose source took extras takes the same ones
 // where the music repeats. finish then lays holds, chords and lanes over the whole of it with this level's rules; `protect`
@@ -503,11 +499,8 @@ function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
 
 // A level's finished notes, once per song: the levels below it are cut from them.
 function finalNotes(ctx, difficulty) {
-  // hardBase is Hard without the flag hardPlus: where the flags leave it the Hard they give Hard, the one chart serves both
-  const same = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
-  const level = difficulty === "hardBase" && same(withFlags(levelOf("hardBase"), "hardBase", ctx.flags), withFlags(levelOf("hard"), "hard", ctx.flags)) ? "hard" : difficulty;
-  ctx.final[level] ??= notesFor(ctx, level);
-  return ctx.final[level];
+  ctx.final[difficulty] ??= notesFor(ctx, difficulty);
+  return ctx.final[difficulty];
 }
 
 // The moments diff is cut from, or null for a level charted straight from the music.

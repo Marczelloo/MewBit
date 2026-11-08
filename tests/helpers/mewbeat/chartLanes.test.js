@@ -308,14 +308,16 @@ describe("findHeardRepeats", () => {
 });
 
 describe("a whole chart", () => {
-  // Easy is cut from the Normal of v26 and that from Hard; the public Normal picks its own moments (selection.js) and is no part of the nest.
+  // Since v44 the public levels nest on Normal: Easy is cut from it and Hard is built on it. Before, easyV26 was cut from normalV26 and that
+  // from hardBase; the public Normal picks its own moments (selection.js), so these internal levels keep the old nest.
   it("is the same every time, and its levels nest", () => {
     const song = makeLayeredFeatures({ durationMs: 96000, energy: () => 0.7 });
     assert.deepEqual(generateChart(song, "hard", "k"), generateChart(song, "hard", "k"));
     const momentsOf = (d) => new Set(generateChart(song, d, "k").notes.map((n) => n.t));
-    const hardMoments = momentsOf("hard");
-    const normalMoments = momentsOf("normalV26");
-    assert.ok([...momentsOf("easy")].every((t) => normalMoments.has(t)));
-    assert.ok([...normalMoments].every((t) => hardMoments.has(t)));
+    const nested = (inner, outer) => [...momentsOf(inner)].every((t) => momentsOf(outer).has(t));
+    assert.ok(nested("easy", "normal"), "Easy is cut from Normal");
+    assert.ok(nested("normal", "hard"), "Hard is built on Normal");
+    assert.ok(nested("easyV26", "normalV26"));
+    assert.ok(nested("normalV26", "hardBase"));
   });
 });

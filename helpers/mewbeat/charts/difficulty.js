@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 43;
+const GENERATOR_VERSION = 44;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -169,6 +169,11 @@ const PLUS_FIGURES = { plusFigures: true, plusFamilyBonus: 0.3 };
 // keepShareScale scales keepShare, so the flag holds whatever keepShare easyFromNormal sets.
 const EASY_FIGURES = { keepFigures: true, keepShareScale: 0.85 };
 
+// rhythm.js (flag easyFromNormal, from v44): Easy is cut from Normal, keeping keepShare of its moments per phrase by tempo
+// (in BPM), the beats scoring keepBeatBonus over the half beats; chordKeep and chordNew set its chords. The sweep is in the
+// comment under easyV26.
+const EASY_FROM_NORMAL = { cutFrom: "normal", keepShare: [[145, 0.66], [190, 0.8], [Infinity, 0.85]], keepBeatBonus: 0.6, chordKeep: [0.6, 0.14, 0, 0], chordNew: [0.14, 0, 0, 0] };
+
 // holds.js keptHolds (flag normalHolds): Easy and Hard keep Normal's holds of at least minBeats.
 const NORMAL_HOLDS = { keepNormalHolds: { minBeats: 2 } };
 
@@ -314,7 +319,8 @@ const DIFFICULTIES = {
     scoreLevel: "normal", // the weights the moments are scored with (momentWeights.js K)
     foreground: 0.5, // a moment scoring at least this (a logit) is in the foreground
     budgetScale: 1.1, // the phrase budget as the music calls for it times this (selection.js phraseBudget)
-    notBelow: "easy", // ...and never fewer moments in a phrase than this level plays there (generate.js budgetOf)
+    notBelow: "easyV26", // ...and never fewer moments in a phrase than this level plays there (generate.js budgetOf); Easy
+    // itself is cut from Normal from v44, so the floor is the Easy before that
     grammar: "normal",
     melodyLanes: true, // the lanes follow the melody and keep the rules of Normal (laneRules.js, lanes.js)
     chordRates: [0.7, 0.6, 0.13, 0.14], // how often a moment is a chord, by place in the bar (chords.js)
@@ -415,9 +421,8 @@ const DIFFICULTIES = {
     firstSound: FIRST_SOUND,
     copyFrom: COPY_FROM,
   },
-  // For fun, beyond Hard. Charted from the music like Hard, not by stacking notes on it: the extra notes are the
-  // music's own sixteenths and accents (finer onsets kept at a lower strength, chords on more of the loud hits,
-  // denser drum pulses), so the chart is harder to play but still follows the song.
+  // For fun, beyond Hard. Before v44 charted from the music like Hard (finer onsets kept at a lower strength, chords on more
+  // of the loud hits, denser drum pulses); from v44 built on Hard (HELL_PLUS below the levels).
   hell: {
     grammar: "hard",
     chordRates: [1.35, 1.25, 0.38, 0.4],
@@ -460,12 +465,12 @@ const DIFFICULTIES = {
   },
 };
 
-// What normalV26, and so Easy, is cut from: Hard as generator v43 charts it. The flag hardPlus changes Hard only, never this.
+// What normalV26, and so easyV26, is cut from: Hard as generator v43 charted it without hardPlus.
 INTERNAL_LEVELS.hardBase = DIFFICULTIES.hard;
-// easyV26 is Easy before the flag easyFromNormal: Normal never plays fewer moments than Easy (notBelow), and with the flag
-// on Easy is cut from Normal, so Normal reads this one instead (generate.js belowOf) and stays as it was.
+// easyV26 is Easy as v43 charted it without easyFromNormal: Normal never plays fewer moments in a phrase than it does
+// (notBelow), so Normal stays as it was now that Easy is cut from Normal.
 //
-// EASY_FROM_NORMAL, the settings the flag puts on Easy (flags.js), tuned on the 65 train songs that have a human Easy, never on
+// EASY_FROM_NORMAL, the settings easyFromNormal put on Easy, tuned on the 65 train songs that have a human Easy, never on
 // the test songs. Targets from people's Easy: 99% of its moments are Normal's, Easy/Normal 0.55 under 145 BPM, 0.66 at 145-190,
 // 0.69 above. keepShare is the share of Normal's moments Easy keeps per phrase, by tempo. Easy's own gaps, jacks and NPS cut
 // further, so the ratio that comes out is lower than the share, most above 190 BPM where it stays near 0.62 whatever the share:
@@ -480,6 +485,14 @@ INTERNAL_LEVELS.hardBase = DIFFICULTIES.hard;
 // the same F1; they are the third tuned setting.
 INTERNAL_LEVELS.easyV26 = DIFFICULTIES.easy;
 
+// From v44 the levels are built on Normal, played with the flags on in the bot and kept by the user: Hard is every moment of
+// Normal plus extras that follow the figures of the bars (hardPlus, plusFigures), Easy is cut from Normal with the same cuts in
+// the bars Normal plays alike (easyFromNormal, easyFigures), both keep Normal's long holds (normalHolds), and Hell is every
+// moment of Hard plus extras and chords (hellPlus; "za dużo dla mnie", but the patterns made sense).
+DIFFICULTIES.easy = { ...DIFFICULTIES.easy, ...EASY_FIGURES, ...EASY_FROM_NORMAL, ...NORMAL_HOLDS };
+DIFFICULTIES.hard = { ...DIFFICULTIES.hard, ...HARD_PLUS, ...NORMAL_HOLDS, ...PLUS_FIGURES };
+DIFFICULTIES.hell = { ...DIFFICULTIES.hell, ...HELL_PLUS };
+
 // A level by name, public or internal.
 const levelOf = (name) => INTERNAL_LEVELS[name] ?? DIFFICULTIES[name];
 
@@ -492,6 +505,7 @@ module.exports = {
   DIP_THIN,
   DRUMLESS,
   EASY_FIGURES,
+  EASY_FROM_NORMAL,
   FADE_OUT,
   FELT_TEMPO,
   FIGURES,

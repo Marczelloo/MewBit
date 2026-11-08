@@ -90,13 +90,17 @@ describe("mewbeat chart generator", () => {
   it("followsEnergy", () => {
     const all = chartsOf(fixture());
     for (const chart of Object.values(all)) {
-      // Rests are filled on Easy and Normal, so the beat is their floor where the music plays: less room to grow.
-      const factor = chart.difficulty === "easy" || chart.difficulty === "normal" ? 1.4 : 1.9;
+      // Rests are filled on Easy and Normal, so the beat is their floor where the music plays: less room to grow. Since v44
+      // Hard is Normal plus extras and follows Normal's curve (1.90 against Normal's 1.87 here, just under the 1.9 it had
+      // when it was charted on its own), so it takes the lower bound; hardBase below keeps the old one.
+      const factor = ["easy", "normal", "hard"].includes(chart.difficulty) ? 1.4 : 1.9;
       assert.ok(
         rate(chart.notes, 60000, 120000) >= factor * rate(chart.notes, 0, 60000),
         `${chart.difficulty}: loud ${rate(chart.notes, 60000, 120000)} vs quiet ${rate(chart.notes, 0, 60000)}`,
       );
     }
+    const own = generateChart(fixture(), "hardBase", KEY).notes;
+    assert.ok(rate(own, 60000, 120000) >= 1.9 * rate(own, 0, 60000), "hardBase: loud against quiet");
   });
 
   it("onGridWhenConfident", () => {
@@ -117,7 +121,8 @@ describe("mewbeat chart generator", () => {
     const features = fixture({ energy: () => 1 });
     // 1/8 beat is 62.5 ms: 20062/20063 is off the 1/4 grid, so only a 1/8 snap can keep it.
     features.bands[0].onsets.push({ t: 20063, s: 0.95 }, { t: 21063, s: 0.5 });
-    const hard = generateChart(features, "hard", KEY);
+    // On hardBase: the public Hard is built on Normal (v44), whose notes sit on the 1/4 grid; the 1/8 snap is the Hard of before.
+    const hard = generateChart(features, "hardBase", KEY);
     const offQuarterGrid = (t) => Math.abs(t - Math.round(t / 125) * 125) > 3;
     const strong = hard.notes.filter((n) => n.t >= 20000 && n.t <= 20125 && offQuarterGrid(n.t));
     const weak = hard.notes.filter((n) => n.t >= 21000 && n.t <= 21125 && offQuarterGrid(n.t));

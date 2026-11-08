@@ -1,8 +1,8 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { keptHolds, longHolds } = require("../../../helpers/mewbeat/charts/holds");
 const { makeLayeredFeatures } = require("./fixtures");
@@ -12,7 +12,7 @@ const diff = { keepNormalHolds: { minBeats: 2 }, holdMinBeats: 1, minNoteGapMs: 
 // Normal holds 1000 for 2 s over nothing of its own, then plays 3500; a short hold at 4000 is not long enough to keep
 const source = [{ t: 1000, lane: 0, len: 2000 }, { t: 3500, lane: 1 }, { t: 4000, lane: 2, len: 600 }];
 
-describe("Easy and Hard keep Normal's long holds (flag normalHolds)", () => {
+describe("Easy and Hard keep Normal's long holds (part of both since v44, was the flag normalHolds)", () => {
   it("finds the holds of at least minBeats", () => {
     assert.deepEqual(longHolds(source, 2, timing).map((n) => n.t), [1000]);
   });
@@ -39,17 +39,18 @@ describe("Easy and Hard keep Normal's long holds (flag normalHolds)", () => {
     assert.equal(keptHolds([{ t: 1000, lane: 0 }], source, diff, timing, 2600).find((n) => n.t === 1000).len, 1500);
   });
 
-  it("is off by default and changes Easy and Hard alone", () => {
-    assert.ok(FLAGS.normalHolds);
-    for (const level of ["easy", "hard"]) assert.equal(DIFFICULTIES[level].keepNormalHolds, undefined);
-    for (const level of ["normal", "hell"]) assert.equal(withFlags(levelOf(level), level, { normalHolds: true }), levelOf(level), level);
+  it("is part of Easy, Hard and Hell (HELL_PLUS carries it), not of Normal nor of the levels before v44", () => {
+    assert.equal(FLAGS.normalHolds, undefined);
+    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(DIFFICULTIES[level].keepNormalHolds, { minBeats: 2 }, level);
+    assert.equal(DIFFICULTIES.normal.keepNormalHolds, undefined);
+    for (const level of ["easyV26", "hardBase", "normalV26"]) assert.equal(INTERNAL_LEVELS[level].keepNormalHolds, undefined, level);
+  });
+
+  it("leaves no Normal moment out of Hard", () => {
     for (const bpm of [120, 180]) {
-      const features = () => makeLayeredFeatures({ bpm, durationMs: 64000 });
-      const base = { hardPlus: true, easyFromNormal: true };
-      const off = generateAll(features(), "k", base), on = generateAll(features(), "k", { ...base, normalHolds: true });
-      for (const level of ["normal", "hell"]) assert.deepEqual(on[level].notes, off[level].notes, `${bpm} ${level}`);
-      const kept = new Set(on.hard.notes.map((n) => n.t));
-      assert.deepEqual(on.normal.notes.filter((n) => !kept.has(n.t)), [], `${bpm}: Normal moments missing from Hard`);
+      const { normal, hard } = generateAll(makeLayeredFeatures({ bpm, durationMs: 64000 }), "k");
+      const kept = new Set(hard.notes.map((n) => n.t));
+      assert.deepEqual(normal.notes.filter((n) => !kept.has(n.t)), [], `${bpm}: Normal moments missing from Hard`);
     }
   });
 });

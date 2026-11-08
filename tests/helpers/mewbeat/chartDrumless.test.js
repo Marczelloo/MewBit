@@ -1,19 +1,23 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, FELT_TEMPO } = require("../../../helpers/mewbeat/charts/difficulty");
-const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { DIFFICULTIES, FELT_TEMPO, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { analyse, generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { drumlessWindows, thinDrumless } = require("../../../helpers/mewbeat/charts/drumless");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const RULE = DIFFICULTIES.normal.drumless;
 const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
+// Since v44 Easy, Hard and Hell are cut from or built on Normal and move with it; what cannot move is the internal levels
+// that stay as they were (hardBase, easyV26), so they stand for "Normal alone" in the checks below.
+const UNMOVED = ["hardBase", "easyV26"];
+const chartsOf = (features) => ({ ...notesOf(generateAll(features, "k")), ...Object.fromEntries(UNMOVED.map((level) => [level, generateChart(features, level, "k").notes])) });
 // The charts with Normal's `key` set to `value` for the call (undefined: Normal without it).
 function chartsWith(features, key, value) {
   const saved = DIFFICULTIES.normal[key];
   DIFFICULTIES.normal[key] = value;
   try {
-    return notesOf(generateAll(features, "k"));
+    return chartsOf(features);
   } finally {
     DIFFICULTIES.normal[key] = saved;
   }
@@ -45,9 +49,9 @@ describe("no drum kit playing (Normal's drumless, v42)", () => {
 
   it("is part of Normal alone", () => {
     const features = makeLayeredFeatures();
-    const on = notesOf(generateAll(features, "k")), off = chartsWith(features, "drumless", undefined);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], off[level], level);
-    for (const level of ["easy", "hard", "hell"]) assert.equal(DIFFICULTIES[level].drumless, undefined, level);
+    const on = chartsOf(features), off = chartsWith(features, "drumless", undefined);
+    for (const level of UNMOVED) assert.deepEqual(on[level], off[level], level);
+    for (const level of ["easy", "hard", "hell", ...UNMOVED]) assert.equal((DIFFICULTIES[level] ?? INTERNAL_LEVELS[level]).drumless, undefined, level);
   });
 });
 
@@ -56,13 +60,13 @@ describe("the decoded melody moved to our onsets (Normal's melodyOnsetShift, v42
     const features = makeLayeredFeatures();
     const run = Array.from({ length: 120 }, (_, i) => ({ t: 1000 + i * 250, pitch: 60 + (i % 5) }));
     const decoded = { ...features, decodedMelody: run, decodedMelodyTuned: run };
-    const plain = notesOf(generateAll(decoded, "k"));
+    const plain = chartsOf(decoded);
     assert.deepEqual(plain, chartsWith(decoded, "melodyOnsetShift", undefined));
     const shifted = { ...decoded, decodedMelodyShift: 125 };
-    const moved = notesOf(generateAll(shifted, "k"));
+    const moved = chartsOf(shifted);
     assert.deepEqual(chartsWith(shifted, "melodyOnsetShift", undefined).normal, plain.normal);
     assert.notDeepEqual(moved.normal, plain.normal);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(moved[level], plain[level], level);
+    for (const level of UNMOVED) assert.deepEqual(moved[level], plain[level], level);
   });
 });
 
@@ -71,8 +75,8 @@ describe("half beats up to 145 BPM (Normal's feltTempo, v42)", () => {
     assert.equal(FELT_TEMPO.belowBpm, 145);
     for (const [bpm, changes] of [[130, true], [160, false]]) {
       const features = makeLayeredFeatures({ bpm, durationMs: 64000 });
-      const plain = chartsWith(features, "feltTempo", { ...FELT_TEMPO, belowBpm: 115 }), on = notesOf(generateAll(features, "k"));
-      for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], `${bpm} ${level}`);
+      const plain = chartsWith(features, "feltTempo", { ...FELT_TEMPO, belowBpm: 115 }), on = chartsOf(features);
+      for (const level of UNMOVED) assert.deepEqual(on[level], plain[level], `${bpm} ${level}`);
       assert.equal(JSON.stringify(on.normal) !== JSON.stringify(plain.normal), changes, `${bpm} BPM`);
     }
   });

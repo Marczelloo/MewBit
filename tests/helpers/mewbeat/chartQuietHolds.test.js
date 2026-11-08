@@ -11,6 +11,7 @@ const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const LEVEL_V26 = levelOf("normalV26");
+const LEVEL_EASY_V26 = levelOf("easyV26");
 
 const BEAT_MS = 500; // the fixtures play at 120 BPM
 const PHRASE_BEATS = 16;
@@ -46,7 +47,9 @@ describe("quiet rhythmic passages", () => {
     const phrases = phrasesOf(features);
     const perPhrase = (chart) => chart.notes.length / phrases.length;
     assert.ok(perPhrase(generateChart(features, "normal", "k")) >= PHRASE_BEATS * LEVEL_V26.pulseNotesPerBeat);
-    assert.ok(perPhrase(generateChart(features, "easy", "k")) >= PHRASE_BEATS * DIFFICULTIES.easy.pulseNotesPerBeat * DIFFICULTIES.easy.quietBeats);
+    // Since v44 Easy is cut from Normal (keepShare), so the pulse rule it was written for is asserted on easyV26, the Easy
+    // that was charted on its own; the public Easy is a subset of Normal.
+    assert.ok(perPhrase(generateChart(features, "easyV26", "k")) >= PHRASE_BEATS * LEVEL_EASY_V26.pulseNotesPerBeat * LEVEL_EASY_V26.quietBeats);
   });
 
   it("a quiet pad with no pulse stays sparse", () => {
@@ -118,8 +121,9 @@ describe("holds on sustained notes of a non-leader layer", () => {
   it("a long, confident bass note under a drum leader becomes a hold", () => {
     const features = withBassNote();
     assert.deepEqual(chooseLeaders(phrasesOf(features)), Array(PHRASES).fill("drums"));
-    // On Hard: Normal's other hand plays too much under this one, and a hold that short stays empty (settleHolds).
-    const holds = holdsOf(generateChart(features, "hard", "k"));
+    // On hardBase (the Hard from before v44; the public Hard is built on Normal and has its own holds): Normal's other hand
+    // plays too much under this one, and a hold that short stays empty (settleHolds).
+    const holds = holdsOf(generateChart(features, "hardBase", "k"));
     for (let phrase = 0; phrase < PHRASES; phrase++) {
       const t = phrase * PHRASE_BEATS * BEAT_MS + 4.5 * BEAT_MS;
       assert.ok(holds.some((h) => h.t === t && h.len >= BEAT_MS), `a hold at ${t}`);

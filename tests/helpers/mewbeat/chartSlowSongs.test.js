@@ -3,7 +3,7 @@ const { describe, it } = require("node:test");
 
 const { CHORD_SLOW, DIFFICULTIES, HOLD_SLOW } = require("../../../helpers/mewbeat/charts/difficulty");
 const { slowChords } = require("../../../helpers/mewbeat/charts/chords");
-const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { slowHolds } = require("../../../helpers/mewbeat/charts/holds");
 const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
@@ -11,7 +11,14 @@ const SLOW = ["chordSlow", "holdSlow", "slowDynamics"];
 // Normal without one of them, or without all three: the behaviour before v43.
 const without = (...names) => flagWithout(`without${names.join("")}`, ...names);
 const notesOf = (charts) => Object.fromEntries(Object.entries(charts).map(([level, chart]) => [level, chart.notes]));
-const chartsOf = (bpm, flags) => notesOf(generateAll(makeLayeredFeatures({ bpm, durationMs: 64000 }), "k", flags));
+// The levels Normal does not move since v44 (Easy, Hard and Hell are built on it and follow it, so the byte-identical check
+// reads the Easy and the Hard that were charted on their own).
+const UNMOVED = ["easyV26", "hardBase"];
+const chartsOf = (bpm, flags) => {
+  const features = makeLayeredFeatures({ bpm, durationMs: 64000 });
+  const own = Object.fromEntries(UNMOVED.map((level) => [level, generateChart(features, level, "k", flags).notes]));
+  return { ...notesOf(generateAll(features, "k", flags)), ...own };
+};
 const chordShare = (notes) => {
   const at = new Map();
   for (const n of notes) at.set(n.t, (at.get(n.t) ?? 0) + 1);
@@ -27,12 +34,12 @@ describe("slow songs (Normal's chordSlow, holdSlow, slowDynamics, v43)", () => {
     }
   });
 
-  it("leave Easy, Hard and Hell byte-identical, on a slow song and a fast one", () => {
+  it("leave the levels charted on their own (easyV26, hardBase) byte-identical, on a slow song and a fast one", () => {
     for (const bpm of [95, 130, 180]) {
       const on = chartsOf(bpm, undefined);
       for (const names of [...SLOW.map((name) => [name]), SLOW]) {
         const plain = chartsOf(bpm, without(...names));
-        for (const level of ["easy", "hard", "hell"]) assert.deepEqual(on[level], plain[level], `${bpm} BPM ${level} ${names}`);
+        for (const level of UNMOVED) assert.deepEqual(on[level], plain[level], `${bpm} BPM ${level} ${names}`);
       }
     }
   });

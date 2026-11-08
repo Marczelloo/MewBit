@@ -8,7 +8,7 @@ const pinned = require("./fixtures/v26-notes.json");
 const { flagWithout, makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 // The charts of generator v26 as hashes (fixtures/v26-notes.json, taken before the levels were rewired): under what v32
-// and v33 laid over them Easy and Hard and Hell stay v26, normalV26 is the Normal of v26. Re-pinned once, for the song's first
+// and v33 laid over them easyV26 and hardBase stay v26 (Hell's hash is not checked since v44), normalV26 is the Normal of v26. Re-pinned once, for the song's first
 // second: every hash matched with the old one-second lead-in and only LEAD_IN_MS moved to 0. The fixtures' phrase bounds sit
 // on the grid, so v33's phrases.js onGrid leaves them.
 const UNDER_V32 = flagWithout("underv32", "localThin", "holdsByCalm", "shortestHoldMaxMs", "laneSearch", "chordFlow", "openingLead", "firstSound");
@@ -33,8 +33,12 @@ function check(level, name) {
 }
 
 describe("v26 identity", () => {
-  it("easy, hard and hell notes stay identical to v26", () => {
-    for (const level of ["easy", "hard", "hell"]) check(level, level);
+  // Since v44 the public Easy, Hard and Hell are built on Normal (cut from it, or built on it), so v26's Easy and Hard live on as
+  // the internal levels easyV26 and hardBase. v26's Hell has no internal copy (Hell is built on Hard, v44), so its pinned
+  // hash is no longer checked.
+  it("easyV26 and hardBase chart the Easy and the Hard of v26", () => {
+    check("easy", "easyV26");
+    check("hard", "hardBase");
   });
 
   it("normalV26 charts the Normal of v26", () => {

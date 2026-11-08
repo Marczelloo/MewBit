@@ -102,8 +102,9 @@ describe("the fade-out at the end of a song (fades.js, diff.fadeOut)", () => {
 describe("a repeat copied only when it is very like its source (Normal and Hard)", () => {
   it("is part of Hard since v37 and of Normal since v38", () => {
     assert.equal(COPY_FROM, 0.95);
-    for (const level of ["normal", "hard"]) assert.equal(DIFFICULTIES[level].copyFrom, COPY_FROM, level);
-    for (const level of ["easy", "hell"]) assert.equal(DIFFICULTIES[level].copyFrom, undefined, level);
+    // Hell is built on Hard since v44 and so reads Hard's copyFrom; Easy is cut from Normal and has none of its own.
+    for (const level of ["normal", "hard", "hell"]) assert.equal(DIFFICULTIES[level].copyFrom, COPY_FROM, level);
+    assert.equal(DIFFICULTIES.easy.copyFrom, undefined);
     for (const name of ["copyStrict", "copyStrictHard", "fadeOut", "stairs"]) assert.equal(FLAGS[name], undefined, name);
   });
 });

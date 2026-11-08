@@ -217,7 +217,7 @@ function makeLayeredFeatures({
 // A generator flag that takes the named parameters away from every level: what a chart is without them, as flags to pass.
 function flagWithout(name, ...params) {
   const without = Object.fromEntries(params.map((param) => [param, undefined]));
-  FLAGS[name] = { label: name, levels: Object.fromEntries(["easy", "normalV26", "normal", "hard", "hell"].map((level) => [level, without])) };
+  FLAGS[name] = { label: name, levels: Object.fromEntries(["easy", "easyV26", "hardBase", "normalV26", "normal", "hard", "hell"].map((level) => [level, without])) };
   return { [name]: true };
 }
 
