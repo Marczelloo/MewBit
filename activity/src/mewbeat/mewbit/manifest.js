@@ -58,4 +58,19 @@ export const MEWBIT_POSES = {
   okay: pose("okay", "results", run(48), 12, { rest: true }),
   sad: pose("sad", "results", run(48), 12),
   newbest: pose("newbest", "results", run(26), 24, { hold: true }),
+  // Tutorial and Konami secret. Art is approved and registered here, but nothing plays these poses yet: use them
+  // as <Mewbit pose="talk" />. talk, explain and happy are 420px busts (head and shoulders) that loop with no seam;
+  // wave and wink are full figures that play once and end on the neutral pose. Mewbit scales every frame to its
+  // square canvas, so a bust fills the same box as a full figure and the tutorial layout should size it on purpose.
+  // Regular tutorial steps: faces front, talks and blinks.
+  talk: pose("talk", "tutorial", run(48), 16),
+  // Steps about the keys, the offset and charting: raised finger, talks.
+  explain: pose("explain", "tutorial", run(48), 16),
+  // The greeting and the branching point: eyes shut, wide smile.
+  happy: pose("happy", "tutorial", run(32), 16),
+  // The end of the tutorial: waves at the player.
+  wave: pose("wave", "tutorial", run(58), 24, { hold: true }),
+  // The secret after the Konami code (createKonamiMatcher in ../konami.js), finger at her lips. Add the screen
+  // that shows it to `also` so the frames are preloaded there.
+  wink: pose("wink", "tutorial", run(50), 24, { hold: true, bubble: "you know the code ✦" }),
 };
