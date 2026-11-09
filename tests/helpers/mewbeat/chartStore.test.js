@@ -2,7 +2,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { afterEach, beforeEach, describe, it } = require("node:test");
+const { afterEach, beforeEach, describe, it, mock } = require("node:test");
 
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 const { createChartStore } = require("../../../helpers/mewbeat/chartStore");
@@ -240,6 +240,47 @@ describe("mewbeat chart store", () => {
 
       assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
       assert.ok(warnings.some(([message]) => /old charts/.test(message)));
+    });
+  });
+
+  describe("summaryReader", () => {
+    it("summarises each level of a stored song without keeping the chart file in play", async () => {
+      await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      const read = store.summaryReader();
+
+      const summary = read(track);
+      assert.deepStrictEqual(Object.keys(summary), ["easy", "normal", "hard", "hell"]);
+      const charts = JSON.parse(fs.readFileSync(chartsPath(), "utf8"));
+      assert.deepStrictEqual(summary.hard, {
+        version: charts.hard.version, stars: charts.hard.stars, bpm: charts.hard.bpm, highlightMs: charts.hard.highlightMs, notes: charts.hard.notes.length,
+      });
+
+      // A second look at the song does not read its chart file again.
+      fs.unlinkSync(chartsPath());
+      assert.deepStrictEqual(store.summaryReader()(track), summary);
+    });
+
+    it("is null for a song with no charts and for one without an audio key", () => {
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      assert.strictEqual(store.summaryReader()(track), null);
+      assert.strictEqual(store.summaryReader()(makeTrack({ isStream: true })), null);
+    });
+
+    it("reads the flags file once for a reader, however many songs it looks up", async () => {
+      await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      const flagsReads = mock.method(fs, "readFileSync", fs.readFileSync);
+      try {
+        const read = store.summaryReader();
+        read(track);
+        read(track);
+        read(makeTrack({ identifier: "other" }));
+        const reads = flagsReads.mock.calls.filter((call) => String(call.arguments[0]).endsWith("generator-flags.json"));
+        assert.strictEqual(reads.length, 1);
+      } finally {
+        flagsReads.mock.restore();
+      }
     });
   });
 

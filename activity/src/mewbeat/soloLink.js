@@ -155,11 +155,11 @@ export function createSoloLink({
 
   // Anchors the run at the start of the silence, paused: the game charts the song and builds its run on
   // this clock, and the link counts in as soon as the chart is ready.
-  function startAt(audioKey, durationMs) {
+  function startAt(audioKey, durationMs, abandon = false) {
     const first = !soloClock.audioKey();
     soloClock.set({ key: audioKey, paused: true, positionMs: -SONG_SILENCE_MS, durationMs });
     setState({ stage: "ready", count: null, error: null, audioKey });
-    emitAnchor(first ? "init" : "keyChange");
+    emitAnchor(first ? "init" : abandon ? "abandon" : "keyChange");
   }
 
   // The game calls this once it accepted the chart and built its run (on the paused clock): only then does
@@ -224,13 +224,14 @@ export function createSoloLink({
   }
 
   // A fresh run of the same song from the silence: the game drops its run and charts again.
-  function restart() {
+  // `abandon`: the run in progress is thrown away rather than finished, so the game does not submit it.
+  function restart({ abandon = false } = {}) {
     if (!state.audioKey || !soloClock.audioKey()) return;
     audio.unlock?.();
     token += 1;
     cancelCountIn();
     audio.stop();
-    startAt(state.audioKey, audio.durationMs());
+    startAt(state.audioKey, audio.durationMs(), abandon);
   }
 
   // Back to "no song": the game drops its run and the picker comes back.

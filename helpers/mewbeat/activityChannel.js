@@ -1,9 +1,11 @@
 const Log = require("../logs/log");
 const { audioKeyOf } = require("./audioKey");
-const { starsOf } = require("./charts/stars");
+const { summarizeCharts } = require("./chartSummary");
 const { createLiveBoard } = require("./liveBoard");
+const { createRanking } = require("./ranking");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
 const { DIFFICULTIES: ROOM_DIFFICULTIES, MAX_PLAYERS, createRooms } = require("./rooms");
+const { deriveRunStats } = require("./runStats");
 const { createSoloTracks } = require("./soloTracks");
 
 const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
@@ -18,7 +20,15 @@ const LATE_JOIN_MS = 2000;
 const MIN_JUDGED_SHARE = 0.5;
 const SERVER_TOP = 5;
 const BOARD_LIMIT = 50;
-const PLAYED_LIMIT = 100;
+const PLAYED_LIMIT = 500;
+const RANKING_LIMIT = 100;
+// Rows of the profile's recent and best lists.
+const PROFILE_ROWS = 8;
+// The stats card lists the maps with the highest max combo; a player with 2000 maps would otherwise get them all.
+const STATS_MAPS = 50;
+// More key presses than this in one run is a bogus count, not a very fast player.
+const MAX_PRESSES = 200000;
+const GRADES = ["S", "A", "B", "C", "D"];
 const INVITE_COOLDOWN_MS = 60_000;
 const ROUND_PHASES = ["loading", "countdown", "playing"];
 
@@ -35,7 +45,8 @@ function errorReply(message) {
 // resolveTrack(guildId, { uri, source }) -> { track, node, info? } | null turns a
 // search result into an encoded track; soloTracks remembers it by audioKey so
 // charts and audio can be served for songs the bot is not playing.
-// scoreStore and historyStore keep boards and play history; loadScoring
+// scoreStore and historyStore keep boards and play history, statsStore the
+// player's totals (the profile messages need it); loadScoring
 // replaces the import of the client's scoring module in tests. The rooms push
 // their state with broadcast(guildId, userIds, payload) and run their phases
 // on setTimer/clearTimer, so tests can drive them with a fake clock; the live
@@ -53,7 +64,7 @@ function createMewbeatChannel({
   audioLatencyMs = 0,
   resolveTrack,
   soloTracks = createSoloTracks(),
-  scoreStore, historyStore, loadScoring,
+  scoreStore, historyStore, statsStore, loadScoring,
   postInvite,
   warmAudio = () => {},
   // eslint-disable-next-line no-unused-vars
@@ -161,7 +172,7 @@ function createMewbeatChannel({
     try {
       const { audioKey, track } = await prepareSong(guildId, { uri, source }, { chart: !preview });
       // The song's highlight, when its charts already exist (song select previews start there).
-      const highlightMs = highlightOf(peekChartsOf(soloTracks.get(audioKey)?.track));
+      const highlightMs = highlightOf(peekSummaryOf(soloTracks.get(audioKey)?.track));
       return { type: "mewbeat_solo_prepare", id, status: "ok", audioKey, track, highlightMs };
     } catch (error) {
       if (!error.reason) throw error;
@@ -323,7 +334,7 @@ function createMewbeatChannel({
     };
   }
 
-  // The highlight is the same for every difficulty; any charted one has it.
+  // The highlight is the same for every difficulty; any charted one has it. Takes the summary of the song's charts.
   function highlightOf(charts) {
     if (!charts) return null;
     for (const difficulty of DIFFICULTIES) {
@@ -340,17 +351,72 @@ function createMewbeatChannel({
     return verdict?.status === "ready" ? verdict.charts : null;
   }
 
+  // The summary of a song's charts (chartSummary.js), which is all the lists and the rating read; the chart file is
+  // not parsed for it. A reader looks up many songs at the cost of one read of the generator flags.
+  function summaryReader() {
+    return chartStore.summaryReader?.() ?? ((track) => summarizeCharts(peekChartsOf(track)));
+  }
+  const peekSummaryOf = (track) => summaryReader()(track);
+
   // The scores key of the chart in use now (stored chart version: a number, or
   // a string like "30-holds" while generator flags are on), else the newest
   // version anyone has a score for.
-  function chartKeyFor(audioKey, difficulty) {
-    const stored = peekChartsOf(trackFromAudioKey(audioKey))?.[difficulty];
-    if (stored && (Number.isFinite(stored.version) || (typeof stored.version === "string" && stored.version))) return `${audioKey}|${difficulty}|${stored.version}`;
-    return scoreStore.latestChartKey(audioKey, difficulty);
+  function chartKeyFor(audioKey, difficulty, read = peekSummaryOf) {
+    return currentChartKeyOf(audioKey, difficulty, read) ?? scoreStore.latestChartKey(audioKey, difficulty);
   }
 
-  const starsFor = (chart) => (chart ? chart.stars ?? starsOf(chart) : null);
-  const noteCountOf = (chart) => (chart ? chart.notes.length : null);
+  // The scores key of the chart in use now; null while the song has no stored chart of that level.
+  function currentChartKeyOf(audioKey, difficulty, read = peekSummaryOf) {
+    const stored = read(trackFromAudioKey(audioKey))?.[difficulty];
+    if (stored && (Number.isFinite(stored.version) || (typeof stored.version === "string" && stored.version))) return `${audioKey}|${difficulty}|${stored.version}`;
+    return null;
+  }
+
+  // The rating table counts only scores on the chart version in use now, so a song without a stored chart
+  // (and the latestChartKey fallback) adds nothing to it.
+  let readSummary = peekSummaryOf; // the reader of the build in progress, so a build reads the flags once
+  const ranking = scoreStore
+    ? createRanking({
+      walk: (visit) => {
+        readSummary = summaryReader();
+        scoreStore.forEachEntry(visit);
+      },
+      currentOf: (audioKey, difficulty) => {
+        const chartKey = currentChartKeyOf(audioKey, difficulty, readSummary);
+        return chartKey ? { chartKey, stars: readSummary(trackFromAudioKey(audioKey))[difficulty].stars } : null;
+      },
+      trackOf: (userId, audioKey) => historyStore?.firstTrackOf(userId, audioKey) ?? null,
+      now,
+    })
+    : null;
+
+  // The tempo of any stored difficulty of the song, normal first.
+  function bpmOf(charts) {
+    if (!charts) return null;
+    for (const difficulty of ["normal", ...DIFFICULTIES]) {
+      const bpm = charts[difficulty]?.bpm;
+      if (Number.isFinite(bpm)) return bpm;
+    }
+    return null;
+  }
+
+  // A count from the client that goes into permanent totals: anything but a plausible whole number is 0.
+  function pressCountOf(value) {
+    return Number.isInteger(value) && value >= 0 && value <= MAX_PRESSES ? value : 0;
+  }
+
+  // How much of the song a run played: the chart time of its furthest judged note (a hold counts to its end),
+  // never more than the song. A log with no usable note time falls back to the song's length times the share judged.
+  function playedMsOf({ stored, events, durationMs, completion }) {
+    let furthest = -Infinity;
+    for (const event of events) {
+      const note = stored.notes[event.n];
+      const end = event.part === "tail" ? note.t + (note.len > 0 ? note.len : 0) : note.t;
+      if (Number.isFinite(end)) furthest = Math.max(furthest, end);
+    }
+    if (!Number.isFinite(furthest)) return durationMs * completion;
+    return durationMs > 0 ? Math.min(furthest, durationMs) : furthest;
+  }
 
   function clampedLimit(value, fallback, max) {
     const limit = Number(value);
@@ -410,6 +476,8 @@ function createMewbeatChannel({
       && firstJudgedMs <= firstNoteMs + LATE_JOIN_MS
       && run.judged >= judgeablePartsOf(stored) * MIN_JUDGED_SHARE;
 
+    const parts = judgeablePartsOf(stored);
+    const completion = parts > 0 ? Math.min(1, Math.round((run.judged / parts) * 10000) / 10000) : 1;
     const chartKey = `${audioKey}|${difficulty}|${stored.version}`;
     let newBest = false;
     if (ranked) {
@@ -423,7 +491,10 @@ function createMewbeatChannel({
         grade: run.grade,
         maxCombo: run.maxCombo,
         difficulty,
+        track: { title: source.info.title, artist: source.info.artist ?? "", artworkUrl: source.info.artworkUrl ?? null },
+        completion,
       }).newBest;
+      if (newBest) ranking.invalidate();
     }
     // A room round counts for the room only when it is the round being played
     // now, for the song in it, and the run was a real one. Anything else is
@@ -451,6 +522,27 @@ function createMewbeatChannel({
         mode: MODES.includes(mode) ? mode : "live",
         guildId,
         chartVersion: stored.version,
+      });
+    }
+    // The player's totals take every real run that got at least half through, ranked or not; a calibration or an
+    // autoplay run is nobody's play, and neither is a restart a few seconds in.
+    if (statsStore && !calibration && !flags?.autoplay && completion >= MIN_JUDGED_SHARE) {
+      const presses = pressCountOf(message.presses);
+      statsStore.add(userId, {
+        profile,
+        audioKey,
+        difficulty,
+        track: { title: source.info.title, artist: source.info.artist ?? "", artworkUrl: source.info.artworkUrl ?? null },
+        durationMs: playedMsOf({ stored, events, durationMs: source.info.durationMs ?? 0, completion }),
+        accuracy: run.accuracy,
+        counts: run.counts,
+        maxCombo: run.maxCombo,
+        parts,
+        fevers: run.fevers,
+        presses,
+        // Empty presses are a share of the presses, so they can't outnumber them.
+        emptyPresses: Math.min(pressCountOf(message.emptyPresses), presses),
+        ...deriveRunStats({ chart: stored, events }),
       });
     }
 
@@ -502,26 +594,148 @@ function createMewbeatChannel({
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat played.");
     if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore || !historyStore) return fail("unavailable");
-    if (scope !== "server" && scope !== "global") return fail("bad_scope");
+    if (scope !== "server" && scope !== "global" && scope !== "mine") return fail("bad_scope");
 
     const limit = clampedLimit(message.limit, 50, PLAYED_LIMIT);
-    const tracks = historyStore.played({ guildId: scope === "server" ? guildId : null, limit }).map((track) => {
-      const charts = peekChartsOf(trackFromAudioKey(track.audioKey));
+    // "mine" is the songs you played anywhere, in no particular server.
+    const query = scope === "mine" ? { userId, limit } : { guildId: scope === "server" ? guildId : null, limit };
+    const read = summaryReader();
+    const tracks = historyStore.played(query).map((track) => {
+      const charts = read(trackFromAudioKey(track.audioKey));
       const stars = charts
-        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, starsFor(charts[difficulty])]))
+        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, charts[difficulty]?.stars ?? null]))
         : null;
       const notes = charts
-        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, noteCountOf(charts[difficulty])]))
+        ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, charts[difficulty]?.notes ?? null]))
         : {};
       const bests = {};
       for (const difficulty of DIFFICULTIES) {
-        const chartKey = chartKeyFor(track.audioKey, difficulty);
+        const chartKey = chartKeyFor(track.audioKey, difficulty, read);
         const best = chartKey && scoreStore.bestOf(chartKey, userId);
         if (best) bests[difficulty] = { score: best.score, grade: best.grade };
       }
-      return { ...track, stars, notes, bests, highlightMs: highlightOf(charts) };
+      return { ...track, stars, notes, bests, highlightMs: highlightOf(charts), bpm: bpmOf(charts) };
     });
     return { type: "mewbeat_played", id, tracks };
+  }
+
+  // The player a profile or stats request is about: yourself (no userId) or somebody else. Null when nobody
+  // we know of has that id. A player with no totals yet still has a name from their score or this request.
+  function playerFor(requesterId, requested, requesterProfile) {
+    const userId = requested ?? requesterId;
+    const summary = statsStore.summaryOf(userId);
+    const rated = ranking?.playerOf(userId) ?? null;
+    const known = summary || rated || historyStore?.recent(userId, 1).length > 0;
+    if (!known && userId !== requesterId) return null;
+    const own = userId === requesterId ? requesterProfile : null;
+    return {
+      userId,
+      username: summary?.username || rated?.username || own?.username || "Unknown player",
+      avatarUrl: summary?.avatarUrl ?? rated?.avatarUrl ?? own?.avatarUrl ?? null,
+      firstAt: summary?.firstAt ?? null,
+    };
+  }
+
+  // Shared start of the profile messages. Returns the reply to send, or { userId } to go on with.
+  function profileTarget(type, requesterId, message) {
+    const { id, userId } = message;
+    const fail = (reason) => ({ type, id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return { reply: errorReply(`Bad ${type}.`) };
+    if (!isUnlocked(requesterId)) return { reply: fail("locked") };
+    if (!statsStore || !scoreStore || !historyStore || !ranking) return { reply: fail("unavailable") };
+    if (userId !== undefined && (typeof userId !== "string" || !userId || userId.length > MAX_ID_LENGTH)) return { reply: fail("bad_request") };
+    return { fail, userId };
+  }
+
+  function playerProfile(guildId, requesterId, message, requesterProfile) {
+    const { reply, fail, userId: requested } = profileTarget("mewbeat_profile", requesterId, message);
+    if (reply) return reply;
+    const player = playerFor(requesterId, requested, requesterProfile);
+    if (!player) return fail("not_found");
+
+    const summary = statsStore.summaryOf(player.userId);
+    const rated = ranking.playerOf(player.userId);
+    const plays = rated?.plays ?? [];
+    const bestGrades = Object.fromEntries(GRADES.map((grade) => [grade, 0]));
+    for (const play of plays) {
+      if (Object.hasOwn(bestGrades, play.grade)) bestGrades[play.grade] += 1;
+    }
+    return {
+      type: "mewbeat_profile",
+      id: message.id,
+      status: "ok",
+      player,
+      rating: {
+        pp: rated?.pp ?? 0,
+        global: ranking.rankOf({ userId: player.userId, guildId: null }),
+        server: ranking.rankOf({ userId: player.userId, guildId }),
+      },
+      summary: {
+        plays: summary?.plays ?? 0,
+        avgAccuracy: summary?.avgAccuracy ?? 0,
+        songs: summary?.songs ?? 0,
+        playMs: summary?.playMs ?? 0,
+        bestGrades,
+      },
+      recent: historyStore.recent(player.userId, PROFILE_ROWS).map((round) => ({
+        audioKey: round.audioKey,
+        title: round.title,
+        artist: round.artist ?? "",
+        artworkUrl: round.artworkUrl ?? null,
+        difficulty: round.difficulty,
+        grade: round.grade,
+        accuracy: round.accuracy,
+        score: round.score,
+        at: round.at,
+      })),
+      best: plays.slice(0, PROFILE_ROWS).map((play) => ({
+        audioKey: play.audioKey,
+        title: play.title,
+        artist: play.artist,
+        artworkUrl: play.artworkUrl,
+        difficulty: play.difficulty,
+        stars: play.stars,
+        grade: play.grade,
+        accuracy: play.accuracy,
+        pp: play.pp,
+      })),
+    };
+  }
+
+  function playerStats(_guildId, requesterId, message, requesterProfile) {
+    const { reply, fail, userId: requested } = profileTarget("mewbeat_stats", requesterId, message);
+    if (reply) return reply;
+    const player = playerFor(requesterId, requested, requesterProfile);
+    if (!player) return fail("not_found");
+    const stats = statsStore.summaryOf(player.userId);
+    return { type: "mewbeat_stats", id: message.id, status: "ok", player, stats: stats && { ...stats, maps: stats.maps.slice(0, STATS_MAPS) } };
+  }
+
+  function rankingBoard(guildId, userId, message, requesterProfile) {
+    const { id, scope } = message;
+    const fail = (reason) => ({ type: "mewbeat_ranking", id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat ranking.");
+    if (!isUnlocked(userId)) return fail("locked");
+    if (!ranking) return fail("unavailable");
+    if (scope !== "server" && scope !== "global") return fail("bad_scope");
+
+    const boardGuild = scope === "server" ? guildId : null;
+    // Your own row is pinned under the list when you are further down, so it needs a name and a picture too.
+    // Without a rated play you have no accuracy; the name and picture come from the request's profile then.
+    const rated = ranking.playerOf(userId);
+    return {
+      type: "mewbeat_ranking",
+      id,
+      status: "ok",
+      entries: ranking.rowsFor({ guildId: boardGuild, limit: clampedLimit(message.limit, 50, RANKING_LIMIT) }),
+      own: {
+        rank: ranking.rankOf({ userId, guildId: boardGuild }),
+        pp: rated?.pp ?? 0,
+        username: rated?.username ?? requesterProfile?.username ?? null,
+        avatarUrl: rated?.avatarUrl ?? requesterProfile?.avatarUrl ?? null,
+        accuracy: rated?.accuracy ?? null,
+      },
+    };
   }
 
   // Per difficulty: stars, note count and the player's best. `null` stats means
@@ -534,15 +748,16 @@ function createMewbeatChannel({
     if (!scoreStore) return fail("unavailable");
     if (typeof audioKey !== "string" || audioKey.length > MAX_URI_LENGTH) return fail("bad_request");
 
-    const charts = peekChartsOf(trackFromAudioKey(audioKey));
+    const read = summaryReader();
+    const charts = read(trackFromAudioKey(audioKey));
     if (!charts) return { type: "mewbeat_song_stats", id, status: "ok", stats: null };
     const stats = {};
     for (const difficulty of DIFFICULTIES) {
-      const chartKey = chartKeyFor(audioKey, difficulty);
+      const chartKey = chartKeyFor(audioKey, difficulty, read);
       const best = chartKey ? scoreStore.bestOf(chartKey, userId) : null;
       stats[difficulty] = {
-        stars: starsFor(charts[difficulty]),
-        notes: noteCountOf(charts[difficulty]),
+        stars: charts[difficulty]?.stars ?? null,
+        notes: charts[difficulty]?.notes ?? null,
         best: best ? { score: best.score, grade: best.grade } : null,
       };
     }
@@ -560,6 +775,9 @@ function createMewbeatChannel({
         case "mewbeat_board": return board(guildId, userId, message);
         case "mewbeat_song_stats": return songStats(guildId, userId, message);
         case "mewbeat_played": return played(guildId, userId, message);
+        case "mewbeat_profile": return playerProfile(guildId, userId, message, profile);
+        case "mewbeat_stats": return playerStats(guildId, userId, message, profile);
+        case "mewbeat_ranking": return rankingBoard(guildId, userId, message, profile);
         case "mewbeat_live": return live(guildId, userId, message, profile);
         default:
           if (message?.type?.startsWith("mewbeat_room_")) return roomRequest(guildId, userId, message, profile);

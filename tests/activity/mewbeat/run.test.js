@@ -500,7 +500,26 @@ test("log: taps are logged in the order they are judged, with heard time and err
       { n: 1, part: "head", j: "perfect", t: 2280, d: 30 },
     ],
     fevers: [],
+    presses: 2,
+    emptyPresses: 0,
   });
+});
+
+test("log: counts every key press, and those that hit no note", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.press(0, 2000); // on the first note
+  run.press(2, 2100); // empty air
+  const log = run.log();
+  assert.equal(log.presses, 2);
+  assert.equal(log.emptyPresses, 1);
+});
+
+test("log: a press after the run ended counts nothing", () => {
+  const run = createRun({ chart: { notes: [{ t: 2000, lane: 0 }] }, startSongMs: 0 });
+  run.press(0, 2000);
+  tickAll(run, 2000, 5000);
+  assert.equal(run.press(0, 5100), null);
+  assert.deepEqual([run.log().presses, run.log().emptyPresses], [1, 0]);
 });
 
 test("log: the returned lists are copies", () => {
@@ -510,7 +529,7 @@ test("log: the returned lists are copies", () => {
   copy.events[0].j = "miss";
   copy.events.push({});
   copy.fevers.push(1);
-  assert.deepEqual(run.log(), { events: [{ n: 0, part: "head", j: "perfect", t: 2000, d: 0 }], fevers: [] });
+  assert.deepEqual(run.log(), { events: [{ n: 0, part: "head", j: "perfect", t: 2000, d: 0 }], fevers: [], presses: 1, emptyPresses: 0 });
 });
 
 test("log: a hold logs its head and its tail", () => {

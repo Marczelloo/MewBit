@@ -1,0 +1,371 @@
+/* mewbeat song select, left side of the Solo picker: Profile, Stats, the level leaderboard and the modifiers strip
+   (docs/superpowers/specs/mewbeat-mockups/song-select-profile.html). The song list and the song details keep
+   their rules in mewbeat.css, which also defines the colour tokens (--mb-*), .mb-ss-label, .mb-ss-empty, the
+   .mb-ss-d-<id> level colours (--c) and the grade colours. Every rule here is scoped under .mb-ss to win over the
+   shared .mb-btn styles. */
+
+.mb-ss { --mb-ss-mono: "JetBrains Mono", ui-monospace, monospace; }
+
+/* One column that fills the section. When the section is shorter than this, it scrolls instead of squeezing. */
+.mb-ss .mb-ss-left {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 460px;
+  container-type: inline-size;
+}
+.mb-ss .mb-ss-left > * { flex: none; }
+.mb-ss .mb-ss-left > .mb-ss-two { flex: 1 1 0; min-height: 190px; }
+.mb-ss .mb-ss-left > .mb-ss-board { flex: 1 1 0; min-height: 190px; }
+.mb-ss .mb-ss-left > .mb-ss-ranking { flex: 1 1 0; min-height: 190px; }
+
+.mb-ss .mb-ss-panel { border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
+
+/* tabs, and the way back */
+.mb-ss .mb-ss-mode { display: flex; align-items: center; gap: 2px; min-height: 34px; }
+.mb-ss .mb-ss-ptabs { display: flex; gap: 2px; }
+.mb-ss .mb-ss-ptab {
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--mb-faint);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mb-ss .mb-ss-ptab:hover { color: var(--mb-muted); }
+.mb-ss .mb-ss-ptab-on { border-color: var(--mb-cyan); color: var(--mb-text); }
+.mb-ss .mb-ss-ptab:focus-visible,
+.mb-ss .mb-ss-back:focus-visible,
+.mb-ss .mb-ss-seg button:focus-visible,
+.mb-ss .mb-ss-pl:focus-visible,
+.mb-ss .mb-ss-rankrow:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: -2px; }
+.mb-ss .mb-ss-back {
+  min-height: 30px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 1px solid var(--mb-line);
+  border-radius: 8px;
+  background: var(--mb-raised);
+  color: var(--mb-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 120ms ease-out, border-color 120ms ease-out;
+}
+.mb-ss .mb-ss-back:hover { border-color: rgb(255 255 255 / 0.28); color: var(--mb-text); }
+.mb-ss .mb-ss-viewing { display: flex; align-items: center; gap: 10px; min-width: 0; margin-left: auto; color: var(--mb-muted); font-size: 12px; }
+.mb-ss .mb-ss-viewing > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-viewing .mb-ss-back { margin-left: 0; }
+
+/* avatars: a picture, or a letter on a coloured circle */
+.mb-ss .mb-ss-av {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  object-fit: cover;
+  color: var(--mb-bg);
+  font-size: calc(var(--size) * 0.4);
+  font-weight: 900;
+}
+
+/* the player */
+.mb-ss .mb-ss-me { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 16px; }
+.mb-ss .mb-ss-me-name { min-width: 0; }
+.mb-ss .mb-ss-me h2 { margin: 0; overflow: hidden; font-size: 24px; font-weight: 900; letter-spacing: -0.02em; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-me small { color: var(--mb-muted); font-size: 13px; }
+.mb-ss .mb-ss-rating { text-align: right; }
+.mb-ss .mb-ss-rating b { display: block; font: 700 30px/1 var(--mb-ss-mono); letter-spacing: -0.03em; }
+.mb-ss .mb-ss-rating b i { margin-left: 4px; color: var(--mb-muted); font-size: 14px; font-style: normal; }
+.mb-ss .mb-ss-ranks { display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; color: var(--mb-muted); font: 500 12px/1 var(--mb-ss-mono); }
+.mb-ss .mb-ss-ranks em { color: var(--mb-text); font-style: normal; font-weight: 700; }
+
+/* tiles */
+.mb-ss .mb-ss-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(190px, 1.5fr); }
+.mb-ss .mb-ss-tile { min-width: 0; padding: 11px 14px; border-left: 1px solid var(--mb-line); }
+.mb-ss .mb-ss-tile:first-child { border-left: 0; }
+.mb-ss .mb-ss-tile .mb-ss-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-tile b { display: block; margin-top: 7px; overflow: hidden; font: 700 20px/1 var(--mb-ss-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-grades { display: flex; gap: 10px; margin-top: 6px; }
+.mb-ss .mb-ss-grades span { color: var(--mb-muted); font: 700 13px/1.2 var(--mb-ss-mono); }
+.mb-ss .mb-ss-grades i { display: block; font-size: 15px; font-style: normal; font-weight: 900; }
+.mb-ss .mb-ss-six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mb-ss .mb-ss-six .mb-ss-tile:nth-child(3n + 1) { border-left: 0; }
+.mb-ss .mb-ss-six .mb-ss-tile:nth-child(n + 4) { border-top: 1px solid var(--mb-line); }
+/* A caption never pushes its tile wider: a long song title is cut. */
+.mb-ss .mb-ss-six .mb-ss-tile small { display: block; margin-top: 4px; overflow: hidden; color: var(--mb-faint); font: 500 11px/1.2 var(--mb-ss-mono); text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-tile.mb-ss-fc b { color: var(--mb-gold); }
+/* In a narrow column the five profile tiles would clip their captions, so the grades take a row of their own. */
+@container (max-width: 640px) {
+  .mb-ss .mb-ss-tiles:not(.mb-ss-six) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .mb-ss .mb-ss-tile-grades { grid-column: 1 / -1; border-top: 1px solid var(--mb-line); border-left: 0; }
+}
+
+/* two blocks of rows */
+.mb-ss .mb-ss-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mb-ss .mb-ss-block { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.mb-ss .mb-ss-block h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 11px 14px 9px;
+  color: var(--mb-muted);
+  font: 500 11px/1.2 var(--mb-ss-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.mb-ss .mb-ss-block-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.mb-ss .mb-ss-block-empty { margin: 0; padding: 14px; border-top: 1px solid var(--mb-line); color: var(--mb-faint); font-size: 12.5px; }
+.mb-ss .mb-ss-block .mb-ss-empty { padding: 20px 14px; }
+.mb-ss .mb-ss-line { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 7px 14px; border-top: 1px solid var(--mb-line); }
+.mb-ss .mb-ss-cv { display: block; width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
+.mb-ss .mb-ss-tt { min-width: 0; }
+.mb-ss .mb-ss-tt b { display: block; overflow: hidden; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-tt small { display: block; overflow: hidden; color: var(--mb-faint); font: 500 11px/1.4 var(--mb-ss-mono); text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-dl { color: var(--c); }
+.mb-ss .mb-ss-val { text-align: right; font: 700 13px/1.2 var(--mb-ss-mono); font-variant-numeric: tabular-nums; }
+.mb-ss .mb-ss-val small { display: block; color: var(--mb-faint); font-size: 11px; font-weight: 500; }
+.mb-ss .mb-ss-val.mb-ss-fc { color: var(--mb-gold); }
+
+/* judgements */
+.mb-ss .mb-ss-jud { padding: 12px 14px; }
+.mb-ss .mb-ss-jbar { display: flex; gap: 2px; height: 10px; margin: 10px 0 12px; overflow: hidden; border-radius: 5px; background: rgb(255 255 255 / 0.06); }
+.mb-ss .mb-ss-jbar i { display: block; background: var(--j); }
+.mb-ss .mb-ss-j-perfect { --j: var(--mb-cyan); }
+.mb-ss .mb-ss-j-great { --j: var(--mb-violet); }
+.mb-ss .mb-ss-j-good { --j: var(--mb-high); }
+.mb-ss .mb-ss-j-miss { --j: var(--mb-danger); }
+.mb-ss .mb-ss-jcells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mb-ss .mb-ss-jcell { min-width: 0; }
+.mb-ss .mb-ss-jcell span { display: block; color: var(--j); font-size: 13px; font-weight: 800; }
+.mb-ss .mb-ss-jcell b { display: block; margin-top: 3px; overflow: hidden; font: 700 19px/1 var(--mb-ss-mono); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-jcell small { display: block; margin-top: 3px; color: var(--mb-faint); font: 500 11px/1 var(--mb-ss-mono); }
+
+/* timing */
+/* The body scrolls under the heading, like the rows of the other blocks, when the block is shorter than its content. */
+.mb-ss .mb-ss-timing { flex: 1; min-height: 0; padding: 0 14px 12px; overflow-y: auto; overscroll-behavior: contain; }
+.mb-ss .mb-ss-tbig { display: flex; align-items: baseline; gap: 6px; font: 700 24px/1 var(--mb-ss-mono); }
+.mb-ss .mb-ss-tbig small { color: var(--mb-muted); font-size: 12px; font-weight: 500; }
+.mb-ss .mb-ss-tline { position: relative; height: 6px; margin: 14px 0 8px; border-radius: 3px; background: #1a1d24; }
+.mb-ss .mb-ss-tline i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--mb-cyan); }
+.mb-ss .mb-ss-tline u { position: absolute; top: -4px; bottom: -4px; left: 50%; width: 1px; background: var(--mb-high); text-decoration: none; }
+.mb-ss .mb-ss-tscale { display: flex; justify-content: space-between; color: var(--mb-faint); font: 500 11px/1 var(--mb-ss-mono); }
+.mb-ss .mb-ss-trow { display: flex; justify-content: space-between; margin-top: 11px; color: var(--mb-muted); font: 500 12px/1 var(--mb-ss-mono); }
+.mb-ss .mb-ss-trow em { color: var(--mb-text); font-style: normal; font-weight: 700; }
+
+/* modifiers: four slots that do nothing yet */
+.mb-ss .mb-ss-mods { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+.mb-ss .mb-ss-mods .mb-ss-label { margin-right: 4px; }
+.mb-ss .mb-ss-slot { display: grid; flex: 1; place-items: center; min-height: 30px; border-radius: 8px; background: rgb(255 255 255 / 0.03); color: var(--mb-faint); font: 500 11px/1 var(--mb-ss-mono); }
+
+/* level leaderboard */
+.mb-ss .mb-ss-board h3 { padding: 8px 8px 8px 14px; }
+.mb-ss .mb-ss-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; outline: 1px solid var(--mb-line); background: var(--mb-bg); letter-spacing: 0.04em; text-transform: none; }
+.mb-ss .mb-ss-seg button { min-height: 24px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--mb-muted); font: 700 11px/1 var(--mb-ss-mono); cursor: pointer; }
+.mb-ss .mb-ss-seg button:hover { color: var(--mb-text); }
+.mb-ss .mb-ss-seg .mb-ss-seg-on { background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
+.mb-ss .mb-ss-pl {
+  display: grid;
+  grid-template-columns: 30px 26px minmax(0, 1fr) 24px 62px 86px;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 5px 14px;
+  border: 0;
+  border-top: 1px solid var(--mb-line);
+  background: none;
+  color: inherit;
+  font: 500 12.5px/1.2 var(--mb-ss-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+.mb-ss .mb-ss-pl:hover { background: rgb(255 255 255 / 0.05); }
+.mb-ss .mb-ss-pl-mine { background: rgb(103 227 244 / 0.09); }
+.mb-ss .mb-ss-pl-mine:hover { background: rgb(103 227 244 / 0.13); }
+.mb-ss .mb-ss-pl-pin { border-top-color: rgb(255 255 255 / 0.22); }
+.mb-ss .mb-ss-nm { overflow: hidden; font: 800 13px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-rk { color: var(--mb-faint); font-weight: 700; text-align: right; }
+.mb-ss .mb-ss-pl-mine .mb-ss-rk { color: var(--mb-cyan); }
+.mb-ss .mb-ss-gr { font-weight: 900; text-align: center; }
+.mb-ss .mb-ss-r { color: var(--mb-muted); text-align: right; }
+.mb-ss .mb-ss-s { font-weight: 700; text-align: right; }
+
+/* ranking: the same list of players, by rating */
+.mb-ss .mb-ss-rankhead,
+.mb-ss .mb-ss-rankrow { display: grid; grid-template-columns: 42px 34px minmax(0, 1fr) 70px 90px; align-items: center; gap: 10px; padding-inline: 14px; }
+.mb-ss .mb-ss-rankhead { padding-block: 8px; color: var(--mb-faint); font: 500 10px/1 var(--mb-ss-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.mb-ss .mb-ss-rankrow {
+  padding-block: 8px;
+  border-top: 1px solid var(--mb-line);
+  font: 500 13px/1.2 var(--mb-ss-mono);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+.mb-ss .mb-ss-rankrow:hover { background: rgb(255 255 255 / 0.05); }
+.mb-ss .mb-ss-rankrow-mine { background: rgb(103 227 244 / 0.09); }
+.mb-ss .mb-ss-rankrow-mine:hover { background: rgb(103 227 244 / 0.13); }
+.mb-ss .mb-ss-rankrow-pin { border-top-color: rgb(255 255 255 / 0.22); }
+.mb-ss .mb-ss-rankname { overflow: hidden; font: 800 15px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-rankn { font-weight: 900; text-align: right; color: var(--mb-muted); }
+.mb-ss .mb-ss-rankrow-mine .mb-ss-rankn { color: var(--mb-cyan); }
+.mb-ss .mb-ss-rankacc { color: var(--mb-muted); text-align: right; }
+.mb-ss .mb-ss-rankpp { font-weight: 700; text-align: right; }
+.mb-ss .mb-ss-rankhead .mb-ss-rankn,
+.mb-ss .mb-ss-rankhead .mb-ss-rankacc,
+.mb-ss .mb-ss-rankhead .mb-ss-rankpp { color: inherit; font-weight: inherit; }
+
+/* A narrow left column (the 800x480 window): the identity sits above the rating at full width, the tiles go two to a
+   row, and the ranking's and the level tiles' columns are made to fit with smaller gaps instead of cut labels. */
+@container (max-width: 420px) {
+  .mb-ss .mb-ss-me { grid-template-columns: 64px minmax(0, 1fr); gap: 10px 12px; }
+  .mb-ss .mb-ss-rating {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mb-line);
+    text-align: left;
+  }
+  .mb-ss .mb-ss-ranks { margin-top: 0; }
+
+  .mb-ss .mb-ss-tiles:not(.mb-ss-six),
+  .mb-ss .mb-ss-six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mb-ss .mb-ss-tiles .mb-ss-tile:nth-child(odd) { border-left: 0; }
+  .mb-ss .mb-ss-tiles .mb-ss-tile:nth-child(even) { border-left: 1px solid var(--mb-line); }
+  .mb-ss .mb-ss-tiles .mb-ss-tile:nth-child(n + 3) { border-top: 1px solid var(--mb-line); }
+  .mb-ss .mb-ss-jcells { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 0; }
+
+  /* The score says more than the accuracy here, so the accuracy gives its column to the name. */
+  .mb-ss .mb-ss-pl { grid-template-columns: 20px auto minmax(0, 1fr) 16px 64px; gap: 6px; padding-inline: 10px; }
+  .mb-ss .mb-ss-pl .mb-ss-r { display: none; }
+
+  .mb-ss .mb-ss-ranking h3 { flex-wrap: wrap; gap: 6px; padding-inline: 10px 8px; }
+  .mb-ss .mb-ss-rankhead,
+  .mb-ss .mb-ss-rankrow { grid-template-columns: 30px 34px minmax(0, 1fr) 50px 74px; gap: 6px; padding-inline: 10px; }
+  .mb-ss .mb-ss-rankrow { font-size: 12px; }
+  .mb-ss .mb-ss-rankname { font-size: 14px; }
+
+  .mb-ss .mb-ss-diffs { gap: 6px; }
+  .mb-ss .mb-ss-diff { padding: 8px 6px; }
+  .mb-ss .mb-ss-diff > b { font-size: 12.5px; }
+  .mb-ss .mb-ss-diff small { font-size: 10.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-ss .mb-ss-back, .mb-ss .mb-ss-pl, .mb-ss .mb-ss-rankrow { transition: none; }
+}
+
+/* right side: the song list as a table. Columns are the cover, the song and one per level. */
+.mb-ss .mb-ss-list { container-type: inline-size; }
+.mb-ss .mb-ss-tabs { flex-wrap: wrap; padding-top: 12px; }
+.mb-ss .mb-ss-search { margin: 8px 14px; }
+
+.mb-ss .mb-ss-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 14px 8px; }
+.mb-ss .mb-ss-select,
+.mb-ss .mb-ss-dir {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--mb-surface);
+  outline: 1px solid var(--mb-line);
+  color: var(--mb-high);
+  font: 700 12px/1 var(--mb-ss-mono);
+  white-space: nowrap;
+}
+.mb-ss .mb-ss-select small { color: var(--mb-faint); font-size: 11px; font-weight: 500; }
+.mb-ss .mb-ss-select select {
+  appearance: none;
+  padding: 0 14px 0 0;
+  border: 0;
+  background: none;
+  color: var(--c, var(--mb-high));
+  color-scheme: dark;
+  font: inherit;
+  cursor: pointer;
+}
+.mb-ss .mb-ss-select select option { background: var(--mb-surface); color: var(--mb-text); }
+/* the arrow of a native select is hidden above, so a glyph stands in for it */
+.mb-ss .mb-ss-select::after { content: "▾"; position: absolute; right: 10px; color: var(--mb-faint); pointer-events: none; }
+.mb-ss .mb-ss-select:hover { outline-color: rgb(255 255 255 / 0.28); }
+.mb-ss .mb-ss-select:focus-within,
+.mb-ss .mb-ss-dir:focus-visible { outline: 2px solid var(--mb-cyan); }
+.mb-ss .mb-ss-select select:focus { outline: none; }
+.mb-ss .mb-ss-dir { margin-left: auto; justify-content: center; min-width: 30px; cursor: pointer; }
+.mb-ss .mb-ss-dir:hover { outline-color: rgb(255 255 255 / 0.28); }
+
+/* The level header sticks while the rows scroll under it, so it always lines up with them. */
+.mb-ss .mb-ss-rows { --mb-ss-cols: 44px minmax(0, 1fr) repeat(4, 38px); scroll-padding-top: 24px; }
+.mb-ss .mb-ss-head,
+.mb-ss .mb-ss-row { display: grid; grid-template-columns: var(--mb-ss-cols); align-items: center; gap: 8px; padding-inline: 14px; }
+.mb-ss .mb-ss-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: 0 5px;
+  border-bottom: 1px solid var(--mb-line);
+  background: var(--mb-bg);
+}
+.mb-ss .mb-ss-head span { color: var(--c); font: 700 10px/1 var(--mb-ss-mono); letter-spacing: 0.04em; text-align: center; }
+
+.mb-ss .mb-ss-row {
+  min-height: 60px;
+  padding-block: 7px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+.mb-ss .mb-ss-row:hover { background: rgb(255 255 255 / 0.04); }
+.mb-ss .mb-ss-row-on,
+.mb-ss .mb-ss-row-on:hover { background: rgb(103 227 244 / 0.09); }
+.mb-ss .mb-ss-art { display: block; width: 44px; aspect-ratio: 1; border-radius: 9px; object-fit: cover; }
+.mb-ss .mb-ss-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mb-ss .mb-ss-info b { overflow: hidden; font-size: 14px; font-weight: 800; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-info small { overflow: hidden; color: var(--mb-muted); font: 500 12px/1.3 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-meta { overflow: hidden; color: var(--mb-faint); font: 500 11px/1.3 var(--mb-ss-mono); text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-preparing { color: var(--mb-cyan); font-weight: 700; }
+
+.mb-ss .mb-ss-lv {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--c);
+  font: 700 12.5px/1 var(--mb-ss-mono);
+  font-variant-numeric: tabular-nums;
+}
+.mb-ss .mb-ss-lv i { min-height: 13px; font-size: 12px; font-style: normal; font-weight: 900; }
+.mb-ss .mb-ss-lv-none { color: var(--mb-faint); }
+
+/* A narrow list column shrinks the cover and the level columns so a row never scrolls sideways. */
+@container (max-width: 420px) {
+  .mb-ss .mb-ss-rows { --mb-ss-cols: 36px minmax(0, 1fr) repeat(4, 30px); }
+  .mb-ss .mb-ss-head, .mb-ss .mb-ss-row { gap: 6px; padding-inline: 10px; }
+  .mb-ss .mb-ss-art { width: 36px; }
+  .mb-ss .mb-ss-lv { font-size: 11px; }
+  .mb-ss .mb-ss-tabs, .mb-ss .mb-ss-tools { padding-inline: 10px; }
+  .mb-ss .mb-ss-search { margin-inline: 10px; }
+  .mb-ss .mb-ss-tab { padding-inline: 7px; font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-ss .mb-ss-row { transition: none; }
+}

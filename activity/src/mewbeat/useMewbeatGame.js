@@ -308,8 +308,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     }
 
     // Drops the current run. A run that judged at least one note leaves its results. `finished`: it reached
-    // the song's end, rather than being cut off.
-    function endRun(finished = false) {
+    // the song's end, rather than being cut off. `discard`: the player abandoned it, so it leaves no results and
+    // nothing is sent.
+    function endRun(finished = false, discard = false) {
       const run = runRef.current;
       if (!run) return;
       runRef.current = null;
@@ -320,13 +321,13 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       clearSwap();
       setRunDifficulty(null);
       // Nobody is graded for watching: a spectated run leaves no summary and sends nothing.
-      if (snap.judged >= 1 && !runSpectatingRef.current) {
+      if (snap.judged >= 1 && !runSpectatingRef.current && !discard) {
         const { hits, ranked, skipped, ...rest } = snap;
         const meta = runMetaRef.current ?? {};
-        const { events, fevers } = run.log();
+        const { events, fevers, presses, emptyPresses } = run.log();
         const id = ++summaryIdRef.current;
         const flags = { autoplay: runAutoplayRef.current, calibration: runCalibrationRef.current, difficultyChanged: run.flags.difficultyChanged };
-        const status = submitRun(id, { ...(submitExtraRef.current ?? {}), mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, flags });
+        const status = submitRun(id, { ...(submitExtraRef.current ?? {}), mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, presses, emptyPresses, flags });
         setEndSummary({
           ...rest,
           id,
@@ -494,6 +495,11 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
 
     const offAnchor = link.onAnchor((result) => {
       switch (result) {
+        case "abandon":
+          endRun(false, true);
+          chartRef.current = null;
+          beginCharting();
+          break;
         case "init":
         case "keyChange":
           endRun();

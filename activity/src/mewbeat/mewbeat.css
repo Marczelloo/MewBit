@@ -428,8 +428,44 @@
 
 /* right column */
 /* The left padding leaves room for the FEVER bar, which sits in the gap beside the highway (see .mb-fever-meter). */
-.mb-side { display: flex; flex-direction: column; gap: 12px; justify-self: end; width: min(100%, 288px); min-height: 0; padding: 18px 14px 18px 22px; }
-.mb-side > .mb-track, .mb-side > .mb-hud, .mb-side > .mb-spectate { flex: none; }
+.mb-side { display: flex; flex-direction: column; justify-self: end; width: min(100%, 300px); min-height: 0; padding: 18px 14px 18px 22px; }
+/* One scoreboard panel: the cards inside lose their own box and are split by hairlines. The top edge carries the
+   difficulty's colour, and FEVER's gold while it lasts. */
+.mb-board {
+  --lv: var(--mb-violet);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  border-radius: 18px;
+  background: rgb(12 14 18 / 0.86);
+  outline: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  transition: outline-color 200ms ease-out;
+}
+.mb-board::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; background: var(--lv); pointer-events: none; transition: background-color 200ms ease-out; }
+.mb-lv-easy { --lv: var(--mb-cyan); }
+.mb-lv-normal { --lv: var(--mb-violet); }
+.mb-lv-hard { --lv: var(--mb-pink); }
+.mb-lv-hell { --lv: var(--mb-danger); }
+.mb-fever .mb-board { outline-color: color-mix(in srgb, var(--mb-gold) 60%, transparent); }
+.mb-fever .mb-board::before { background: var(--mb-gold); }
+.mb-fx-off .mb-board, .mb-fx-off .mb-board::before { transition: none; }
+.mb-board > .mb-card { flex: none; border-radius: 0; background: none; outline: 0; backdrop-filter: none; }
+.mb-board > .mb-card + .mb-card { border-top: 1px solid var(--mb-line); }
+.mb-board > .mb-lb { flex: 0 1 auto; }
+.mb-lv-chip {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--lv, var(--mb-violet)) 20%, transparent);
+  color: var(--lv, var(--mb-violet));
+  font: 800 11.5px/1.2 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
 .mb-card {
   padding: 14px;
   border-radius: 16px;
@@ -461,7 +497,7 @@
 .mb-diff-btn:hover:not(:disabled) { color: var(--mb-text); background: rgb(255 255 255 / 0.05); }
 .mb-diff-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
 .mb-diff-btn:disabled { opacity: 0.45; cursor: default; }
-.mb-diff-on, .mb-diff-on:hover:not(:disabled) { background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
+.mb-diff-on, .mb-diff-on:hover:not(:disabled) { background: color-mix(in srgb, var(--lv, var(--mb-cyan)) 18%, transparent); color: var(--lv, var(--mb-cyan)); }
 .mb-diff-note { min-height: 14px; color: var(--mb-faint); font: 500 10.5px/1.3 "JetBrains Mono", ui-monospace, monospace; }
 .mb-diff-loading { color: var(--mb-violet); animation: mb-blink 900ms steps(1) infinite; }
 .mb-diff-failed { color: var(--mb-danger); }
@@ -470,11 +506,51 @@
 .mb-progress { height: 6px; border-radius: 3px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
 .mb-progress i { display: block; width: 100%; height: 100%; background: var(--mb-text); transform: scaleX(0); transform-origin: left center; }
 .mb-track-time { display: block; margin-top: 6px; color: var(--mb-faint); font: 500 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
-.mb-hud-card { display: block; }
+.mb-hud-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mb-hud-main { min-width: 0; }
 .mb-hud-score { margin-top: 6px; font: 900 30px/1.2 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mb-hud-best { margin-top: 2px; color: var(--mb-muted); font-size: 12px; }
-.mb-hud-best b { font: 700 12px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.mb-hud-best b:first-of-type { color: var(--mb-text); }
+.mb-hud-main .mb-hud-score { margin-top: 2px; font-size: 27px; }
+/* The live grade, the panel's one loud thing. It pops when it changes and glows in its own colour. */
+.mb-hud-grade {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  width: 64px;
+  font: 900 76px/0.86 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  letter-spacing: -0.06em;
+  text-align: center;
+  animation: mb-grade-change 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.mb-hud-grade::before { content: ""; position: absolute; inset: -18% -14%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, currentColor 20%, transparent), transparent); pointer-events: none; }
+.mb-hud-grade-empty { color: var(--mb-faint); animation: none; }
+.mb-hud-grade-empty::before { display: none; }
+@keyframes mb-grade-change { from { transform: scale(1.3); } to { transform: scale(1); } }
+.mb-ladder { margin-top: 12px; }
+.mb-ladder-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mb-ladder-head b { font: 700 15px/1.3 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-ladder-head small { color: var(--mb-muted); font: 500 11px/1.3 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mb-ladder-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; margin-top: 6px; }
+.mb-ladder-step { display: grid; gap: 4px; justify-items: center; }
+.mb-ladder-cell { width: 100%; height: 6px; border-radius: 2px; background: rgb(255 255 255 / 0.09); overflow: hidden; }
+.mb-ladder-cell i { display: block; width: 100%; height: 100%; background: currentColor; transform-origin: left center; transition: transform 200ms ease-out; }
+.mb-ladder-step span { color: var(--mb-faint); font: 700 10px/1 "JetBrains Mono", ui-monospace, monospace; }
+.mb-ladder-on span { color: inherit; }
+.mb-fx-off .mb-ladder-cell i, .mb-fx-off .mb-chase-bar i { transition: none; }
+.mb-hud-tally { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--mb-line); }
+.mb-hud-tally dt { color: var(--mb-faint); font: 500 9.5px/1.3 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.mb-hud-tally dd { margin: 2px 0 0; font: 700 18px/1.2 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-tally-miss dd { color: var(--mb-danger); transform-origin: left center; animation: mb-tally-pop 240ms ease-out both; }
+@keyframes mb-tally-pop { from { transform: scale(1.3); } to { transform: scale(1); } }
+.mb-fx-off .mb-hud-grade, .mb-fx-reduced .mb-hud-grade, .mb-fx-off .mb-tally-miss dd, .mb-fx-reduced .mb-tally-miss dd { animation: none; }
+.mb-chase { min-height: 34px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--mb-line); }
+.mb-chase-none { color: var(--mb-faint); font: 500 11px/1.3 "JetBrains Mono", ui-monospace, monospace; }
+.mb-chase-row { display: flex; align-items: baseline; gap: 8px; }
+.mb-chase-row b { font: 700 12px/1.3 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mb-chase-gap { margin-left: auto; color: var(--mb-muted); font: 700 12px/1.3 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mb-chase-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: rgb(255 255 255 / 0.09); overflow: hidden; }
+.mb-chase-bar i { display: block; width: 100%; height: 100%; background: var(--mb-text); transform-origin: left center; transition: transform 200ms ease-out; }
+.mb-chase-ahead .mb-label, .mb-chase-ahead .mb-chase-gap { color: var(--mb-gold); }
+.mb-chase-ahead .mb-chase-bar i { background: var(--mb-gold); }
 .mb-hud-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--mb-line); color: var(--mb-muted); font-size: 12.5px; line-height: 1.4; }
 .mb-hud-stats b { display: block; margin-top: 2px; color: var(--mb-text); font: 700 14px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 @keyframes mb-blink { 50% { opacity: 0.45; } }
@@ -549,15 +625,25 @@
   .mb-highway-slot { min-height: 200px; }
   .mb-header { gap: 8px; padding: 6px 16px; }
   .mb-header .mb-btn { min-height: 32px; }
-  .mb-side { gap: 8px; }
   .mb-track { padding: 8px 12px; }
-  .mb-track .mb-label, .mb-track-artist { display: none; }
+  .mb-track-artist { display: none; }
   .mb-track-cover { width: 40px; height: 40px; border-radius: 8px; }
   .mb-track-prog { margin-top: 6px; }
-  .mb-hud-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 12px; }
-  .mb-hud-card .mb-label, .mb-hud-stats { display: none; }
-  .mb-hud-score { margin-top: 0; font-size: 22px; }
+  .mb-hud { padding: 8px 12px; }
+  .mb-hud .mb-label, .mb-hud-stats, .mb-ladder, .mb-hud-tally, .mb-chase { display: none; }
+  .mb-hud-score, .mb-hud-main .mb-hud-score { margin-top: 0; font-size: 22px; }
+  .mb-hud-grade { width: 34px; font-size: 36px; }
   .mb-lb { display: none; }
+}
+/* A low window on desktop: the panel drops what it can read off elsewhere, so the leaderboard keeps some room. */
+@media (min-width: 901px) and (max-height: 640px) {
+  .mb-board > .mb-card { padding: 10px 14px; }
+  .mb-track-cover { width: 48px; height: 48px; }
+  .mb-track-prog { margin-top: 8px; }
+  .mb-hud-grade { font-size: 62px; }
+  .mb-ladder, .mb-hud-tally { margin-top: 8px; }
+  .mb-hud-tally { padding-top: 8px; }
+  .mb-chase { margin-top: 8px; padding-top: 8px; }
 }
 @media (max-width: 560px) {
   .mb-header-actions .mb-kbd { display: none; }
@@ -816,35 +902,9 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
   font: 600 13px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
 }
 .mb-ss-search input:focus { outline: none; }
-.mb-ss-rows { flex: 1; min-height: 0; padding: 4px 0 12px; overflow-y: auto; overscroll-behavior: contain; }
+.mb-ss-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .mb-ss-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 24px; color: var(--mb-muted); font-size: 13px; text-align: center; }
 .mb-ss-empty-error { color: var(--mb-danger); font-weight: 700; }
-.mb-ss-row {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  margin: 6px 14px 6px 28px;
-  padding: 9px 12px 9px 9px;
-  border-radius: 14px;
-  background: var(--mb-surface);
-  outline: 1px solid var(--mb-line);
-  cursor: pointer;
-  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 200ms;
-}
-.mb-ss-row:hover { transform: translateX(-6px); }
-.mb-ss-row-on { transform: translateX(-20px); background: var(--mb-raised); outline: 2px solid var(--mb-pink); }
-.mb-ss-row-on:hover { transform: translateX(-20px); }
-.mb-ss-art { display: block; width: 52px; aspect-ratio: 1; border-radius: 10px; object-fit: cover; }
-.mb-ss-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.mb-ss-info b { overflow: hidden; font-size: 14px; font-weight: 800; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
-.mb-ss-info small { overflow: hidden; color: var(--mb-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.mb-ss-mini { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
-.mb-ss-mini-cell { display: inline-flex; align-items: center; gap: 4px; color: var(--mb-faint); font: 500 10.5px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.mb-ss-mini-cell i { width: 7px; height: 7px; border-radius: 2px; background: var(--c); }
-.mb-ss-mini-cell b { font-weight: 900; }
-.mb-ss-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font: 500 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--mb-faint); }
-.mb-ss-preparing { color: var(--mb-cyan); font-weight: 700; }
 
 .mb-ss-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.9); }
 .mb-ss-error { margin: 0; color: var(--mb-danger); font-size: 12.5px; font-weight: 700; }
@@ -920,6 +980,9 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 }
 @keyframes mb-restart-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .mb-pause-title { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; text-align: center; }
+.mb-pause-level { display: grid; gap: 6px; }
+.mb-pause-level .mb-diff-btn { min-height: 32px; }
+.mb-pause-level .mb-diff-note { min-height: 0; text-align: center; }
 .mb-pause-actions { display: flex; flex-direction: column; gap: 8px; }
 .mb-pause-actions .mb-btn, .mb-pause-exit { display: inline-flex; align-items: center; justify-content: flex-start; gap: 10px; }
 .mb-pause .mb-btn svg { flex: none; }
@@ -927,7 +990,7 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-pause-note { margin: -6px 0 0; color: var(--mb-muted); font-size: 13px; text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   .mb-pause-scrim, .mb-countin b { animation: none; }
-  .mb-mode, .mb-ss-row, .mb-ss-diff { transition: none; }
+  .mb-mode, .mb-ss-diff { transition: none; }
 }
 
 /* ---------- results (docs/superpowers/specs/mewbeat-mockups/results-v2.html) ---------- */

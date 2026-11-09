@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { gradeLadder } from "./scoring.js";
 import { DIFFICULTIES, gradeClass, resolveArtworkUrl } from "./SongSelect.jsx";
 
 const RING_LENGTH = 145; // circumference of the r=23 ring
@@ -106,7 +107,7 @@ export function TrackCard({ track, difficulty, progressRef, progressTimeRef, dis
       <div className="mb-track-head">
         <TrackCover artworkUrl={track?.artworkUrl} />
         <div className="mb-track-meta">
-          <span className="mb-label">{label}</span>
+          <span className="mb-lv-chip">{label}</span>
           <b className="mb-track-title">{track?.title ?? "No track"}</b>
           {track?.artist ? <small className="mb-track-artist">{track.artist}</small> : null}
         </div>
@@ -152,25 +153,73 @@ export function FeverBar({ hud }) {
   );
 }
 
-export default function GameHud({ hud }) {
+// The run against the player's best on this chart. With no best the row keeps its height, so the board doesn't jump.
+function BestChase({ score, best, running }) {
+  if (!best) return <div className="mb-chase mb-chase-none">{running ? "No best on this chart yet" : ""}</div>;
+  const ahead = score > best.score;
+  const share = best.score > 0 ? Math.min(1, score / best.score) : 1;
   return (
-    <section className="mb-hud" aria-label="Score">
-      <div className="mb-card mb-hud-card">
-        <span className="mb-label">Your score</span>
-        <div className="mb-hud-score">{formatScore(hud.score)}</div>
-        {hud.best ? <div className="mb-hud-best">Best <b>{formatScore(hud.best.score)}</b> <b className={gradeClass(hud.best.grade)}>{hud.best.grade}</b></div> : null}
-        <div className="mb-hud-stats">
-          <div>
-            Accuracy
-            {/* Nothing judged yet means nothing lost yet: a run starts at 100% and settles from there. */}
-            <b>{formatAccuracy(hud.accuracy ?? 100)}</b>
-          </div>
-          <div>
-            Max combo
-            <b>{hud.maxCombo}</b>
-          </div>
+    <div className={`mb-chase${ahead ? " mb-chase-ahead" : ""}`}>
+      <div className="mb-chase-row">
+        <span className="mb-label">{ahead ? "New best" : "Best"}</span>
+        <b>{formatScore(best.score)} <span className={gradeClass(best.grade)}>{best.grade}</span></b>
+        <span className="mb-chase-gap">{`${ahead ? "+" : "−"}${formatScore(Math.abs(score - best.score))}`}</span>
+      </div>
+      <div className="mb-chase-bar" aria-hidden="true"><i style={{ transform: `scaleX(${share})` }} /></div>
+    </div>
+  );
+}
+
+// The numbers of the scoreboard panel. Nothing judged yet means nothing lost yet: accuracy starts at 100% and settles
+// from there, while the grade waits for the first note.
+export default function GameHud({ hud }) {
+  const played = hud.judged > 0;
+  const accuracy = hud.accuracy ?? 100;
+  const ladder = gradeLadder(accuracy);
+  const grade = played ? hud.grade : null;
+  const note = !played ? null : ladder.next ? `${ladder.next.gap.toFixed(2)}% to ${ladder.next.grade}` : `${ladder.cushion.toFixed(2)}% above A`;
+  const missed = hud.counts.miss;
+  return (
+    <section className="mb-card mb-hud" aria-label="Score">
+      <div className="mb-hud-top">
+        <div className="mb-hud-main">
+          <span className="mb-label">Score</span>
+          <div className="mb-hud-score">{formatScore(hud.score)}</div>
+        </div>
+        <b className={`mb-hud-grade ${grade ? `mb-grade-${grade}` : "mb-hud-grade-empty"}`} key={grade ?? "none"} aria-label={`Grade ${grade ?? "none yet"}`}>{grade ?? "–"}</b>
+      </div>
+      <div className="mb-ladder">
+        <div className="mb-ladder-head">
+          <b>{formatAccuracy(accuracy)}</b>
+          {note ? <small>{note}</small> : null}
+        </div>
+        <div className="mb-ladder-steps" aria-hidden="true">
+          {ladder.steps.map((step) => {
+            const fill = played ? step.fill : 0;
+            return (
+              <div key={step.grade} className={`mb-ladder-step mb-grade-${step.grade}${fill > 0 ? " mb-ladder-on" : ""}`}>
+                <div className="mb-ladder-cell"><i style={{ transform: `scaleX(${fill})` }} /></div>
+                <span>{step.grade}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
+      <dl className="mb-hud-tally">
+        <div className={missed > 0 ? "mb-tally-miss" : undefined}>
+          <dt>Missed</dt>
+          <dd key={missed}>{missed}</dd>
+        </div>
+        <div>
+          <dt>Max combo</dt>
+          <dd>{hud.maxCombo}</dd>
+        </div>
+        <div>
+          <dt>Notes left</dt>
+          <dd>{hud.total > 0 ? Math.max(0, hud.total - hud.judged) : "--"}</dd>
+        </div>
+      </dl>
+      <BestChase score={hud.score} best={hud.best} running={hud.total > 0} />
     </section>
   );
 }

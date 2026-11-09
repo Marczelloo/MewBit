@@ -181,3 +181,14 @@ test("a failed audio start stays paused with the reason", async () => {
   assert.equal(env.link.state().stage, "paused");
   assert.equal(env.link.state().error, "Audio is blocked.");
 });
+
+test("a plain restart anchors as a key change, an abandoning one says so", async () => {
+  const env = setup();
+  await ready(env);
+  const heard = [];
+  env.link.onAnchor((kind) => heard.push(kind));
+  env.link.restart();
+  env.link.restart({ abandon: true });
+  assert.deepEqual(heard, ["keyChange", "abandon"]);
+  assert.equal(env.link.state().stage, "ready");
+});

@@ -64,7 +64,7 @@ const { audioStore } = require("../mewbeat/sharedAudio");
 const { getClient } = require("../clientRegistry");
 const { createInvitePoster } = require("../mewbeat/invites");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
-const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore } = require("../mewbeat/stores");
+const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore, statsStore: mewbeatStatsStore } = require("../mewbeat/stores");
 const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
@@ -757,6 +757,7 @@ const mewbeatChannel = createMewbeatChannel({
   soloTracks,
   scoreStore: mewbeatScoreStore,
   historyStore: mewbeatHistoryStore,
+  statsStore: mewbeatStatsStore,
   postInvite: createInvitePoster({ getClient }),
   warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
   broadcast: sendToGuildSockets,

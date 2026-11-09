@@ -35,6 +35,8 @@ export function createSoloAudio({
 } = {}) {
   let ctx = null;
   let gain = null;
+  let songBus = null; // the game's source goes through this, so a clip can fade the song out without stopping its clock
+  let songFaded = false;
   let volume = DEFAULT_VOLUME;
   // Decoded buffer of the last loaded song only (a 4 minute song costs ~85 MB).
   let loadedKey = null;
@@ -64,6 +66,9 @@ export function createSoloAudio({
     gain = ctx.createGain();
     gain.gain.value = volume;
     gain.connect(ctx.destination);
+    songBus = ctx.createGain();
+    songBus.gain.value = 1;
+    songBus.connect(gain);
     return ctx;
   }
 
@@ -180,9 +185,14 @@ export function createSoloAudio({
       if (c.state !== "running") throw new Error("Audio is blocked. Click Play to allow sound.");
     }
     const from = Math.min(fromMs, durationMs());
+    if (songFaded) {
+      songFaded = false;
+      songBus.gain.cancelScheduledValues(c.currentTime);
+      songBus.gain.setValueAtTime(1, c.currentTime);
+    }
     const node = c.createBufferSource();
     node.buffer = buffer;
-    node.connect(gain);
+    node.connect(songBus);
     // Scheduled starts keep their context time; an immediate start gets a small lead (START_LEAD_S), so the
     // context time the clock assumes is the one the audio thread really starts at.
     const startCtx = whenPerfMs === null ? c.currentTime + START_LEAD_S : Math.max(c.currentTime, ctxTimeAt(whenPerfMs));
@@ -343,11 +353,25 @@ export function createSoloAudio({
     }
   }
 
-  // Plays the loaded song on from fromMs (no highlight known: from CLIP_DEFAULT_SHARE of it).
+  // Silences a song still playing (its outro under the results). The source runs on unheard, so the clock and the
+  // ended listeners behave as if nothing happened; the next play() brings the level back.
+  function fadeSong(seconds) {
+    if (!source || songFaded) return;
+    songFaded = true;
+    const at = ctx.currentTime;
+    const param = songBus.gain;
+    param.cancelScheduledValues(at);
+    param.setValueAtTime(1, at);
+    param.linearRampToValueAtTime(0, at + seconds);
+  }
+
+  // Plays the loaded song on from fromMs (no highlight known: from CLIP_DEFAULT_SHARE of it), crossfading over
+  // whatever is left of the song itself.
   function highlight(fromMs, { level = HIGHLIGHT_LEVEL } = {}) {
     if (!buffer || !ctx) return false;
     clipSeq += 1;
     if (ctx.state !== "running") Promise.resolve(ctx.resume()).catch(() => {});
+    fadeSong(CLIP_FADE_IN_S);
     startClip(buffer, clipStartS(fromMs, buffer.duration), level);
     return true;
   }
@@ -375,6 +399,8 @@ export function createSoloAudio({
     const old = ctx;
     ctx = null;
     gain = null;
+    songBus = null;
+    songFaded = false;
     try { old?.close?.(); } catch { /* already closed */ }
   }
 

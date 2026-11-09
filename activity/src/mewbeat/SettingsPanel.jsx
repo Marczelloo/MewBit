@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, GameController, SpeakerHigh } from "@phosphor-icons/react";
+import { Eye, GameController, SpeakerHigh, Timer } from "@phosphor-icons/react";
 import { MIN_TAPS } from "./calibration.js";
 import { HIT_SOUNDS as HIT_SOUND_OPTIONS } from "./hitSounds.js";
 import { keyLabel, keysProblem } from "./input.js";
@@ -44,8 +44,9 @@ const SHOW_MEWBIT = [
 ];
 
 const GROUPS = [
+  { id: "sound", label: "Sound", Icon: SpeakerHigh },
   { id: "gameplay", label: "Gameplay", Icon: GameController },
-  { id: "audio", label: "Audio & sync", Icon: SpeakerHigh },
+  { id: "sync", label: "Sync", Icon: Timer },
   { id: "visual", label: "Visual", Icon: Eye },
 ];
 
@@ -58,21 +59,55 @@ export function formatOffset(ms) {
   return `${ms > 0 ? "+" : ""}${ms} ms`;
 }
 
-function Segmented({ label, options, value, onChange }) {
+function Segmented({ label, options, value, onChange, fill = false, disabled = false }) {
   return (
-    <div className="mb-segmented" role="group" aria-label={label}>
+    <div className={`mb-segmented${fill ? " mb-segmented-fill" : ""}`} role="group" aria-label={label}>
       {options.map((option) => (
         <button
           key={String(option.value)}
           type="button"
           className={`mb-btn mb-seg ${option.value === value ? "mb-toggle-on" : ""}`.trim()}
           aria-pressed={option.value === value}
+          disabled={disabled}
           onClick={() => onChange(option.value)}
         >
           {option.label}
         </button>
       ))}
     </div>
+  );
+}
+
+// A slider with its value beside it. `label` names it for screen readers when no visible label points at `id`.
+function Slider({ id, label, value, min, max, step = 1, text, disabled = false, onChange }) {
+  return (
+    <div className="mb-slider">
+      <input
+        id={id}
+        className="mb-range"
+        style={{ "--fill": fillOf(value, min, max) }}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        aria-label={label}
+        aria-valuetext={text}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <output className="mb-value" htmlFor={id}>{text}</output>
+    </div>
+  );
+}
+
+// One category of the pane: its title, then its rows in a single panel split by hairlines.
+function Group({ id, title, children }) {
+  return (
+    <section className="mb-group" id={`mb-group-${id}`} aria-labelledby={`mb-group-${id}-title`}>
+      <h3 className="mb-group-title" id={`mb-group-${id}-title`}>{title}</h3>
+      <div className="mb-group-rows">{children}</div>
+    </section>
   );
 }
 
@@ -277,8 +312,78 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
           </nav>
 
           <div className="mb-settings-pane" ref={paneRef} onScroll={onPaneScroll}>
-            <section className="mb-group" id="mb-group-gameplay" aria-labelledby="mb-group-gameplay-title">
-              <h3 className="mb-group-title" id="mb-group-gameplay-title">Gameplay</h3>
+            <Group id="sound" title="Sound">
+              <section className="mb-row mb-row-stack">
+                <label className="mb-row-label" htmlFor="mb-music-volume">Music volume</label>
+                <Slider
+                  id="mb-music-volume"
+                  value={musicVolume}
+                  min={VOLUME_MIN}
+                  max={VOLUME_MAX}
+                  step={VOLUME_STEP}
+                  text={`${musicVolume}%`}
+                  onChange={(value) => {
+                    changeDebounced("musicVolume", value, { immediate: false });
+                    onPreviewMusic?.(value);
+                  }}
+                />
+                <p className="mb-row-help">Solo and rooms only. In Live the bot plays the music, so use Discord's volume.</p>
+              </section>
+              <section className="mb-row mb-row-stack">
+                <div className="mb-row-head">
+                  <span className="mb-row-label">Hit sounds</span>
+                  <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
+                </div>
+                <Segmented
+                  label="Hit sound"
+                  fill
+                  disabled={!hitSounds}
+                  options={HIT_SOUND_OPTIONS}
+                  value={valueOf("hitSound") ?? "kick"}
+                  onChange={(value) => {
+                    send({ hitSound: value });
+                    onPreviewHit?.(hitVolume, value);
+                  }}
+                />
+                <Slider
+                  id="mb-hit-volume"
+                  label="Hit sound volume"
+                  value={hitVolume}
+                  min={VOLUME_MIN}
+                  max={VOLUME_MAX}
+                  step={VOLUME_STEP}
+                  text={`${hitVolume}%`}
+                  disabled={!hitSounds}
+                  onChange={(value) => {
+                    changeDebounced("hitVolume", value, { immediate: false });
+                    onPreviewHit?.(value);
+                  }}
+                />
+              </section>
+              <section className="mb-row mb-row-stack">
+                <div className="mb-row-head">
+                  <span className="mb-row-label">Sound effects</span>
+                  <Segmented label="Sound effects" options={HIT_SOUNDS} value={sfx} onChange={(value) => send({ sfx: value })} />
+                </div>
+                <Slider
+                  id="mb-sfx-volume"
+                  label="Sound effects volume"
+                  value={sfxVolume}
+                  min={VOLUME_MIN}
+                  max={VOLUME_MAX}
+                  step={VOLUME_STEP}
+                  text={`${sfxVolume}%`}
+                  disabled={!sfx}
+                  onChange={(value) => {
+                    changeDebounced("sfxVolume", value, { immediate: false });
+                    onPreviewSfx?.(value);
+                  }}
+                />
+                <p className="mb-row-help">Sounds from osu! by ppy Pty Ltd (github.com/ppy/osu-resources), CC BY-NC 4.0.</p>
+              </section>
+            </Group>
+
+            <Group id="gameplay" title="Gameplay">
               <section className="mb-row mb-row-stack">
                 <div className="mb-row-text">
                   <span className="mb-row-label">Keys</span>
@@ -303,20 +408,14 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                 </div>
               </section>
               <section className="mb-row mb-row-stack">
-                <div className="mb-row-head">
-                  <label className="mb-row-label" htmlFor="mb-speed">Scroll speed</label>
-                  <output className="mb-value" htmlFor="mb-speed">{scrollSpeed}</output>
-                </div>
-                <input
+                <label className="mb-row-label" htmlFor="mb-speed">Scroll speed</label>
+                <Slider
                   id="mb-speed"
-                  className="mb-range"
-                  style={{ "--fill": fillOf(scrollSpeed, SPEED_MIN, SPEED_MAX) }}
-                  type="range"
+                  value={scrollSpeed}
                   min={SPEED_MIN}
                   max={SPEED_MAX}
-                  step={1}
-                  value={scrollSpeed}
-                  onChange={(event) => changeDebounced("scrollSpeed", Number(event.target.value), { immediate: false })}
+                  text={String(scrollSpeed)}
+                  onChange={(value) => changeDebounced("scrollSpeed", value, { immediate: false })}
                 />
                 <div className="mb-row-foot">
                   <p className="mb-row-help">By tempo: faster songs fall a little faster.</p>
@@ -330,10 +429,9 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                 </div>
                 <Segmented label="Default difficulty" options={DIFFICULTIES} value={valueOf("liveDifficulty")} onChange={(value) => send({ liveDifficulty: value })} />
               </section>
-            </section>
+            </Group>
 
-            <section className="mb-group" id="mb-group-audio" aria-labelledby="mb-group-audio-title">
-              <h3 className="mb-group-title" id="mb-group-audio-title">Audio &amp; sync</h3>
+            <Group id="sync" title="Sync">
               <section className="mb-row mb-row-stack">
                 <div className="mb-row-head">
                   <label className="mb-row-label" htmlFor="mb-offset">Audio offset</label>
@@ -403,106 +501,9 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                   </button>
                 </div>
               </section>
-              <section className="mb-row">
-                <div className="mb-row-text">
-                  <span className="mb-row-label">Hit sounds</span>
-                </div>
-                <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
-              </section>
-              <section className="mb-row">
-                <div className="mb-row-text">
-                  <span className="mb-row-label">Hit sound</span>
-                </div>
-                <Segmented
-                  label="Hit sound"
-                  options={HIT_SOUND_OPTIONS}
-                  value={valueOf("hitSound") ?? "kick"}
-                  onChange={(value) => {
-                    send({ hitSound: value });
-                    onPreviewHit?.(hitVolume, value);
-                  }}
-                />
-              </section>
-              <section className="mb-row mb-row-stack">
-                <div className="mb-row-head">
-                  <label className="mb-row-label" htmlFor="mb-hit-volume">Hit sound volume</label>
-                  <output className="mb-value" htmlFor="mb-hit-volume">{hitVolume}%</output>
-                </div>
-                <input
-                  id="mb-hit-volume"
-                  className="mb-range"
-                  style={{ "--fill": fillOf(hitVolume, VOLUME_MIN, VOLUME_MAX) }}
-                  type="range"
-                  min={VOLUME_MIN}
-                  max={VOLUME_MAX}
-                  step={VOLUME_STEP}
-                  value={hitVolume}
-                  disabled={!hitSounds}
-                  aria-valuetext={`${hitVolume}%`}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    changeDebounced("hitVolume", value, { immediate: false });
-                    onPreviewHit?.(value);
-                  }}
-                />
-              </section>
-              <section className="mb-row">
-                <div className="mb-row-text">
-                  <span className="mb-row-label">Sound effects</span>
-                </div>
-                <Segmented label="Sound effects" options={HIT_SOUNDS} value={sfx} onChange={(value) => send({ sfx: value })} />
-              </section>
-              <section className="mb-row mb-row-stack">
-                <div className="mb-row-head">
-                  <label className="mb-row-label" htmlFor="mb-sfx-volume">Sound effects volume</label>
-                  <output className="mb-value" htmlFor="mb-sfx-volume">{sfxVolume}%</output>
-                </div>
-                <input
-                  id="mb-sfx-volume"
-                  className="mb-range"
-                  style={{ "--fill": fillOf(sfxVolume, VOLUME_MIN, VOLUME_MAX) }}
-                  type="range"
-                  min={VOLUME_MIN}
-                  max={VOLUME_MAX}
-                  step={VOLUME_STEP}
-                  value={sfxVolume}
-                  disabled={!sfx}
-                  aria-valuetext={`${sfxVolume}%`}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    changeDebounced("sfxVolume", value, { immediate: false });
-                    onPreviewSfx?.(value);
-                  }}
-                />
-                <p className="mb-row-help">Sounds from osu! by ppy Pty Ltd (github.com/ppy/osu-resources), CC BY-NC 4.0.</p>
-              </section>
-              <section className="mb-row mb-row-stack">
-                <div className="mb-row-head">
-                  <label className="mb-row-label" htmlFor="mb-music-volume">Music volume</label>
-                  <output className="mb-value" htmlFor="mb-music-volume">{musicVolume}%</output>
-                </div>
-                <input
-                  id="mb-music-volume"
-                  className="mb-range"
-                  style={{ "--fill": fillOf(musicVolume, VOLUME_MIN, VOLUME_MAX) }}
-                  type="range"
-                  min={VOLUME_MIN}
-                  max={VOLUME_MAX}
-                  step={VOLUME_STEP}
-                  value={musicVolume}
-                  aria-valuetext={`${musicVolume}%`}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    changeDebounced("musicVolume", value, { immediate: false });
-                    onPreviewMusic?.(value);
-                  }}
-                />
-                <p className="mb-row-help">Solo and rooms only. In Live the bot plays the music, so use Discord's volume.</p>
-              </section>
-            </section>
+            </Group>
 
-            <section className="mb-group" id="mb-group-visual" aria-labelledby="mb-group-visual-title">
-              <h3 className="mb-group-title" id="mb-group-visual-title">Visual</h3>
+            <Group id="visual" title="Visual">
               <section className="mb-row">
                 <div className="mb-row-text">
                   <span className="mb-row-label">Effects</span>
@@ -515,7 +516,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                 </div>
                 <Segmented label="Show Mewbit" options={SHOW_MEWBIT} value={valueOf("showMewbit") !== false} onChange={(value) => send({ showMewbit: value })} />
               </section>
-            </section>
+            </Group>
           </div>
         </div>
       </div>

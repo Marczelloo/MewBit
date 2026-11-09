@@ -50,7 +50,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     };
   }
 
-  function submit({ chartKey, userId, guildId, profile, score, accuracy, grade, maxCombo, difficulty, at = now() }) {
+  function submit({ chartKey, userId, guildId, profile, score, accuracy, grade, maxCombo, difficulty, track, completion, at = now() }) {
     let users = charts.get(chartKey);
     if (!users) {
       users = new Map();
@@ -62,7 +62,17 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     const guildIds = new Set(previous?.guildIds ?? []);
     if (guildId) guildIds.add(guildId);
 
-    const base = newBest ? { score, accuracy, grade, maxCombo, difficulty, at } : previous;
+    // The track sits flat on the entry so the profile can name the song without the history; board replies
+    // do not carry it. A chart is always one song, so an older title survives a new best that sends none.
+    // The completion (the share of the chart judged, 0 to 1) sits there too, for the rating.
+    const base = newBest
+      ? {
+        score, accuracy, grade, maxCombo, difficulty, at, completion,
+        title: track?.title ?? previous?.title,
+        artist: track?.artist ?? previous?.artist,
+        artworkUrl: track ? track.artworkUrl ?? null : previous?.artworkUrl,
+      }
+      : previous;
     const entry = {
       ...base,
       userId,
@@ -104,7 +114,14 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     return latest.get(`${audioKey}|${difficulty}`)?.chartKey ?? null;
   }
 
-  return { submit, board, rankOf, bestOf, latestChartKey, flush: disk.flush };
+  // Visits every stored entry of every chart, guilds and track included. The ranking walks it.
+  function forEachEntry(fn) {
+    for (const [chartKey, users] of charts) {
+      for (const entry of users.values()) fn(chartKey, entry);
+    }
+  }
+
+  return { submit, board, rankOf, bestOf, latestChartKey, forEachEntry, flush: disk.flush };
 }
 
 module.exports = { createScoreStore };

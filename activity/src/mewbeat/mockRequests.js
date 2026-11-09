@@ -1,0 +1,261 @@
+// Fake replies for the song select, so it can be looked at in a browser with no bot (?mock=1&select=1, dev
+// server only). The shapes are the ones helpers/mewbeat/activityChannel.js answers; the songs and numbers are
+// the ones of docs/superpowers/specs/mewbeat-mockups/song-select-profile.html.
+//
+// Two ids are there to show the awkward states: "new-player" has no rounds at all (zeros, stats null) and
+// "missing" is somebody the bot has never seen (not_found). Both sit in the ranking so they can be clicked.
+
+export const MOCK_USER_ID = "mock-me";
+export const NEW_PLAYER_ID = "new-player";
+export const MISSING_PLAYER_ID = "missing";
+
+const LATENCY_MS = 80; // long enough to see the loading state, short enough not to be in the way
+const LEVELS = ["easy", "normal", "hard", "hell"];
+const NOTES = { easy: 420, normal: 780, hard: 1240, hell: 1810 };
+const FIRST_AT = Date.UTC(2026, 9, 12);
+const NOW = Date.UTC(2026, 10, 9);
+
+// stars and the player's best grade per level (easy, normal, hard, hell); bpm and stars null are an uncharted song.
+const SONGS = [
+  { title: "MEGALOVANIA", artist: "Toby Fox", len: 156, bpm: 240, stars: [2.4, 4.1, 5.8, 7.3], grades: ["S", "A", "C", null], plays: [3, 5, 2, 0] },
+  { title: "Hopes and Dreams", artist: "Toby Fox", len: 185, bpm: 170, stars: [2.1, 3.8, 5.2, 6.9], grades: ["S", "S", "B", null], plays: [2, 4, 3, 0] },
+  { title: "MORE", artist: "K/DA", len: 217, bpm: 115, stars: [1.9, 3.4, 4.7, 6.2], grades: [null, "B", null, null], plays: [0, 2, 0, 0] },
+  { title: "Five Nights at Freddy's 2 Song", artist: "The Living Tombstone", len: 180, bpm: 125, stars: [1.7, 3.2, 4.4, 5.7], grades: ["A", "A", null, null], plays: [2, 3, 0, 0] },
+  { title: "Rude Buster", artist: "Toby Fox", len: 131, bpm: 133, stars: [1.6, 3.0, 4.3, 5.5], grades: [null, "S", "A", "D"], plays: [0, 2, 2, 1] },
+  { title: "Coffin Dance", artist: "Vicetone", len: 152, bpm: 128, stars: [1.5, 2.8, 4.0, 5.1], grades: [null, null, null, null], plays: [0, 0, 0, 0] },
+  { title: "REVOLVANIA", artist: "NyxTheShield", len: 192, bpm: 190, stars: [2.0, 2.7, 5.0, 6.5], grades: ["B", null, null, null], plays: [1, 0, 0, 0] },
+  { title: "GHOST", artist: "Camellia", len: 260, bpm: 174, stars: [1.3, 2.5, 3.9, 5.3], grades: [null, "C", null, null], plays: [0, 1, 0, 0] },
+  // Played in a server but never charted: no stars, no tempo, no scores.
+  { title: "Bad Apple!! (live cut)", artist: "Alstroemeria Records", len: 219, bpm: null, stars: null, grades: [null, null, null, null], plays: [0, 0, 0, 0] },
+];
+// Songs only other servers have played; they come up under "Everywhere" and "Played by you".
+const ELSEWHERE = new Set(["REVOLVANIA"]);
+const SCORE_BY_GRADE = { S: 641_900, A: 512_300, B: 441_000, C: 318_400, D: 201_900 };
+const ACCURACY_BY_GRADE = { S: 98.4, A: 94.2, B: 87.6, C: 77.3, D: 68.1 };
+
+const slug = (title) => title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const audioKeyOf = (song) => `mock:${slug(song.title)}:${song.len * 1000}`;
+
+// name, rating, global rank, server rank, average accuracy
+const PEOPLE = {
+  [MOCK_USER_ID]: { username: "Meowczelloo", pp: 1248, global: 2, server: 8, accuracy: 86.4 },
+  shiro: { username: "shiro", pp: 2104, global: 1, server: null, accuracy: 95.2 },
+  kuba: { username: "kuba", pp: 1190, global: 3, server: 1, accuracy: 89.0 },
+  vex: { username: "vex", pp: 1003, global: 4, server: null, accuracy: 90.7 },
+  neko: { username: "neko", pp: 874, global: 5, server: 2, accuracy: 84.3 },
+  luna: { username: "luna", pp: 716, global: 6, server: null, accuracy: 88.1 },
+  ola: { username: "ola", pp: 602, global: 7, server: 3, accuracy: 81.9 },
+  dawid: { username: "dawid", pp: 455, global: 8, server: 4, accuracy: 79.4 },
+  tomek: { username: "tomek", pp: 398, global: 9, server: 5, accuracy: 77.0 },
+};
+const NEW_PLAYER_NAME = "Nova";
+const GHOST_NAME = "Ghost";
+
+const playerOf = (userId) => ({ userId, username: PEOPLE[userId]?.username ?? NEW_PLAYER_NAME, avatarUrl: null, firstAt: userId === NEW_PLAYER_ID ? null : FIRST_AT });
+
+function playedTrack(song) {
+  const stars = song.stars ? Object.fromEntries(LEVELS.map((level, i) => [level, song.stars[i]])) : null;
+  const bests = {};
+  LEVELS.forEach((level, i) => {
+    const grade = song.grades[i];
+    if (grade) bests[level] = { score: SCORE_BY_GRADE[grade], grade };
+  });
+  return {
+    audioKey: audioKeyOf(song),
+    uri: `https://mock.invalid/watch?v=${slug(song.title)}`,
+    source: "youtube",
+    title: song.title,
+    artist: song.artist,
+    artworkUrl: null,
+    durationMs: song.len * 1000,
+    plays: song.plays.reduce((sum, n) => sum + n, 0),
+    playsBy: Object.fromEntries(LEVELS.map((level, i) => [level, song.plays[i]])),
+    lastAt: NOW,
+    stars,
+    notes: stars ? NOTES : {},
+    bests,
+    highlightMs: song.bpm ? 45_000 : null,
+    bpm: song.bpm,
+  };
+}
+
+function played({ scope }) {
+  const mine = SONGS.filter((song) => song.grades.some(Boolean));
+  const rows = scope === "mine" ? mine : scope === "global" ? SONGS : SONGS.filter((song) => !ELSEWHERE.has(song.title));
+  return { tracks: rows.map(playedTrack) };
+}
+
+// Scores on one level: the same people on every level, each a little lower than the one before.
+const BOARD_PEOPLE = {
+  server: [MOCK_USER_ID, "kuba", "neko", "dawid", "ola"],
+  global: ["shiro", "kuba", "vex", "luna", "neko", "ola", "tomek"],
+};
+const PINNED_GLOBAL_RANK = 12;
+const GRADE_BY_PLACE = ["S", "A", "A", "B", "B", "C", "C"];
+
+function scoreRow(userId, place, top) {
+  return {
+    userId,
+    username: PEOPLE[userId].username,
+    avatarUrl: null,
+    score: Math.round(top - place * 41_000),
+    accuracy: Math.round((98.4 - place * 2.2) * 100) / 100,
+    grade: GRADE_BY_PLACE[place] ?? "D",
+    maxCombo: 812 - place * 60,
+    at: NOW,
+  };
+}
+
+function board({ audioKey, difficulty, scope }) {
+  const song = SONGS.find((candidate) => audioKeyOf(candidate) === audioKey);
+  const level = LEVELS.indexOf(difficulty);
+  if (!song || level < 0 || !song.stars) return { entries: [], own: { rank: null, best: null } };
+  const top = 640_000 - level * 20_000;
+  const played = Boolean(song.grades[level]);
+  const ids = BOARD_PEOPLE[scope === "global" ? "global" : "server"].filter((userId) => played || userId !== MOCK_USER_ID);
+  const entries = ids.map((userId, place) => scoreRow(userId, place, top));
+  const shown = entries.findIndex((entry) => entry.userId === MOCK_USER_ID);
+  if (shown >= 0) return { entries, own: { rank: shown + 1, best: entries[shown] } };
+  // On the global board you are further down than the rows shown, so the pinned row comes up.
+  return { entries, own: played ? { rank: PINNED_GLOBAL_RANK, best: scoreRow(MOCK_USER_ID, entries.length, top) } : { rank: null, best: null } };
+}
+
+const RECENT_ORDER = [0, 4, 2, 3, 7, 1];
+function recentPlay(song, i) {
+  const level = song.grades.findIndex(Boolean);
+  const grade = song.grades[level] ?? "D";
+  return {
+    audioKey: audioKeyOf(song),
+    title: song.title,
+    artist: song.artist,
+    artworkUrl: null,
+    difficulty: LEVELS[Math.max(0, level)],
+    grade,
+    accuracy: Math.round((ACCURACY_BY_GRADE[grade] - i * 0.7) * 100) / 100,
+    score: SCORE_BY_GRADE[grade] - i * 9_000,
+    at: NOW - i * 3_600_000,
+  };
+}
+
+function bestPlay(song, i) {
+  const level = Math.max(0, song.grades.findIndex(Boolean));
+  const grade = song.grades[level] ?? "D";
+  return {
+    audioKey: audioKeyOf(song),
+    title: song.title,
+    artist: song.artist,
+    artworkUrl: null,
+    difficulty: LEVELS[level],
+    stars: song.stars?.[level] ?? null,
+    grade,
+    accuracy: ACCURACY_BY_GRADE[grade],
+    pp: 312 - i * 31,
+  };
+}
+
+function profile({ userId = MOCK_USER_ID }) {
+  if (userId === MISSING_PLAYER_ID) return { status: "error", reason: "not_found" };
+  const base = { status: "ok", player: playerOf(userId) };
+  if (userId === NEW_PLAYER_ID) {
+    return {
+      ...base,
+      rating: { pp: 0, global: null, server: null },
+      summary: { plays: 0, avgAccuracy: 0, songs: 0, playMs: 0, bestGrades: { S: 0, A: 0, B: 0, C: 0, D: 0 } },
+      recent: [],
+      best: [],
+    };
+  }
+  const person = PEOPLE[userId] ?? PEOPLE[MOCK_USER_ID];
+  const charted = SONGS.filter((song) => song.grades.some(Boolean));
+  return {
+    ...base,
+    rating: { pp: person.pp, global: person.global, server: person.server },
+    summary: { plays: 312, avgAccuracy: person.accuracy, songs: 48, playMs: 11 * 3_600_000 + 40 * 60_000, bestGrades: { S: 9, A: 21, B: 34, C: 19, D: 6 } },
+    recent: RECENT_ORDER.map((index, i) => recentPlay(SONGS[index], i)),
+    best: charted.slice(0, 6).map(bestPlay),
+  };
+}
+
+function stats({ userId = MOCK_USER_ID }) {
+  if (userId === MISSING_PLAYER_ID) return { status: "error", reason: "not_found" };
+  const base = { status: "ok", player: playerOf(userId) };
+  if (userId === NEW_PLAYER_ID) return { ...base, stats: null };
+  const person = PEOPLE[userId] ?? PEOPLE[MOCK_USER_ID];
+  const maps = [
+    ["Rude Buster", "normal", 812, 812], ["Hopes and Dreams", "normal", 744, 1020], ["MEGALOVANIA", "normal", 689, 1204],
+    ["Five Nights at Freddy's 2 Song", "easy", 512, 512], ["MORE", "normal", 366, 884],
+  ].map(([title, difficulty, maxCombo, parts]) => {
+    const song = SONGS.find((candidate) => candidate.title === title);
+    return { audioKey: audioKeyOf(song), difficulty, title, maxCombo, parts, fullCombo: maxCombo === parts };
+  });
+  return {
+    ...base,
+    stats: {
+      username: person.username,
+      avatarUrl: null,
+      firstAt: FIRST_AT,
+      plays: 312,
+      avgAccuracy: person.accuracy,
+      songs: 48,
+      playMs: 11 * 3_600_000 + 40 * 60_000,
+      counts: { perfect: 184_210, great: 48_930, good: 15_204, miss: 10_346 },
+      presses: 291_402,
+      emptyPresses: 32_712,
+      holdMs: 72 * 60_000,
+      longestHoldMs: 14_200,
+      fevers: 486,
+      fullCombos: 14,
+      timing: { meanMs: 6, spreadMs: 18, earlyShare: 0.38, lateShare: 0.62 },
+      bestCombo: { value: 812, title: "Rude Buster" },
+      maps,
+    },
+  };
+}
+
+// Everyone by rating. The two awkward ids close the list so they can be clicked.
+const RATED = [
+  [MOCK_USER_ID, 1248], ["shiro", 2104], ["kuba", 1190], ["vex", 1003], ["neko", 874], ["luna", 716], ["ola", 602], ["dawid", 455], ["tomek", 398],
+];
+const SERVER_RANKED = ["kuba", "neko", "ola", "dawid", "tomek"];
+
+function ranking({ scope }) {
+  // Sorted here, not at the top of the module, so that the module has no call left when nothing uses it.
+  const ids = scope === "server" ? SERVER_RANKED : [...RATED].sort((a, b) => b[1] - a[1]).map(([userId]) => userId);
+  const entries = ids.map((userId, index) => ({
+    rank: index + 1,
+    userId,
+    username: PEOPLE[userId].username,
+    avatarUrl: null,
+    pp: PEOPLE[userId].pp,
+    accuracy: PEOPLE[userId].accuracy,
+  }));
+  entries.push(
+    { rank: entries.length + 1, userId: NEW_PLAYER_ID, username: NEW_PLAYER_NAME, avatarUrl: null, pp: 0, accuracy: 0 },
+    { rank: entries.length + 2, userId: MISSING_PLAYER_ID, username: GHOST_NAME, avatarUrl: null, pp: 0, accuracy: 0 },
+  );
+  const me = PEOPLE[MOCK_USER_ID];
+  const shown = entries.some((entry) => entry.userId === MOCK_USER_ID);
+  // On the server list you are not among the rows, so the pinned row comes up under them.
+  return {
+    status: "ok",
+    entries,
+    own: { rank: shown ? entries.find((entry) => entry.userId === MOCK_USER_ID).rank : me.server, pp: me.pp, username: me.username, avatarUrl: null, accuracy: me.accuracy },
+  };
+}
+
+const ANSWERS = {
+  mewbeat_played: played,
+  mewbeat_board: board,
+  mewbeat_profile: profile,
+  mewbeat_stats: stats,
+  mewbeat_ranking: ranking,
+};
+
+// request(type, body) -> a promise of the reply, like createMewbeatRequests().request without the socket.
+export function createMockRequest() {
+  return (type, body = {}) => new Promise((resolve) => {
+    const answer = ANSWERS[type];
+    const reply = answer ? { type, id: "mock", ...answer(body) } : { type, id: "mock", status: "error", reason: "unknown" };
+    setTimeout(() => resolve(reply), LATENCY_MS);
+  });
+}

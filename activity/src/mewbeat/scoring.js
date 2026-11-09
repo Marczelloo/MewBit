@@ -90,11 +90,33 @@ export function accuracyOf(counts) {
   return Math.round((weighted / judged) * 100) / 100;
 }
 
+// The lowest accuracy of each grade, worst first.
+export const GRADE_STEPS = [
+  { grade: "D", floor: 0 },
+  { grade: "C", floor: 70 },
+  { grade: "B", floor: 80 },
+  { grade: "A", floor: 90 },
+  { grade: "S", floor: 95 },
+];
+
 export function gradeOf(accuracy) {
   if (accuracy === null || accuracy === undefined) return null;
-  if (accuracy >= 95) return "S";
-  if (accuracy >= 90) return "A";
-  if (accuracy >= 80) return "B";
-  if (accuracy >= 70) return "C";
-  return "D";
+  return [...GRADE_STEPS].reverse().find((step) => accuracy >= step.floor)?.grade ?? "D";
+}
+
+const hundredths = (value) => Math.round(value * 100) / 100;
+
+// An accuracy's place on the grade ladder: how full each grade's step is, the next grade up and the distance to it,
+// or at the top (next is null) how much room is left above the grade below.
+export function gradeLadder(accuracy) {
+  const steps = GRADE_STEPS.map(({ grade, floor }, index) => {
+    const top = GRADE_STEPS[index + 1]?.floor ?? 100;
+    return { grade, fill: Math.max(0, Math.min(1, (accuracy - floor) / (top - floor))) };
+  });
+  const above = GRADE_STEPS.find((step) => step.floor > accuracy);
+  return {
+    steps,
+    next: above ? { grade: above.grade, gap: hundredths(above.floor - accuracy) } : null,
+    cushion: above ? null : hundredths(accuracy - GRADE_STEPS.at(-1).floor),
+  };
 }

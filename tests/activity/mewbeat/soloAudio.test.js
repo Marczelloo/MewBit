@@ -392,6 +392,21 @@ test("highlight plays the loaded song on from fromMs once, without touching the 
   assert.equal(env.sources.at(-1), next);
 });
 
+test("a highlight takes over from an outro at once: the song fades but its clock runs on, and the next play is heard", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  await audio.play(190_000);
+  const song = env.sources.at(-1);
+  const bus = env.gains[1]; // master, then the song bus
+  assert.equal(audio.highlight(60_000), true);
+  assert.notEqual(env.sources.at(-1), song, "the clip starts now, it does not wait for the song to end");
+  assert.equal(song.stopped, false, "the song keeps running, so the link still hears it end");
+  assert.equal(audio.playing(), true);
+  assert.equal(bus.ramps.at(-1).value, 0, "and it fades to silence");
+  await audio.play(0);
+  assert.equal(bus.ramps.at(-1).value, 1, "a new run is audible again");
+});
+
 test("a highlight near the end starts early enough to leave the window to hear, and none known falls back", async () => {
   const { env, audio } = harness({ durationSec: 100 });
   await audio.load("k1");

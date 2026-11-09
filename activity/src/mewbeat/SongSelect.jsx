@@ -1,6 +1,10 @@
 import { MagnifyingGlass, Play, Plus, SpeakerHigh } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
+import LevelBoard from "./LevelBoard.jsx";
+import PlayerPanel from "./PlayerPanel.jsx";
+import { arrangeRows } from "./songList.js";
+import "./songSelect.css";
 
 export const DIFFICULTIES = [
   { id: "easy", label: "Easy" },
@@ -10,11 +14,35 @@ export const DIFFICULTIES = [
 ];
 
 const SCOPES = [
-  { id: "server", label: "Played on this server" },
-  { id: "global", label: "Played anywhere" },
+  { id: "server", label: "This server" },
+  { id: "global", label: "Everywhere" },
+  { id: "mine", label: "Played by you" },
 ];
 
-const PLAYED_LIMIT = 50;
+const SORTS = [
+  { id: "recent", label: "Recent" },
+  { id: "stars", label: "Stars" },
+  { id: "bpm", label: "BPM" },
+  { id: "length", label: "Length" },
+  { id: "plays", label: "Plays" },
+  { id: "title", label: "Title" },
+];
+
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "played", label: "Played" },
+  { id: "unplayed", label: "Not played" },
+];
+
+const HEAD_LABELS = { easy: "EZ", normal: "NM", hard: "HD", hell: "HL" };
+
+const EMPTY_COPY = {
+  server: "No songs played here yet — search for one",
+  global: "No songs played yet — search for one",
+  mine: "You haven't played anything yet — search for a song",
+};
+
+const PLAYED_LIMIT = 500;
 const SEARCH_LIMIT = 20;
 const MIN_QUERY = 2;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -62,17 +90,17 @@ export function resolveArtworkUrl(artworkUrl) {
   }
 }
 
-function hueOf(text) {
+export function hueOf(text) {
   let hash = 0;
   for (const char of String(text ?? "")) hash = (hash * 31 + char.charCodeAt(0)) % 360;
   return hash;
 }
 
-function Cover({ row, className }) {
+export function Cover({ row, className }) {
   const src = resolveArtworkUrl(row.artworkUrl);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  if (src && !failed) return <img className={className} src={src} alt="" draggable={false} onError={() => setFailed(true)} />;
+  if (src && !failed) return <img className={className} src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} />;
   const hue = hueOf(row.title);
   return <span className={className} style={{ background: `linear-gradient(135deg, hsl(${hue} 80% 55%), hsl(${(hue + 60) % 360} 70% 22%))` }} aria-hidden="true" />;
 }
@@ -81,13 +109,16 @@ function Cover({ row, className }) {
 function playedRow(track) {
   return {
     key: track.audioKey ?? track.uri,
+    audioKey: track.audioKey ?? null, // what the level leaderboard asks for
     uri: track.uri,
     source: track.source,
     title: track.title ?? "Unknown title",
     artist: track.artist ?? "",
     artworkUrl: track.artworkUrl ?? null,
     durationMs: track.durationMs ?? 0,
+    bpm: track.bpm ?? null,
     plays: track.plays ?? null,
+    playsBy: track.playsBy ?? {},
     stars: track.stars ?? null,
     bests: track.bests ?? {},
     highlightMs: track.highlightMs ?? null,
@@ -97,35 +128,42 @@ function playedRow(track) {
 function searchRow(track) {
   return {
     key: track.uri,
+    audioKey: null, // a search result has no chart yet, so no leaderboard
     uri: track.uri,
     source: track.source,
     title: track.title ?? "Unknown title",
     artist: track.author ?? "",
     artworkUrl: track.artworkUrl ?? null,
     durationMs: track.durationMs ?? 0,
+    bpm: null,
     plays: null,
+    playsBy: {},
     stars: null,
     bests: {},
     highlightMs: null,
   };
 }
 
-function MiniDifficulties({ row }) {
+// The Solo picker's left side sits in one column that fills the section; the room's window keeps its own layout.
+function ProfileColumn({ wrap, children }) {
+  return wrap ? <div className="mb-ss-left">{children}</div> : children;
+}
+
+// One level's column in a song row: the stars in the level's colour, the player's best grade beneath.
+function LevelCell({ row, id, label }) {
+  const stars = starsOf(row, id);
+  const best = row.bests?.[id];
   return (
-    <span className="mb-ss-mini">
-      {DIFFICULTIES.map(({ id, label }) => {
-        const stars = starsOf(row, id);
-        const best = row.bests?.[id];
-        return (
-          <span key={id} className={`mb-ss-mini-cell mb-ss-d-${id}`} title={`${label}${best ? ` · best ${best.grade}` : ""}`}>
-            <i aria-hidden="true" />
-            <span>{stars === null ? "—" : stars.toFixed(1)}</span>
-            {best ? <b className={gradeClass(best.grade)}>{best.grade}</b> : null}
-          </span>
-        );
-      })}
+    <span className={`mb-ss-lv mb-ss-d-${id}${stars === null ? " mb-ss-lv-none" : ""}`} title={`${label}${best ? ` · best ${best.grade}` : ""}`}>
+      <b>{stars === null ? "—" : stars.toFixed(1)}</b>
+      <i className={best ? gradeClass(best.grade) : undefined}>{best ? best.grade : ""}</i>
     </span>
   );
+}
+
+// "2:36 · 240 BPM"; either part is left out when the song doesn't have it.
+function rowMeta(row) {
+  return [formatLength(row.durationMs), Number.isFinite(row.bpm) ? `${Math.round(row.bpm)} BPM` : ""].filter(Boolean).join(" · ");
 }
 
 // The song-select screen: what the server has played (this server or anywhere) or a search over every source,
@@ -135,7 +173,10 @@ function MiniDifficulties({ row }) {
 // picker stays open for more, and a rejection's message is shown. The levels only inform there: each player
 // picks theirs in the lobby. onPreview(row), when given, previews the song
 // the player picked and resolves whether it plays; onPreview(null) stops it.
-export default function SongSelect({ context, request, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose }) {
+// With player ({ userId }, only the Solo picker passes it) the left side is the player's Profile and Stats until
+// a song is picked, and a picked song shows its leaderboard; without it (the room's add-songs window) the left
+// side is the song's details alone.
+export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose }) {
   const [scope, setScope] = useState("server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
@@ -147,6 +188,15 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   const [playError, setPlayError] = useState(null);
   const [addedNote, setAddedNote] = useState(null); // confirmation after a song went into the room queue
   const [previewing, setPreviewing] = useState(null); // { key, playing } of the song being previewed
+  const [sort, setSort] = useState("recent");
+  const [direction, setDirection] = useState("desc");
+  const [filter, setFilter] = useState("all");
+  const [level, setLevel] = useState(difficulty); // the level the sort and the filters look at
+  // What the left side shows while no song is picked. userId null is yourself; picking a song leaves this alone,
+  // so "← Profile" comes back to what was there. from is the tab another player's profile was opened from, where
+  // "← Your profile" returns to.
+  const [leftView, setLeftView] = useState({ tab: "profile", userId: null, from: "profile" });
+  const [rankingScope, setRankingScope] = useState("global"); // kept here, so it survives opening a player from the ranking
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const mountedRef = useRef(true);
@@ -161,6 +211,9 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   useEffect(() => {
     if (DIFFICULTIES.some((d) => d.id === defaultDifficulty)) setDifficulty(defaultDifficulty);
   }, [defaultDifficulty]);
+
+  // The Level select follows the difficulty tile; changing the select leaves the tile alone.
+  useEffect(() => setLevel(difficulty), [difficulty]);
 
   const text = query.trim();
   const searching = text.length >= MIN_QUERY;
@@ -205,14 +258,18 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, searching, context?.guildId, context?.accessToken]);
 
+  const arranged = useMemo(() => arrangeRows(played.rows, { sort, level, direction, filter }), [played.rows, sort, level, direction, filter]);
   const list = searching ? found : played;
-  const rows = list.rows;
-  // No list picks a song by itself: the details, the preview and Play wait for the player's pick.
-  const selected = useMemo(() => rows.find((row) => row.key === selectedKey) ?? null, [rows, selectedKey]);
+  // A search keeps the order it came in; the tools only arrange the played list.
+  const rows = searching ? found.rows : arranged;
+  // No list picks a song by itself: the details, the preview and Play wait for the player's pick. It is looked up in
+  // every row, so a level or filter that hides the song from the list does not drop it.
+  const selected = useMemo(() => (searching ? found.rows : played.rows).find((row) => row.key === selectedKey) ?? null, [searching, found.rows, played.rows, selectedKey]);
 
+  // A new order or filter can move the selected row out of sight; it comes back into view if it is still listed.
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
-  }, [selected?.key]);
+  }, [selected?.key, sort, level, direction, filter]);
 
   const previewRow = onPlay && preparing !== null ? null : selected;
   const previewRowRef = useRef(previewRow);
@@ -279,14 +336,15 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
 
   // The game's keys are paused while this screen is up, so typing reaches the search box.
   const onKeyDown = (event) => {
+    const isSelect = event.target instanceof HTMLElement && event.target.tagName === "SELECT"; // a select keeps its own keys
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       onClose?.();
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !isSelect) {
       event.preventDefault();
       move(event.key === "ArrowDown" ? 1 : -1);
-    } else if (event.key === "Enter" && !(event.target instanceof HTMLElement && event.target.tagName === "BUTTON")) {
+    } else if (event.key === "Enter" && !isSelect && !(event.target instanceof HTMLElement && event.target.tagName === "BUTTON")) {
       event.preventDefault();
       primary();
     }
@@ -313,7 +371,23 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
   if (list.status === "loading" || list.status === "searching" || (searching && list.status === "idle")) emptyCopy = searching ? "Searching…" : "Loading songs…";
   else if (list.status === "empty") emptyCopy = "No songs found.";
   else if (list.status === "error") emptyCopy = searching ? "Search failed." : "Couldn't load the played songs.";
-  else if (!rows.length) emptyCopy = scope === "server" ? "No songs played here yet — search for one" : "No songs played yet — search for one";
+  else if (!rows.length && !searching && played.rows.length) emptyCopy = "No songs match this filter.";
+  else if (!rows.length) emptyCopy = EMPTY_COPY[scope];
+
+  // A leaderboard or ranking row opens that player's profile. Your own row opens yours. Clearing the selection
+  // also stops the preview, through the effect on previewKey.
+  const openPlayer = (userId, from = "profile") => {
+    setLeftView({ tab: "profile", userId: userId === player?.userId ? null : userId, from });
+    setSelectedKey(null);
+  };
+
+  // Title reads from A down; every other sort starts with the most.
+  const pickSort = (next) => {
+    if (next === sort) return;
+    if (next === "title") setDirection("asc");
+    else if (sort === "title") setDirection("desc");
+    setSort(next);
+  };
 
   const selectedStars = starsOf(selected, difficulty);
   const selectedBest = selected?.bests?.[difficulty] ?? null;
@@ -328,8 +402,15 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
             <button type="button" className="mb-btn mb-ss-close" onClick={onClose}>Close <kbd className="mb-kbd">Esc</kbd></button>
           </div>
         ) : null}
+        <ProfileColumn wrap={Boolean(player)}>
         {selected ? (
           <>
+            {player ? (
+              <div className="mb-ss-mode">
+                <span className="mb-ss-label">Selected song</span>
+                <button type="button" className="mb-ss-back" onClick={() => setSelectedKey(null)}>← Profile</button>
+              </div>
+            ) : null}
             <div className="mb-ss-hero">
               <Cover row={selected} className="mb-ss-cover" />
               <div className="mb-ss-hero-text">
@@ -338,6 +419,7 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
                 <div className="mb-ss-artist">{selected.artist}</div>
                 <div className="mb-ss-chips">
                   {selected.durationMs ? <span className="mb-ss-chip">{formatLength(selected.durationMs)}</span> : null}
+                  {player && selected.bpm ? <span className="mb-ss-chip">{Math.round(selected.bpm)} BPM</span> : null}
                   {selected.source ? <span className="mb-ss-chip">{selected.source}</span> : null}
                   {previewing?.key === selected.key ? (
                     <span className={`mb-ss-chip mb-ss-chip-preview${previewing.playing ? " mb-ss-chip-preview-on" : ""}`} role="status">
@@ -366,16 +448,41 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
                 );
               })}
             </div>
-            <p className="mb-ss-note">
-              {!onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
-            </p>
+            {/* With the leaderboard below, the note only has the uncharted case left to say. */}
+            {player && selectedStars !== null ? null : (
+              <p className="mb-ss-note">
+                {!onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
+              </p>
+            )}
+            {player ? (
+              <>
+                <div className="mb-ss-panel mb-ss-mods" role="group" aria-label="Modifiers">
+                  <span className="mb-ss-label">Modifiers</span>
+                  {[0, 1, 2, 3].map((slot) => <span key={slot} className="mb-ss-slot">soon</span>)}
+                </div>
+                <LevelBoard request={request} audioKey={selected.audioKey} difficulty={difficulty} userId={player.userId} onOpenPlayer={openPlayer} />
+              </>
+            ) : null}
           </>
+        ) : player ? (
+          <PlayerPanel
+            request={request}
+            tab={leftView.tab}
+            userId={leftView.userId}
+            ownUserId={player.userId}
+            onTab={(tab) => setLeftView((view) => ({ ...view, tab }))}
+            onBack={() => setLeftView((view) => ({ tab: view.from, userId: null, from: "profile" }))}
+            rankingScope={rankingScope}
+            onRankingScope={setRankingScope}
+            onOpenPlayer={openPlayer}
+          />
         ) : (
           <div className="mb-ss-placeholder">
             <b>{searching ? "Pick a result" : "Pick a song"}</b>
             <span>{searching ? "Click a song to see its levels and hear a preview." : "Choose one that was played, or search above."}</span>
           </div>
         )}
+        </ProfileColumn>
       </section>
 
       <aside className="mb-ss-list">
@@ -407,11 +514,49 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
           />
         </label>
 
+        {!searching ? (
+          <div className="mb-ss-tools">
+            <label className="mb-ss-select">
+              <small>Sort</small>
+              <select aria-label="Sort by" value={sort} onChange={(event) => pickSort(event.target.value)}>
+                {SORTS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+            <label className={`mb-ss-select mb-ss-d-${level}`} title="Which level the sort and the filters look at">
+              <small>Level</small>
+              <select aria-label="Level for sorting and filtering" value={level} onChange={(event) => setLevel(event.target.value)}>
+                {DIFFICULTIES.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+            <label className="mb-ss-select">
+              <small>Filter</small>
+              <select aria-label="Filter songs" value={filter} onChange={(event) => setFilter(event.target.value)}>
+                {FILTERS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="mb-ss-dir"
+              aria-label={direction === "desc" ? "Descending, switch to ascending" : "Ascending, switch to descending"}
+              onClick={() => setDirection((current) => (current === "desc" ? "asc" : "desc"))}
+            >
+              {direction === "desc" ? "↓" : "↑"}
+            </button>
+          </div>
+        ) : null}
+
         <div className="mb-ss-rows" ref={listRef} role="listbox" aria-label={searching ? "Search results" : "Played songs"}>
           {emptyCopy ? (
             <div className={`mb-ss-empty${list.status === "error" ? " mb-ss-empty-error" : ""}`} role={list.status === "error" ? "alert" : "status"}>
               <span>{emptyCopy}</span>
               {list.status === "error" && !searching ? <button type="button" className="mb-btn" onClick={() => setReload((n) => n + 1)}>Try again</button> : null}
+            </div>
+          ) : null}
+          {!searching && rows.length ? (
+            <div className="mb-ss-head" aria-hidden="true">
+              <span />
+              <span />
+              {DIFFICULTIES.map(({ id }) => <span key={id} className={`mb-ss-d-${id}`}>{HEAD_LABELS[id]}</span>)}
             </div>
           ) : null}
           {rows.map((row) => (
@@ -427,13 +572,9 @@ export default function SongSelect({ context, request, defaultDifficulty = "norm
               <span className="mb-ss-info">
                 <b>{row.title}</b>
                 <small>{row.artist}</small>
-                <MiniDifficulties row={row} />
+                {preparing === row.key ? <span className="mb-ss-meta mb-ss-preparing">Preparing…</span> : <span className="mb-ss-meta">{rowMeta(row)}</span>}
               </span>
-              <span className="mb-ss-side">
-                {preparing === row.key ? <span className="mb-ss-preparing">Preparing…</span> : null}
-                <span className="mb-ss-len">{formatLength(row.durationMs)}</span>
-                {row.plays ? <span className="mb-ss-plays">{row.plays}×</span> : null}
-              </span>
+              {DIFFICULTIES.map(({ id, label }) => <LevelCell key={id} row={row} id={id} label={label} />)}
             </div>
           ))}
         </div>

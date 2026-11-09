@@ -8,6 +8,62 @@
         "value": "rgba(0, 0, 0, 0.9)",
         "createdAt": "2026-08-28T12:36:10.154Z",
         "reason": "Claude: mask-image alpha ramp, not a palette colour — the compositor uses only the alpha channel and discards the RGB, so this is an opacity stop rather than a colour decision. landing.css .landing::before"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(.3, 1.6, .5, 1)",
+        "createdAt": "2026-10-31T14:54:28.637Z"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "mb-bounce",
+        "createdAt": "2026-11-08T22:15:29.090Z",
+        "reason": "Claude triage: Mewbit character bouncing to the music, literal motion"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "mb-bounce-big",
+        "createdAt": "2026-11-08T22:15:29.172Z",
+        "reason": "Claude triage: Mewbit character bouncing to the music, literal motion"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.2, 1.4, 0.4, 1)",
+        "createdAt": "2026-11-08T23:24:51.370Z",
+        "reason": "Claude triage: existing mewbeat game animations (combo, grade, Mewbit), the user asked to keep the old animations (2026-11-08)"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.25, 1.2, 0.4, 1)",
+        "createdAt": "2026-11-08T23:24:51.475Z",
+        "reason": "Claude triage: existing mewbeat game animations (combo, grade, Mewbit), the user asked to keep the old animations (2026-11-08)"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.2, 1.3, 0.35, 1)",
+        "createdAt": "2026-11-08T23:24:51.586Z",
+        "reason": "Claude triage: existing mewbeat game animations (combo, grade, Mewbit), the user asked to keep the old animations (2026-11-08)"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.3, 1.6, 0.5, 1)",
+        "createdAt": "2026-11-08T23:24:51.717Z",
+        "reason": "Claude triage: existing mewbeat game animations (combo, grade, Mewbit), the user asked to keep the old animations (2026-11-08)"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.3, 1.5, 0.5, 1)",
+        "createdAt": "2026-11-08T23:24:51.828Z",
+        "reason": "Claude triage: existing mewbeat game animations (combo, grade, Mewbit), the user asked to keep the old animations (2026-11-08)"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "activity/src/mewbeat/mewbeat.css"
+        ],
+        "createdAt": "2026-11-09T00:02:24.393Z",
+        "reason": "Claude triage: .mb-board top edge shows the difficulty colour on the scoreboard the user approved (2026-11-08); it is a top edge, not a side tab"
       }
     ]
   }

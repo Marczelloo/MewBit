@@ -53,6 +53,9 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   const hits = [];
   const eventLog = []; // the event log for the server: every applied judgement, in order
   const feverStarts = [];
+  // Key presses for the player's stats: every press while the run is on, and those that hit no note.
+  let presses = 0;
+  let emptyPresses = 0;
   const autoReleases = []; // autoplay: pressed holds waiting for their end, as { index, lane, end }
   let autoCursor = 0;
   let feverEndAt = null;
@@ -78,7 +81,11 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     if (ended) return null;
     const heardMs = heard(songMs);
     const result = judge.press(lane, heardMs);
-    if (!result) return null;
+    presses += 1;
+    if (!result) {
+      emptyPresses += 1;
+      return null;
+    }
     const outcome = applyOutcome(result, heardMs);
     // An early miss on a hold settles its tail too, which counts as a second miss (logged after its head).
     if (result.tailMissed) {
@@ -199,9 +206,9 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   }
 
   // What the server needs to recompute this run: judgements as they were applied (jump/offset-skipped
-  // parts never appear, they were never judged) and the heard times FEVER started at.
+  // parts never appear, they were never judged), the heard times FEVER started at and the key press counts.
   function log() {
-    return { events: eventLog.map((event) => ({ ...event })), fevers: feverStarts.slice() };
+    return { events: eventLog.map((event) => ({ ...event })), fevers: feverStarts.slice(), presses, emptyPresses };
   }
 
   function snapshot(songMs) {

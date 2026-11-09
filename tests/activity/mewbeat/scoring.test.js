@@ -124,3 +124,23 @@ test("gradeOf maps accuracy to a letter", () => {
   assert.deepEqual([95, 94.99, 90, 80, 70, 69.99].map(s.gradeOf), ["S", "A", "A", "B", "C", "D"]);
   assert.equal(s.gradeOf(null), null);
 });
+
+test("gradeLadder fills the steps up to the accuracy and names the next grade", () => {
+  const b = s.gradeLadder(85);
+  assert.deepEqual(b.steps.map((step) => step.fill), [1, 1, 0.5, 0, 0]);
+  assert.deepEqual(b.next, { grade: "A", gap: 5 });
+  assert.equal(b.cushion, null);
+});
+
+test("gradeLadder at S has no next grade, only the room above A", () => {
+  const top = s.gradeLadder(98.42);
+  assert.equal(top.next, null);
+  assert.equal(top.cushion, 3.42);
+  assert.equal(top.steps.at(-1).grade, "S");
+  assert.ok(Math.abs(top.steps.at(-1).fill - 0.684) < 1e-9);
+});
+
+test("gradeLadder sends a grade floor to the grade it opens", () => {
+  assert.deepEqual(s.gradeLadder(90).next, { grade: "S", gap: 5 });
+  assert.equal(s.gradeLadder(95).next, null);
+});

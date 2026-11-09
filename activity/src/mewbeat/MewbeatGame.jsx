@@ -10,6 +10,7 @@ import { createKeyHold, keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
 import { createLiveBoardStore, watchedStage } from "./liveBoard.js";
 import { createMockLink } from "./mockLink.js";
+import { createMockRequest, MOCK_USER_ID } from "./mockRequests.js";
 import { createMewbeatRequests } from "./requests.js";
 import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
@@ -19,18 +20,20 @@ import { presenceOf } from "./presence.js";
 import Lobby, { LeaveConfirm } from "./Lobby.jsx";
 import LiveBoard from "./LiveBoard.jsx";
 import Results from "./Results.jsx";
-import SongSelect from "./SongSelect.jsx";
+import SongSelect, { DIFFICULTIES } from "./SongSelect.jsx";
 import SpectateCard from "./SpectateCard.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { multiplierFor } from "./scoring.js";
 import { countdownSounds, loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf } from "./room.js";
 import { useCountdownSounds } from "./useCountdownSounds.js";
-import { useMewbeatGame } from "./useMewbeatGame.js";
+import { EMPTY_HUD, useMewbeatGame } from "./useMewbeatGame.js";
 import { useScreenExit } from "./useScreenExit.js";
 import "./mewbeat.css";
 
 // Same switch as MOCK_PREVIEW in App.jsx (a dev-server-only ?mock=1 page with no bot).
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
+// ?mock=1&select=1 shows the Solo song select on fake replies (mockRequests.js) instead of the mock game.
+const MOCK_SELECT = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("select");
 
 const SCREEN_IN_MS = 240; // same as mb-screen-in in mewbeat.css
 const SOLO_GO_MS = 900; // Mewbit's GO after a solo run's count
@@ -125,7 +128,8 @@ function ScreenSlot({ screen, dead }) {
 // The game's one menu, opened with the header button or Esc. A solo run is paused under it; Live and rooms
 // can't stop the song, so the game only ignores its keys while it is up. Esc resumes from anywhere
 // (MewbeatSession captures it, so it works whatever has focus); Enter does too, unless it is on another button.
-function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPick, onSettings, onExit }) {
+// With `level` and `onLevel` it also offers the four levels; picking one starts the map over on it.
+function GameMenu({ title, note, error, focusSettings, level, onLevel, onResume, onRestart, onPick, onSettings, onExit }) {
   const resumeRef = useRef(null);
   const settingsRef = useRef(null);
   useEffect(() => {
@@ -145,6 +149,24 @@ function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPi
         <b className="mb-pause-title">{title}</b>
         {note ? <p className="mb-pause-note">{note}</p> : null}
         {error ? <p className="mb-field-error" role="alert">{error}</p> : null}
+        {level && onLevel ? (
+          <div className={`mb-pause-level mb-lv-${level}`}>
+            <div className="mb-diff-seg" role="group" aria-label="Level">
+              {DIFFICULTIES.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`mb-diff-btn${id === level ? " mb-diff-on" : ""}`}
+                  aria-pressed={id === level}
+                  onClick={() => onLevel(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <small className="mb-diff-note">Changing the level starts the map over.</small>
+          </div>
+        ) : null}
         <div className="mb-pause-actions">
           <button type="button" className="mb-btn mb-btn-primary" ref={resumeRef} onClick={onResume}>
             <Play size={16} weight="bold" aria-hidden="true" /> Resume <kbd className="mb-kbd">Esc</kbd>
@@ -171,9 +193,30 @@ function GameMenu({ title, note, error, focusSettings, onResume, onRestart, onPi
   );
 }
 
+// The song select in the game's frame, answered by fake replies. Nothing plays and no preview is asked for.
+function MockSongSelect() {
+  const [request] = useState(createMockRequest);
+  const player = useMemo(() => ({ userId: MOCK_USER_ID }), []);
+  const onPlay = useCallback(() => Promise.resolve(), []);
+  return (
+    <div className="mb-game mb-fx-full" role="dialog" aria-modal="true" aria-label="mewbeat">
+      <header className="mb-header">
+        <div className="mb-header-brand"><span className="mb-wordmark">mewbeat</span></div>
+      </header>
+      <div className="mb-screen">
+        <SongSelect request={request} player={player} onPlay={onPlay} />
+      </div>
+    </div>
+  );
+}
+
+export default function MewbeatGame(props) {
+  return MOCK_SELECT ? <MockSongSelect /> : <MewbeatRoot {...props} />;
+}
+
 // Mode, audio engine and music volume live here; the session below is keyed by mode, so switching tears the
 // whole run and link down and builds the other one.
-export default function MewbeatGame(props) {
+function MewbeatRoot(props) {
   const { context, state, settings } = props;
   const botPlaying = Boolean(state?.player?.currentTrack);
   const liveAvailable = MOCK_PREVIEW || botPlaying;
@@ -201,7 +244,6 @@ export default function MewbeatGame(props) {
 
 // A preview resolves the song on the bot first, which can take a while for a search result.
 const PREVIEW_PREPARE_TIMEOUT_MS = 30_000;
-const HIGHLIGHT_WAIT_MS = 250;
 
 function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, state, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose, onPresence }) {
   const solo = mode === "solo";
@@ -398,17 +440,18 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
 
   // Song select's Play. The chosen difficulty becomes the live difficulty the game charts with. Rejects with
   // the server's reason when the song can't be prepared; begin() reports its own failures on the stage.
+  const saveLevel = useCallback((next) => {
+    setPickedLevel(next);
+    levelSaves.current += 1;
+    Promise.resolve(onAction?.("mewbeat_settings", { settings: { liveDifficulty: next } }))
+      .catch(() => {})
+      .finally(() => { levelSaves.current -= 1; });
+  }, [onAction]);
   const pickSong = useCallback(async (picked, pickedDifficulty) => {
-    if (pickedDifficulty && pickedDifficulty !== savedDifficulty) {
-      setPickedLevel(pickedDifficulty);
-      levelSaves.current += 1;
-      Promise.resolve(onAction?.("mewbeat_settings", { settings: { liveDifficulty: pickedDifficulty } }))
-        .catch(() => {})
-        .finally(() => { levelSaves.current -= 1; });
-    }
+    if (pickedDifficulty && pickedDifficulty !== savedDifficulty) saveLevel(pickedDifficulty);
     const { audioKey, track: prepared } = await link.prepare({ uri: picked.uri, source: picked.source });
     link.begin(audioKey, prepared);
-  }, [link, onAction, savedDifficulty]);
+  }, [link, saveLevel, savedDifficulty]);
   // Song select's preview. The song is resolved without charting it, so browsing costs no analysis.
   const previewTokenRef = useRef(0);
   const previewSong = useCallback(async (row) => {
@@ -442,6 +485,30 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const resumeRef = useRef(resumeFromMenu);
   resumeRef.current = resumeFromMenu;
   const restartFromMenu = pauseOpen ? () => { link.restart(); closeMenu(); backToGame(); } : null;
+  // A level picked in the pause menu restarts the map on it. The restart waits for the render that carries the new
+  // level: the game charts with the level it read while rendering, so restarting in the click would chart the old one.
+  const restartOnLevel = useRef(null);
+  // The level lit is the one on stage, which a Settings change to the default does not move. Picking the saved default
+  // while another level plays has no render to wait for: the game already charts with it.
+  const menuLevel = runDifficulty ?? savedDifficulty;
+  const changeLevelFromMenu = (next) => {
+    if (next === menuLevel) return;
+    if (next === savedDifficulty) {
+      link.restart({ abandon: true });
+      closeMenu();
+      backToGame();
+      return;
+    }
+    restartOnLevel.current = next;
+    saveLevel(next);
+  };
+  useEffect(() => {
+    if (restartOnLevel.current !== savedDifficulty) return;
+    restartOnLevel.current = null;
+    link.restart({ abandon: true });
+    closeMenu();
+    backToGame();
+  }, [savedDifficulty]); // eslint-disable-line react-hooks/exhaustive-deps
   // Esc closes the menu (and resumes a paused run) wherever the focus is (a click on the scrim's blank part
   // leaves it outside the menu). The settings panel, when open, takes Esc first.
   useEffect(() => {
@@ -558,24 +625,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const [pulse, setPulse] = useState({ id: 0, count: 0 });
   if (judgement && judgement.kind !== "miss" && judgement.id !== pulse.id) setPulse({ id: judgement.id, count: pulse.count + 1 });
   const pulseClass = pulse.count > 0 && effectsLevel !== "off" ? ` mb-pulse-${pulse.count % 2 ? "a" : "b"}` : "";
-  // A spectator's stage follows the watched player, not the autoplay that draws their notes.
-  const stageHud = watchingLive ? watchedStage(hud, targetEntry) : hud;
-  // FEVER pushes the vibe look past full.
-  const stageVibe = stageHud.feverActive ? 1.4 : Math.min(1, Math.max(0, stageHud.vibe));
-  const feverTimeStyle = stageHud.feverActive
-    ? { opacity: 1, transform: "scaleX(0)", transition: `transform ${Math.max(0, stageHud.feverLeftMs)}ms linear` }
-    : { opacity: 0, transform: "scaleX(1)", transition: "none" };
 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
   const running = phase === "playing" || phase === "paused";
   // The card shows the difficulty of the chart on stage (it can differ from the saved default after a live change).
   const difficulty = runDifficulty ?? savedDifficulty;
-  // The highway readout shows the watched player's combo, not the autoplay's, and no judgements (it plays itself).
-  const readoutHud = useMemo(() => {
-    if (!watchingLive) return hud;
-    const combo = targetEntry?.combo ?? 0;
-    return { ...hud, combo, multiplier: multiplierFor(combo), feverActive: stageHud.feverActive, judgement: null };
-  }, [watchingLive, hud, targetEntry?.combo, stageHud.feverActive]);
   // Back (Live) hides the results of that run; the next run's summary has a new id and shows again. Solo keeps the
   // last summary around until the next run starts, so it only shows while the run it belongs to is on stage.
   const [dismissedId, setDismissedId] = useState(null);
@@ -591,6 +645,22 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [heldSummaryId]);
   const endBanner = holdingCard ? (endSummary.counts?.miss === 0 && !endSummary.autoplay ? "FULL COMBO!" : "SONG COMPLETE") : null;
   const showCard = Boolean(endSummary) && !holdingCard && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  // The hook keeps a finished run's numbers for its end card. Past that, the stage shows an empty run: the next song
+  // spends a while loading and charting before its own run exists.
+  const stagedHud = running || holdingCard || showCard ? hud : EMPTY_HUD;
+  // A spectator's stage follows the watched player, not the autoplay that draws their notes.
+  const stageHud = watchingLive ? watchedStage(stagedHud, targetEntry) : stagedHud;
+  // FEVER pushes the vibe look past full.
+  const stageVibe = stageHud.feverActive ? 1.4 : Math.min(1, Math.max(0, stageHud.vibe));
+  const feverTimeStyle = stageHud.feverActive
+    ? { opacity: 1, transform: "scaleX(0)", transition: `transform ${Math.max(0, stageHud.feverLeftMs)}ms linear` }
+    : { opacity: 0, transform: "scaleX(1)", transition: "none" };
+  // The highway readout shows the watched player's combo, not the autoplay's, and no judgements (it plays itself).
+  const readoutHud = useMemo(() => {
+    if (!watchingLive) return hud;
+    const combo = targetEntry?.combo ?? 0;
+    return { ...hud, combo, multiplier: multiplierFor(combo), feverActive: stageHud.feverActive, judgement: null };
+  }, [watchingLive, hud, targetEntry?.combo, stageHud.feverActive]);
   // Holding R restarts a solo song: during a run, on its pause menu and under its results. A lane bound to R keeps
   // the key while there are notes to hit.
   const restartAction = useRef(null);
@@ -681,20 +751,17 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const boardTick = soloCount ?? (soloWent ? 0 : null);
   const boardPose = soloCount >= 1 && soloCount <= 3 ? `count${soloCount}` : soloCount != null ? "hype" : soloWent ? "go" : mewbitPose;
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
+  // Keyed on the run, not the summary object: the score reply replaces that object and must not restart the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
+  const clipId = clipSummary?.id ?? null;
+  const clipAudioKey = clipSummary?.audioKey ?? null;
+  const clipFromMs = clipSummary?.highlightMs ?? null;
   useEffect(() => {
-    if (!clipSummary || audio.loadedKey() !== clipSummary.audioKey) return undefined;
-    // An outro can still be playing under the card; it ends by itself or when the room moves on to its lobby.
-    const waiting = window.setInterval(() => {
-      if (audio.playing()) return;
-      window.clearInterval(waiting);
-      audio.highlight(clipSummary.highlightMs);
-    }, HIGHLIGHT_WAIT_MS);
-    return () => {
-      window.clearInterval(waiting);
-      audio.stopClip();
-    };
-  }, [audio, clipSummary]);
+    if (clipId === null || audio.loadedKey() !== clipAudioKey) return undefined;
+    // An outro can still be playing: the highlight crossfades over it, however long it would have run.
+    audio.highlight(clipFromMs);
+    return () => audio.stopClip();
+  }, [audio, clipId, clipAudioKey, clipFromMs]);
   let stateCopy;
   if (roomMode) {
     if (showCard || holdingCard) stateCopy = null;
@@ -781,6 +848,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     <SongSelect
       context={context}
       request={requests.request}
+      player={{ userId }}
       defaultDifficulty={savedDifficulty}
       onPlay={pickSong}
       onPreview={previewSong}
@@ -906,13 +974,15 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
                 </div>
               ) : null}
             </div>
-            {watchingLive ? null : <FeverBar hud={hud} />}
+            {watchingLive ? null : <FeverBar hud={stagedHud} />}
           </div>
 
           <aside className="mb-side">
-            <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} progressTimeRef={progressTimeRef} disabled={!running || calibrating} swap={swap} onDifficulty={mode === "live" ? changeDifficulty : undefined} />
-            {watchingLive ? <SpectateCard target={target} players={watchable} entry={targetEntry} onStep={stepWatched} /> : <GameHud hud={hud} />}
-            {(mode === "live" || roomMode) && running ? <LiveBoard store={liveBoard} session={watchingLive ? "room" : runSession} meId={context?.user?.id ?? null} /> : null}
+            <div className={`mb-board mb-lv-${difficulty}`}>
+              <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} progressTimeRef={progressTimeRef} disabled={!running || calibrating} swap={swap} onDifficulty={mode === "live" ? changeDifficulty : undefined} />
+              {watchingLive ? <SpectateCard target={target} players={watchable} entry={targetEntry} onStep={stepWatched} /> : <GameHud hud={stagedHud} />}
+              {(mode === "live" || roomMode) && running ? <LiveBoard store={liveBoard} session={watchingLive ? "room" : runSession} meId={context?.user?.id ?? null} /> : null}
+            </div>
           </aside>
         </div>
       </div>
@@ -959,6 +1029,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           focusSettings={settingsFromMenu}
           onResume={resumeFromMenu}
           onRestart={restartFromMenu ?? undefined}
+          level={restartFromMenu && solo ? menuLevel : undefined}
+          onLevel={restartFromMenu && solo ? changeLevelFromMenu : undefined}
           onPick={solo && !pickerOpen ? () => { link.leave(); closeMenu(); backToGame(); } : undefined}
           onSettings={() => { setSettingsFromMenu(true); setSettingsOpen(true); }}
           onExit={() => {

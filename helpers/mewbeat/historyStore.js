@@ -8,7 +8,7 @@ const DEFAULT_FILE = path.join(__dirname, "..", "data", "mewbeat", "history.json
 // An entry is { audioKey, uri, source, title, artist, artworkUrl, durationMs, difficulty, score, accuracy,
 // grade, ranked, mode, guildId, chartVersion, at }. chartVersion is the stored chart's version (a number, or a
 // string like "31-holds" with generator flags); rounds from before it was recorded have none.
-function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200, debounceMs = 2000 } = {}) {
+function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 2000, debounceMs = 2000 } = {}) {
   const disk = createDebouncedJson({ file, debounceMs });
   const loaded = disk.load();
   const users = new Map();
@@ -31,19 +31,21 @@ function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200
     return (users.get(userId) ?? []).slice(-limit).reverse();
   }
 
-  // Distinct songs played in a guild (null: anywhere), last played first. The
-  // track info comes from the latest round of the song.
-  function played({ guildId = null, limit = 50 } = {}) {
+  // Distinct songs played in a guild (null: anywhere) by one user (null: anyone), last played first. The
+  // track info comes from the latest round of the song; playsBy counts the rounds per level.
+  function played({ guildId = null, userId = null, limit = 50 } = {}) {
     const byKey = new Map();
-    for (const list of users.values()) {
+    for (const [ownerId, list] of users) {
+      if (userId && ownerId !== userId) continue;
       for (const entry of list) {
         if (guildId && entry.guildId !== guildId) continue;
-        const known = byKey.get(entry.audioKey);
+        let known = byKey.get(entry.audioKey);
         if (!known) {
-          byKey.set(entry.audioKey, { entry, plays: 1, lastAt: entry.at });
-          continue;
+          known = { entry, plays: 0, lastAt: entry.at, playsBy: { easy: 0, normal: 0, hard: 0, hell: 0 } };
+          byKey.set(entry.audioKey, known);
         }
         known.plays += 1;
+        if (Object.hasOwn(known.playsBy, entry.difficulty)) known.playsBy[entry.difficulty] += 1;
         if (entry.at >= known.lastAt) {
           known.entry = entry;
           known.lastAt = entry.at;
@@ -53,7 +55,7 @@ function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200
     return [...byKey.values()]
       .sort((a, b) => b.lastAt - a.lastAt)
       .slice(0, limit)
-      .map(({ entry, plays, lastAt }) => ({
+      .map(({ entry, plays, playsBy, lastAt }) => ({
         audioKey: entry.audioKey,
         uri: entry.uri ?? null,
         source: entry.source ?? "",
@@ -62,11 +64,20 @@ function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200
         artworkUrl: entry.artworkUrl ?? null,
         durationMs: entry.durationMs ?? 0,
         plays,
+        playsBy,
         lastAt,
       }));
   }
 
-  return { add, recent, played, flush: disk.flush };
+  // The track of the user's oldest kept round of the song; null when none is kept. A best score outlives
+  // the history window, so the profile asks here when a score has no stored title.
+  function firstTrackOf(userId, audioKey) {
+    const round = (users.get(userId) ?? []).find((entry) => entry.audioKey === audioKey);
+    if (!round) return null;
+    return { title: round.title, artist: round.artist ?? "", artworkUrl: round.artworkUrl ?? null };
+  }
+
+  return { add, recent, played, firstTrackOf, flush: disk.flush };
 }
 
 module.exports = { createHistoryStore };

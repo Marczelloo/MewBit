@@ -62,13 +62,43 @@ describe("mewbeat history store", () => {
     assert.deepStrictEqual(server.map((t) => [t.audioKey, t.plays, t.lastAt]), [["a", 2, 300], ["b", 1, 200]]);
     assert.strictEqual(server[0].title, "A (new title)");
     assert.deepStrictEqual(Object.keys(server[0]).sort(), [
-      "artist", "artworkUrl", "audioKey", "durationMs", "lastAt", "plays", "source", "title", "uri",
+      "artist", "artworkUrl", "audioKey", "durationMs", "lastAt", "plays", "playsBy", "source", "title", "uri",
     ]);
 
     const global = store.played({ guildId: null, limit: 10 });
     assert.deepStrictEqual(global.map((t) => [t.audioKey, t.plays]), [["c", 1], ["a", 3], ["b", 1]]);
     assert.strictEqual(store.played({ guildId: null, limit: 2 }).length, 2);
     assert.deepStrictEqual(store.played({ guildId: "nowhere", limit: 5 }), []);
+  });
+
+  it("keeps 2000 rounds per user by default", () => {
+    const store = open();
+    for (let i = 0; i < 2005; i += 1) store.add("u1", entry(`k${i}`));
+    assert.strictEqual(store.recent("u1", 5000).length, 2000);
+    assert.strictEqual(store.recent("u1", 1)[0].audioKey, "k2004");
+  });
+
+  it("lists one user's songs with the rounds per level", () => {
+    const store = open();
+    store.add("u1", entry("a", { at: 100, difficulty: "easy" }));
+    store.add("u1", entry("a", { at: 200, difficulty: "hard" }));
+    store.add("u1", entry("a", { at: 300, difficulty: "hard" }));
+    store.add("u2", entry("a", { at: 400, difficulty: "hell" }));
+    store.add("u2", entry("b", { at: 500, difficulty: "normal" }));
+    const mine = store.played({ userId: "u1", limit: 10 });
+    assert.deepStrictEqual(mine.map((t) => [t.audioKey, t.plays]), [["a", 3]]);
+    assert.deepStrictEqual(mine[0].playsBy, { easy: 1, normal: 0, hard: 2, hell: 0 });
+    const everyone = store.played({ limit: 10 });
+    assert.deepStrictEqual(everyone.find((t) => t.audioKey === "a").playsBy, { easy: 1, normal: 0, hard: 2, hell: 1 });
+  });
+
+  it("finds the first track a user played for a song", () => {
+    const store = open();
+    store.add("u1", entry("a", { at: 100, title: "Old title" }));
+    store.add("u1", entry("a", { at: 200, title: "New title" }));
+    assert.deepStrictEqual(store.firstTrackOf("u1", "a"), { title: "Old title", artist: "Artist", artworkUrl: null });
+    assert.strictEqual(store.firstTrackOf("u1", "zzz"), null);
+    assert.strictEqual(store.firstTrackOf("nobody", "a"), null);
   });
 
   it("survives a restart after flush and tolerates a corrupt file", async () => {

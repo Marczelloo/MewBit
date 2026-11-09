@@ -129,6 +129,20 @@ describe("mewbeat chart store with a melody decoder", () => {
     assert.deepStrictEqual(generate.withMelody, [true]);
   });
 
+  it("forgets the summary of dropped charts with them", async () => {
+    const earlier = createChartStore({ dir, analysis: fakeAnalysis(features), log: quietLog });
+    await earlier.getCharts(track, "node");
+    const gate = deferred();
+    const run = async () => { await gate.promise; return decoded; };
+    const store = createChartStore({ dir, analysis: fakeAnalysis(features), log: quietLog, melodyDecoder: decoderOf(run) });
+
+    assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
+    assert.ok(store.summaryReader()(track));
+    gate.resolve();
+    await waitFor(() => chartFiles().length === 0);
+    assert.strictEqual(store.summaryReader()(track), null);
+  });
+
   it("keeps stored charts when the background decode fails", async () => {
     const earlier = createChartStore({ dir, analysis: fakeAnalysis(features), log: quietLog });
     await earlier.getCharts(track, "node");

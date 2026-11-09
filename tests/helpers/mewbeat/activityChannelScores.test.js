@@ -8,6 +8,7 @@ const { createMewbeatChannel } = require("../../../helpers/mewbeat/activityChann
 const { audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 const { createHistoryStore } = require("../../../helpers/mewbeat/historyStore");
 const { createScoreStore } = require("../../../helpers/mewbeat/scoreStore");
+const { createStatsStore } = require("../../../helpers/mewbeat/statsStore");
 const { createSoloTracks } = require("../../../helpers/mewbeat/soloTracks");
 
 const KEY = "youtube:abc:200000";
@@ -29,7 +30,7 @@ function makeCharts({ version = VERSION } = {}) {
     { t: 1000, lane: 0 }, { t: 1500, lane: 1 }, { t: 2000, lane: 2 }, { t: 2500, lane: 3, len: 400 }, { t: 3500, lane: 0 },
   ];
   const chart = (difficulty, extra) => ({ version, audioKey: KEY, difficulty, notes, ...extra });
-  return { easy: chart("easy", { stars: 1.5 }), normal: chart("normal"), hard: chart("hard"), hell: chart("hell") };
+  return { easy: chart("easy", { stars: 1.5 }), normal: chart("normal", { bpm: 128 }), hard: chart("hard"), hell: chart("hell") };
 }
 
 function perfectEvents(offset = 0) {
@@ -67,18 +68,23 @@ describe("mewbeat channel scores", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ charts = makeCharts(), unlocked = true, playback = null, register = true, log } = {}) {
+  function setup({ charts = makeCharts(), unlocked = true, playback = null, register = true, log, durationMs = 200000, walks } = {}) {
     let clock = 1_000;
     const now = () => (clock += 10);
     const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now });
+    if (walks) {
+      const walk = scoreStore.forEachEntry;
+      scoreStore.forEachEntry = (fn) => { walks.count += 1; return walk(fn); };
+    }
     const historyStore = createHistoryStore({ file: path.join(dir, "history.json"), now });
+    const statsStore = createStatsStore({ file: path.join(dir, "stats.json"), now });
     const soloTracks = createSoloTracks();
     const track = fakeTrack();
     if (register) {
       soloTracks.put(KEY, {
         track,
         node: "n",
-        info: { title: "Song", artist: "Artist", durationMs: 200000, artworkUrl: "https://i/1.png", uri: "https://y/abc", source: "youtube" },
+        info: { title: "Song", artist: "Artist", durationMs, artworkUrl: "https://i/1.png", uri: "https://y/abc", source: "youtube" },
       });
     }
     const peeked = [];
@@ -96,9 +102,10 @@ describe("mewbeat channel scores", () => {
       soloTracks,
       scoreStore,
       historyStore,
+      statsStore,
       log,
     });
-    return { channel, scoreStore, historyStore, peeked };
+    return { channel, scoreStore, historyStore, statsStore, peeked };
   }
 
   const submit = (channel, message, { guildId = "g1", userId = "ann", profile = ANN } = {}) =>
@@ -431,8 +438,295 @@ describe("mewbeat channel scores", () => {
 
     it("rejects a bad scope", async () => {
       const { channel } = setup();
-      const reply = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "mine" });
+      const reply = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "world" });
       assert.strictEqual(reply.status, "error");
+      assert.strictEqual(reply.reason, "bad_scope");
+    });
+
+    it("scope mine lists only your own songs, with the tempo of the stored chart and the rounds per level", async () => {
+      const { channel, historyStore } = setup();
+      await submit(channel, submitMessage(), { guildId: "g1" });
+      await submit(channel, submitMessage({ id: "s2", difficulty: "easy" }), { guildId: "g1" });
+      historyStore.add("bo", {
+        audioKey: "youtube:other:1000", uri: null, source: "youtube", title: "Bo's", artist: "", artworkUrl: null, durationMs: 1, difficulty: "hard",
+        score: 1, accuracy: 1, grade: "D", ranked: false, mode: "solo", guildId: "g2",
+      });
+
+      const mine = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "mine" });
+      assert.deepStrictEqual(mine.tracks.map((track) => track.audioKey), [KEY]);
+      assert.strictEqual(mine.tracks[0].bpm, 128);
+      assert.deepStrictEqual(mine.tracks[0].playsBy, { easy: 1, normal: 0, hard: 1, hell: 0 });
+
+      const global = await submit(channel, { type: "mewbeat_played", id: "p2", scope: "global" });
+      assert.deepStrictEqual(global.tracks.map((track) => track.audioKey).sort(), ["youtube:other:1000", KEY].sort());
+      // A song whose charts are not stored has no tempo to give.
+      assert.strictEqual(global.tracks.find((track) => track.audioKey === "youtube:other:1000").bpm, null);
+    });
+
+    it("takes the tempo from any difficulty when normal has none", async () => {
+      const charts = makeCharts();
+      delete charts.normal.bpm;
+      charts.hard.bpm = 140;
+      const { channel } = setup({ charts });
+      await submit(channel, submitMessage());
+      const reply = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "mine" });
+      assert.strictEqual(reply.tracks[0].bpm, 140);
+    });
+
+    it("answers up to 500 songs", async () => {
+      const { channel, historyStore } = setup({ charts: null });
+      for (let i = 0; i < 520; i += 1) {
+        historyStore.add("ann", {
+          audioKey: `youtube:s${i}:1000`, uri: null, source: "youtube", title: `S${i}`, artist: "", artworkUrl: null, durationMs: 1, difficulty: "hard",
+          score: 1, accuracy: 1, grade: "D", ranked: false, mode: "solo", guildId: "g1",
+        });
+      }
+      const reply = await submit(channel, { type: "mewbeat_played", id: "p1", scope: "mine", limit: 9999 });
+      assert.strictEqual(reply.tracks.length, 500);
+    });
+  });
+
+  describe("stats, profile and ranking", () => {
+    const profileMessage = (overrides) => ({ type: "mewbeat_profile", id: "pr1", ...overrides });
+    const statsMessage = (overrides) => ({ type: "mewbeat_stats", id: "st1", ...overrides });
+    const rankingMessage = (overrides) => ({ type: "mewbeat_ranking", id: "rk1", scope: "global", ...overrides });
+    const CY = { id: "cy", username: "Cy", avatarUrl: null };
+    const asCy = { userId: "cy", profile: CY };
+
+    it("shows yourself with no rounds as zeros and no rank", async () => {
+      const { channel } = setup();
+      const reply = await submit(channel, profileMessage(), asCy);
+      assert.deepStrictEqual(reply, {
+        type: "mewbeat_profile",
+        id: "pr1",
+        status: "ok",
+        player: { userId: "cy", username: "Cy", avatarUrl: null, firstAt: null },
+        rating: { pp: 0, global: null, server: null },
+        summary: { plays: 0, avgAccuracy: 0, songs: 0, playMs: 0, bestGrades: { S: 0, A: 0, B: 0, C: 0, D: 0 } },
+        recent: [],
+        best: [],
+      });
+    });
+
+    it("refuses an unknown player, a locked requester and a bad user id", async () => {
+      const { channel } = setup();
+      assert.deepStrictEqual(await submit(channel, profileMessage({ userId: "nobody" }), asCy), { type: "mewbeat_profile", id: "pr1", status: "error", reason: "not_found" });
+      assert.strictEqual((await submit(setup({ unlocked: false }).channel, profileMessage())).reason, "locked");
+      for (const userId of [5, "", "x".repeat(41), { a: 1 }]) {
+        assert.strictEqual((await submit(channel, profileMessage({ userId }), asCy)).reason, "bad_request", String(userId));
+      }
+      assert.strictEqual((await submit(channel, profileMessage({ id: "" }), asCy)).type, "error");
+    });
+
+    it("shows a profile with the rounds, the best plays and the rating after a ranked run", async () => {
+      const { channel } = setup();
+      const run = await submit(channel, submitMessage());
+      const mine = await submit(channel, profileMessage());
+      assert.strictEqual(mine.status, "ok");
+      assert.deepStrictEqual({ ...mine.player, firstAt: typeof mine.player.firstAt }, { userId: "ann", username: "Ann", avatarUrl: "https://a/ann.png", firstAt: "number" });
+      assert.strictEqual(mine.summary.plays, 1);
+      assert.strictEqual(mine.summary.songs, 1);
+      assert.strictEqual(mine.summary.playMs, 3500);
+      assert.strictEqual(mine.summary.avgAccuracy, run.result.accuracy);
+      assert.deepStrictEqual(mine.summary.bestGrades, { S: 0, A: 0, B: 1, C: 0, D: 0 });
+      assert.ok(mine.rating.pp > 0);
+      assert.deepStrictEqual([mine.rating.global, mine.rating.server], [1, 1]);
+
+      assert.deepStrictEqual(mine.recent.map((round) => [round.audioKey, round.title, round.difficulty, round.grade, round.score]), [[KEY, "Song", "hard", "B", 1500]]);
+      assert.deepStrictEqual(Object.keys(mine.recent[0]).sort(), ["accuracy", "artist", "artworkUrl", "at", "audioKey", "difficulty", "grade", "score", "title"]);
+      assert.strictEqual(mine.best.length, 1);
+      assert.deepStrictEqual(Object.keys(mine.best[0]).sort(), ["accuracy", "artist", "artworkUrl", "audioKey", "difficulty", "grade", "pp", "stars", "title"]);
+      assert.strictEqual(mine.best[0].title, "Song");
+      assert.strictEqual(mine.best[0].pp, mine.rating.pp);
+
+      // Anyone can look at another player.
+      const other = await submit(channel, profileMessage({ userId: "ann" }), { userId: "bo", profile: BO });
+      assert.strictEqual(other.status, "ok");
+      assert.strictEqual(other.player.username, "Ann");
+      assert.strictEqual(other.summary.plays, 1);
+    });
+
+    it("lists eight rows at most in each list", async () => {
+      const { channel } = setup();
+      for (let i = 0; i < 10; i += 1) await submit(channel, submitMessage({ id: `s${i}` }));
+      const reply = await submit(channel, profileMessage());
+      assert.strictEqual(reply.recent.length, 8);
+    });
+
+    it("answers stats in the shape of the stats store", async () => {
+      const { channel, statsStore } = setup();
+      await submit(channel, submitMessage({ presses: 42, emptyPresses: 7 }));
+      const reply = await submit(channel, statsMessage());
+      assert.strictEqual(reply.type, "mewbeat_stats");
+      assert.strictEqual(reply.id, "st1");
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(reply.player.userId, "ann");
+      assert.deepStrictEqual(reply.stats, statsStore.summaryOf("ann"));
+      assert.deepStrictEqual(await submit(channel, statsMessage({ userId: "nobody" })), { type: "mewbeat_stats", id: "st1", status: "error", reason: "not_found" });
+      assert.strictEqual((await submit(channel, statsMessage({ userId: 5 }))).reason, "bad_request");
+    });
+
+    it("lists the 50 maps with the highest max combo, the rest of the stats whole", async () => {
+      const { channel, statsStore } = setup();
+      for (let index = 0; index < 60; index++) {
+        statsStore.add("ann", { audioKey: `youtube|song${index}|180000`, difficulty: "normal", track: { title: `Song ${index}` }, durationMs: 1000, accuracy: 90, maxCombo: index + 1, parts: 100, counts: {} });
+      }
+      const { stats } = await submit(channel, statsMessage());
+      assert.strictEqual(stats.maps.length, 50);
+      assert.strictEqual(stats.maps[0].maxCombo, 60);
+      assert.strictEqual(stats.maps[49].maxCombo, 11);
+      assert.strictEqual(stats.songs, 60);
+      assert.strictEqual(stats.plays, 60);
+      assert.deepStrictEqual(stats.bestCombo, { value: 60, title: "Song 59" });
+    });
+
+    it("counts a real run in the stats, also an unranked one, but not calibration or autoplay", async () => {
+      const { channel, statsStore } = setup();
+      await submit(channel, submitMessage({ flags: { calibration: true } }));
+      await submit(channel, submitMessage({ flags: { autoplay: true } }));
+      assert.strictEqual(statsStore.has("ann"), false);
+
+      const unranked = await submit(channel, submitMessage({ flags: { difficultyChanged: true } }));
+      assert.strictEqual(unranked.result.ranked, false);
+      const summary = statsStore.summaryOf("ann");
+      assert.strictEqual(summary.plays, 1);
+      assert.deepStrictEqual(summary.counts, { perfect: 4, great: 1, good: 1, miss: 0 });
+      assert.strictEqual(summary.playMs, 3500);
+      assert.strictEqual(summary.username, "Ann");
+      // The hold of 400 ms was held to its tail at 2900, a hold of 400.
+      assert.strictEqual(summary.holdMs, 400);
+      assert.strictEqual(summary.timing.earlyShare, 0);
+    });
+
+    it("keeps the song on the score, so the ranking can name it", async () => {
+      const { channel, scoreStore } = setup();
+      await submit(channel, submitMessage());
+      let seen;
+      scoreStore.forEachEntry((chartKey, entry) => { seen = entry; });
+      assert.deepStrictEqual([seen.title, seen.artist, seen.artworkUrl], ["Song", "Artist", "https://i/1.png"]);
+    });
+
+    it("counts key presses only when they are whole numbers within bounds", async () => {
+      for (const presses of [-1, 1.5, "9", 1e9, null]) {
+        const { channel, statsStore } = setup();
+        const reply = await submit(channel, submitMessage({ presses, emptyPresses: presses }));
+        assert.strictEqual(reply.status, "ok", String(presses));
+        assert.strictEqual(statsStore.summaryOf("ann").presses, 0, String(presses));
+        assert.strictEqual(statsStore.summaryOf("ann").emptyPresses, 0, String(presses));
+      }
+      const { channel, statsStore } = setup();
+      await submit(channel, submitMessage({ presses: 42, emptyPresses: 7 }));
+      assert.strictEqual(statsStore.summaryOf("ann").presses, 42);
+      assert.strictEqual(statsStore.summaryOf("ann").emptyPresses, 7);
+    });
+
+    it("never counts more empty presses than presses", async () => {
+      const { channel, statsStore } = setup();
+      await submit(channel, submitMessage({ presses: 5, emptyPresses: 50 }));
+      assert.strictEqual(statsStore.summaryOf("ann").emptyPresses, 5);
+    });
+
+    it("ranks players by rating, per server or everywhere, with your own place", async () => {
+      const { channel } = setup();
+      await submit(channel, submitMessage(), { guildId: "g1" });
+      await submit(channel, submitMessage({
+        events: perfectEvents().map((event) => (event.n === 0 ? { ...event, j: "good" } : event)),
+      }), { guildId: "g2", userId: "bo", profile: BO });
+
+      const global = await submit(channel, rankingMessage(), { guildId: "g2", userId: "bo", profile: BO });
+      assert.strictEqual(global.type, "mewbeat_ranking");
+      assert.strictEqual(global.id, "rk1");
+      assert.strictEqual(global.status, "ok");
+      assert.deepStrictEqual(global.entries.map((entry) => [entry.rank, entry.userId]), [[1, "ann"], [2, "bo"]]);
+      // Your own row carries the name, picture and accuracy the pinned row needs, as a ranking row would.
+      assert.deepStrictEqual(global.own, { rank: 2, pp: global.entries[1].pp, username: "Bo", avatarUrl: null, accuracy: global.entries[1].accuracy });
+      const asAnn = await submit(channel, rankingMessage(), { guildId: "g1" });
+      assert.deepStrictEqual(asAnn.own, { rank: 1, pp: asAnn.entries[0].pp, username: "Ann", avatarUrl: "https://a/ann.png", accuracy: asAnn.entries[0].accuracy });
+
+      const server = await submit(channel, rankingMessage({ scope: "server" }), { guildId: "g2", userId: "bo", profile: BO });
+      assert.deepStrictEqual(server.entries.map((entry) => entry.userId), ["bo"]);
+      assert.strictEqual(server.own.rank, 1);
+
+      assert.strictEqual((await submit(channel, rankingMessage({ limit: 1 }))).entries.length, 1);
+      const nobody = await submit(channel, rankingMessage(), asCy);
+      // Without a rated play there is no accuracy; the name and picture come from the requester's profile.
+      assert.deepStrictEqual(nobody.own, { rank: null, pp: 0, username: "Cy", avatarUrl: null, accuracy: null });
+    });
+
+    it("refuses a bad scope and a locked requester", async () => {
+      assert.strictEqual((await submit(setup().channel, rankingMessage({ scope: "mine" }))).reason, "bad_scope");
+      assert.strictEqual((await submit(setup({ unlocked: false }).channel, rankingMessage())).reason, "locked");
+    });
+
+    it("does not rebuild the ranking for a run that is no new best", async () => {
+      const walks = { count: 0 };
+      const { channel } = setup({ walks });
+      await submit(channel, submitMessage());
+      await submit(channel, rankingMessage());
+      assert.strictEqual(walks.count, 1);
+      const worse = await submit(channel, submitMessage({ events: perfectEvents().map((event) => ({ ...event, j: "good" })) }));
+      assert.strictEqual(worse.result.newBest, false);
+      await submit(channel, rankingMessage());
+      assert.strictEqual(walks.count, 1);
+    });
+
+    it("stores the share of the chart that was judged next to a new best", async () => {
+      const { channel, scoreStore } = setup();
+      const stored = () => { let seen; scoreStore.forEachEntry((chartKey, entry) => { seen = entry; }); return seen; };
+      // Four of the six judgements (a hold has two).
+      await submit(channel, submitMessage({ events: perfectEvents().slice(0, 4) }));
+      assert.strictEqual(stored().completion, 0.6667);
+      await submit(channel, submitMessage());
+      assert.strictEqual(stored().completion, 1);
+    });
+
+    it("rates a partial run lower than the whole map at the same accuracy", async () => {
+      const whole = setup();
+      await submit(whole.channel, submitMessage());
+      const partial = setup();
+      await submit(partial.channel, submitMessage({ events: perfectEvents().slice(0, 3) }));
+      const ppOf = async (env) => (await submit(env.channel, { type: "mewbeat_profile", id: "p" })).rating.pp;
+      assert.ok((await ppOf(partial)) < (await ppOf(whole)));
+    });
+
+    it("counts a run in the stats only when at least half of it was judged", async () => {
+      const { channel, statsStore } = setup();
+      await submit(channel, submitMessage({ events: perfectEvents().slice(0, 2) }));
+      assert.strictEqual(statsStore.has("ann"), false);
+      // Three of six judgements, the furthest being the tap at 2000: that much of the song was played.
+      await submit(channel, submitMessage({ events: perfectEvents().slice(0, 3) }));
+      assert.strictEqual(statsStore.summaryOf("ann").plays, 1);
+      assert.strictEqual(statsStore.summaryOf("ann").playMs, 2000);
+    });
+
+    it("adds the time up to the furthest judged note, a hold counting to its end, never past the song", async () => {
+      const { channel, statsStore } = setup();
+      await submit(channel, submitMessage());
+      assert.strictEqual(statsStore.summaryOf("ann").playMs, 3500);
+      const brief = setup({ durationMs: 3000 });
+      await submit(brief.channel, submitMessage());
+      assert.strictEqual(brief.statsStore.summaryOf("ann").playMs, 3000);
+    });
+
+    it("shows a ranked submit in the ranking at once, although the table is cached", async () => {
+      const { channel } = setup();
+      assert.deepStrictEqual((await submit(channel, rankingMessage())).entries, []);
+      await submit(channel, submitMessage());
+      assert.deepStrictEqual((await submit(channel, rankingMessage())).entries.map((entry) => entry.userId), ["ann"]);
+    });
+
+    it("works without a stats store, answering unavailable for the profile messages", async () => {
+      const channel = createMewbeatChannel({
+        readPlayback: () => null,
+        chartStore: { getCharts: async () => ({ status: "ready", charts: makeCharts() }), peekCharts: () => ({ status: "ready", charts: makeCharts() }) },
+        isUnlocked: () => true,
+        soloTracks: (() => { const tracks = createSoloTracks(); tracks.put(KEY, { track: fakeTrack(), node: "n", info: { title: "Song" } }); return tracks; })(),
+        scoreStore: createScoreStore({ file: path.join(dir, "scores2.json") }),
+        historyStore: createHistoryStore({ file: path.join(dir, "history2.json") }),
+      });
+      assert.strictEqual((await submit(channel, submitMessage())).status, "ok");
+      assert.strictEqual((await submit(channel, profileMessage())).reason, "unavailable");
+      assert.strictEqual((await submit(channel, statsMessage())).reason, "unavailable");
     });
   });
 

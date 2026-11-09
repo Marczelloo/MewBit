@@ -7,6 +7,7 @@ const { backupCorruptFile, writeJsonAtomic } = require("../data/atomicJson");
 const { audioKeyFile, audioKeyOf } = require("./audioKey");
 const { analysisClient } = require("./analysisClient");
 const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
+const { summarizeCharts } = require("./chartSummary");
 const { GENERATOR_VERSION, generateAll } = require("./charts/generate");
 const { FLAGS_FILE_NAME, flagsKey, normalFlags } = require("./charts/flags");
 const { withMelodyFile } = require("./charts/melodyFile");
@@ -86,6 +87,9 @@ const UNCHARTED = (reason) => ({ status: "uncharted", reason });
 function createChartStore({ dir, analysis, generate = generateAll, log = Log, melodyDecoder = null, melodyWaitMs = MELODY_WAIT_MS }) {
   const chartsByKey = new Map(); // keyed by memoryKey: the audio key and the flags
   const unchartedByKey = new Map(); // memoryKey -> reason
+  // memoryKey -> summarizeCharts(charts). Kept after the charts leave memory, so the song lists and the rating
+  // need not parse the chart file again; dropped with the charts.
+  const summaryByKey = new Map();
   const pendingByKey = new Map();
   const flagsFile = path.join(dir, FLAGS_FILE_NAME);
   let seenFlags = { text: null, state: { flags: {}, key: "" } };
@@ -145,6 +149,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log, me
   function remember(id, charts) {
     const paced = withPace(charts);
     writeMemory(id, paced);
+    summaryByKey.set(id, summarizeCharts(paced));
     return READY(paced);
   }
 
@@ -204,7 +209,7 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log, me
   // Charts made without a melody are dropped once it is decoded: the files of every combination of flags for this audio, the
   // uncharted markers too, and what is in memory, so the next request generates them again with the melody.
   async function dropCharts(key) {
-    for (const map of [chartsByKey, unchartedByKey]) {
+    for (const map of [chartsByKey, unchartedByKey, summaryByKey]) {
       for (const id of [...map.keys()]) if (id === key || id.startsWith(`${key}|`)) map.delete(id);
     }
     const chartsDir = path.join(dir, "charts");
@@ -326,7 +331,20 @@ function createChartStore({ dir, analysis, generate = generateAll, log = Log, me
     return status?.status === "uncharted" ? UNCHARTED(status.reason) : null;
   }
 
-  return { getCharts, peekCharts };
+  // A lookup of song summaries (chartSummary.js) for a caller that needs many in one go: the flags file is read once
+  // for the reader, not once per song. Null: no charts known for the song (nothing is generated or analysed).
+  function summaryReader() {
+    const flagged = currentFlags().key;
+    return (track) => {
+      const key = audioKeyOf(track);
+      if (!key) return null;
+      if (isCalibrationTrack(track)) return summarizeCharts(calibrationCharts(track));
+      const id = memoryKey(key, flagged);
+      return summaryByKey.get(id) ?? (known(key, flagged)?.status === "ready" ? summaryByKey.get(id) : null);
+    };
+  }
+
+  return { getCharts, peekCharts, summaryReader };
 }
 
 const DATA_DIR = path.join(__dirname, "..", "data", "mewbeat");

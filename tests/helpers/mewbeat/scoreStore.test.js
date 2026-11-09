@@ -110,6 +110,43 @@ describe("mewbeat score store", () => {
     assert.strictEqual(reopened.rankOf({ chartKey: KEY, userId: "u1", guildId: "g1" }), 1);
   });
 
+  it("keeps the track on the best entry only, out of the board replies", () => {
+    const store = open();
+    store.submit(run({ track: { title: "Song", artist: "Art", artworkUrl: "https://a/art.png" } }));
+    store.submit(run({ score: 500, at: 200, track: { title: "Other", artist: "X", artworkUrl: null } }));
+    let stored;
+    store.forEachEntry((chartKey, entry) => { stored = entry; });
+    assert.strictEqual(stored.title, "Song");
+    assert.strictEqual(stored.artworkUrl, "https://a/art.png");
+    store.submit(run({ score: 2000, at: 300, track: { title: "Renamed", artist: "Art", artworkUrl: null } }));
+    store.forEachEntry((chartKey, entry) => { stored = entry; });
+    assert.strictEqual(stored.title, "Renamed");
+    assert.ok(!("title" in store.bestOf(KEY, "u1")));
+    assert.ok(!("title" in store.board({ chartKey: KEY })[0]));
+  });
+
+  it("keeps the completion flat on the entry of a new best only", () => {
+    const store = open();
+    const completionOf = () => { let stored; store.forEachEntry((chartKey, entry) => { stored = entry; }); return stored.completion; };
+    store.submit(run({ completion: 0.55 }));
+    assert.strictEqual(completionOf(), 0.55);
+    store.submit(run({ score: 500, at: 200, completion: 1 }));
+    assert.strictEqual(completionOf(), 0.55);
+    store.submit(run({ score: 2000, at: 300, completion: 0.9 }));
+    assert.strictEqual(completionOf(), 0.9);
+    assert.ok(!("completion" in store.bestOf(KEY, "u1")));
+  });
+
+  it("visits every chart and user with the stored entry", () => {
+    const store = open();
+    store.submit(run({ userId: "u1", guildId: "g1" }));
+    store.submit(run({ userId: "u2", guildId: "g2", profile: { username: "Bo" } }));
+    store.submit(run({ chartKey: "other|easy|1", userId: "u1", guildId: "g1" }));
+    const seen = [];
+    store.forEachEntry((chartKey, entry) => seen.push(`${chartKey}:${entry.userId}:${entry.guildIds}`));
+    assert.deepStrictEqual(seen.sort(), ["other|easy|1:u1:g1", `${KEY}:u1:g1`, `${KEY}:u2:g2`]);
+  });
+
   it("writes by itself after the debounce", async () => {
     const store = open();
     store.submit(run());
