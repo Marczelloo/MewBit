@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mewbeat room lobby and minimized window mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* tokens copied from activity/src/mewbeat/mewbeat.css (--mb-*) and the approved song-select-profile.html */
+:root{--bg:#050608;--surface:#0c0e12;--raised:#111318;--text:#f4f6f9;--muted:#9ba4b2;--faint:#6b7380;--high:#c3cbd7;--cyan:#67e3f4;--violet:#a78bfa;--pink:#ff6ec7;--gold:#ffd479;--danger:#ff8098;--line:rgb(255 255 255/.1);--mono:"JetBrains Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:#17191f;color:var(--text);font:600 14px/1.3 "Hanken Grotesk","Segoe UI",sans-serif}
+button{font:inherit;color:inherit}
+ol,ul{margin:0;padding:0;list-style:none}
+.page{max-width:1360px;margin:0 auto;padding:22px 16px 56px}
+h1{margin:0 0 4px;font-size:22px;font-weight:900;letter-spacing:-.02em}
+.lead{max-width:920px;margin:0 0 14px;color:var(--muted);font-size:13.5px}
+h2.sec{display:flex;align-items:baseline;gap:10px;margin:38px 0 4px;font-size:17px;font-weight:900;letter-spacing:-.01em}
+h2.sec small{color:var(--faint);font:500 11px var(--mono)}
+.cap{max-width:1000px;margin:0 0 12px;color:var(--muted);font-size:13px}
+.cap b{color:var(--high)}
+.switch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}
+.switch b{margin-right:6px;color:var(--high);font-weight:800;font-size:13px}
+.switch button{min-height:32px;padding:0 12px;border:0;border-radius:9px;background:#262a33;cursor:pointer;font-size:13px}
+.switch button.on{background:var(--cyan);color:#06222a;font-weight:800}
+.switch span{color:var(--faint);font-size:12px}
+
+/* difficulty colours and grade colours (as in song select) */
+.e{--c:var(--cyan)}.n{--c:var(--violet)}.h{--c:var(--pink)}.x{--c:var(--danger)}
+.dl{color:var(--c)}
+.S{color:var(--gold)}.A{color:var(--cyan)}.B{color:var(--violet)}.C{color:var(--high)}.D{color:var(--danger)}
+.label{color:var(--faint);font:500 10px/1.4 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.panel{border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.cover{display:block;flex:none;border-radius:8px}
+.av{display:grid;flex:none;place-items:center;border-radius:50%;font-weight:900;color:#0b0d11}
+.btn{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--raised);color:var(--high);font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:rgb(255 255 255/.28);color:var(--text)}
+
+/* ===== fixed-size frames; nothing inside them is clipped, so a spill would show ===== */
+.frame{position:relative;flex:none;border-radius:14px;outline:1px solid var(--line);background:var(--bg)}
+.f1{width:1280px;height:720px}
+.f2{width:800px;height:480px}
+.lb{display:grid;grid-template-rows:50px minmax(0,1fr);width:100%;height:100%}
+
+/* header: the real game header (wordmark, Live / Solo / Room, menu) */
+.hdr{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line);border-radius:14px 14px 0 0;background:var(--bg)}
+.word{font-size:18px;font-weight:900;letter-spacing:-.02em}
+.modes{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--surface)}
+.modes span{display:grid;place-items:center;min-height:26px;padding:0 14px;border-radius:999px;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.modes span.on{background:rgb(103 227 244/.14);color:var(--cyan)}
+.hdr-end{display:flex;justify-content:flex-end;gap:8px}
+.hdr-btn{display:grid;place-items:center;min-height:34px;padding:0 12px;border:1px solid rgb(255 255 255/.14);border-radius:10px;background:var(--raised);font-size:13px;font-weight:700;white-space:nowrap}
+.hdr-btn.leave{border-color:rgb(255 128 152/.35);color:var(--danger)}
+
+.lbody{display:grid;grid-template-columns:minmax(0,1fr) 380px;min-height:0;border-radius:0 0 14px 14px;background:radial-gradient(90% 60% at 100% 0%,rgb(167 139 250/.1),transparent 60%),radial-gradient(70% 60% at 0% 100%,rgb(255 110 199/.08),transparent 60%),var(--bg)}
+
+/* ----- left column ----- */
+.lcol{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:14px 20px}
+.lcol>*{flex:none}
+.lcol>.board{flex:1 1 0;min-height:120px}
+
+.hero-top{display:grid;grid-template-columns:80px minmax(0,1fr) auto;align-items:center;gap:14px;padding:10px 14px}
+.hero .cover{width:80px;height:80px;border-radius:14px;outline:1px solid rgb(255 255 255/.14)}
+.ht{min-width:0}
+.hero h2{margin:2px 0 0;overflow:hidden;font-size:26px;font-weight:900;letter-spacing:-.03em;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
+.hero .art{overflow:hidden;color:var(--muted);font-size:13px;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.chip{padding:4px 7px;border-radius:7px;background:var(--raised);outline:1px solid var(--line);color:var(--muted);font:500 11px/1 var(--mono)}
+.clock{display:flex;flex-direction:column;align-items:flex-end;gap:5px;padding-left:16px;border-left:1px solid var(--line)}
+.crow{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.time{font:700 48px/.95 var(--mono);letter-spacing:-.06em;font-variant-numeric:tabular-nums}
+.startbtn{min-height:30px;padding:0 12px;border-color:rgb(103 227 244/.5);color:var(--cyan)}
+.ctext{margin:0;padding:6px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctext strong{color:var(--text)}
+
+.queue{display:flex;flex-direction:column;gap:6px}
+.qhead{display:flex;align-items:center;justify-content:space-between;min-height:26px}
+.qhead .btn{min-height:26px;padding:0 10px;font-size:12px}
+.tl{display:flex;gap:4px}
+.seg{position:relative;display:flex;flex-basis:0;flex-direction:column;gap:9px;min-width:124px;padding-bottom:4px}
+.sbar{height:10px;border-radius:5px;background:#161920}
+.seg.mine .sbar{background:var(--pink)}
+.seg.mine .stx b{color:var(--pink)}
+.stx{min-width:0;padding-right:22px}
+.stx b{display:block;overflow:hidden;font-size:13px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.stx small{display:block;margin-top:2px;overflow:hidden;color:var(--faint);font:500 11px var(--mono);text-overflow:ellipsis;white-space:nowrap}
+.sx{position:absolute;right:0;bottom:4px;display:grid;place-items:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--faint);font-size:15px;line-height:1;cursor:pointer}
+.sx:hover{background:var(--raised);color:var(--danger)}
+
+.sec2{display:flex;flex-direction:column;gap:6px}
+.diffs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.diff{display:flex;flex-direction:column;gap:2px;min-width:0;padding:9px 12px;border:0;border-radius:12px;background:var(--surface);outline:1px solid var(--line);text-align:left;cursor:pointer}
+.diff:hover{background:var(--raised)}
+.diff.on{outline:2px solid var(--c);background:var(--raised)}
+.drow{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.drow b{font-size:14px;font-weight:800}
+.stars{color:var(--c);font:700 11.5px var(--mono)}
+.diff small{overflow:hidden;color:var(--faint);font:500 11.5px/1.3 var(--mono);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap}
+.diff .best{color:var(--muted)}
+.diff .best b{font-weight:900}
+.bar{height:3px;margin:5px 0;border-radius:2px;background:#161920;overflow:hidden}.bar i{display:block;height:100%;background:var(--c)}
+
+/* leaderboard: same rows as the Solo select */
+.block{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.block h3{display:flex;align-items:center;justify-content:space-between;margin:0;padding:8px 8px 8px 14px;color:var(--muted);font:500 11px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.seg2{display:inline-flex;gap:2px;padding:2px;border-radius:9px;background:var(--bg);outline:1px solid var(--line);letter-spacing:.04em;text-transform:none}
+.seg2 button{min-height:24px;padding:0 10px;border:0;border-radius:7px;background:none;color:var(--muted);font:700 11px/1 var(--mono);cursor:pointer}
+.seg2 button.on{background:rgb(103 227 244/.14);color:var(--cyan)}
+.rows{flex:1 1 0;min-height:0;overflow-y:auto}
+.empty{padding:22px 14px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px;text-align:center}
+.pl{display:grid;grid-template-columns:30px 26px minmax(0,1fr) 24px 62px 86px;align-items:center;gap:9px;padding:4px 14px;border-top:1px solid var(--line);font:500 12.5px/1.2 var(--mono);font-variant-numeric:tabular-nums;cursor:pointer;transition:background-color 120ms ease-out}
+.pl:hover{background:rgb(255 255 255/.05)}
+.pl .av{width:26px;height:26px;font-size:12px}
+.pl .nm{overflow:hidden;font:800 13px/1.2 "Hanken Grotesk",sans-serif;text-overflow:ellipsis;white-space:nowrap}
+.pl .rk{color:var(--faint);font-weight:700;text-align:right}
+.pl .gr{font-weight:900;text-align:center}
+.pl .r{color:var(--muted);text-align:right}
+.pl .s{text-align:right;font-weight:700}
+.pl.mine{background:rgb(103 227 244/.09)}
+.pl.mine:hover{background:rgb(103 227 244/.13)}
+.pl.mine .rk{color:var(--cyan)}
+.pl.pin{border-top-color:rgb(255 255 255/.22)}
+
+/* ----- right column ----- */
+.side{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:12px 14px 0;border-left:1px solid var(--line);background:rgb(5 6 8/.55)}
+.side>*{flex:none}
+.stage{position:relative;flex:1 1 0;min-height:90px;overflow:hidden;border-radius:14px;outline:1px solid var(--line);outline-offset:-1px;background:linear-gradient(140deg,#2a0f3a,#0a0818 70%)}
+.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 42%}
+.stage::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgb(167 139 250/.12),transparent 40%,rgb(5 6 8/.6));pointer-events:none}
+.bubble{position:absolute;top:10px;left:10px;z-index:1;max-width:calc(100% - 20px);padding:7px 10px;border-radius:12px 12px 12px 3px;background:var(--text);color:var(--bg);font-size:12.5px;font-weight:800;line-height:1.25}
+.mstrip{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 4px;border-radius:12px;background:var(--surface);outline:1px solid var(--line);color:var(--high);font-size:12px;font-weight:800;white-space:nowrap}
+.mstrip img{width:26px;height:26px;border-radius:50%;object-fit:cover}
+.plist{display:flex;flex-direction:column;gap:6px}
+.shead{display:flex;align-items:baseline;justify-content:space-between;margin:0;font-size:15px;font-weight:900}
+.shead small{color:var(--muted);font:700 13px var(--mono)}
+.shead em{color:var(--faint);font:500 11.5px var(--mono);font-style:normal}
+.shead em strong{color:var(--cyan)}
+.pl-list{display:flex;flex-direction:column;gap:6px}
+.pr{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;height:52px;padding:0 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.pr.me{border-color:rgb(103 227 244/.55);background:linear-gradient(90deg,rgb(103 227 244/.12),rgb(103 227 244/.03) 60%),var(--raised)}
+.pr .av{width:34px;height:34px;font-size:13px}
+.who{min-width:0}
+.who b{display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:800}
+.who b>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who small{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:12px;font-weight:600}
+.st.ok{color:var(--cyan)}.st.wait{color:var(--faint)}
+.dot{display:block;flex:none;width:7px;height:7px;border-radius:50%;background:currentColor}
+.owner{display:inline-flex;flex:none;align-items:center;gap:4px;padding:2px 6px;border-radius:5px;background:var(--gold);color:var(--bg);font:700 9.5px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.you{flex:none;padding:2px 5px;border-radius:5px;background:var(--cyan);color:var(--bg);font:700 9.5px/1.2 var(--mono);letter-spacing:.08em}
+.pill{padding:4px 8px;border-radius:7px;background:#161920;color:var(--c);font:700 11px/1 var(--mono)}
+.pill-in{display:none}
+.invite{display:flex;flex-direction:column;gap:6px;padding:10px 12px}
+.invite .row{display:flex;align-items:center;justify-content:space-between}
+.invite p{margin:0;color:var(--muted);font-size:12px;font-weight:600;line-height:1.4}
+.keys{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--faint);font-size:12px;font-weight:600}
+.kbd{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border:1px solid rgb(255 255 255/.18);border-bottom-width:2px;border-radius:5px;background:var(--raised);color:var(--high);font:700 11px var(--mono)}
+.keys .lnk{margin-left:auto;color:var(--muted);text-decoration:underline;cursor:pointer}
+.bar2{display:flex;flex-direction:column;gap:8px;margin:0 -14px;padding:10px 14px 12px;border-top:1px solid var(--line)}
+.role{display:flex;align-items:center;justify-content:space-between}
+.mode{display:inline-flex;gap:3px;padding:3px;border-radius:11px;outline:1px solid var(--line);background:var(--surface)}
+.modebtn{padding:6px 14px;border:0;border-radius:8px;background:none;color:var(--muted);font-size:13px;font-weight:800;cursor:pointer}
+.modebtn.on{background:var(--raised);color:var(--text)}
+.ready{width:100%;height:44px;border:0;border-radius:14px;background:var(--text);color:var(--bg);font-size:15px;font-weight:900;cursor:pointer}
+.ready.on{background:var(--cyan)}
+.ready:disabled{opacity:.55;cursor:default}
+.specnote{display:flex;align-items:center;min-height:44px;margin:0;color:var(--muted);font-size:12.5px;font-weight:600;line-height:1.35}
+
+/* ===== 800x480: the same lobby, one size down ===== */
+.sm .lb{grid-template-rows:38px minmax(0,1fr)}
+.sm .hdr{gap:10px;padding:0 12px}
+.sm .word{font-size:15px}
+.sm .modes span{min-height:22px;padding:0 10px;font-size:11px}
+.sm .hdr-btn{min-height:28px;padding:0 9px;font-size:12px}
+.sm .lbody{grid-template-columns:minmax(0,1fr) 300px}
+.sm .lcol{gap:6px;padding:8px 12px}
+.sm .hero-top{grid-template-columns:48px minmax(0,1fr) auto;gap:10px;padding:8px 10px}
+.sm .hero .cover{width:48px;height:48px;border-radius:10px}
+.sm .hero h2{font-size:18px}
+.sm .hero .art{font-size:12px}
+.sm .chips{display:none}
+.sm .clock{gap:3px;padding-left:12px}
+.sm .crow{flex-direction:row;align-items:center;gap:8px}
+.sm .time{font-size:28px}
+.sm .startbtn{min-height:26px;padding:0 10px;font-size:12px}
+.sm .ctext{padding:4px 10px;font-size:11px}
+.sm .queue{gap:3px}
+.sm .qhead{min-height:20px}
+.sm .qhead .btn{min-height:20px;padding:0 9px;font-size:11px}
+.sm .seg{gap:4px;min-width:100px;padding-bottom:0}
+.sm .sbar{height:5px}
+.sm .stx{padding-right:18px}
+.sm .stx b{font-size:12px}
+.sm .stx small{font-size:10.5px}
+.sm .sx{bottom:0;width:18px;height:18px}
+.sm .sec2>.label{display:none}
+.sm .diffs{gap:6px}
+.sm .diff{gap:1px;padding:6px 7px;border-radius:10px}
+.sm .diff .best{font-size:9.5px}
+.sm .drow b{font-size:13px}
+.sm .stars{font-size:10.5px}
+.sm .diff small{font-size:10px;line-height:1.3}
+.sm .diff .bar{display:none}
+.sm .board h3{padding:5px 6px 5px 10px}
+.sm .pl{grid-template-columns:22px 18px minmax(0,1fr) 20px 56px 76px;gap:7px;padding:3px 10px;font-size:11.5px}
+.sm .pl .av{width:18px;height:18px;font-size:10px}
+.sm .pl .nm{font-size:12px}
+.sm .side{gap:8px;padding:10px 10px 0}
+.sm .plist{gap:4px}
+.sm .pl-list{gap:4px}
+.sm .pr{grid-template-columns:28px minmax(0,1fr);gap:8px;height:40px;padding:0 10px;border-radius:12px}
+.sm .pr .av{width:28px;height:28px;font-size:11px}
+.sm .pr>.pill{display:none}
+.sm .pill-in{display:inline;margin-left:auto;padding:2px 6px;font-size:10px}
+.sm .who b{font-size:13px}
+.sm .who small{margin-top:1px;font-size:11px}
+.sm .shead{font-size:14px}
+.sm .invite{flex-direction:row;align-items:center;justify-content:space-between;padding:8px 10px}
+.sm .invite p{display:none}
+.sm .invite .row{width:100%}
+.sm .invite .btn{min-height:28px}
+.sm .keys{gap:5px;font-size:11px}
+.sm .ofs{display:none}
+.sm .bar2{gap:6px;margin:0 -10px;padding:8px 10px 10px}
+.sm .modebtn{padding:4px 10px;font-size:12px}
+.sm .ready{height:38px;font-size:14px}
+.sm .specnote{min-height:38px;font-size:11.5px}
+
+/* ===== minimized window tiles, real size ===== */
+.pips{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.pipfig{width:320px;margin:0}
+.pipfig figcaption{margin-top:8px;color:var(--muted);font-size:12.5px;font-weight:600}
+.pipfig figcaption b{display:block;color:var(--high);font-weight:800}
+.pip{position:relative;width:320px;height:180px;overflow:hidden;border-radius:12px;outline:1px solid var(--line);background:radial-gradient(90% 70% at 100% 0%,rgb(167 139 250/.16),transparent 60%),radial-gradient(70% 60% at 0% 100%,rgb(255 110 199/.1),transparent 60%),var(--bg)}
+.pip .cover{border-radius:10px;outline:1px solid rgb(255 255 255/.16)}
+.pip img.mew{position:absolute;object-fit:cover}
+/* a: song select */
+.pa img.mew{top:0;right:0;width:62%;height:100%;object-position:50% 38%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 45%);mask-image:linear-gradient(90deg,transparent,#000 45%)}
+.pa .col{position:absolute;top:14px;bottom:14px;left:14px;display:flex;flex-direction:column;justify-content:space-between;width:54%}
+.pa .cover{width:60px;height:60px}
+.pa b{display:block;font-size:25px;font-weight:900;letter-spacing:-.03em;line-height:1.05}
+.pa span{display:block;margin-top:4px;color:var(--muted);font-size:14px;font-weight:700}
+/* b: solo auto-paused */
+.pb .cover{position:absolute;top:14px;left:14px;width:92px;height:92px;filter:brightness(.45)}
+.pb .glyph{position:absolute;top:14px;left:14px;display:flex;align-items:center;justify-content:center;gap:8px;width:92px;height:92px}
+.pb .glyph i{display:block;width:10px;height:34px;border-radius:3px;background:var(--text)}
+.pb .info{position:absolute;top:12px;left:120px;right:12px}
+.pb .tag{display:block;color:var(--gold);font-size:19px;font-weight:900;letter-spacing:.08em}
+.pb .score{display:block;margin-top:2px;font:700 33px/1.1 var(--mono);letter-spacing:-.04em}
+.pb .combo{display:block;margin-top:2px;color:var(--muted);font:700 17px/1.2 var(--mono)}
+.pb .resume{position:absolute;left:14px;right:14px;bottom:16px;color:var(--cyan);font-size:19px;font-weight:900;letter-spacing:-.01em}
+/* c: live or room run keeps going */
+.pc .cover{position:absolute;top:14px;left:14px;width:64px;height:64px}
+.pc .info{position:absolute;top:10px;left:90px;right:30px}
+.pc .score{display:block;font:700 38px/1.05 var(--mono);letter-spacing:-.05em}
+.pc .combo{display:block;margin-top:1px;color:var(--muted);font:700 18px/1.2 var(--mono)}
+.pc .live{position:absolute;top:16px;right:14px;width:11px;height:11px;border-radius:50%;background:var(--pink);outline:3px solid rgb(255 110 199/.28)}
+.pc .place{position:absolute;left:14px;bottom:26px;font-size:30px;font-weight:900;letter-spacing:-.03em}
+.pc .place span{margin-left:6px;color:var(--muted);font-size:18px;font-weight:700}
+.pc .prog{position:absolute;left:0;right:0;bottom:0;height:8px;background:#161920}
+.pc .prog i{display:block;height:100%;background:var(--cyan)}
+/* d: room lobby */
+.pd img.mew{top:14px;right:14px;width:46px;height:46px;border-radius:50%;outline:2px solid rgb(167 139 250/.5);object-position:50% 40%}
+.pd .room{position:absolute;top:14px;left:14px;right:72px;overflow:hidden;font-size:24px;font-weight:900;letter-spacing:-.03em;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
+.pd .ready{position:absolute;top:56px;left:14px;width:auto;height:auto;background:none;color:var(--cyan);font:700 36px/1.1 var(--mono);letter-spacing:-.05em}
+.pd .ready span{margin-left:8px;color:var(--muted);font:800 20px "Hanken Grotesk",sans-serif;letter-spacing:0}
+.pd .next{position:absolute;left:14px;right:14px;bottom:14px;display:flex;align-items:center;gap:10px}
+.pd .next .cover{width:44px;height:44px}
+.pd .next b{min-width:0;overflow:hidden;font-size:18px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.pd .next b em{color:var(--faint);font-style:normal;font-weight:700}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>mewbeat Room lobby and minimized window</h1>
+  <p class="lead">For approval before anything is built. The Room lobby takes on the Solo song select look: the same panels, rows and level tiles, plus a mode switcher, an Owner badge, and the level leaderboard. Sample data only. Mewbit is the existing still from this folder; the real stage uses the animated frames.</p>
+
+  <div class="switch">
+    <b>Try it:</b>
+    <button data-phase="w" class="on">Waiting for the round</button>
+    <button data-phase="l">Round loading</button>
+    <span>Ready, Player / Spectator, the level tiles and This server / Global work in both frames.</span>
+  </div>
+
+  <h2 class="sec">Screen 1 &middot; Room lobby <small>1280 x 720</small></h2>
+  <p class="cap"><b>Left:</b> the song on deck with the round clock and the owner's Start button, the queue, the four level tiles (these are also your difficulty picker, with stars, notes and your best), then the level leaderboard for the selected level, This server or Global, your row lit. <b>Right:</b> Mewbit, the players (owner first with a gold Owner badge, you with YOU, difficulty and ready state per player, spectators marked Watching), invite, key hints with Calibrate, and a bottom bar with Player / Spectator and Ready, like Play in Solo. Guests see the same lobby without Start now, and without the x on songs they did not add.</p>
+  <div class="frame f1" id="s1"></div>
+
+  <h2 class="sec">Screen 2 &middot; the same lobby, collapsed <small>800 x 480</small></h2>
+  <p class="cap">Same content, tighter. Mewbit becomes a one-line strip, the song cover and clock shrink, the song chips and tile bars go, the invite blurb and the Round starts in label shrink or hide, the difficulty pill moves under each name. All six board rows, all four players, the queue and Ready still fit with no scrolling in the default state.</p>
+  <div class="frame f2" id="s2"></div>
+
+  <h2 class="sec">Screen 3 &middot; minimized Discord window <small>about 320 x 180, real size</small></h2>
+  <p class="cap">Picture-in-picture tiles cannot be played, so no controls: at most three pieces of text each, large type, the cover or Mewbit carrying the rest. The room has no name field today, so tile d shows the voice channel name.</p>
+  <div class="pips">
+    <figure class="pipfig">
+      <div class="pip pa">
+        <img class="mew" src="mewbit.png" alt="" onerror="this.style.display='none'">
+        <div class="col"><span class="cover" style="background:linear-gradient(135deg,hsl(40 80% 55%),hsl(100 70% 22%))"></span><div><b>Hopes and Dreams</b><span>Toby Fox</span></div></div>
+      </div>
+      <figcaption><b>a. Song select</b>Big Mewbit, the selected song and its cover.</figcaption>
+    </figure>
+    <figure class="pipfig">
+      <div class="pip pb">
+        <span class="cover" style="background:linear-gradient(135deg,hsl(210 80% 55%),hsl(270 70% 22%))"></span>
+        <div class="glyph"><i></i><i></i></div>
+        <div class="info"><span class="tag">PAUSED</span><span class="score">512,300</span><span class="combo">248x combo</span></div>
+        <div class="resume">Open to resume</div>
+      </div>
+      <figcaption><b>b. Solo, auto-paused</b>Minimizing pauses a Solo run. Cover dimmed, score and combo kept.</figcaption>
+    </figure>
+    <figure class="pipfig">
+      <div class="pip pc">
+        <span class="cover" style="background:linear-gradient(135deg,hsl(210 80% 55%),hsl(270 70% 22%))"></span>
+        <div class="info"><span class="score">512,300</span><span class="combo">248x combo</span></div>
+        <i class="live"></i>
+        <div class="place">2nd<span>of 4</span></div>
+        <div class="prog"><i style="width:62%"></i></div>
+      </div>
+      <figcaption><b>c. Live or Room run</b>Keeps running. Pulsing dot, live score and combo, your place, song progress.</figcaption>
+    </figure>
+    <figure class="pipfig">
+      <div class="pip pd">
+        <img class="mew" src="mewbit.png" alt="" onerror="this.style.display='none'">
+        <div class="room"># Late Night</div>
+        <div class="ready">2<span>of 3 ready</span></div>
+        <div class="next"><span class="cover" style="background:linear-gradient(135deg,hsl(40 80% 55%),hsl(100 70% 22%))"></span><b><em>Next</em> Hopes and Dreams</b></div>
+      </div>
+      <figcaption><b>d. Room lobby</b>Voice channel name, players ready, next song.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<script>
+const $=(id)=>document.getElementById(id);
+const G=(h)=>`linear-gradient(135deg,hsl(${h} 80% 55%),hsl(${(h+60)%360} 70% 22%))`;
+const cover=(h,st="")=>`<span class="cover" style="background:${G(h)};${st}"></span>`;
+const av=(n,h)=>`<span class="av" style="background:hsl(${h} 75% 70%)">${n[0].toUpperCase()}</span>`;
+const fmt=(n)=>n.toLocaleString("en-US");
+const CROWN=`<svg width="10" height="9" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 3l3.2 3L7 1l2.8 5L13 3l-1.4 8H2.4z" fill="currentColor"/></svg>`;
+const CLS=["e","n","h","x"],LV=["Easy","Normal","Hard","Hell"];
+const ME="Meowczelloo";
+
+/* the song on deck (Hopes and Dreams) and its four levels: stars and notes */
+const SONG={t:"Hopes and Dreams",a:"Toby Fox",h:40,len:"3:05",bpm:170,by:"kuba"};
+const LEVELS=[{stars:2.1,notes:612},{stars:3.8,notes:1184},{stars:5.2,notes:1702},{stars:6.9,notes:2356}];
+const Q=[{t:"Hopes and Dreams",len:"3:05",ms:185,by:"kuba"},{t:"MEGALOVANIA",len:"2:36",ms:156,by:"you",mine:1},{t:"Rude Buster",len:"2:11",ms:131,by:"neko"}];
+
+/* board rows for Normal: name, hue, grade, accuracy, score. Other levels are derived from these. */
+const DOWN={S:"A",A:"B",B:"C",C:"D",D:"D"},F=[0.62,1,1.38],AO=[2.2,0,-5.1];
+const MEROW=[ME,190,"S",93.4,575200];
+const SRV=[["neko",320,"S",97.2,640800],["kuba",40,"S",95.9,610300],MEROW,["dawid",120,"A",90.15,498700],["ola",290,"B",85.62,441000],["vex",265,"B",82.3,402500]];
+const GLB=[["shiro",0,"S",99.12,702400],["luna",175,"S",98.6,691300],["tomek",90,"S",97.88,668900],["neko",320,"S",97.2,640800],["kuba",40,"S",95.9,610300]];
+const row=(r,k)=>({n:r[0],h:r[1],g:k===2?DOWN[r[2]]:r[2],a:Math.min(99.5,r[3]+AO[k]),s:Math.round(r[4]*F[k]/100)*100});
+const ownBest=(k)=>k<3?row(MEROW,k):null;
+
+/* state shared by both frames */
+const S={ready:true,role:"p",phase:"w",lv:1,scope:"server"};
+
+function members(){
+  return [
+    {n:ME,h:190,me:1,owner:1,spec:S.role==="s",ready:S.ready,loaded:true,lv:S.lv},
+    {n:"kuba",h:40,ready:true,loaded:true,lv:2},
+    {n:"neko",h:320,ready:false,loaded:false,lv:1},
+    {n:"ola",h:290,spec:true,lv:1}
+  ];
+}
+function status(m){
+  if(m.spec)return["Watching","wait"];
+  if(S.phase==="l")return m.loaded?["Loaded","ok"]:["Loading…","wait"];
+  return m.ready?["Ready","ok"]:["Picking…","wait"];
+}
+
+function plRow(r,rank,mine,pin){
+  return `<div class="pl${mine?" mine":""}${pin?" pin":""}"><span class="rk">${rank}</span>${av(r.n,r.h)}<span class="nm">${r.n}</span><span class="gr ${r.g}">${r.g}</span><span class="r">${r.a.toFixed(2)}%</span><span class="s">${fmt(r.s)}</span></div>`;
+}
+function board(){
+  const k=S.lv;let body="",pin="";
+  if(k===3)body=`<div class="empty">No scores on this level yet.</div>`;
+  else if(S.scope==="server")body=SRV.map((r,i)=>plRow(row(r,k),i+1,r[0]===ME,false)).join("");
+  else{body=GLB.map((r,i)=>plRow(row(r,k),i+1,false,false)).join("");pin=plRow(row(MEROW,k),14,true,true)}
+  return `<div class="panel block board ${CLS[k]}"><h3><span>Leaderboard · <span class="dl">${LV[k]}</span></span><span class="seg2"><button data-b="server" class="${S.scope==="server"?"on":""}">This server</button><button data-b="global" class="${S.scope==="global"?"on":""}">Global</button></span></h3><div class="rows">${body}</div>${pin}</div>`;
+}
+function tiles(){
+  const spec=S.role==="s";
+  return `<div class="sec2"><span class="label">${spec?"Levels of this song":"Your level · pick one"}</span><div class="diffs">${LEVELS.map((L,k)=>{
+    const b=ownBest(k);
+    return `<button class="diff ${CLS[k]}${S.lv===k?" on":""}" data-l="${k}"><span class="drow"><b>${LV[k]}</b><span class="stars">★ ${L.stars.toFixed(1)}</span></span><span class="bar"><i style="width:${Math.min(100,L.stars/8*100)}%"></i></span><small>${fmt(L.notes)} notes</small><small class="best">${b?`best ${fmt(b.s)} · <b class="${b.g}">${b.g}</b>`:"no score yet"}</small></button>`;
+  }).join("")}</div></div>`;
+}
+function queue(){
+  return `<div class="queue"><div class="qhead"><span class="label">Queue · ${Q.length} songs</span><button class="btn">+ Add songs</button></div><ol class="tl">${Q.map(q=>`<li class="seg${q.mine?" mine":""}" style="flex:${q.ms}"><div class="sbar"></div><div class="stx"><b>${q.t}</b><small>${q.len} · ${q.by}</small></div><button class="sx" aria-label="Remove ${q.t}">×</button></li>`).join("")}</ol></div>`;
+}
+
+function lobby(sm){
+  const spec=S.role==="s",load=S.phase==="l";
+  const M=members(),P=M.filter(m=>!m.spec);
+  const rc=P.filter(m=>load?m.loaded:m.ready).length,pc=P.length;
+  const word=load?"loaded":"ready";
+
+  const clock=load
+    ?`<span class="label">Loaded</span><div class="crow"><b class="time">${rc}/${pc}</b></div>`
+    :`<span class="label">Round starts in</span><div class="crow"><b class="time">0:24</b><button class="btn startbtn">Start now</button></div>`;
+  const ctext=sm
+    ?(load?`<strong>${rc} of ${pc}</strong> loaded · starts when everyone has the chart.`:`<strong>${rc} of ${pc}</strong> ready · starts when the clock ends, or 5 s after all are ready.`)
+    :(load?`<strong>${rc} of ${pc}</strong> loaded. The round starts as soon as everyone has the chart.`:`<strong>${rc} of ${pc}</strong> ready. The round starts when the clock runs out, or 5 seconds after everyone is ready.`);
+  const hero=`<div class="panel hero"><div class="hero-top">${cover(SONG.h)}<div class="ht"><span class="label">Next up · queued by ${SONG.by}</span><h2>${SONG.t}</h2><div class="art">${SONG.a}</div><div class="chips"><span class="chip">${SONG.len}</span><span class="chip">${SONG.bpm} BPM</span><span class="chip">youtube</span></div></div><div class="clock">${clock}</div></div><p class="ctext">${ctext}</p></div>`;
+
+  const stage=sm
+    ?`<div class="mstrip"><img src="mewbit.png" alt="" onerror="this.style.display='none'"><span>waiting for my song~</span></div>`
+    :`<div class="stage"><img src="mewbit.png" alt="" onerror="this.style.display='none'"><div class="bubble">waiting for my song~</div></div>`;
+
+  const prs=M.map(m=>{
+    const [t,c]=status(m);
+    const pill=(m.spec||m.lv==null)?"":`<span class="pill ${CLS[m.lv]}">${LV[m.lv]}</span>`;
+    const pillIn=pill?pill.replace('class="pill ','class="pill pill-in '):"";
+    return `<li class="pr${m.me?" me":""}">${av(m.n,m.h)}<span class="who"><b><span>${m.n}</span>${m.owner?`<span class="owner">${CROWN}Owner</span>`:""}${m.me?`<span class="you">YOU</span>`:""}</b><small class="st ${c}"><i class="dot"></i>${t}${pillIn}</small></span>${pill}</li>`;
+  }).join("");
+  const plist=`<div class="plist"><h3 class="shead"><span>Players <small>${M.length}</small></span><em><strong>${rc}</strong> of ${pc} ${word}</em></h3><ul class="pl-list">${prs}</ul></div>`;
+
+  const invite=`<div class="panel invite"><div class="row"><span class="label">Invite (optional)</span><button class="btn">${sm?"Send invite":"Send invite"}</button></div><p>Posts one message in the voice channel chat with a Join button. Invited players don't need a code.</p></div>`;
+  const keys=`<div class="keys"><span class="kbd">D</span><span class="kbd">F</span><span class="kbd">J</span><span class="kbd">K</span><span>· <span class="ofs">offset </span>+12 ms</span><span class="lnk">Calibrate</span></div>`;
+  const role=`<div class="role"><span class="label">You are</span><div class="mode">${[["p","Player"],["s","Spectator"]].map(([id,l])=>`<button class="modebtn${S.role===id?" on":""}" data-role="${id}">${l}</button>`).join("")}</div></div>`;
+  const rb=spec?`<p class="specnote">You're watching. Pick Player to join the next round.</p>`
+    :load?`<button class="ready" disabled>Loading…</button>`
+    :`<button class="ready${S.ready?" on":""}" data-ready>${S.ready?"Ready ✓":"Ready"}</button>`;
+
+  const hdr=`<header class="hdr"><span class="word">mewbeat</span><div class="modes"><span>Live</span><span>Solo</span><span class="on">Room</span></div><div class="hdr-end"><span class="hdr-btn leave">Leave room</span><span class="hdr-btn">☰${sm?"":"&nbsp; Menu&nbsp; Esc"}</span></div></header>`;
+
+  return `<div class="lb">${hdr}<div class="lbody"><section class="lcol" aria-label="Room lobby">${hero}${queue()}${tiles()}${board()}</section><aside class="side">${stage}${plist}${invite}${keys}<div class="bar2">${role}${rb}</div></aside></div></div>`;
+}
+
+function render(){
+  $("s1").innerHTML=lobby(false);
+  $("s2").className="frame f2 sm";
+  $("s2").innerHTML=lobby(true);
+  document.querySelectorAll(".switch [data-phase]").forEach(b=>b.classList.toggle("on",b.dataset.phase===S.phase));
+}
+document.addEventListener("click",(e)=>{
+  const t=e.target.closest("[data-l],[data-b],[data-role],[data-ready],[data-phase]");
+  if(!t)return;
+  if(t.dataset.l!==undefined)S.lv=+t.dataset.l;
+  else if(t.dataset.b)S.scope=t.dataset.b;
+  else if(t.dataset.role)S.role=t.dataset.role;
+  else if(t.dataset.ready!==undefined)S.ready=!S.ready;
+  else if(t.dataset.phase)S.phase=t.dataset.phase;
+  render();
+});
+render();
+</script>
+</body>
+</html>

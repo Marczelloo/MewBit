@@ -2,7 +2,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { afterEach, beforeEach, describe, it } = require("node:test");
+const { afterEach, beforeEach, describe, it, mock } = require("node:test");
 
 const { createAnalysisClient } = require("../../../helpers/mewbeat/analysisClient");
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
@@ -62,7 +62,7 @@ describe("mewbeat analysis client", () => {
     const node = fakeNode(() => assert.fail("must not be called"));
     const stream = makeTrack({ isStream: true });
     assert.strictEqual(await client.getFeatures(stream, node), null);
-    assert.strictEqual(client.peek(stream), null);
+    assert.strictEqual(await client.peek(stream), null);
     assert.strictEqual(node.calls.length, 0);
   });
 
@@ -174,7 +174,7 @@ describe("mewbeat analysis client", () => {
     const node = fakeNode(() => featuresFor(track, { audio: { sourceName: "youtube", identifier: "abc123", length: 999 } }));
     assert.strictEqual(await client.getFeatures(track, node), null);
     assert.ok(!fs.existsSync(cacheFileOf(track)));
-    assert.strictEqual(client.peek(track), null);
+    assert.strictEqual(await client.peek(track), null);
   });
 
   it("rejects a truncated decode and blocks the track for 10 minutes", async () => {
@@ -182,7 +182,7 @@ describe("mewbeat analysis client", () => {
     const node = fakeNode(() => featuresFor(track, { durationMs: 30000 }));
     assert.strictEqual(await client.getFeatures(track, node), null);
     assert.ok(!fs.existsSync(cacheFileOf(track)));
-    assert.strictEqual(client.peek(track), null);
+    assert.strictEqual(await client.peek(track), null);
 
     assert.strictEqual(await client.getFeatures(track, node), null);
     assert.strictEqual(node.calls.length, 1);
@@ -227,7 +227,7 @@ describe("mewbeat analysis client", () => {
 
     assert.strictEqual(await impatient.getFeatures(track, node), null);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    assert.strictEqual(impatient.peek(track), null);
+    assert.strictEqual(await impatient.peek(track), null);
     assert.ok(!fs.existsSync(cacheFileOf(track)));
   });
 
@@ -249,7 +249,7 @@ describe("mewbeat analysis client", () => {
 
     const fresh = createAnalysisClient({ dir, now: () => clock, log: silentLog });
     assert.strictEqual(await fresh.getFeatures(track, node), null);
-    assert.strictEqual(fresh.peek(track), null);
+    assert.strictEqual(await fresh.peek(track), null);
     assert.strictEqual(node.calls.length, 1);
   });
 
@@ -276,15 +276,15 @@ describe("mewbeat analysis client", () => {
 
     fs.rmSync(cacheFileOf(tracks[0]));
     fs.rmSync(cacheFileOf(tracks[1]));
-    assert.ok(client.peek(tracks[0]), "recently read entry survives");
-    assert.strictEqual(client.peek(tracks[1]), null, "least recently used entry is evicted");
+    assert.ok(await client.peek(tracks[0]), "recently read entry survives");
+    assert.strictEqual(await client.peek(tracks[1]), null, "least recently used entry is evicted");
   });
 
   it("treats a disk file with another featuresVersion as a miss and overwrites it", async () => {
     const track = makeTrack();
     fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
     fs.writeFileSync(cacheFileOf(track), JSON.stringify(featuresFor(track, { featuresVersion: 1 })));
-    assert.strictEqual(client.peek(track), null);
+    assert.strictEqual(await client.peek(track), null);
 
     const node = fakeNode(() => featuresFor(track, { tempo: 120 }));
     assert.strictEqual((await client.getFeatures(track, node)).tempo, 120);
@@ -384,37 +384,63 @@ describe("mewbeat analysis client", () => {
       await client.getFeatures(track, fakeNode(() => featuresFor(track)));
       assert.strictEqual(client.statusOf(track), null);
     });
+
+    it("does not read a features file from disk", async () => {
+      const track = makeTrack();
+      await client.getFeatures(track, fakeNode(() => featuresFor(track, { padding: "x".repeat(10_000) })));
+      const fresh = createAnalysisClient({ dir, now: () => clock, log: silentLog });
+      const reads = mock.method(fs, "readFileSync", fs.readFileSync);
+      try {
+        assert.strictEqual(fresh.statusOf(track), null);
+        assert.strictEqual(reads.mock.calls.length, 0);
+      } finally {
+        reads.mock.restore();
+      }
+    });
   });
 
   describe("peek", () => {
-    it("returns null when nothing is cached", () => {
-      assert.strictEqual(client.peek(makeTrack()), null);
+    it("returns null when nothing is cached", async () => {
+      assert.strictEqual(await client.peek(makeTrack()), null);
     });
 
     it("returns features already in memory", async () => {
       const track = makeTrack();
       const features = await client.getFeatures(track, fakeNode(() => featuresFor(track)));
-      assert.strictEqual(client.peek(track), features);
+      assert.strictEqual(await client.peek(track), features);
     });
 
     it("returns features that are only on disk", async () => {
       const track = makeTrack();
       await client.getFeatures(track, fakeNode(() => featuresFor(track, { tempo: 140 })));
       const fresh = createAnalysisClient({ dir, now: () => clock, log: silentLog });
-      assert.strictEqual(fresh.peek(track).tempo, 140);
+      assert.strictEqual((await fresh.peek(track)).tempo, 140);
     });
 
     it("returns null for a negative-cached track", async () => {
       const track = makeTrack();
       await client.getFeatures(track, fakeNode(() => null));
-      assert.strictEqual(client.peek(track), null);
+      assert.strictEqual(await client.peek(track), null);
     });
 
-    it("returns null for a corrupt cache file", () => {
+    it("reads the features file without blocking", async () => {
+      const track = makeTrack();
+      await client.getFeatures(track, fakeNode(() => featuresFor(track, { tempo: 140 })));
+      const fresh = createAnalysisClient({ dir, now: () => clock, log: silentLog });
+      const reads = mock.method(fs, "readFileSync", fs.readFileSync);
+      try {
+        assert.strictEqual((await fresh.peek(track)).tempo, 140);
+        assert.strictEqual(reads.mock.calls.length, 0);
+      } finally {
+        reads.mock.restore();
+      }
+    });
+
+    it("returns null for a corrupt cache file", async () => {
       const track = makeTrack();
       fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
       fs.writeFileSync(cacheFileOf(track), "{not json");
-      assert.strictEqual(client.peek(track), null);
+      assert.strictEqual(await client.peek(track), null);
     });
   });
 });

@@ -166,7 +166,8 @@ export function createSoloLink({
   // the count-in start, so a chart the game ignored (another difficulty, a dropped song) never starts the audio.
   function chartAccepted(chart) {
     if (state.stage !== "ready") return;
-    if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
+    // In the background where the audio can: the scan of a whole song would stall the frames of the count-in.
+    if (chart?.notes) (audio.alignInBackground ?? audio.align)?.call(audio, chart.notes.map((note) => note.t));
     countIn(-SONG_SILENCE_MS, true);
   }
 

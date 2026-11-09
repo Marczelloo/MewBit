@@ -19,8 +19,8 @@ function setup({ playback, unlocked = true, result } = {}) {
       ? { track: fakeTrack(), node: "node-1", positionMs: 61234.4, paused: false, durationMs: 200000 }
       : playback),
     chartStore: {
-      getCharts: async (track, node) => {
-        calls.push({ track, node });
+      getCharts: async (track, node, options) => {
+        calls.push({ track, node, options });
         return result ?? { status: "ready", charts };
       },
     },
@@ -137,6 +137,14 @@ describe("mewbeat activity channel", () => {
     const { channel } = setup({ result: { status: "pending" } });
     const reply = await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "normal" });
     assert.deepStrictEqual(reply, { type: "mewbeat_chart", audioKey: KEY, difficulty: "normal", status: "pending" });
+  });
+
+  it("passes an explicit retry on, and only an explicit one", async () => {
+    const { channel, calls } = setup();
+    await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "hard" });
+    await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "hard", retry: "yes" });
+    await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "hard", retry: true });
+    assert.deepStrictEqual(calls.map((call) => call.options.retry), [false, false, true]);
   });
 
   it("rejects an unknown difficulty", async () => {

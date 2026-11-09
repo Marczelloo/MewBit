@@ -103,6 +103,14 @@ const MEWBEAT_AUDIO_LATENCY_MS = process.env.MEWBEAT_AUDIO_LATENCY_MS && Number.
 // the fallback short enough that a missed transition cannot leave Activity
 // stale for several seconds, while still avoiding a tight polling loop.
 const ACTIVITY_STATE_HEARTBEAT_MS = Math.max(1_000, Number(process.env.ACTIVITY_STATE_HEARTBEAT_MS) || 1_500);
+// The heartbeat sends a socket nothing while its state is what the client already has, and a state again after this long,
+// so a client can tell the connection is alive. The Activity treats 12 s without a state as a silent connection and fetches
+// the state over HTTP (activity/src/App.jsx resyncIfStale), so this stays well below that. 0 sends one every heartbeat.
+const ACTIVITY_STATE_KEEPALIVE_MS = process.env.ACTIVITY_STATE_KEEPALIVE_MS != null && Number.isFinite(Number(process.env.ACTIVITY_STATE_KEEPALIVE_MS))
+  ? Math.max(0, Number(process.env.ACTIVITY_STATE_KEEPALIVE_MS))
+  : 5_000;
+// A playing position within this of where the client's own clock has it needs no new state (usePlayerPosition ticks locally).
+const POSITION_DRIFT_MS = 400;
 const MIN_LYRICS_SYNC_OFFSET_MS = -2_000;
 const MAX_LYRICS_SYNC_OFFSET_MS = 2_000;
 const ARTWORK_FAILURE_TTL_MS = 5 * 60_000;
@@ -1506,20 +1514,60 @@ function sendSocket(socket, payload) {
   if (socket.readyState === 1) socket.send(stringifyJson(payload));
 }
 
-function sendSocketState(socket, state) {
-  const historyKey = state?.player?.historyKey;
-  const unchanged = historyKey != null && socket.historyKey === historyKey;
-  sendSocket(socket, { type: "state", state: unchanged ? withoutHistory(state) : state });
-  socket.historyKey = historyKey;
+// A state as the client keeps it between states: the clock and the position it counts on its own left out, and the history,
+// which the historyKey stands for.
+function stateSignature(state) {
+  const { generatedAt, player, ...rest } = state;
+  const { positionMs, updatedAt, history, ...kept } = player || {};
+  return stringifyJson({ ...rest, player: player ? kept : player });
 }
 
-function broadcastGuildState(client, guildId) {
+// True when `state` tells a client nothing it does not know from `last` (what was sent to it): the same state, a position
+// where its own clock has it, and the last one not so long ago that it would take it for a dead connection.
+function clientHasState(last, state, signature, now, keepAliveMs = ACTIVITY_STATE_KEEPALIVE_MS) {
+  if (!last || keepAliveMs <= 0 || now - last.at >= keepAliveMs || last.signature !== signature) return false;
+  const player = state.player || {};
+  const ticking = Boolean(player.playing && !player.paused && !player.buffering && player.currentTrack?.id);
+  const expected = ticking ? last.positionMs + (state.generatedAt - last.generatedAt) : last.positionMs;
+  return Math.abs((player.positionMs || 0) - expected) <= POSITION_DRIFT_MS;
+}
+
+// The frames of one state, serialised once however many sockets get them: with the history, and without.
+function stateFrames(state) {
+  let full = null;
+  let slim = null;
+  let signature = null;
+  return {
+    signature: () => (signature ??= stateSignature(state)),
+    full: () => (full ??= stringifyJson({ type: "state", state })),
+    slim: () => (slim ??= stringifyJson({ type: "state", state: withoutHistory(state) })),
+  };
+}
+
+// `frames` are the state's frames when the caller sends the same state to several sockets; `heartbeat` lets a socket that has
+// the state already go without it (clientHasState).
+function sendSocketState(socket, state, { frames = stateFrames(state), heartbeat = false } = {}) {
+  const now = Date.now();
+  const signature = ACTIVITY_STATE_KEEPALIVE_MS > 0 && state ? frames.signature() : null;
+  if (heartbeat && signature !== null && clientHasState(socket.lastState, state, signature, now)) return;
+  const historyKey = state?.player?.historyKey;
+  const unchanged = historyKey != null && socket.historyKey === historyKey;
+  if (socket.readyState === 1) socket.send(unchanged ? frames.slim() : frames.full());
+  socket.historyKey = historyKey;
+  socket.lastState = signature === null ? null : { signature, at: now, generatedAt: state.generatedAt, positionMs: state.player?.positionMs || 0 };
+}
+
+function broadcastGuildState(client, guildId, { heartbeat = false } = {}) {
   const statesByIdentity = new Map();
   for (const socket of sockets) {
     if (socket.readyState !== 1 || !socket.authorized || socket.guildId !== guildId) continue;
     const identityId = socket.identity.id;
-    if (!statesByIdentity.has(identityId)) statesByIdentity.set(identityId, buildActivityState(client, guildId, identityId));
-    sendSocketState(socket, statesByIdentity.get(identityId));
+    if (!statesByIdentity.has(identityId)) {
+      const state = buildActivityState(client, guildId, identityId);
+      statesByIdentity.set(identityId, { state, frames: stateFrames(state) });
+    }
+    const { state, frames } = statesByIdentity.get(identityId);
+    sendSocketState(socket, state, { frames, heartbeat });
   }
 }
 
@@ -1800,10 +1848,11 @@ function createActivityServer(client) {
       }
       interval = setInterval(() => {
         const guilds = new Set([...sockets].filter((socket) => socket.authorized).map((socket) => socket.guildId));
-        for (const guildId of guilds) broadcastGuildState(client, guildId);
+        for (const guildId of guilds) broadcastGuildState(client, guildId, { heartbeat: true });
       }, ACTIVITY_STATE_HEARTBEAT_MS);
       interval.unref?.();
       heartbeat = startHeartbeat({ sockets });
+      chartStore.warmSummaries?.();
       return server;
     },
     stop() {
@@ -1843,4 +1892,6 @@ module.exports = {
   searchActivityTracks,
   serializeActivityActionResult,
   stringifyJson,
+  stateSignature,
+  clientHasState,
 };

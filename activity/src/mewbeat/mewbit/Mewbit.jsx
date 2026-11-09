@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { effectiveEffects } from "../effects.js";
+import { createQueue } from "./fetchQueue.js";
+import { budgetBytes, frameBytes } from "./frameBudget.js";
 import { MEWBIT_POSES } from "./manifest.js";
 import placeholderUrl from "./mewbit.png";
 import "../mewbeat.css";
@@ -27,13 +29,14 @@ export function usePrefersReducedMotion() {
 // frames just ahead of the one they show, so a loop streams in before it is needed.
 
 const MAX_SIZE = 640;
-const BUDGET_BYTES = 160 * 1024 * 1024;
 const MAX_DECODES = 3;
+const MAX_FETCHES = 6; // a screen has hundreds of frames; fetched all at once they starve the game's own requests
 const LOOKAHEAD = 10; // frames requested ahead of the one on screen
-const WARM_FRAMES = 4; // first frames of every pose in the screen's group, kept decoded for instant switches
+const WARM_FRAMES = 4; // first frames of the pose on screen and of those it is likely to hand over to
 const WARM_EVERY_MS = 1000;
 
-const blobs = new Map(); // url -> Promise<Blob>
+const blobs = new Map(); // url -> { promise: Promise<Blob>, promote }
+const fetches = createQueue(MAX_FETCHES);
 const bitmaps = new Map(); // url -> { image, size, bytes }; insertion order is the LRU order
 const queued = new Set();
 const urgentQueue = [];
@@ -44,17 +47,22 @@ let usedBytes = 0;
 let decodeSize = 384;
 let activeDecodes = 0;
 
-function blobOf(url) {
-  let promise = blobs.get(url);
-  if (!promise) {
-    promise = fetch(url).then((response) => {
-      if (!response.ok) throw new Error(`frame ${response.status}`);
-      return response.blob();
-    });
-    promise.catch(() => blobs.delete(url));
-    blobs.set(url, promise);
-  }
-  return promise;
+// A frame that is about to be decoded jumps the queue of the bulk preload.
+function blobOf(url, urgent = false) {
+  let job = blobs.get(url);
+  if (!job) {
+    job = fetches.add(
+      () =>
+        fetch(url).then((response) => {
+          if (!response.ok) throw new Error(`frame ${response.status}`);
+          return response.blob();
+        }),
+      urgent
+    );
+    job.promise.catch(() => blobs.delete(url));
+    blobs.set(url, job);
+  } else if (urgent) job.promote();
+  return job.promise;
 }
 
 function loadImage(url) {
@@ -68,7 +76,7 @@ function loadImage(url) {
 
 async function decode(url, size) {
   if (typeof createImageBitmap !== "function") return loadImage(url);
-  const blob = await blobOf(url);
+  const blob = await blobOf(url, true);
   try {
     return await createImageBitmap(blob, { resizeWidth: size, resizeHeight: size, resizeQuality: "high" });
   } catch {
@@ -88,11 +96,12 @@ function store(url, image, size) {
     usedBytes -= old.bytes;
     if (!heldByPlayer(old.image)) old.image.close?.();
   }
-  const bytes = size * size * 4;
+  const bytes = frameBytes(size);
   bitmaps.set(url, { image, size, bytes });
   usedBytes += bytes;
+  const budget = cacheBudget();
   for (const [key, hit] of bitmaps) {
-    if (usedBytes <= BUDGET_BYTES) break;
+    if (usedBytes <= budget) break;
     if (key === url || heldByPlayer(hit.image)) continue;
     bitmaps.delete(key);
     usedBytes -= hit.bytes;
@@ -151,25 +160,46 @@ function framesOf(entry) {
 }
 
 // Poses a group needs: its own and those that list it in `also`, plus the members of its routines (the lobby
-// idle borrows the game's neutral).
+// idle borrows the game's neutral). The manifest is fixed, so each group is worked out once.
+const groupPoses = new Map();
 function posesOfGroup(group) {
-  const names = new Set();
-  for (const [name, entry] of Object.entries(MEWBIT_POSES)) {
-    if (entry.group !== group && !entry.also?.includes(group)) continue;
-    if (entry.kind === "routine") [entry.base, ...entry.fidgets].forEach((member) => names.add(member));
-    else names.add(name);
+  let poses = groupPoses.get(group);
+  if (!poses) {
+    const names = new Set();
+    for (const [name, entry] of Object.entries(MEWBIT_POSES)) {
+      if (entry.group !== group && !entry.also?.includes(group)) continue;
+      if (entry.kind === "routine") [entry.base, ...entry.fidgets].forEach((member) => names.add(member));
+      else names.add(name);
+    }
+    poses = [...names].map((name) => MEWBIT_POSES[name]).filter(Boolean);
+    groupPoses.set(group, poses);
   }
-  return [...names].map((name) => MEWBIT_POSES[name]).filter(Boolean);
+  return poses;
 }
 
-// Fetches every frame of a screen's poses and decodes the first few of each, so a pose never blinks in.
-export function preloadMewbitGroup(group) {
+// What the cache has to hold at once: the longest loop, one frame of every pose of the busiest screen, the warm
+// window and the lookahead. It is counted in frames, so it grows with the size they are decoded at.
+const LOOP_FRAMES = Math.max(...Object.values(MEWBIT_POSES).map((entry) => framesOf(entry).length));
+const SCREEN_POSES = Math.max(...[...new Set(Object.values(MEWBIT_POSES).flatMap((entry) => [entry.group, ...(entry.also ?? [])]).filter(Boolean))].map((group) => posesOfGroup(group).length));
+
+function cacheBudget() {
+  return budgetBytes({ size: decodeSize, loopFrames: LOOP_FRAMES, screenPoses: SCREEN_POSES, warmFrames: WARM_FRAMES, lookahead: LOOKAHEAD });
+}
+
+// Fetches the frames of a screen's poses, the first few of each pose first, so a pose never blinks in, and decodes
+// only the first frame of each. `first` (the pose on screen) goes ahead of the others. The bulk goes through the
+// fetch queue a few at a time, and a frame that is wanted sooner jumps it.
+export function preloadMewbitGroup(group, first = null) {
   if (!group) return;
-  for (const entry of posesOfGroup(group)) {
+  const poses = posesOfGroup(group);
+  const lead = first ? MEWBIT_POSES[first] : null;
+  const ordered = lead ? [lead, ...poses.filter((entry) => entry !== lead)] : poses;
+  for (const entry of ordered) {
     const frames = framesOf(entry);
-    frames.forEach((url) => blobOf(url).catch(() => {}));
-    frames.slice(0, WARM_FRAMES).forEach((url) => requestFrame(url, false));
+    frames.slice(0, WARM_FRAMES).forEach((url) => blobOf(url).catch(() => {}));
+    requestFrame(frames[0], false);
   }
+  for (const entry of ordered) framesOf(entry).slice(WARM_FRAMES).forEach((url) => blobOf(url).catch(() => {}));
 }
 
 // ---- Player --------------------------------------------------------------------------------------------------
@@ -208,6 +238,7 @@ export function createPlayer(onShown) {
     routine: null, // { entry, nextAt, last }
     saved: new Map(), // loop name -> { elapsed, at }
     lastWarm: 0,
+    screen: null, // the group being kept warm
     drawn: { a: null, b: null, k: -1 },
   };
 
@@ -332,12 +363,28 @@ export function createPlayer(onShown) {
     return layer.last;
   }
 
+  // A pose that borrows the current screen (the count-in poses sit in the lobby group and also in the game's) does not
+  // move the player to another one: its frames are already part of this screen's.
+  function screenOf(entry) {
+    return player.screen && entry.also?.includes(player.screen) ? player.screen : entry.group;
+  }
+
+  // Keeps the pose on screen and those it is likely to hand over to (calm loops join each other, loops of one
+  // `sync` swap in step) decoded a few frames deep; every other pose of the screen only has its first frame, which
+  // is all a switch waits for.
   function warm(now) {
     if (now - player.lastWarm < WARM_EVERY_MS) return;
     player.lastWarm = now;
-    const group = player.routine?.entry.group ?? player.cur?.entry.group;
+    const current = player.cur?.entry;
+    const entry = player.routine?.entry ?? current;
+    if (!entry) return;
+    const group = screenOf(entry);
+    player.screen = group;
     if (!group) return;
-    for (const entry of posesOfGroup(group)) framesOf(entry).slice(0, WARM_FRAMES).forEach((url) => requestFrame(url, false));
+    for (const pose of posesOfGroup(group)) {
+      const likely = pose === current || (current && ((pose.rest && current.rest) || (pose.sync && pose.sync === current.sync)));
+      framesOf(pose).slice(0, likely ? WARM_FRAMES : 1).forEach((url) => requestFrame(url, false));
+    }
   }
 
   function draw(canvas, now) {
@@ -380,7 +427,7 @@ function wantedSize() {
   return size;
 }
 
-export default function Mewbit({ pose = "neutral", effects = "full", className = "", onShow = null }) {
+function Mewbit({ pose = "neutral", effects = "full", className = "", onShow = null }) {
   const prefersReduced = usePrefersReducedMotion();
   const level = effectiveEffects(effects, prefersReduced);
   const animated = level !== "off";
@@ -439,8 +486,16 @@ export default function Mewbit({ pose = "neutral", effects = "full", className =
     return () => window.cancelAnimationFrame(raf);
   }, []);
 
+  // The count-in poses name the lobby as their group but are also part of the game's: on the game screen they add
+  // no second batch of fetches.
   const wanted = MEWBIT_POSES[pose] || MEWBIT_POSES.neutral;
-  useEffect(() => preloadMewbitGroup(wanted.group), [wanted.group]);
+  const screenRef = useRef(null);
+  useEffect(() => {
+    const screen = screenRef.current && wanted.also?.includes(screenRef.current) ? screenRef.current : wanted.group;
+    if (screen === screenRef.current) return;
+    screenRef.current = screen;
+    preloadMewbitGroup(screen, pose);
+  }, [wanted.group]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const entry = MEWBIT_POSES[shown] || null;
   const motion = animated && entry?.motion ? entry.motion : "";
@@ -454,3 +509,5 @@ export default function Mewbit({ pose = "neutral", effects = "full", className =
     </div>
   );
 }
+
+export default memo(Mewbit);

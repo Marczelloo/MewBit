@@ -4,16 +4,19 @@ const { before, describe, it } = require("node:test");
 const { pathToFileURL } = require("node:url");
 
 let COUNT_MS;
+let FULL_COMBO_DELAY_MS;
 let IMPACT_DELAY_MS;
 let JUDGE_COUNT_MS;
 let JUDGE_STEP_MS;
 let REVEAL;
 let countTicks;
 let easeOut;
+let isFullCombo;
 let resultSoundEvents;
+let skipEvents;
 
 before(async () => {
-  ({ COUNT_MS, IMPACT_DELAY_MS, JUDGE_COUNT_MS, JUDGE_STEP_MS, REVEAL, countTicks, easeOut, resultSoundEvents } = await import(
+  ({ COUNT_MS, FULL_COMBO_DELAY_MS, IMPACT_DELAY_MS, JUDGE_COUNT_MS, JUDGE_STEP_MS, REVEAL, countTicks, easeOut, isFullCombo, resultSoundEvents, skipEvents } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/resultTimeline.js")).href
   ));
 });
@@ -91,5 +94,35 @@ describe("mewbeat results timeline", () => {
       events.slice(1).forEach(({ at }, index) => assert.ok(at >= events[index].at));
       assert.deepEqual(events.at(-1), { at: REVEAL.grade + IMPACT_DELAY_MS, name, level: 1, rate: 1 });
     }
+  });
+
+  it("adds the full combo's fanfare right after the grade's impact, and only when asked", () => {
+    const impactAt = REVEAL.grade + IMPACT_DELAY_MS;
+    const events = resultSoundEvents({ ...RUN, fullCombo: true });
+    assert.deepEqual(events.at(-1), { at: impactAt + FULL_COMBO_DELAY_MS, name: "full-combo", level: 1, rate: 1 });
+    assert.equal(events.at(-2).at, impactAt);
+    assert.ok(events.at(-2).name.startsWith("rank-impact"));
+    events.slice(1).forEach(({ at }, index) => assert.ok(at >= events[index].at));
+    for (const run of [RUN, { ...RUN, fullCombo: false }]) {
+      assert.ok(!resultSoundEvents(run).some(({ name }) => name === "full-combo"));
+    }
+  });
+
+  it("keeps the impact and the fanfare for a skip, and the impact alone without a full combo", () => {
+    const impactAt = REVEAL.grade + IMPACT_DELAY_MS;
+    assert.deepEqual(skipEvents(resultSoundEvents({ ...RUN, fullCombo: true })).map(({ name }) => name), ["rank-impact-pass", "full-combo"]);
+    assert.deepEqual(skipEvents(resultSoundEvents(RUN)).map(({ at }) => at), [impactAt]);
+    assert.deepEqual(skipEvents([]), []);
+  });
+
+  it("calls only a finished, unaided run with no misses a full combo", () => {
+    const run = { finished: true, autoplay: false, calibration: false, counts: { perfect: 40, great: 2, good: 1, miss: 0 } };
+    assert.equal(isFullCombo(run), true);
+    assert.equal(isFullCombo({ ...run, finished: false }), false);
+    assert.equal(isFullCombo({ ...run, autoplay: true }), false);
+    assert.equal(isFullCombo({ ...run, calibration: true }), false);
+    assert.equal(isFullCombo({ ...run, counts: { ...run.counts, miss: 1 } }), false);
+    assert.equal(isFullCombo({ ...run, counts: undefined }), false);
+    assert.equal(isFullCombo(null), false);
   });
 });

@@ -10,6 +10,7 @@ import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
 import { createLiveSender } from "./liveSender.js";
 import { missPose } from "./missPose.js";
+import { createStore } from "./hudStore.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
 export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true };
@@ -33,7 +34,8 @@ function clockText(totalSeconds) {
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
-const EMPTY_COUNTS = { perfect: 0, great: 0, good: 0, miss: 0 };
+const NO_NOTES = Object.freeze([]);
+const EMPTY_COUNTS ={ perfect: 0, great: 0, good: 0, miss: 0 };
 export const EMPTY_HUD = {
   best: null,
   score: 0,
@@ -86,13 +88,14 @@ export function poseFor({ phase, feverActive, now, missUntil, crushed, milestone
 // waiting for events it may have missed.
 // liveSession(audioKey) names the live leaderboard session a run reports to ("live:<audioKey>" in Live, "room"
 // in a room); null, or a function answering null, means the run reports nothing (solo, room spectators).
-export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, liveSession = null, submitExtra = null, onExit }) {
+export function useMewbeatGame({ link, mode = "live", requests = null, settings, effects = "full", trackInfo = null, inputPaused = false, minimized = false, liveSession = null, submitExtra = null, onExit }) {
   const cfg = settingsOf(settings);
   const prefersReduced = usePrefersReducedMotion();
   const effectsLevel = effectiveEffects(effects, prefersReduced);
 
   const [phase, setPhaseState] = useState("connecting");
-  const [hud, setHud] = useState(EMPTY_HUD);
+  // The HUD changes on every judgement; it lives outside React so only the leaves that show it render again.
+  const [hudStore] = useState(() => createStore(EMPTY_HUD));
   const [endSummary, setEndSummary] = useState(null);
   const [runDifficulty, setRunDifficulty] = useState(null); // the difficulty of the chart the run on stage is on
   const [swap, setSwap] = useState(null); // a difficulty change in progress: { difficulty, status: "loading" | "failed" }
@@ -147,6 +150,12 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const liveRef = useRef(null); // the live leaderboard sender of the run in progress
   const [runSession, setRunSession] = useState(null); // its session, while the run is on stage
   const redrawRef = useRef(false); // a resize wipes the canvas, which a paused game must repaint once
+  // A minimized window shows a tile instead of the highway: the run goes on, nothing is drawn, and coming back repaints.
+  const minimizedRef = useRef(minimized);
+  minimizedRef.current = minimized;
+  useEffect(() => {
+    if (!minimized) redrawRef.current = true;
+  }, [minimized]);
 
   // Latest props for the long-lived callbacks below.
   const cfgRef = useRef(cfg);
@@ -285,7 +294,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       setEndSummary(null);
       const snap = run.snapshot(songMs);
       multiplierRef.current = snap.multiplier;
-      setHud(toHud(snap));
+      hudStore.set(toHud(snap));
       startLive(snap);
       setPhase(songClock.paused() ? "paused" : "playing");
       // A solo link starts its count-in only now that the game took the chart (the live link has no such hook).
@@ -350,13 +359,14 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
           feverActive: false,
           feverLeftMs: 0,
         });
-        setHud({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
+        hudStore.set({ ...toHud(snap), feverActive: false, feverLeftMs: 0 });
       } else {
-        setHud(EMPTY_HUD);
+        hudStore.set(EMPTY_HUD);
       }
     }
 
-    function beginCharting() {
+    // `retry` is a player's "Try again" on a failed chart: the bot forgets the failure and charts the song again.
+    function beginCharting({ retry = false } = {}) {
       const key = songClock.audioKey();
       if (!key) return;
       const status = link.status();
@@ -365,7 +375,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         return;
       }
       setPhase("charting");
-      link.requestChart(key, cfgRef.current.liveDifficulty);
+      link.requestChart(key, cfgRef.current.liveDifficulty, retry ? { retry } : undefined);
     }
     beginChartingRef.current = beginCharting;
 
@@ -474,11 +484,11 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         timingDirtyRef.current = false;
         setTiming(tapTiming.estimate());
       }
-      const snap = run.snapshot(songMs);
+      const snap = run.snapshot(songMs, false);
       if (snap.multiplier > multiplierRef.current) milestoneUntilRef.current = performance.now() + MILESTONE_POSE_MS;
       multiplierRef.current = snap.multiplier;
       feverActiveRef.current = snap.feverActive;
-      setHud(toHud(snap));
+      hudStore.set(toHud(snap));
       liveRef.current?.update(liveSample(snap));
       // Autoplay plays the whole game, FEVER included.
       if (runAutoplayRef.current && !runSpectatingRef.current && snap.vibe >= 1 && !snap.feverActive) {
@@ -708,10 +718,11 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       function drawRun(heardMs) {
         const flashes = flashesRef.current;
         while (flashes.length && heardMs - flashes[0].at > FLASH_KEEP_MS) flashes.shift();
+        if (minimizedRef.current) return;
         renderer?.render({
           heardMs,
           approachMs,
-          notes: runCalibrationRef.current ? [] : run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs),
+          notes: runCalibrationRef.current ? NO_NOTES : run.visibleNotes(heardMs - MISS_LOOKBACK_MS, heardMs + approachMs, true),
           lanesDown: lanesDownRef.current,
           flashes,
           feverActive: feverActiveRef.current,
@@ -733,9 +744,9 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       } else if (run && current === "paused") {
         if (redrawRef.current && songMs !== null) drawRun(run.heardTime(songMs));
       } else {
-        renderer?.render({ ...emptyFrame, approachMs, lanesDown: lanesDownRef.current });
+        if (!minimizedRef.current) renderer?.render({ ...emptyFrame, approachMs, lanesDown: lanesDownRef.current });
       }
-      redrawRef.current = false;
+      if (!minimizedRef.current) redrawRef.current = false;
 
       const pose = poseFor({
         phase: current,
@@ -811,11 +822,11 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       }
       const snap = restarted.snapshot(songMs);
       const { hits, ranked, skipped, ...rest } = snap;
-      setHud({ ...rest, best: bestRef.current, unranked: effective || skipped > 0, judgement: null });
+      hudStore.set({ ...rest, best: bestRef.current, unranked: effective || skipped > 0, judgement: null });
       judgementRef.current = null;
       flashesRef.current = [];
     }
-  }, [link]);
+  }, [link, hudStore]);
 
   const setAutoplay = useCallback((next) => {
     const value = Boolean(next);
@@ -835,6 +846,11 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   }, [tapTiming]);
 
   const changeDifficulty = useCallback((next) => requestSwapRef.current(next), []);
+  // "Try again" after charting failed (or came back uncharted); a run on stage or any other phase ignores it.
+  const retryCharting = useCallback(() => {
+    const current = phaseRef.current;
+    if (!runRef.current && (current === "failed" || current === "uncharted")) beginChartingRef.current({ retry: true });
+  }, []);
 
-  return { phase, hud, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating };
+  return { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating };
 }

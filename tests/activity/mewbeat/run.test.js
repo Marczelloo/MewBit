@@ -726,3 +726,34 @@ test("swapChart's default window is the slowest scroll speed's, so nothing on sc
   // 2000 + 2200 = 4200: old notes up to there stay (2000..4000 is 9).
   assert.equal(run.noteList().length, 9);
 });
+test("visibleNotes with reuse gives the same notes as without, window after window", () => {
+  const holds = { notes: Array.from({ length: 40 }, (_, i) => ({ t: 2000 + i * 250, lane: i % 4, ...(i % 7 === 0 ? { len: 600 } : {}) })) };
+  const run = createRun({ chart: holds, startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(1, 2250);
+  for (const [from, to] of [[0, 1500], [1900, 3000], [3000, 4000], [2500, 2600], [9000, 20000], [3000, 4000], [100, 1500]]) {
+    const fresh = run.visibleNotes(from, to);
+    const reused = run.visibleNotes(from, to, true);
+    assert.deepEqual(reused.map((n) => ({ ...n })), fresh, `window ${from}-${to}`);
+    assert.equal(reused.length, fresh.length);
+  }
+});
+
+test("a reused window is rewritten in place by the next call", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const first = run.visibleNotes(2000, 3000, true);
+  const second = run.visibleNotes(5000, 5500, true);
+  assert.equal(first, second, "one shared array");
+  assert.deepEqual(second.map((n) => n.t), [5000, 5250, 5500]);
+});
+
+test("snapshot without hits leaves the hit list out and everything else the same", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  run.press(0, 2000);
+  run.press(1, 2250);
+  const full = run.snapshot(2400);
+  const lean = run.snapshot(2400, false);
+  assert.ok(Array.isArray(full.hits) && full.hits.length > 0);
+  assert.equal(lean.hits, null);
+  assert.deepEqual({ ...lean, hits: full.hits }, full);
+});

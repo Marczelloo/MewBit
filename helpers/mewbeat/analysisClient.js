@@ -17,6 +17,9 @@ const MEMORY_CAPACITY = 32;
 const REQUEST_TIMEOUT_MS = 150_000;
 const DURATION_SLACK_MIN_MS = 2000;
 const DURATION_SLACK_RATIO = 0.05;
+// An uncharted marker is a few dozen bytes; a features document is hundreds of kilobytes. statusOf, which is sync, only
+// ever answers from a marker, so it does not read a file larger than this.
+const MARKER_MAX_BYTES = 4096;
 
 function featuresPathOf(dir, key) {
   return path.join(dir, "features", `${audioKeyFile(key)}.json`);
@@ -185,15 +188,15 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     return request;
   }
 
-  // Memory, then disk. Never reaches Lavalink.
-  function peek(track) {
+  // Memory, then disk (read without blocking, features files are large). Never reaches Lavalink.
+  async function peek(track) {
     const key = audioKeyOf(track);
     if (!key || unchartedKeys.has(key)) return null;
     const cached = readMemory(key);
     if (cached) return cached;
     if (blockOf(key)) return null;
     try {
-      const entry = parseCacheFile(fs.readFileSync(featuresPathOf(dir, key), "utf8"));
+      const entry = parseCacheFile(await fsPromises.readFile(featuresPathOf(dir, key), "utf8"));
       if (!entry) return null;
       remember(key, entry);
       return entry.features ?? null;
@@ -204,7 +207,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
 
   // Why getFeatures/peek came back empty, or null when there is no negative
   // information (not asked yet, or the entry expired). Memory, then the
-  // on-disk uncharted marker; never reaches Lavalink.
+  // on-disk uncharted marker (a features file is not read); never reaches Lavalink.
   function statusOf(track) {
     const key = audioKeyOf(track);
     if (!key) return null;
@@ -212,7 +215,9 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     const block = blockOf(key);
     if (block) return { status: block.kind };
     try {
-      const entry = parseCacheFile(fs.readFileSync(featuresPathOf(dir, key), "utf8"));
+      const file = featuresPathOf(dir, key);
+      if (fs.statSync(file).size > MARKER_MAX_BYTES) return null;
+      const entry = parseCacheFile(fs.readFileSync(file, "utf8"));
       if (entry?.uncharted) {
         remember(key, entry);
         return { status: "uncharted", reason: entry.reason };
@@ -223,7 +228,24 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     return null;
   }
 
-  return { getFeatures, peek, statusOf };
+  // An explicit retry: forgets why the track had no features (a failure or busy block, an uncharted verdict in memory and
+  // the uncharted marker on disk) so the next getFeatures asks the plugin again. Real features are never touched. False,
+  // with nothing forgotten, while an analysis of the track is still running (it is the one attempt that counts).
+  async function forget(track) {
+    const key = audioKeyOf(track);
+    if (!key || pendingByKey.has(key)) return false;
+    blockedByKey.delete(key);
+    unchartedKeys.delete(key);
+    const file = featuresPathOf(dir, key);
+    try {
+      if (parseCacheFile(await fsPromises.readFile(file, "utf8"))?.uncharted) await fsPromises.unlink(file);
+    } catch {
+      // no file, or one that vanished meanwhile: nothing to forget
+    }
+    return true;
+  }
+
+  return { getFeatures, peek, statusOf, forget };
 }
 
 module.exports = {

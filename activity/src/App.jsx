@@ -57,6 +57,7 @@ import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
 import { createKonamiMatcher } from "./mewbeat/konami.js";
 import { isDesktopClient } from "./mewbeat/platform.js";
 import GlitchCut from "./mewbeat/GlitchCut.jsx";
+import { createStore } from "./mewbeat/hudStore.js";
 import UnlockReveal from "./mewbeat/UnlockReveal.jsx";
 
 import ActivityGate from "./views/ActivityGate.jsx";
@@ -250,6 +251,15 @@ function VolumeSlider({ slider, onPreview, onCommit, className = "" }) {
   );
 }
 
+
+// Keeps what it was given the last time `frozen` was false. React skips a subtree whose element is the very same one
+// as before, so while the mewbeat overlay covers the music UI a state push (four a second) does not render it,
+// and everything in it (scroll, open menus, inputs) is still there when the game closes.
+function FrozenWhile({ frozen, children }) {
+  const kept = useRef(children);
+  if (!frozen) kept.current = children;
+  return kept.current;
+}
 
 function useCompactViewport() {
   const query = "(max-height: 360px), (max-width: 620px) and (max-height: 420px)";
@@ -2573,6 +2583,35 @@ function App() {
   // Task 8's link reads the socket through these: it sends via mewbeatSocketRef and receives by setting mewbeatHandlerRef.
   const mewbeatSocketRef = useRef(null);
   const mewbeatHandlerRef = useRef(null);
+  // The game gets the bot's player cut down to what it shows, and the settings object only when its content changes,
+  // so a state push that changes none of that does not render it. The clock-like fields (the position moves four
+  // times a second) go through a store the game subscribes to.
+  const botPlayer = state.player;
+  const botTrack = botPlayer?.currentTrack ?? null;
+  const botQueue = botPlayer?.queue;
+  const trackId = botTrack?.id ?? null;
+  const trackTitle = botTrack?.title;
+  const trackAuthor = botTrack?.author;
+  const trackDurationMs = botTrack?.durationMs;
+  const trackArtworkUrl = botTrack?.artworkUrl;
+  const queueLength = botQueue?.length ?? 0;
+  const nextTitle = botQueue?.[0]?.title ?? null;
+  const mewbeatPlayer = useMemo(() => ({
+    currentTrack: trackId === null ? null : { id: trackId, title: trackTitle, author: trackAuthor, durationMs: trackDurationMs, artworkUrl: trackArtworkUrl },
+    queueLength,
+    nextTitle,
+  }), [trackId, trackTitle, trackAuthor, trackDurationMs, trackArtworkUrl, queueLength, nextTitle]);
+  const mewbeatSettingsNow = state.mewbeat?.settings;
+  const mewbeatSettingsKey = JSON.stringify(mewbeatSettingsNow ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mewbeatSettings = useMemo(() => mewbeatSettingsNow, [mewbeatSettingsKey]);
+  const [mewbeatFeed] = useState(() => createStore({ trackId: null, paused: false, positionMs: 0 }));
+  const botPaused = Boolean(botPlayer?.paused);
+  const botPositionMs = botPlayer?.positionMs ?? 0;
+  useEffect(() => {
+    mewbeatFeed.set({ trackId, paused: botPaused, positionMs: botPositionMs });
+  }, [mewbeatFeed, trackId, botPaused, botPositionMs]);
+  const closeMewbeat = useCallback(() => setMewbeatOpen(false), []);
   const konamiMatcher = useRef(null);
   const seenActivityEventIds = useRef(new Set());
   const activityFeedReady = useRef(false);
@@ -2826,7 +2865,7 @@ function App() {
         // became silent (Discord iframe/proxy edge case), on return to the
         // foreground, or after an explicit reconnect — never continuously.
         const resyncIfStale = () => {
-          if (Date.now() - lastActivityStateAt.current >= 3_000) void reconcile({ quiet: true });
+          if (Date.now() - lastActivityStateAt.current >= 12_000) void reconcile({ quiet: true });
         };
         healthWatchTimer = window.setInterval(resyncIfStale, 1_000);
         const onVisibilityChange = () => {
@@ -3353,6 +3392,7 @@ function App() {
         />
       ) : null}
       {showLoader && !gate ? <SignalLoader ready={!isHydrating} message={connection.message} onPhase={setLoaderPhase} onDone={hideLoader} /> : null}
+      <FrozenWhile frozen={mewbeatOpen}>
       <div className={`activity-content ${showLoader && loaderPhase === "done" ? "is-arriving" : ""}`} aria-hidden={showLoader && loaderPhase !== "done" ? "true" : undefined} inert={(showLoader && loaderPhase !== "done") || undefined}>
       {isCompact ? <CompactPlayer state={state} /> : <>
         <div ref={appShellRef} className={`app-shell ${leftSidebarOpen ? "left-open" : "left-closed"} ${rightSidebarOpen ? "right-open" : "right-closed"}`}>
@@ -3408,10 +3448,11 @@ function App() {
         {activeTab === "home" ? null : <div className="player-bar-shell" aria-hidden={isDrawerViewport && (leftSidebarOpen || rightSidebarOpen) ? "true" : undefined} inert={isDrawerViewport && (leftSidebarOpen || rightSidebarOpen) || undefined}><PlayerBar state={state} onAction={onAction} onView={goToView} onOpenExternalLink={requestExternalLink} isActionPending={isActionPending} /></div>}
       </>}
       </div>
+      </FrozenWhile>
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
       {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
       {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}
-      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} state={state} settings={state.mewbeat?.settings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={() => setMewbeatOpen(false)} onPresence={setGamePresence} /></Suspense> : null}
+      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} player={mewbeatPlayer} feed={mewbeatFeed} settings={mewbeatSettings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={closeMewbeat} onPresence={setGamePresence} voiceChannelName={state.guild?.voiceChannelName ?? null} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>
   );

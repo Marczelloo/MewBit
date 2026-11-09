@@ -262,6 +262,41 @@ describe("mewbeat rooms queue", () => {
     assert.deepStrictEqual(rooms.queueRemove(G, "bo", "0"), { ok: false, reason: "bad_index" });
   });
 
+  it("won't remove a row that moved under the player", async () => {
+    const { rooms } = ctx;
+    await rooms.queueAdd(G, "bo", { uri: "a" });
+    await rooms.queueAdd(G, "bo", { uri: "b" });
+    const [first, second] = rooms.snapshot(G).queue;
+    assert.deepStrictEqual(rooms.queueRemove(G, "bo", 0, second.audioKey), { ok: false, reason: "queue_changed" });
+    assert.deepStrictEqual(rooms.queueRemove(G, "bo", 0, first.audioKey), { ok: true });
+    assert.deepStrictEqual(rooms.snapshot(G).queue.map((entry) => entry.title), ["Song b"]);
+  });
+
+  it("lets only the host reorder the queue", async () => {
+    const { rooms } = ctx;
+    for (const uri of ["a", "b", "c"]) await rooms.queueAdd(G, "bo", { uri });
+    const titles = () => rooms.snapshot(G).queue.map((entry) => entry.title);
+    assert.deepStrictEqual(rooms.queueMove(G, "bo", 0, 1), { ok: false, reason: "not_host" });
+    assert.deepStrictEqual(rooms.queueMove(G, "ann", 2, 0), { ok: true });
+    assert.deepStrictEqual(titles(), ["Song c", "Song a", "Song b"]);
+    assert.deepStrictEqual(rooms.queueMove(G, "ann", 0, 2), { ok: true });
+    assert.deepStrictEqual(titles(), ["Song a", "Song b", "Song c"]);
+    for (const [from, to] of [[0, 3], [-1, 0], ["0", 1], [0, 1.5]]) {
+      assert.deepStrictEqual(rooms.queueMove(G, "ann", from, to), { ok: false, reason: "bad_index" });
+    }
+    assert.deepStrictEqual(titles(), ["Song a", "Song b", "Song c"]);
+  });
+
+  it("won't move a song when the queue changed under the host", async () => {
+    const { rooms } = ctx;
+    await rooms.queueAdd(G, "ann", { uri: "a" });
+    await rooms.queueAdd(G, "ann", { uri: "b" });
+    const [first, second] = rooms.snapshot(G).queue;
+    assert.deepStrictEqual(rooms.queueMove(G, "ann", 0, 1, second.audioKey), { ok: false, reason: "queue_changed" });
+    assert.deepStrictEqual(rooms.queueMove(G, "ann", 0, 1, first.audioKey), { ok: true });
+    assert.deepStrictEqual(rooms.snapshot(G).queue.map((entry) => entry.title), ["Song b", "Song a"]);
+  });
+
   it("never removes the song being played", async () => {
     const { rooms } = ctx;
     await rooms.queueAdd(G, "ann", { uri: "a" });
@@ -644,6 +679,30 @@ describe("mewbeat rooms review fixes", () => {
     assert.strictEqual(room.phase, "lobby");
     assert.strictEqual(room.endedAt, null);
     assert.strictEqual(room.round, 1);
+    assert.deepStrictEqual(room.played, []);
+  });
+
+  it("remembers the songs that ended, the last twenty at most", async () => {
+    const { rooms, clock } = setup();
+    rooms.join(G, profile("ann"));
+    const round = async (i) => {
+      await rooms.queueAdd(G, "ann", { uri: `s${i}` });
+      playRound(rooms, clock, ["ann"], keyOf(`s${i}`));
+    };
+    await round(0);
+    assert.deepStrictEqual(rooms.snapshot(G).played, []);
+    rooms.submitted(G, "ann", result(1, 0.5));
+    assert.deepStrictEqual(rooms.snapshot(G).played, []); // still `current`, until the next round starts
+    await round(1);
+    assert.deepStrictEqual(rooms.snapshot(G).played.map((entry) => entry.title), ["Song s0"]);
+    for (let i = 2; i < 23; i += 1) {
+      rooms.submitted(G, "ann", result(1, 0.5));
+      await round(i);
+    }
+    const titles = rooms.snapshot(G).played.map((entry) => entry.title);
+    assert.strictEqual(titles.length, 20);
+    assert.strictEqual(titles[0], "Song s2");
+    assert.strictEqual(titles[19], "Song s21");
   });
 
   it("refuses the 51st member", () => {

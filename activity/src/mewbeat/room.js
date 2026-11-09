@@ -10,6 +10,12 @@ export function memberOf(room, userId) {
 }
 
 export const isHost = (room, userId) => Boolean(room && userId && room.hostId === userId);
+// The members with the owner first; everyone else keeps the server's order.
+export function ownerFirst(room) {
+  const members = room?.members ?? [];
+  const owner = members.find((m) => m.userId === room.hostId);
+  return owner ? [owner, ...members.filter((m) => m !== owner)] : members;
+}
 export const isSpectator = (room, userId) => Boolean(memberOf(room, userId)?.spectator);
 
 // A round is in flight from the loading phase until it ends (a finished round keeps `current` set with
@@ -99,38 +105,49 @@ export function lobbyPose({ remainingMs: left = null, digit = null } = {}) {
   return "idle";
 }
 
-// Queue timeline: the running (or just finished) round first, then the queue. Segment width follows the
-// song length. `index` is the position in `queue` (what mewbeat_room_queue_remove takes); the current song
-// has none.
+// The queue as the lobby lists it: the songs already played, the running (or just finished) round, then what waits.
+// `index` is the position in `queue` (what mewbeat_room_queue_remove and _move take); the others have none.
 export function timelineOf(room, userId) {
   if (!room) return [];
   const host = isHost(room, userId);
-  const items = [];
+  const items = (room.played ?? []).map((track, position) => ({
+    key: `played:${position}:${track.audioKey}`,
+    track,
+    played: true,
+    current: false,
+    finished: true,
+    index: null,
+    mine: track.addedBy === userId,
+    canRemove: false,
+    canMove: false,
+  }));
   if (room.current) {
     items.push({
       key: `current:${room.round}`,
       track: room.current,
+      played: false,
       current: true,
       finished: room.endedAt != null,
       index: null,
       mine: room.current.addedBy === userId,
       canRemove: false,
+      canMove: false,
     });
   }
   (room.queue ?? []).forEach((track, index) => {
     items.push({
       key: `q:${index}:${track.audioKey}`,
       track,
+      played: false,
       current: false,
       finished: false,
       index,
       mine: track.addedBy === userId,
       canRemove: host || track.addedBy === userId,
+      canMove: host,
     });
   });
-  const durations = items.map((item) => Math.max(1, item.track.durationMs || 0));
-  const longest = Math.max(1, ...durations);
-  return items.map((item, i) => ({ ...item, flex: Math.max(0.35, durations[i] / longest) }));
+  return items;
 }
 
 // How far the round's song has played, 0..1 (1 once the round ended).
@@ -205,6 +222,7 @@ export function inviteMessage(reply) {
 const ROOM_ERRORS = {
   not_in_room: "You're not in the room.",
   not_host: "Only the host can do that.",
+  queue_changed: "The queue just changed. Try again.",
   wrong_phase: "Not possible while a round is running.",
   empty_queue: "Add a song to the queue first.",
   queue_full: "The queue is full (5 per player, 20 in total).",

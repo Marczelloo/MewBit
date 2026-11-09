@@ -1,7 +1,9 @@
 import { ArrowCounterClockwise, ArrowLeft, ArrowRight, MusicNotesSimple } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import { COUNT_MS, JUDGE_COUNT_MS, JUDGE_STEP_MS, REVEAL, easeOut, resultSoundEvents } from "./resultTimeline.js";
+import { COUNT_MS, JUDGE_COUNT_MS, JUDGE_STEP_MS, REVEAL, easeOut, isFullCombo, resultSoundEvents } from "./resultTimeline.js";
 import { useResultSounds } from "./useResultSounds.js";
+import { BoardHeading, BoardRow, BoardRows, useLevelBoard } from "./LevelBoard.jsx";
+import { resultBoardTarget } from "./resultBoard.js";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
@@ -32,7 +34,9 @@ const BUBBLES = {
 };
 const NEW_BEST_BUBBLE = "NEW BEST!! ✦";
 
+// Rows asked of the board: the screen's side column is short, and your own row is pinned under them when you are further down.
 const TOP_ROWS = 5;
+const BOARD_AVATAR = 24;
 // The offset slider's range and step (SettingsPanel.jsx).
 const OFFSET_MIN = -300;
 const OFFSET_MAX = 700;
@@ -235,35 +239,22 @@ function Standings({ rows }) {
   );
 }
 
-function ServerBest({ entries, meId, difficulty }) {
+// The leaderboard of the level just played, with the same toggle and rows as song select. board is useLevelBoard's.
+// The rows open nobody here: the results screen has no player page to go to.
+function ResultsBoard({ board, difficulty, userId }) {
   return (
-    <section className="mb-res-board" aria-label="Server best">
-      <h3>Server best <small>{difficulty ? capitalize(difficulty) : ""}</small></h3>
-      {entries.length ? (
-        <ol>
-          {entries.slice(0, TOP_ROWS).map((entry, index) => (
-            <PlayerRow
-              key={entry.userId ?? index}
-              position={index + 1}
-              me={entry.userId === meId}
-              name={entry.username}
-              avatarUrl={entry.avatarUrl}
-              sub={[Number.isFinite(entry.accuracy) ? formatAccuracy(entry.accuracy) : null, entry.maxCombo > 0 ? `${entry.maxCombo} combo` : null].filter(Boolean).join(" · ")}
-              score={entry.score}
-              grade={entry.grade}
-              style={{ "--i": index }}
-            />
-          ))}
-        </ol>
-      ) : (
-        <p className="mb-res-empty">Nobody's on the board yet. Be the first.</p>
-      )}
+    <section className={`mb-res-lb mb-res-in mb-ss-d-${difficulty}`} aria-label="Leaderboard">
+      <BoardHeading difficulty={difficulty} scope={board.scope} onScope={board.setScope} />
+      <div className="mb-res-lb-rows">
+        <BoardRows board={board} userId={userId} size={BOARD_AVATAR} />
+      </div>
+      {board.pinned ? <BoardRow rank={board.pinned.rank} entry={board.pinned.best} mine pinned size={BOARD_AVATAR} /> : null}
     </section>
   );
 }
 
 // Results of the run that just ended. The local numbers come from the run itself and show at once; the
-// server's reply (rank, best, top list) fills in when it arrives. Rooms pass standings and onNext (Task 10).
+// server's reply (rank, best) fills in when it arrives, and the level's board is asked once that reply has settled. Rooms pass standings and onNext (Task 10).
 export default function Results({
   summary,
   mode = "live",
@@ -273,6 +264,8 @@ export default function Results({
   queued = false,
   upNext = null,
   standings = null,
+  request = null,
+  userId = null,
   timing = null,
   savedOffset = 0,
   onApplyOffset,
@@ -298,13 +291,16 @@ export default function Results({
   const shownTiming = useMemo(() => timingOf(summary), [summary]);
   const bins = useMemo(() => histogramOf(summary.hitErrors ?? []), [summary]);
   const peak = Math.max(1, ...bins);
-  const meId = result?.best?.userId ?? null;
-  const topList = result?.serverTop ?? [];
-  // A ranked-mode reply with an empty board still gets the panel, so the empty state reads as intended.
-  const boardEmpty = topList.length === 0 && Boolean(result) && !standings?.length && !summary.calibration;
-  const showSide = Boolean(standings?.length) || topList.length > 0 || boardEmpty;
+  // The board is asked for as soon as the score is settled (ok, refused or lost), but shows at its reveal step. It
+  // is there for every run with a chart, ranked or not.
+  const boardTarget = typeof request === "function" ? resultBoardTarget(summary) : null;
+  const board = useLevelBoard({ request, audioKey: boardTarget?.audioKey, difficulty: boardTarget?.difficulty, userId, limit: TOP_ROWS, enabled: Boolean(boardTarget?.ready) });
+  const showSide = Boolean(standings?.length) || Boolean(boardTarget);
   const grade = gradeKey(summary.grade);
-  const soundEvents = useMemo(() => resultSoundEvents({ grade, score: summary.score, accuracy: summary.accuracy, maxCombo: summary.maxCombo, fevers: summary.fevers }), [grade, summary]);
+  const fullCombo = isFullCombo(summary);
+  // Keyed on the numbers: the score reply replaces the summary object, and new events would re-run the sounds.
+  const { score, accuracy, maxCombo, fevers } = summary;
+  const soundEvents = useMemo(() => resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo }), [grade, score, accuracy, maxCombo, fevers, fullCombo]);
   useResultSounds({ play: summary.calibration ? null : onSound, openedAt, events: soundEvents, animate });
   // Only Live follows what the bot plays; Solo and rooms move on by themselves.
   const note = mode === "live" ? PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null) : null;
@@ -453,7 +449,7 @@ export default function Results({
       {showSide ? (
         <aside className="mb-res-side">
           {standings?.length && shown("side") ? <Standings rows={standings} /> : null}
-          {(topList.length || boardEmpty) && shown("side") ? <ServerBest entries={topList} meId={meId} difficulty={summary.difficulty} /> : null}
+          {boardTarget && shown("side") ? <ResultsBoard board={board} difficulty={boardTarget.difficulty} userId={userId} /> : null}
         </aside>
       ) : null}
     </section>

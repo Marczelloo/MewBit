@@ -1,0 +1,82 @@
+/* The minimized window (Discord's picture-in-picture): one 320x180 tile, scaled to the window. While it is up, the
+   rest of the game stays mounted but takes no space and draws nothing. */
+.mb-game.mb-game-min > :not(.mb-min) { display: none; }
+
+.mb-min {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(90% 70% at 100% 0%, rgb(167 139 250 / 0.16), transparent 60%),
+    radial-gradient(70% 60% at 0% 100%, rgb(255 110 199 / 0.1), transparent 60%),
+    var(--mb-bg);
+  color: var(--mb-text);
+  font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+.mb-tile { position: relative; flex: none; overflow: hidden; }
+.mb-tile-art { display: block; object-fit: cover; border-radius: 10px; outline: 1px solid rgb(255 255 255 / 0.16); }
+.mb-tile em { font-style: normal; }
+
+/* a: song select */
+.mb-tile-mew { position: absolute; right: 2px; bottom: 0; width: 172px; height: 172px; }
+.mb-tile-mew .mb-mewbit { width: 100%; height: 100%; }
+.mb-tile-col { position: absolute; top: 14px; bottom: 14px; left: 14px; display: flex; flex-direction: column; justify-content: space-between; width: 56%; }
+.mb-tile-select .mb-tile-cover { width: 60px; height: 60px; }
+.mb-tile-col b {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 25px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.mb-tile-col span { display: block; overflow: hidden; margin-top: 4px; color: var(--mb-muted); font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+
+/* b: a solo run, paused because the window was minimized */
+.mb-tile-paused .mb-tile-cover { position: absolute; top: 14px; left: 14px; width: 92px; height: 92px; filter: brightness(0.45); }
+.mb-tile-glyph { position: absolute; top: 14px; left: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; width: 92px; height: 92px; }
+.mb-tile-glyph i { display: block; width: 10px; height: 34px; border-radius: 3px; background: var(--mb-text); }
+.mb-tile-paused .mb-tile-info { position: absolute; top: 12px; left: 120px; right: 12px; }
+.mb-tile-tag { display: block; color: var(--mb-gold); font-size: 19px; font-weight: 900; letter-spacing: 0.08em; }
+.mb-tile-score { display: block; overflow: hidden; font: 700 33px/1.1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.04em; text-overflow: ellipsis; white-space: nowrap; }
+.mb-tile-combo { display: block; overflow: hidden; margin-top: 2px; color: var(--mb-muted); font: 700 17px/1.2 "JetBrains Mono", ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.mb-tile-resume { position: absolute; left: 14px; right: 14px; bottom: 16px; color: var(--mb-cyan); font-size: 19px; font-weight: 900; letter-spacing: -0.01em; }
+
+/* c: a Live or Room run that keeps going */
+.mb-tile-live .mb-tile-cover { position: absolute; top: 14px; left: 14px; width: 64px; height: 64px; }
+.mb-tile-live .mb-tile-info { position: absolute; top: 10px; left: 90px; right: 30px; }
+.mb-tile-live .mb-tile-score { font-size: 38px; line-height: 1.05; letter-spacing: -0.05em; }
+.mb-tile-live .mb-tile-combo { margin-top: 1px; font-size: 18px; }
+.mb-tile-dot { position: absolute; top: 16px; right: 14px; width: 11px; height: 11px; border-radius: 50%; background: var(--mb-pink); outline: 3px solid rgb(255 110 199 / 0.28); animation: mb-tile-pulse 1.6s ease-in-out infinite; }
+.mb-tile-place { position: absolute; left: 14px; bottom: 26px; font-size: 30px; font-weight: 900; letter-spacing: -0.03em; }
+.mb-tile-place span { margin-left: 6px; color: var(--mb-muted); font-size: 18px; font-weight: 700; }
+.mb-tile-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: #161920; }
+.mb-tile-prog i { display: block; height: 100%; background: var(--mb-cyan); transition: width 0.5s linear; }
+@keyframes mb-tile-pulse { 50% { opacity: 0.45; } }
+
+/* d: the room lobby */
+.mb-tile-face { position: absolute; top: 14px; right: 14px; width: 46px; height: 46px; overflow: hidden; border-radius: 50%; outline: 2px solid rgb(167 139 250 / 0.5); }
+.mb-tile-face .mb-mewbit { position: absolute; top: -17px; left: -34px; width: 112px; height: 112px; }
+.mb-tile-room { position: absolute; top: 14px; left: 14px; right: 72px; overflow: hidden; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.mb-tile-ready { position: absolute; top: 56px; left: 14px; right: 14px; overflow: hidden; color: var(--mb-cyan); font: 700 36px/1.1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.05em; white-space: nowrap; }
+.mb-tile-ready span { margin-left: 8px; color: var(--mb-muted); font: 800 20px "Hanken Grotesk", "Segoe UI", sans-serif; letter-spacing: 0; }
+.mb-tile-next { position: absolute; left: 14px; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.mb-tile-next .mb-tile-cover { flex: none; width: 44px; height: 44px; }
+.mb-tile-next b { min-width: 0; overflow: hidden; font-size: 18px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.mb-tile-next em { color: var(--mb-faint); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-tile-dot { animation: none; }
+  .mb-tile-prog i { transition: none; }
+}
+.mb-fx-off .mb-tile-dot { animation: none; }
+.mb-fx-off .mb-tile-prog i { transition: none; }

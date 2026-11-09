@@ -15,7 +15,7 @@ test.before(async () => {
 
 // A fake AudioContext driven by a manual perf clock: currentTime advances with perf time, no output latency
 // unless asked for, and getOutputTimestamp pairs the context time with the matching perf time.
-function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio } = {}) {
+function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio, aligner } = {}) {
   const env = { perf: 1000, sources: [], gains: [], resumeCalls: 0, fetches: [] };
   const ctx = {
     state,
@@ -88,6 +88,7 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
     }),
     createContext: () => ctx,
     now: () => env.perf,
+    aligner,
   });
   return { env, ctx, audio };
 }
@@ -488,4 +489,98 @@ test("the lag holds across pause and resume, and goes with the song", async () =
 test("align with no song loaded changes nothing", async () => {
   const { audio } = harness();
   assert.equal(audio.align(alignTimes), 0);
+});
+
+// An aligner whose answer the test gives by hand.
+function manualAligner() {
+  const calls = [];
+  return {
+    calls,
+    closed: 0,
+    align(request) {
+      return new Promise((resolve) => calls.push({ request, resolve }));
+    },
+    close() { this.closed += 1; },
+  };
+}
+
+test("alignInBackground sets the lag from the aligner, and play waits for it", async () => {
+  const aligner = manualAligner();
+  const { env, ctx, audio } = harness({ aligner });
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  const done = audio.alignInBackground(alignTimes);
+  assert.equal(aligner.calls.length, 1);
+  assert.equal(aligner.calls[0].request.key, "k1");
+  assert.equal(aligner.calls[0].request.sampleRate, 1000);
+  assert.deepEqual(aligner.calls[0].request.timesMs, alignTimes);
+  let started = false;
+  const playing = audio.play(1000).then(() => { started = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(started, false, "the source does not start before the lag is known");
+  aligner.calls[0].resolve(30);
+  assert.equal(await done, 30);
+  await playing;
+  assert.equal(env.sources.at(-1).started.offset, (1000 + 30) / 1000);
+});
+
+test("alignInBackground with no song loaded changes nothing", async () => {
+  const aligner = manualAligner();
+  const { audio } = harness({ aligner });
+  assert.equal(await audio.alignInBackground(alignTimes), 0);
+  assert.equal(aligner.calls.length, 0);
+});
+
+test("a superseded or null answer does not set the lag", async () => {
+  const aligner = manualAligner();
+  const { env, ctx, audio } = harness({ aligner });
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  const first = audio.alignInBackground(alignTimes);
+  const second = audio.alignInBackground(alignTimes);
+  aligner.calls[0].resolve(40);
+  aligner.calls[1].resolve(null);
+  await Promise.all([first, second]);
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).started.offset, 0, "neither answer was kept");
+});
+
+test("a failing aligner leaves the lag alone and play goes on", async () => {
+  const aligner = { align: () => Promise.reject(new Error("worker died")), close() {} };
+  const { env, ctx, audio } = harness({ aligner });
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  assert.equal(await audio.alignInBackground(alignTimes), 0);
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).started.offset, 0);
+});
+
+test("a late answer for a song that was replaced is dropped", async () => {
+  const aligner = manualAligner();
+  const { env, ctx, audio } = harness({ aligner });
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  const stale = audio.alignInBackground(alignTimes);
+  await audio.load("k2");
+  aligner.calls[0].resolve(35);
+  await stale;
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).started.offset, 0);
+});
+
+test("without an aligner alignInBackground is the sync align", async () => {
+  const { env, ctx, audio } = harness();
+  alignedSong(env, ctx, 30, alignTimes);
+  await audio.load("k1");
+  const lag = await audio.alignInBackground(alignTimes);
+  near(lag, 30, 3);
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).started.offset, lag / 1000);
+});
+
+test("close closes the aligner", async () => {
+  const aligner = manualAligner();
+  const { audio } = harness({ aligner });
+  audio.close();
+  assert.equal(aligner.closed, 1);
 });

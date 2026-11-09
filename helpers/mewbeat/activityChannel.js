@@ -107,7 +107,7 @@ function createMewbeatChannel({
       source = playback;
     }
 
-    const result = await chartStore.getCharts(source.track, source.node);
+    const result = await chartStore.getCharts(source.track, source.node, { retry: message.retry === true });
     const reply = { type: "mewbeat_chart", audioKey, difficulty, status: result.status };
     if (result.reason !== undefined) reply.reason = result.reason;
     if (result.status === "ready") {
@@ -288,7 +288,8 @@ function createMewbeatChannel({
       }
       case "mewbeat_room_queue_add":
         return reply(await rooms.queueAdd(guildId, userId, { uri: message.uri, source: message.source }));
-      case "mewbeat_room_queue_remove": return reply(rooms.queueRemove(guildId, userId, message.index));
+      case "mewbeat_room_queue_remove": return reply(rooms.queueRemove(guildId, userId, message.index, message.audioKey));
+      case "mewbeat_room_queue_move": return reply(rooms.queueMove(guildId, userId, message.from, message.to, message.audioKey));
       case "mewbeat_room_ready": {
         const { ready, difficulty } = message;
         const { spectate } = message;
@@ -389,6 +390,8 @@ function createMewbeatChannel({
       now,
     })
     : null;
+  // With the scores in AtlasHub the store is empty until it has been read; the ranking built from it must be dropped then.
+  scoreStore?.onHydrated?.(() => ranking?.invalidate());
 
   // The tempo of any stored difficulty of the song, normal first.
   function bpmOf(charts) {

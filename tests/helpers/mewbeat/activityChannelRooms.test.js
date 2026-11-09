@@ -128,6 +128,21 @@ describe("mewbeat channel rooms", () => {
     );
   });
 
+  it("moves a queued song for the host and answers by reason", async () => {
+    const { send, lastRoom } = setup();
+    await send(ANN, { type: "mewbeat_room_join", id: "1" });
+    await send(ANN, { type: "mewbeat_room_queue_add", id: "2", uri: "abc", source: "youtube" });
+    await send(ANN, { type: "mewbeat_room_queue_add", id: "3", uri: "def", source: "youtube" });
+    const titles = () => lastRoom().queue.map((entry) => entry.title);
+    assert.deepStrictEqual(titles(), ["Song abc", "Song def"]);
+    assert.deepStrictEqual(
+      await send(ANN, { type: "mewbeat_room_queue_move", id: "4", from: 1, to: 0, audioKey: lastRoom().queue[1].audioKey }),
+      { type: "mewbeat_room_queue_move", id: "4", status: "ok" },
+    );
+    assert.deepStrictEqual(titles(), ["Song def", "Song abc"]);
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_queue_move", id: "5", from: 0, to: 7 })).reason, "bad_index");
+  });
+
   it("starts rendering a queued song's audio and survives a failed render", async () => {
     const warmed = [];
     const { send } = setup({

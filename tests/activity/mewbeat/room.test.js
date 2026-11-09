@@ -3,10 +3,10 @@ const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
-let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator;
+let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator, ownerFirst;
 
 test.before(async () => {
-  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator } = await import(
+  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator, ownerFirst } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/room.js")).href
   ));
 });
@@ -54,6 +54,14 @@ test("isHost and isSpectator", () => {
   assert.equal(isHost(r, "s"), false);
   assert.equal(isSpectator(r, "s"), true);
   assert.equal(isSpectator(r, "h"), false);
+});
+
+test("ownerFirst: the owner leads, the rest keep the server's order, and a new owner moves up", () => {
+  const members = [member("a"), member("b"), member("h"), member("c")];
+  assert.deepEqual(ownerFirst(room({ members })).map((m) => m.userId), ["h", "a", "b", "c"]);
+  assert.deepEqual(ownerFirst(room({ members, hostId: "c" })).map((m) => m.userId), ["c", "a", "b", "h"]);
+  assert.deepEqual(ownerFirst(room({ members, hostId: "gone" })).map((m) => m.userId), ["a", "b", "h", "c"]);
+  assert.deepEqual(ownerFirst(null), []);
 });
 
 test("serverToPerf: the synced offset wins, serverNow is the fallback", () => {
@@ -114,10 +122,19 @@ test("timelineOf: current first, own adds flagged, remove for host or adder", ()
   assert.deepEqual(asUser.map((s) => s.mine), [false, true, false]);
   assert.deepEqual(asUser.map((s) => s.canRemove), [false, true, false]);
   assert.deepEqual(asUser.map((s) => s.index), [null, 0, 1]);
-  assert.equal(asUser[0].flex, 1);
-  assert.equal(asUser[2].flex, 0.5);
+  assert.deepEqual(asUser.map((s) => s.canMove), [false, false, false]);
   const asHost = timelineOf(r, "h");
   assert.deepEqual(asHost.map((s) => s.canRemove), [false, true, true]);
+  assert.deepEqual(asHost.map((s) => s.canMove), [false, true, true]);
+});
+
+test("timelineOf: played songs come first, finished, and cannot be touched", () => {
+  const r = room({ current: track("c", "h"), queue: [track("a", "u1")], played: [track("p", "h"), track("p", "u1")] });
+  const rows = timelineOf(r, "h");
+  assert.deepEqual(rows.map((s) => s.track.audioKey), ["p", "p", "c", "a"]);
+  assert.deepEqual(rows.map((s) => s.played), [true, true, false, false]);
+  assert.equal(new Set(rows.map((s) => s.key)).size, 4);
+  assert.deepEqual(rows.slice(0, 2).map((s) => [s.finished, s.index, s.canRemove, s.canMove]), [[true, null, false, false], [true, null, false, false]]);
 });
 
 test("timelineOf: nothing without a room, queue only without a current song", () => {

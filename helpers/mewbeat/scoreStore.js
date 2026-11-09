@@ -1,10 +1,85 @@
 const path = require("node:path");
 
 const { createDebouncedJson } = require("./debouncedJson");
+const { TABLES } = require("./remoteSchema");
 
 const DEFAULT_FILE = path.join(__dirname, "..", "data", "mewbeat", "scores.json");
 
 const VERSION_SUFFIX = /^(.*)\|(\d+)$/;
+const CHART_KEY = /^(.*)\|([^|]*)\|([^|]*)$/; // audioKey|difficulty|chartVersion
+
+const TABLE = TABLES.scores;
+
+const orNull = (value) => (value === undefined ? null : value);
+const whole = (value) => (Number.isFinite(value) ? Math.round(value) : null);
+// A bigint column can come back as a string, and a null column has no number.
+const numberOf = (value) => (value === null || value === undefined || !Number.isFinite(Number(value)) ? undefined : Number(value));
+
+function listOf(value) {
+  let list = value;
+  if (typeof list === "string") {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(list) ? list : [];
+}
+
+// A best score as a row of mewbeat_scores. Every column is sent, null when the entry has no value, because an
+// update leaves the columns it does not name alone. The guilds go in as a JSON string: a JS array would reach
+// Postgres as an array literal, which jsonb refuses.
+function scoreRowOf(chartKey, entry) {
+  const parts = CHART_KEY.exec(chartKey);
+  return {
+    id: `${chartKey}|${entry.userId}`,
+    chart_key: chartKey,
+    audio_key: parts?.[1] ?? null,
+    difficulty: orNull(entry.difficulty),
+    chart_version: parts?.[3] ?? null,
+    user_id: entry.userId,
+    username: orNull(entry.username),
+    avatar_url: orNull(entry.avatarUrl),
+    score: whole(entry.score),
+    accuracy: orNull(entry.accuracy),
+    grade: orNull(entry.grade),
+    max_combo: whole(entry.maxCombo),
+    completion: orNull(entry.completion),
+    title: orNull(entry.title),
+    artist: orNull(entry.artist),
+    artwork_url: orNull(entry.artworkUrl),
+    guild_ids: JSON.stringify(entry.guildIds ?? []),
+    at: whole(entry.at),
+  };
+}
+
+// The other way: { chartKey, entry }, or null for a row that is no score. The entry has the shape submit() makes,
+// an unknown value as undefined (a score without a track has no artwork either).
+function scoreFromRow(row) {
+  const score = numberOf(row?.score);
+  if (typeof row?.chart_key !== "string" || typeof row.user_id !== "string" || score === undefined) return null;
+  const title = row.title ?? undefined;
+  return {
+    chartKey: row.chart_key,
+    entry: {
+      score,
+      accuracy: numberOf(row.accuracy),
+      grade: row.grade ?? undefined,
+      maxCombo: numberOf(row.max_combo),
+      difficulty: row.difficulty ?? undefined,
+      at: numberOf(row.at),
+      completion: numberOf(row.completion),
+      title,
+      artist: row.artist ?? undefined,
+      artworkUrl: title === undefined ? undefined : row.artwork_url ?? null,
+      userId: row.user_id,
+      username: row.username ?? "Unknown",
+      avatarUrl: row.avatar_url ?? null,
+      guildIds: listOf(row.guild_ids),
+    },
+  };
+}
 
 // Best score per user per chart (`audioKey|difficulty|chartVersion`), with the
 // guilds the user scored it in: the server board is the users who scored the
@@ -13,9 +88,14 @@ const VERSION_SUFFIX = /^(.*)\|(\d+)$/;
 // File shape: { charts: { [chartKey]: { [userId]: entry } } }. Scores of
 // older chart versions stay on disk, but only the newest version of a song and
 // difficulty is looked up (through an index kept next to the map).
-function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 2000 } = {}) {
-  const disk = createDebouncedJson({ file, debounceMs });
-  const loaded = disk.load();
+//
+// With `remote` (see remoteSync.js) the scores live in AtlasHub instead: the store starts empty, never touches
+// `file`, hydrate() loads it once the remote has been read, and every change is an upsert of the full row.
+// Until then submit() cannot decide anything (the old best is unknown): it hands the call to remote.defer,
+// which replays it after the hydration, with the time it was made.
+function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 2000, remote = null } = {}) {
+  const disk = remote ? null : createDebouncedJson({ file, debounceMs });
+  const loaded = disk ? disk.load() : null;
   const charts = new Map(); // chartKey -> Map(userId -> entry)
   const latest = new Map(); // `audioKey|difficulty` -> { version, chartKey }
 
@@ -33,9 +113,26 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     indexChart(chartKey);
   }
 
-  const persist = () => disk.schedule(() => ({
-    charts: Object.fromEntries([...charts].map(([key, users]) => [key, Object.fromEntries(users)])),
-  }));
+  function persist(chartKey, entry) {
+    if (remote) {
+      const row = scoreRowOf(chartKey, entry);
+      remote.upsert(TABLE.name, row.id, row);
+      return;
+    }
+    disk.schedule(() => ({
+      charts: Object.fromEntries([...charts].map(([key, users]) => [key, Object.fromEntries(users)])),
+    }));
+  }
+
+  function place(chartKey, entry) {
+    let users = charts.get(chartKey);
+    if (!users) {
+      users = new Map();
+      charts.set(chartKey, users);
+      indexChart(chartKey);
+    }
+    users.set(entry.userId, entry);
+  }
 
   function publicEntry(entry) {
     return {
@@ -50,7 +147,12 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     };
   }
 
-  function submit({ chartKey, userId, guildId, profile, score, accuracy, grade, maxCombo, difficulty, track, completion, at = now() }) {
+  function submit(run) {
+    if (remote && !remote.ready()) {
+      remote.defer("scores", "submit", [{ ...run, at: run.at ?? now() }]);
+      return { newBest: false, best: null };
+    }
+    const { chartKey, userId, guildId, profile, score, accuracy, grade, maxCombo, difficulty, track, completion, at = now() } = run;
     let users = charts.get(chartKey);
     if (!users) {
       users = new Map();
@@ -82,7 +184,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
       guildIds: [...guildIds],
     };
     users.set(userId, entry);
-    persist();
+    persist(chartKey, entry);
     return { newBest, best: publicEntry(entry) };
   }
 
@@ -121,7 +223,33 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     }
   }
 
-  return { submit, board, rankOf, bestOf, latestChartKey, forEachEntry, flush: disk.flush };
+  // Replaces the memory with the rows of the remote table.
+  function hydrate(rows) {
+    charts.clear();
+    latest.clear();
+    for (const row of rows) {
+      const parsed = scoreFromRow(row);
+      if (parsed) place(parsed.chartKey, parsed.entry);
+    }
+  }
+
+  // A write of an earlier run that the remote may not have seen, put over the hydrated memory.
+  function applyOp(op) {
+    if (op.kind !== "upsert" || op.table !== TABLE.name) return;
+    const parsed = scoreFromRow(op.row);
+    if (parsed) place(parsed.chartKey, parsed.entry);
+  }
+
+  // Told when the stores are loaded and the deferred calls replayed, so a cache built from the empty memory
+  // can be dropped: the ranking listens.
+  const hydrationListeners = [];
+  const onHydrated = (listener) => hydrationListeners.push(listener);
+  const finishHydration = () => hydrationListeners.forEach((listener) => listener());
+
+  return {
+    submit, board, rankOf, bestOf, latestChartKey, forEachEntry, hydrate, applyOp, onHydrated, finishHydration,
+    flush: disk ? disk.flush : () => Promise.resolve(),
+  };
 }
 
-module.exports = { createScoreStore };
+module.exports = { createScoreStore, scoreRowOf, scoreFromRow };

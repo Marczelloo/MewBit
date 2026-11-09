@@ -8,6 +8,8 @@ const {
   isAllowedArtworkUrl,
   resolveActivityPlayback,
   serializeActivityActionResult,
+  stateSignature,
+  clientHasState,
   stringifyJson,
   withAutoplayRequesterLabel,
   getSerializedPlaybackHistory,
@@ -42,6 +44,34 @@ test("Activity responses stay JSON-safe for Lavalink objects", () => {
     isPlaylist: false,
     playlistTrackCount: 0,
   });
+});
+
+test("Activity state signature ignores the clock, the position and the history only", () => {
+  const state = (player, rest = {}) => ({ generatedAt: 1000, queue: [{ id: "a" }], ...rest, player: { playing: true, positionMs: 500, updatedAt: 900, history: [1], historyKey: "h1", ...player } });
+  const base = stateSignature(state({}));
+  assert.equal(stateSignature(state({ positionMs: 9000, updatedAt: 1, history: [1, 2] }, { generatedAt: 5000 })), base);
+  assert.notEqual(stateSignature(state({ paused: true })), base);
+  assert.notEqual(stateSignature(state({ historyKey: "h2" })), base);
+  assert.notEqual(stateSignature(state({}, { queue: [] })), base);
+  assert.doesNotThrow(() => stateSignature({ generatedAt: 1, player: null }));
+});
+
+test("Activity heartbeat skips a state the client already has, but not a stale or moved one", () => {
+  const playing = (positionMs, generatedAt) => ({ generatedAt, player: { playing: true, paused: false, buffering: false, currentTrack: { id: "t" }, positionMs } });
+  const sent = playing(10_000, 1000);
+  const last = { signature: "s", at: 1000, generatedAt: 1000, positionMs: 10_000 };
+  const KEEPALIVE = 15_000;
+
+  assert.equal(clientHasState(last, playing(11_500, 2500), "s", 2500, KEEPALIVE), true); // the client's own clock gets there
+  assert.equal(clientHasState(last, playing(13_000, 2500), "s", 2500, KEEPALIVE), false); // a seek: the position jumped
+  assert.equal(clientHasState(last, playing(11_500, 2500), "other", 2500, KEEPALIVE), false); // something else changed
+  assert.equal(clientHasState(last, playing(11_500, 2500), "s", 1000 + KEEPALIVE, KEEPALIVE), false); // the keep-alive is due
+  assert.equal(clientHasState(null, sent, "s", 2000, KEEPALIVE), false); // nothing sent yet
+  assert.equal(clientHasState(last, playing(11_500, 2500), "s", 2500, 0), false); // heartbeat on every tick
+
+  const paused = { generatedAt: 2500, player: { playing: true, paused: true, currentTrack: { id: "t" }, positionMs: 10_000 } };
+  assert.equal(clientHasState(last, paused, "s", 2500, KEEPALIVE), true); // not ticking: the position stays
+  assert.equal(clientHasState(last, { ...paused, player: { ...paused.player, positionMs: 11_500 } }, "s", 2500, KEEPALIVE), false);
 });
 
 test("Activity surprise results omit circular player data", () => {

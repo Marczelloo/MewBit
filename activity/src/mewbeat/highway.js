@@ -89,25 +89,40 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  // Gradients depend on the canvas height alone, so they are built once per height instead of every frame.
+  let gradientsFor = 0;
+  let feverTint = null;
+  const laneGlows = [];
+
+  function gradientsAt() {
+    if (gradientsFor === height) return;
+    gradientsFor = height;
+    feverTint = ctx.createLinearGradient(0, 0, 0, height);
+    feverTint.addColorStop(0, "rgba(255, 110, 199, 0.12)");
+    feverTint.addColorStop(0.3, "rgba(255, 212, 121, 0.20)");
+    feverTint.addColorStop(1, "rgba(255, 212, 121, 0.20)");
+    for (let lane = 0; lane < LANES; lane += 1) {
+      const glow = ctx.createLinearGradient(0, height * 0.55, 0, height);
+      glow.addColorStop(0, "rgba(255, 255, 255, 0)");
+      glow.addColorStop(1, LANE_COLORS[lane]);
+      laneGlows[lane] = glow;
+    }
+  }
+
   function drawLanes(feverActive, lanesDown, laneWidth, hitY) {
     ctx.clearRect(0, 0, width, height);
-    // The highway's dark gradient is CSS behind the canvas; the canvas only tints it during FEVER.
-    const top = feverActive ? "rgba(255, 110, 199, 0.12)" : "rgba(12, 14, 18, 0)";
-    const bottom = feverActive ? "rgba(255, 212, 121, 0.20)" : "rgba(12, 14, 18, 0)";
-    const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, top);
-    grad.addColorStop(0.3, bottom);
-    grad.addColorStop(1, bottom);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
+    gradientsAt();
+    // The highway's dark gradient is CSS behind the canvas; the canvas only tints it during FEVER (outside it the tint is clear, so there is nothing to paint).
+    if (feverActive) {
+      ctx.fillStyle = feverTint;
+      ctx.fillRect(0, 0, width, height);
+    }
 
     for (let lane = 0; lane < LANES; lane += 1) {
       const x = lane * laneWidth;
       const down = Boolean(lanesDown[lane]);
       if (down) {
-        const glow = ctx.createLinearGradient(0, height * 0.55, 0, height);
-        glow.addColorStop(0, "rgba(255, 255, 255, 0)");
-        glow.addColorStop(1, LANE_COLORS[lane]);
+        const glow = laneGlows[lane];
         ctx.globalAlpha = 0.28;
         ctx.fillStyle = glow;
         ctx.fillRect(x, height * 0.55, laneWidth, height * 0.45);
@@ -225,8 +240,13 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
 
   function drawParticles(dtMs) {
     const dt = dtMs / 1000;
-    particles = particles.filter((p) => p.life > 0);
-    for (const p of particles) {
+    // Dead ones are dropped in place; one that dies this frame stays until the next, as it always did.
+    let kept = 0;
+    for (let i = 0; i < particles.length; i += 1) {
+      const p = particles[i];
+      if (p.life <= 0) continue;
+      particles[kept] = p;
+      kept += 1;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.vy += 260 * dt;
@@ -236,6 +256,7 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
       ctx.fillStyle = p.color;
       ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
     }
+    particles.length = kept;
     ctx.globalAlpha = 1;
   }
 

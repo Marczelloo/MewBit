@@ -4,6 +4,7 @@ const MAX_PLAYERS = 10;
 // Watching costs little, but the list is bounded so one room can't grow forever.
 const MAX_MEMBERS = 50;
 const MAX_QUEUE = 20;
+const MAX_PLAYED = 20;
 // One member can't fill the whole queue.
 const MAX_QUEUE_PER_USER = 5;
 const LOADING_MS = 20_000;
@@ -72,6 +73,7 @@ function createRooms({
         submitted: member.submitted,
       })),
       queue: room.queue.map((entry) => ({ ...entry })),
+      played: room.played.map((entry) => ({ ...entry })),
       current: room.current ? { ...room.current } : null,
       round: room.round,
       endedAt: room.endedAt,
@@ -214,6 +216,11 @@ function createRooms({
   function startRound(room) {
     if (!room.queue.length || !playersOf(room).length) return settle(room);
     clearTimers(room);
+    // Only a round that ended is a song played; an aborted one went back to the queue.
+    if (room.current && room.endedAt != null) {
+      room.played.push(room.current);
+      if (room.played.length > MAX_PLAYED) room.played.shift();
+    }
     room.current = room.queue.shift();
     room.round += 1;
     room.phase = "loading";
@@ -304,6 +311,7 @@ function createRooms({
         phase: "lobby",
         members: [],
         queue: [],
+        played: [], // the songs whose rounds ended, oldest first
         current: null,
         round: 0,
         endedAt: null,
@@ -413,16 +421,32 @@ function createRooms({
     return ok();
   }
 
-  // The index counts the waiting queue; the song being played is not in it.
-  function queueRemove(guildId, userId, index) {
+  // The index counts the waiting queue; the song being played is not in it. `audioKey` is the song the player saw at
+  // that index: when the queue moved under them the request is refused rather than hitting another song.
+  function queueRemove(guildId, userId, index, audioKey) {
     const room = rooms.get(guildId);
     if (!room || !findMember(room, userId)) return fail("not_in_room");
     if (!Number.isInteger(index) || index < 0 || index >= room.queue.length) return fail("bad_index");
+    if (audioKey != null && room.queue[index].audioKey !== audioKey) return fail("queue_changed");
     if (room.hostId !== userId && room.queue[index].addedBy !== userId) return fail("forbidden");
 
     room.queue.splice(index, 1);
     // A wait with nothing left to start ends.
     syncCountdown(room);
+    push(room);
+    return ok();
+  }
+
+  // The owner orders the queue: the song at `from` ends up at position `to`.
+  function queueMove(guildId, userId, from, to, audioKey) {
+    const room = rooms.get(guildId);
+    if (!room || !findMember(room, userId)) return fail("not_in_room");
+    if (room.hostId !== userId) return fail("not_host");
+    const valid = (index) => Number.isInteger(index) && index >= 0 && index < room.queue.length;
+    if (!valid(from) || !valid(to)) return fail("bad_index");
+    if (audioKey != null && room.queue[from].audioKey !== audioKey) return fail("queue_changed");
+
+    room.queue.splice(to, 0, room.queue.splice(from, 1)[0]);
     push(room);
     return ok();
   }
@@ -511,7 +535,7 @@ function createRooms({
     return room ? snapshotOf(room) : null;
   }
 
-  return { join, leave, queueAdd, queueRemove, ready, start, loaded, submitted, snapshot };
+  return { join, leave, queueAdd, queueRemove, queueMove, ready, start, loaded, submitted, snapshot };
 }
 
 module.exports = {

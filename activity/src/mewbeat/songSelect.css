@@ -21,7 +21,7 @@
 .mb-ss .mb-ss-left > .mb-ss-board { flex: 1 1 0; min-height: 190px; }
 .mb-ss .mb-ss-left > .mb-ss-ranking { flex: 1 1 0; min-height: 190px; }
 
-.mb-ss .mb-ss-panel { border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
+:is(.mb-ss, .mb-lobby) .mb-ss-panel { border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
 
 /* tabs, and the way back */
 .mb-ss .mb-ss-mode { display: flex; align-items: center; gap: 2px; min-height: 34px; }
@@ -41,8 +41,8 @@
 .mb-ss .mb-ss-ptab-on { border-color: var(--mb-cyan); color: var(--mb-text); }
 .mb-ss .mb-ss-ptab:focus-visible,
 .mb-ss .mb-ss-back:focus-visible,
-.mb-ss .mb-ss-seg button:focus-visible,
-.mb-ss .mb-ss-pl:focus-visible,
+:is(.mb-ss, .mb-lobby) .mb-ss-seg button:focus-visible,
+:is(.mb-ss, .mb-lobby) .mb-ss-pl:focus-visible,
 .mb-ss .mb-ss-rankrow:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: -2px; }
 .mb-ss .mb-ss-back {
   min-height: 30px;
@@ -63,7 +63,7 @@
 .mb-ss .mb-ss-viewing .mb-ss-back { margin-left: 0; }
 
 /* avatars: a picture, or a letter on a coloured circle */
-.mb-ss .mb-ss-av {
+:is(.mb-ss, .mb-lobby) .mb-ss-av {
   display: grid;
   flex: none;
   place-items: center;
@@ -110,8 +110,8 @@
 
 /* two blocks of rows */
 .mb-ss .mb-ss-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.mb-ss .mb-ss-block { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.mb-ss .mb-ss-block h3 {
+:is(.mb-ss, .mb-lobby) .mb-ss-block { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+:is(.mb-ss, .mb-lobby) .mb-ss-block h3 {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -122,15 +122,15 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-.mb-ss .mb-ss-block-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.mb-ss .mb-ss-block-empty { margin: 0; padding: 14px; border-top: 1px solid var(--mb-line); color: var(--mb-faint); font-size: 12.5px; }
-.mb-ss .mb-ss-block .mb-ss-empty { padding: 20px 14px; }
+:is(.mb-ss, .mb-lobby) .mb-ss-block-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+:is(.mb-ss, .mb-lobby) .mb-ss-block-empty { margin: 0; padding: 14px; border-top: 1px solid var(--mb-line); color: var(--mb-faint); font-size: 12.5px; }
+:is(.mb-ss, .mb-lobby) .mb-ss-block .mb-ss-empty { padding: 20px 14px; }
 .mb-ss .mb-ss-line { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 7px 14px; border-top: 1px solid var(--mb-line); }
 .mb-ss .mb-ss-cv { display: block; width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
 .mb-ss .mb-ss-tt { min-width: 0; }
 .mb-ss .mb-ss-tt b { display: block; overflow: hidden; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .mb-ss .mb-ss-tt small { display: block; overflow: hidden; color: var(--mb-faint); font: 500 11px/1.4 var(--mb-ss-mono); text-overflow: ellipsis; white-space: nowrap; }
-.mb-ss .mb-ss-dl { color: var(--c); }
+:is(.mb-ss, .mb-lobby) .mb-ss-dl { color: var(--c); }
 .mb-ss .mb-ss-val { text-align: right; font: 700 13px/1.2 var(--mb-ss-mono); font-variant-numeric: tabular-nums; }
 .mb-ss .mb-ss-val small { display: block; color: var(--mb-faint); font-size: 11px; font-weight: 500; }
 .mb-ss .mb-ss-val.mb-ss-fc { color: var(--mb-gold); }
@@ -167,12 +167,12 @@
 .mb-ss .mb-ss-slot { display: grid; flex: 1; place-items: center; min-height: 30px; border-radius: 8px; background: rgb(255 255 255 / 0.03); color: var(--mb-faint); font: 500 11px/1 var(--mb-ss-mono); }
 
 /* level leaderboard */
-.mb-ss .mb-ss-board h3 { padding: 8px 8px 8px 14px; }
-.mb-ss .mb-ss-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; outline: 1px solid var(--mb-line); background: var(--mb-bg); letter-spacing: 0.04em; text-transform: none; }
-.mb-ss .mb-ss-seg button { min-height: 24px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--mb-muted); font: 700 11px/1 var(--mb-ss-mono); cursor: pointer; }
-.mb-ss .mb-ss-seg button:hover { color: var(--mb-text); }
-.mb-ss .mb-ss-seg .mb-ss-seg-on { background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
-.mb-ss .mb-ss-pl {
+:is(.mb-ss, .mb-lobby) .mb-ss-board h3 { padding: 8px 8px 8px 14px; }
+:is(.mb-ss, .mb-lobby) .mb-ss-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; outline: 1px solid var(--mb-line); background: var(--mb-bg); letter-spacing: 0.04em; text-transform: none; }
+:is(.mb-ss, .mb-lobby) .mb-ss-seg button { min-height: 24px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--mb-muted); font: 700 11px/1 var(--mb-ss-mono); cursor: pointer; }
+:is(.mb-ss, .mb-lobby) .mb-ss-seg button:hover { color: var(--mb-text); }
+:is(.mb-ss, .mb-lobby) .mb-ss-seg .mb-ss-seg-on { background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
+:is(.mb-ss, .mb-lobby) .mb-ss-pl {
   display: grid;
   grid-template-columns: 30px 26px minmax(0, 1fr) 24px 62px 86px;
   align-items: center;
@@ -189,16 +189,16 @@
   cursor: pointer;
   transition: background-color 120ms ease-out;
 }
-.mb-ss .mb-ss-pl:hover { background: rgb(255 255 255 / 0.05); }
-.mb-ss .mb-ss-pl-mine { background: rgb(103 227 244 / 0.09); }
-.mb-ss .mb-ss-pl-mine:hover { background: rgb(103 227 244 / 0.13); }
-.mb-ss .mb-ss-pl-pin { border-top-color: rgb(255 255 255 / 0.22); }
-.mb-ss .mb-ss-nm { overflow: hidden; font: 800 13px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
-.mb-ss .mb-ss-rk { color: var(--mb-faint); font-weight: 700; text-align: right; }
-.mb-ss .mb-ss-pl-mine .mb-ss-rk { color: var(--mb-cyan); }
-.mb-ss .mb-ss-gr { font-weight: 900; text-align: center; }
-.mb-ss .mb-ss-r { color: var(--mb-muted); text-align: right; }
-.mb-ss .mb-ss-s { font-weight: 700; text-align: right; }
+:is(.mb-ss, .mb-lobby) .mb-ss-pl:hover { background: rgb(255 255 255 / 0.05); }
+:is(.mb-ss, .mb-lobby) .mb-ss-pl-mine { background: rgb(103 227 244 / 0.09); }
+:is(.mb-ss, .mb-lobby) .mb-ss-pl-mine:hover { background: rgb(103 227 244 / 0.13); }
+:is(.mb-ss, .mb-lobby) .mb-ss-pl-pin { border-top-color: rgb(255 255 255 / 0.22); }
+:is(.mb-ss, .mb-lobby) .mb-ss-nm { overflow: hidden; font: 800 13px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+:is(.mb-ss, .mb-lobby) .mb-ss-rk { color: var(--mb-faint); font-weight: 700; text-align: right; }
+:is(.mb-ss, .mb-lobby) .mb-ss-pl-mine .mb-ss-rk { color: var(--mb-cyan); }
+:is(.mb-ss, .mb-lobby) .mb-ss-gr { font-weight: 900; text-align: center; }
+:is(.mb-ss, .mb-lobby) .mb-ss-r { color: var(--mb-muted); text-align: right; }
+:is(.mb-ss, .mb-lobby) .mb-ss-s { font-weight: 700; text-align: right; }
 
 /* ranking: the same list of players, by rating */
 .mb-ss .mb-ss-rankhead,
@@ -330,6 +330,10 @@
   min-height: 60px;
   padding-block: 7px;
   border-bottom: 1px solid rgb(255 255 255 / 0.05);
+  /* Rows far off screen are not laid out or painted (up to 500 of them); `auto` remembers a row's real height once seen,
+     and until then it holds the 60px minimum plus its border, so the scroll bar and scrollIntoView stay put. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 61px;
   cursor: pointer;
   transition: background-color 120ms ease-out;
 }

@@ -2,6 +2,7 @@ import { EARLY_MISS_MS, HOLD_WINDOW_SCALE, WINDOWS, judgementFor } from "./scori
 
 const LANES = 4;
 const TAIL_GOOD_MS = WINDOWS.good * HOLD_WINDOW_SCALE;
+const NO_RESULTS = Object.freeze([]);
 
 // Notes are sorted by t within each lane. `outcome[i]` is undefined while
 // pending, otherwise a judgement or "skipped". A hold (note with `len`) has a
@@ -73,9 +74,8 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
 
   // Advances each lane's cursor over heads `expired` says are past, applying
   // `mark` to those still pending (and to their tails); returns the marked
-  // judgements as [index, part] pairs.
-  function advance(cursors, expired, mark) {
-    const marked = [];
+  // judgements as [index, part] pairs into `marked`.
+  function advance(cursors, expired, mark, marked) {
     for (let lane = 0; lane < LANES; lane += 1) {
       const indexes = laneIndexes[lane];
       let cursor = cursors[lane];
@@ -94,19 +94,27 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
       }
       cursors[lane] = cursor;
     }
-    return marked;
   }
 
   // Event order: by time of the judged moment, then chart index, head before tail.
   const momentOf = ([index, part]) => (part === "tail" ? endOf[index] : notes[index].t);
   const byMoment = (a, b) => momentOf(a) - momentOf(b) || a[0] - b[0] || (a[1] === "head" ? -1 : 1);
 
+  // Most frames judge nothing: those allocate nothing and answer with the shared empty list.
+  const swept = [];
+  let sweepNow = 0;
+  const sweepExpired = (t) => t + WINDOWS.good < sweepNow;
+
   function sweep(songMs) {
-    const out = advance(sweepCursor, (t) => t + WINDOWS.good < songMs, "miss").map(([index, part]) => [
-      index,
-      part,
-      { index, judgement: "miss", errorMs: null, part },
-    ]);
+    sweepNow = songMs;
+    swept.length = 0;
+    advance(sweepCursor, sweepExpired, "miss", swept);
+    if (swept.length === 0) {
+      let ended = false;
+      for (let lane = 0; lane < LANES && !ended; lane += 1) ended = active[lane].length > 0 && endOf[active[lane][0]] <= songMs;
+      if (!ended) return NO_RESULTS;
+    }
+    const out = swept.map(([index, part]) => [index, part, { index, judgement: "miss", errorMs: null, part }]);
     for (let lane = 0; lane < LANES; lane += 1) {
       const list = active[lane];
       while (list.length && endOf[list[0]] <= songMs) {
@@ -121,7 +129,9 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
   // Skips heads before songMs (their tails with them, even when the hold ends later), and the
   // tails of active holds that end before songMs. Returns the number of judgements skipped.
   function skipBefore(songMs) {
-    let count = advance(skipCursor, (t) => t < songMs, "skipped").length;
+    const skippedHeads = [];
+    advance(skipCursor, (t) => t < songMs, "skipped", skippedHeads);
+    let count = skippedHeads.length;
     for (let lane = 0; lane < LANES; lane += 1) {
       const list = active[lane];
       for (let i = 0; i < list.length; ) {

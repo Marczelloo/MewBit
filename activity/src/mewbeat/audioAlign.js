@@ -10,13 +10,13 @@ const MIN_TIMES = 30; // fewer notes than this say little
 const RISE_SPAN_MS = 5;
 const SMOOTH_RADIUS = 2; // +-2 ms around each millisecond
 
-// How sharply the sound gets louder at each millisecond: the rise of its log energy over RISE_SPAN_MS.
-export function riseEnvelope(channels, sampleRate) {
-  const left = channels[0];
-  const right = channels[1] ?? left;
-  const hop = Math.round(sampleRate / 1000);
+// Samples in one millisecond; the envelope has one value per millisecond.
+export const hopOf = (sampleRate) => Math.round(sampleRate / 1000);
+
+// The energy of each whole millisecond of `left` and `right` (the mix of the two), written into `energy` from
+// frame `at` on. A song can arrive in pieces that each start on a millisecond, which fill the same array.
+export function energyInto(energy, at, left, right, hop) {
   const frames = hop > 0 ? Math.floor(left.length / hop) : 0;
-  const energy = new Float32Array(frames);
   for (let frame = 0; frame < frames; frame += 1) {
     let sum = 0;
     const from = frame * hop;
@@ -24,8 +24,24 @@ export function riseEnvelope(channels, sampleRate) {
       const sample = (left[i] + right[i]) / 2;
       sum += sample * sample;
     }
-    energy[frame] = sum;
+    energy[at + frame] = sum;
   }
+}
+
+// How sharply the sound gets louder at each millisecond: the rise of its log energy over RISE_SPAN_MS.
+export function riseEnvelope(channels, sampleRate) {
+  const left = channels[0];
+  const right = channels[1] ?? left;
+  const hop = hopOf(sampleRate);
+  const frames = hop > 0 ? Math.floor(left.length / hop) : 0;
+  const energy = new Float32Array(frames);
+  energyInto(energy, 0, left, right, hop);
+  return riseFromEnergy(energy);
+}
+
+// The rise of the log energy per millisecond, from the energy of each millisecond.
+export function riseFromEnergy(energy) {
+  const frames = energy.length;
   const level = new Float32Array(frames);
   const width = SMOOTH_RADIUS * 2 + 1;
   let windowSum = 0;

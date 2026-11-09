@@ -5,12 +5,18 @@ const path = require("node:path");
 const { afterEach, beforeEach, describe, it, mock } = require("node:test");
 
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
-const { createChartStore } = require("../../../helpers/mewbeat/chartStore");
+const { createChartStore: createStoreOn } = require("../../../helpers/mewbeat/chartStore");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { GENERATOR_VERSION, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { makeFeatures } = require("./fixtures");
 
 const quietLog = { warning() {} };
+
+// The store reads the flags file at most once per FLAGS_TTL_MS of its clock, which a change to the file moves past (setFlags).
+// These tests generate in-process: the flags they register above exist in this thread only, not in the store's worker.
+const FLAGS_TTL_MS = 2000;
+let clock = 1_000_000;
+const createChartStore = (options) => createStoreOn({ now: () => clock, generate: generateAll, ...options });
 
 // The registry is empty between experiments, so these tests bring their own flags.
 for (const name of ["density", "holds", "lead", "transitions"]) FLAGS[name] = { label: name, levels: {} };
@@ -52,7 +58,10 @@ describe("mewbeat chart store", () => {
   const chartsDir = () => path.join(dir, "charts");
   const chartsPath = (version = GENERATOR_VERSION, flagged = "") =>
     path.join(chartsDir(), `${audioKeyFile(audioKeyOf(track))}.v${version}${flagged && `-${flagged}`}.json`);
-  const setFlags = (value) => fs.writeFileSync(path.join(dir, "generator-flags.json"), typeof value === "string" ? value : JSON.stringify(value));
+  const setFlags = (value) => {
+    fs.writeFileSync(path.join(dir, "generator-flags.json"), typeof value === "string" ? value : JSON.stringify(value));
+    clock += FLAGS_TTL_MS;
+  };
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "mewbeat-charts-"));
@@ -360,6 +369,7 @@ describe("mewbeat chart store", () => {
       setFlags({ flags: ["holds"] });
       assert.strictEqual((await store.getCharts(track, "node")).charts, flagged.charts);
       fs.rmSync(path.join(dir, "generator-flags.json"));
+      clock += FLAGS_TTL_MS;
       assert.strictEqual((await store.getCharts(track, "node")).charts, plain.charts);
 
       assert.strictEqual(generate.calls, 2);
@@ -432,6 +442,80 @@ describe("mewbeat chart store", () => {
       store.peekCharts(track);
       assert.strictEqual(warnings.length, 2);
       assert.strictEqual(generate.calls, 1);
+    });
+  });
+
+  describe("flags file cache", () => {
+    const flagsReads = (spy) => spy.mock.calls.filter((call) => String(call.arguments[0]).endsWith("generator-flags.json")).length;
+
+    it("reads the flags file once per TTL and sees a change at the first request after it", async () => {
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      await store.getCharts(track, "node");
+      clock += FLAGS_TTL_MS;
+      const spy = mock.method(fs, "readFileSync", fs.readFileSync);
+      try {
+        store.peekCharts(track);
+        store.peekCharts(track);
+        assert.strictEqual(flagsReads(spy), 1);
+
+        fs.writeFileSync(path.join(dir, "generator-flags.json"), JSON.stringify({ flags: ["holds"] }));
+        clock += FLAGS_TTL_MS - 1;
+        assert.strictEqual(store.peekCharts(track).charts.easy.version, GENERATOR_VERSION);
+        assert.strictEqual(flagsReads(spy), 1);
+        assert.ok(!fs.existsSync(chartsPath(GENERATOR_VERSION, "holds")));
+
+        clock += 1;
+        assert.strictEqual(store.peekCharts(track), null); // the flagged charts are not made yet
+        assert.strictEqual(flagsReads(spy), 2);
+      } finally {
+        spy.mock.restore();
+      }
+    });
+  });
+
+  describe("warmSummaries", () => {
+    const chartReads = (spy) => spy.mock.calls.filter((call) => /charts[\\/][^\\/]*\.json$/.test(String(call.arguments[0]))).length;
+
+    it("has the summaries of the stored songs ready without parsing a chart file on the lookup", async () => {
+      await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      await store.warmSummaries();
+      const spy = mock.method(fs, "readFileSync", fs.readFileSync);
+      try {
+        const summary = store.summaryReader()(track);
+        assert.deepStrictEqual(Object.keys(summary), ["easy", "normal", "hard", "hell"]);
+        assert.strictEqual(chartReads(spy), 0);
+      } finally {
+        spy.mock.restore();
+      }
+    });
+
+    it("gives what the file gives without warming, and warms without a charts directory", async () => {
+      await createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog }).getCharts(track, "node");
+      const cold = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      const warm = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      await warm.warmSummaries();
+      assert.deepStrictEqual(warm.summaryReader()(track), cold.summaryReader()(track));
+
+      const empty = createChartStore({ dir: path.join(dir, "nowhere"), analysis: fakeAnalysis(), log: quietLog });
+      await empty.warmSummaries();
+      assert.strictEqual(empty.summaryReader()(track), null);
+    });
+
+    it("does not read a missing chart file again until charts are written for it", async () => {
+      const store = createChartStore({ dir, analysis: fakeAnalysis(), log: quietLog });
+      const spy = mock.method(fs, "readFileSync", fs.readFileSync);
+      try {
+        assert.strictEqual(store.peekCharts(track), null);
+        assert.strictEqual(store.peekCharts(track), null);
+        assert.strictEqual(store.summaryReader()(track), null);
+        assert.strictEqual(chartReads(spy), 1);
+      } finally {
+        spy.mock.restore();
+      }
+      assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
+      assert.strictEqual(store.peekCharts(track).status, "ready");
+      assert.ok(store.summaryReader()(track));
     });
   });
 });

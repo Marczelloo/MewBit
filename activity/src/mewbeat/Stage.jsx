@@ -1,8 +1,8 @@
 // Stage scenery behind the game: one painted scene cut into pixel-aligned layers on a 2560x1440
 // canvas, plus spotlights. Each song gets its own scene, and always the same one. Pure decoration,
-// so everything is aria-hidden and ignores the pointer. The look is driven by CSS variables set on
-// .mb-stage (--mb-vibe, --mb-pulse), see mewbeat.css.
-import { useEffect, useState } from "react";
+// so everything is aria-hidden and ignores the pointer. The look follows the `vibe` prop (--mb-vibe, set here
+// on .mb-backdrop only) and the data-pulse flip on .mb-stage, which only runs opacity animations; see mewbeat.css.
+import { memo, useEffect, useState } from "react";
 import { pickScene } from "./scenes.js";
 
 // URLs only, so a scene's images are fetched when it first shows. New art only needs a new folder.
@@ -24,7 +24,7 @@ function Layer({ scene, layer, name = "" }) {
   return <img className={`mb-layer ${name}`.trim()} src={url(scene, layer)} alt="" draggable={false} />;
 }
 
-function Scene({ scene, leaving = false }) {
+const Scene = memo(function Scene({ scene, leaving = false }) {
   return (
     <div className={`mb-scene-set${leaving ? " mb-scene-leaving" : ""}`}>
       <Layer scene={scene} layer="base" />
@@ -34,9 +34,10 @@ function Scene({ scene, leaving = false }) {
       <Layer scene={scene} layer="neon" name="mb-layer-neon" />
     </div>
   );
-}
+});
 
-export default function Stage({ track = null }) {
+// `vibe` (0..1.4) comes with every judgement; the scenes and the track stay put, so only the backdrop's variable changes.
+function Stage({ track = null, vibe = 0 }) {
   const wanted = sceneFor(track);
   const [shown, setShown] = useState(() => wanted ?? SCENES[0]);
   const [leaving, setLeaving] = useState(null);
@@ -67,7 +68,7 @@ export default function Stage({ track = null }) {
   }, [leaving]);
 
   return (
-    <div className="mb-backdrop" aria-hidden="true">
+    <div className="mb-backdrop" aria-hidden="true" style={{ "--mb-vibe": vibe }}>
       <Scene key={shown} scene={shown} />
       {leaving ? <Scene key={leaving} scene={leaving} leaving /> : null}
       <div className="mb-spot mb-spot-l" />
@@ -76,3 +77,5 @@ export default function Stage({ track = null }) {
     </div>
   );
 }
+
+export default memo(Stage);

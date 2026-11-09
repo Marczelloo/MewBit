@@ -149,6 +149,17 @@ test("requestChart dedupes while in flight", () => {
   assert.equal(charts(sent).length, 2);
 });
 
+test("an explicit retry goes out with the first send only, never with the resends", () => {
+  const { link, scheduler, sent } = setup();
+  link.start();
+  link.requestChart("k", "normal", { retry: true });
+  scheduler.advance(3000);
+  assert.deepEqual(charts(sent).map((m) => m.payload.retry), [true, undefined]);
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "failed" });
+  link.requestChart("k", "normal");
+  assert.equal("retry" in charts(sent).at(-1).payload, false);
+});
+
 test("a chart request the socket refuses is not deduped against", () => {
   const { link, sent, state } = setup();
   link.start();

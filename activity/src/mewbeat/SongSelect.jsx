@@ -1,5 +1,5 @@
 import { MagnifyingGlass, Play, Plus, SpeakerHigh } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
 import LevelBoard from "./LevelBoard.jsx";
 import PlayerPanel from "./PlayerPanel.jsx";
@@ -76,6 +76,23 @@ function starsOf(row, difficulty) {
 
 export function gradeClass(grade) {
   return `mb-ss-grade-${["S", "A", "B", "C"].includes(grade) ? grade : "D"}`;
+}
+
+// One difficulty tile: name, stars with a bar, optionally the note count, and the player's best. Solo renders it as a
+// button (or a static div), the room lobby as a button that only picks which board to look at. `notes` shows the line
+// only when given (null reads "—"); `tag` adds a small chip, `className` and the rest go on the root.
+export function LevelTile({ as: Tag = "div", id, label, stars = null, best = null, notes, tag, className = "", children, ...props }) {
+  return (
+    <Tag {...props} className={`mb-ss-diff mb-ss-d-${id}${className ? ` ${className}` : ""}`}>
+      <b>{label}</b>
+      <small>{stars === null ? "—" : `★ ${stars.toFixed(1)}`}</small>
+      <span className="mb-ss-bar" aria-hidden="true"><i style={{ width: `${stars === null ? 0 : Math.min(100, (stars / STARS_FULL_BAR) * 100)}%` }} /></span>
+      {notes !== undefined ? <small className="mb-ss-notes">{notes === null ? "—" : `${notes} notes`}</small> : null}
+      <small className="mb-ss-best">{best ? <><b className={gradeClass(best.grade)}>{best.grade}</b> {best.score.toLocaleString("en-US")}</> : "no score yet"}</small>
+      {tag ? <span className="mb-ss-diff-tag">{tag}</span> : null}
+      {children}
+    </Tag>
+  );
 }
 
 // Artwork goes through the gateway's artwork proxy like the music panel's (Discord's CSP blocks other origins).
@@ -166,6 +183,28 @@ function rowMeta(row) {
   return [formatLength(row.durationMs), Number.isFinite(row.bpm) ? `${Math.round(row.bpm)} BPM` : ""].filter(Boolean).join(" · ");
 }
 
+// One song in the list. A pick or a state push re-renders only the rows whose own props changed (up to 500 rows):
+// the handlers are stable, and `on` and `preparing` say what the row needs from the screen's state.
+const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary }) {
+  return (
+    <div
+      role="option"
+      aria-selected={on}
+      className={`mb-ss-row${on ? " mb-ss-row-on" : ""}`}
+      onClick={() => onPick(row)}
+      onDoubleClick={() => { onPick(row); onPrimary(); }}
+    >
+      <Cover row={row} className="mb-ss-art" />
+      <span className="mb-ss-info">
+        <b>{row.title}</b>
+        <small>{row.artist}</small>
+        {preparing ? <span className="mb-ss-meta mb-ss-preparing">Preparing…</span> : <span className="mb-ss-meta">{rowMeta(row)}</span>}
+      </span>
+      {DIFFICULTIES.map(({ id, label }) => <LevelCell key={id} row={row} id={id} label={label} />)}
+    </div>
+  );
+});
+
 // The song-select screen: what the server has played (this server or anywhere) or a search over every source,
 // then a song's difficulties and Play. onPlay(row, difficulty) returns a promise that rejects with the reason
 // the song can't be played; onAddToRoom(row), when given, adds an "Add to room queue" button.
@@ -176,7 +215,7 @@ function rowMeta(row) {
 // With player ({ userId }, only the Solo picker passes it) the left side is the player's Profile and Stats until
 // a song is picked, and a picked song shows its leaderboard; without it (the room's add-songs window) the left
 // side is the song's details alone.
-export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose }) {
+export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose, onSelected }) {
   const [scope, setScope] = useState("server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
@@ -265,6 +304,10 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   // No list picks a song by itself: the details, the preview and Play wait for the player's pick. It is looked up in
   // every row, so a level or filter that hides the song from the list does not drop it.
   const selected = useMemo(() => (searching ? found.rows : played.rows).find((row) => row.key === selectedKey) ?? null, [searching, found.rows, played.rows, selectedKey]);
+  // The minimized window shows the selected song.
+  useEffect(() => {
+    onSelected?.(selected ? { title: selected.title, artist: selected.artist, artworkUrl: selected.artworkUrl } : null);
+  }, [selected?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A new order or filter can move the selected row out of sight; it comes back into view if it is still listed.
   useEffect(() => {
@@ -333,6 +376,10 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     }
   }, [selected, preparing, onAddToRoom]);
   const primary = onPlay ? play : addToRoom;
+  // The rows get this one function for good: a double click runs whatever the latest render's primary action is.
+  const primaryRef = useRef(primary);
+  primaryRef.current = primary;
+  const runPrimary = useCallback(() => primaryRef.current(), []);
 
   // The game's keys are paused while this screen is up, so typing reaches the search box.
   const onKeyDown = (event) => {
@@ -432,19 +479,17 @@ export default function SongSelect({ context, request, player, defaultDifficulty
             </div>
             <div className="mb-ss-diffs" role={onPlay ? "radiogroup" : undefined} aria-label={onPlay ? "Difficulty" : undefined}>
               {DIFFICULTIES.map(({ id, label }) => {
-                const stars = starsOf(selected, id);
-                const best = selected.bests?.[id];
                 return (
-                  <Tile
+                  <LevelTile
                     key={id}
+                    as={Tile}
+                    id={id}
+                    label={label}
+                    stars={starsOf(selected, id)}
+                    best={selected.bests?.[id]}
                     {...(onPlay ? { type: "button", role: "radio", "aria-checked": difficulty === id, disabled: busy, onClick: () => setDifficulty(id) } : null)}
-                    className={`mb-ss-diff mb-ss-d-${id}${!onPlay ? " mb-ss-diff-static" : difficulty === id ? " mb-ss-diff-on" : ""}`}
-                  >
-                    <b>{label}</b>
-                    <small>{stars === null ? "—" : `★ ${stars.toFixed(1)}`}</small>
-                    <span className="mb-ss-bar" aria-hidden="true"><i style={{ width: `${stars === null ? 0 : Math.min(100, (stars / STARS_FULL_BAR) * 100)}%` }} /></span>
-                    <small className="mb-ss-best">{best ? <><b className={gradeClass(best.grade)}>{best.grade}</b> {best.score.toLocaleString("en-US")}</> : "no score yet"}</small>
-                  </Tile>
+                    className={!onPlay ? "mb-ss-diff-static" : difficulty === id ? "mb-ss-diff-on" : ""}
+                  />
                 );
               })}
             </div>
@@ -560,22 +605,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
             </div>
           ) : null}
           {rows.map((row) => (
-            <div
-              key={row.key}
-              role="option"
-              aria-selected={row.key === selected?.key}
-              className={`mb-ss-row${row.key === selected?.key ? " mb-ss-row-on" : ""}`}
-              onClick={() => select(row)}
-              onDoubleClick={() => { select(row); primary(); }}
-            >
-              <Cover row={row} className="mb-ss-art" />
-              <span className="mb-ss-info">
-                <b>{row.title}</b>
-                <small>{row.artist}</small>
-                {preparing === row.key ? <span className="mb-ss-meta mb-ss-preparing">Preparing…</span> : <span className="mb-ss-meta">{rowMeta(row)}</span>}
-              </span>
-              {DIFFICULTIES.map(({ id, label }) => <LevelCell key={id} row={row} id={id} label={label} />)}
-            </div>
+            <SongRow key={row.key} row={row} on={row.key === selected?.key} preparing={preparing === row.key} onPick={select} onPrimary={runPrimary} />
           ))}
         </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { gradeLadder } from "./scoring.js";
 import { DIFFICULTIES, gradeClass, resolveArtworkUrl } from "./SongSelect.jsx";
 
@@ -100,7 +100,7 @@ function TrackCover({ artworkUrl }) {
 // Track card in the right column. The progress bar and its time readout live here: the game hook writes into
 // the <i> through progressRef and into the readout through progressTimeRef.
 // The difficulty control is Live's alone, where the song plays on whatever the player does: Solo and rooms pick theirs before the song.
-export function TrackCard({ track, difficulty, progressRef, progressTimeRef, disabled = false, swap = null, onDifficulty }) {
+export const TrackCard = memo(function TrackCard({ track, difficulty, progressRef, progressTimeRef, disabled = false, swap = null, onDifficulty }) {
   const label = DIFFICULTIES.find((d) => d.id === difficulty)?.label ?? difficulty;
   return (
     <section className="mb-card mb-track" aria-label="Track">
@@ -121,7 +121,7 @@ export function TrackCard({ track, difficulty, progressRef, progressTimeRef, dis
       </div>
     </section>
   );
-}
+});
 
 // Vertical vibe meter beside the highway: filling, ready (Space starts FEVER), then FEVER draining.
 // Its slot is the highway's, so it sits in the gap next to the canvas without taking any of its width.

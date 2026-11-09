@@ -1,0 +1,312 @@
+/* mewbeat room lobby (docs/superpowers/specs/mewbeat-mockups/lobby-and-minimized.html): the song on deck with the
+   round clock, the queue, the level tiles and their leaderboard on the left; Mewbit, the players, invite and my own
+   controls on the right. The tiles, board rows and avatars are the song select's (their rules live in songSelect.css
+   and mewbeat.css, widened to .mb-lobby). The classes Mewbit's stage shares with the game scene (.mb-lobby-mewbox,
+   -ring, -beat) stay in mewbeat.css. Sizes: 1280x720 is the full layout, up to 1000 px wide or 560 px high is the
+   compact one (800x480), under 640 px wide the two columns stack. The left column scrolls, it is never cut. */
+
+.mb-lobby {
+  --mb-ss-easy: var(--mb-cyan);
+  --mb-ss-normal: var(--mb-violet);
+  --mb-ss-hard: var(--mb-pink);
+  --mb-ss-hell: var(--mb-danger);
+  --mb-ss-mono: "JetBrains Mono", ui-monospace, monospace;
+  grid-area: 2 / 1;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 30%, 380px);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  background:
+    radial-gradient(90% 60% at 100% 0%, rgb(167 139 250 / 0.1), transparent 60%),
+    radial-gradient(70% 60% at 0% 100%, rgb(255 110 199 / 0.08), transparent 60%),
+    var(--mb-bg);
+  animation: mb-fade-in 240ms ease-out both;
+}
+.mb-lobby .mb-btn { min-height: 28px; padding: 0 12px; border-radius: 10px; font-size: 12.5px; font-weight: 800; }
+
+/* ---------- left column ---------- */
+.mb-lobby-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mb-lobby-main > * { flex: none; }
+.mb-lobby-main > .mb-lobby-levels,
+.mb-lobby-main > .mb-lobby-queue { margin-top: 10px; }
+/* the leaderboard takes about a third of the column, the queue what is left */
+.mb-lobby-main > .mb-lobby-queue { flex: 1 1 0; min-height: 140px; }
+.mb-lobby-main > .mb-ss-board { flex: 0 1 30%; min-height: 140px; }
+.mb-lobby-main > .mb-lobby-watch { flex: 1 1 0; min-height: 190px; }
+
+/* the song on deck and the round clock */
+.mb-lobby-hero-top { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 14px; }
+.mb-lobby-cover { display: block; width: 80px; height: 80px; border-radius: 14px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
+.mb-lobby-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
+.mb-lobby-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mb-lobby-hero h2 { margin: 2px 0 0; overflow: hidden; font-size: clamp(18px, 2.1vw, 26px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.mb-lobby-artist { overflow: hidden; color: var(--mb-muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.mb-lobby-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.mb-lobby-chip { padding: 4px 7px; border-radius: 7px; outline: 1px solid var(--mb-line); background: var(--mb-raised); color: var(--mb-muted); font: 500 11px/1 var(--mb-ss-mono); }
+
+.mb-lobby-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; padding-left: 16px; border-left: 1px solid var(--mb-line); }
+.mb-lobby-crow { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.mb-lobby-time { display: block; font: 700 clamp(36px, 3.8vw, 48px)/0.95 var(--mb-ss-mono); letter-spacing: -0.06em; font-variant-numeric: tabular-nums; transform-origin: right center; }
+.mb-lobby-time-tick { animation: mb-lobby-tick 300ms ease-out both; }
+.mb-lobby-time-final { color: var(--mb-cyan); text-shadow: 0 0 24px rgb(103 227 244 / 0.45); animation: mb-lobby-tick-final 480ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+@keyframes mb-lobby-tick { from { transform: scale(1.06); opacity: 0.7; } }
+@keyframes mb-lobby-tick-final { from { transform: scale(1.4); } }
+.mb-lobby .mb-lobby-start { min-height: 30px; border-color: rgb(103 227 244 / 0.5); color: var(--mb-cyan); }
+.mb-lobby .mb-lobby-start:disabled { border-color: var(--mb-line); color: var(--mb-faint); cursor: default; }
+.mb-lobby-ctext { margin: 0; padding: 6px 14px; border-top: 1px solid var(--mb-line); color: var(--mb-muted); font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+.mb-lobby-ctext strong { color: var(--mb-text); }
+.mb-lobby-short { display: none; }
+
+/* the queue: a list that scrolls, what was played greyed out above what waits */
+.mb-lobby-queue { display: flex; flex-direction: column; gap: 6px; }
+.mb-lobby-qhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; }
+.mb-lobby .mb-lobby-add { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 16px; font-size: 14px; font-weight: 800; }
+.mb-lobby-note { margin: 0; color: var(--mb-faint); font-size: 12.5px; }
+.mb-tl { position: relative; display: flex; flex: 1 1 0; flex-direction: column; gap: 4px; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.mb-tl-row { position: relative; display: grid; flex: none; grid-template-columns: auto 20px 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; overflow: hidden; border-radius: 10px; background: var(--mb-surface); outline: 1px solid var(--mb-line); outline-offset: -1px; }
+.mb-tl-owner .mb-tl-row[draggable="true"] { cursor: grab; }
+.mb-tl-grip { display: grid; place-items: center; color: var(--mb-faint); }
+.mb-tl-owner .mb-tl-grip { width: 14px; }
+.mb-tl-pos { display: grid; place-items: center; color: var(--mb-faint); font: 700 12px var(--mb-ss-mono); }
+.mb-tl-cover { display: block; width: 34px; height: 34px; border-radius: 7px; object-fit: cover; }
+.mb-tl-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
+.mb-tl-txt { min-width: 0; }
+.mb-tl-txt b { display: block; overflow: hidden; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.mb-tl-txt small { display: block; margin-top: 2px; overflow: hidden; color: var(--mb-faint); font: 500 11px var(--mb-ss-mono); text-overflow: ellipsis; white-space: nowrap; }
+.mb-tl-now { outline-color: rgb(103 227 244 / 0.55); }
+.mb-tl-now .mb-tl-pos, .mb-tl-now .mb-tl-txt small { color: var(--mb-cyan); }
+.mb-tl-mine .mb-tl-txt b { color: var(--mb-pink); }
+.mb-tl-done { background: transparent; opacity: 0.45; }
+.mb-tl-done .mb-tl-cover { filter: grayscale(1); }
+.mb-tl-dragged { opacity: 0.4; }
+.mb-tl-over-up { box-shadow: inset 0 2px 0 var(--mb-cyan); }
+.mb-tl-over-down { box-shadow: inset 0 -2px 0 var(--mb-cyan); }
+.mb-tl-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; transform-origin: left; background: var(--mb-cyan); transition: transform 300ms linear; }
+.mb-tl-acts { display: flex; align-items: center; gap: 2px; }
+.mb-tl-act { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--mb-faint); cursor: pointer; }
+.mb-tl-act:hover:not(:disabled) { background: var(--mb-raised); color: var(--mb-text); }
+.mb-tl-x:hover:not(:disabled) { color: var(--mb-danger); }
+.mb-tl-act:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
+.mb-tl-act:disabled { opacity: 0.35; cursor: default; }
+
+/* the four levels of the song on deck: a tile sets the player's level, for a spectator it only picks the board below */
+.mb-lobby-levels { display: flex; flex-direction: column; gap: 8px; }
+.mb-lobby .mb-ss-diff:disabled { cursor: default; }
+.mb-lobby .mb-ss-diff { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 6px; min-width: 0; padding: 9px 12px; }
+.mb-lobby .mb-ss-diff > .mb-ss-bar,
+.mb-lobby .mb-ss-diff > .mb-ss-notes,
+.mb-lobby .mb-ss-diff > .mb-ss-best { grid-column: 1 / -1; }
+.mb-lobby .mb-ss-diff > b + small { color: var(--c); font-weight: 700; }
+.mb-lobby .mb-ss-diff .mb-ss-bar { margin: 5px 0; }
+.mb-lobby .mb-ss-diff .mb-ss-notes,
+.mb-lobby .mb-ss-diff .mb-ss-best { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-lobby .mb-ss-diff .mb-ss-best { color: var(--mb-muted); }
+.mb-ss-diff-tag { position: absolute; top: -6px; right: 8px; padding: 1px 5px; border-radius: 4px; background: var(--mb-bg); outline: 1px solid var(--c); color: var(--c); font: 700 9px/1.3 var(--mb-ss-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* a spectator watches the round's live board instead of the levels */
+.mb-lobby-watch { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 12px 14px; }
+.mb-lobby-watch > :last-child { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.mb-lobby-nosong { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 20px; color: var(--mb-muted); font-size: 13px; text-align: center; }
+.mb-lobby-nosong b { color: var(--mb-text); font-size: 16px; font-weight: 900; }
+
+/* ---------- right column ---------- */
+.mb-lobby-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 14px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-left: 1px solid var(--mb-line);
+  background: rgb(5 6 8 / 0.55);
+}
+.mb-lobby-side > * { flex: none; }
+
+/* Mewbit takes whatever height the rest leaves, so he is as large as the window allows */
+.mb-lobby-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 128px;
+  max-height: 320px;
+  overflow: hidden;
+  border-radius: 14px;
+  outline: 1px solid var(--mb-line);
+  outline-offset: -1px;
+  background: linear-gradient(140deg, #2a0f3a, #0a0818 70%);
+}
+.mb-lobby-stage::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(167 139 250 / 0.12), transparent 40%, rgb(5 6 8 / 0.5)); pointer-events: none; }
+.mb-lobby-spot { position: absolute; top: 0; left: 50%; width: 120%; height: 100%; transform: translateX(-50%); pointer-events: none; background: linear-gradient(180deg, rgb(167 139 250 / 0.14), transparent 75%); clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%); }
+.mb-lobby-bubble {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  max-width: calc(100% - 20px);
+  padding: 7px 10px;
+  border-radius: 12px 12px 12px 3px;
+  background: var(--mb-text);
+  color: var(--mb-bg);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+/* who is here */
+.mb-lobby-plist { display: flex; flex: 0 1 auto; flex-direction: column; gap: 6px; min-height: 120px; max-height: 45%; }
+.mb-lobby-shead { display: flex; align-items: baseline; justify-content: space-between; margin: 0; font-size: 15px; font-weight: 900; }
+.mb-lobby-shead small { color: var(--mb-muted); font: 700 13px var(--mb-ss-mono); }
+.mb-lobby-shead em { color: var(--mb-faint); font: 500 11.5px var(--mb-ss-mono); font-style: normal; }
+.mb-lobby-shead em strong { color: var(--mb-cyan); font-weight: 700; }
+.mb-lobby-players { display: flex; flex: 0 1 auto; flex-direction: column; gap: 6px; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.mb-lobby-pr { flex: none; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 52px; padding: 0 12px; border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
+.mb-lobby-pr-me { border-color: rgb(103 227 244 / 0.55); background: linear-gradient(90deg, rgb(103 227 244 / 0.12), rgb(103 227 244 / 0.03) 60%), var(--mb-raised); }
+.mb-lobby-who { min-width: 0; }
+.mb-lobby-who b { display: flex; align-items: center; gap: 6px; font-size: 14.5px; font-weight: 800; }
+.mb-lobby-who b > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-lobby-who small { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; font-weight: 600; }
+.mb-lobby-st-ok { color: var(--mb-cyan); }
+.mb-lobby-st-wait { color: var(--mb-faint); }
+.mb-lobby-dot { display: block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.mb-lobby-owner { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 5px; background: var(--mb-gold); color: var(--mb-bg); font: 700 9.5px/1.2 var(--mb-ss-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.mb-lobby-you { flex: none; padding: 2px 5px; border-radius: 5px; background: var(--mb-cyan); color: var(--mb-bg); font: 700 9.5px/1.2 var(--mb-ss-mono); letter-spacing: 0.08em; }
+.mb-lobby-pill { padding: 4px 8px; border-radius: 7px; background: var(--mb-high-bg, #161920); color: var(--c); font: 700 11px/1 var(--mb-ss-mono); }
+.mb-lobby-pill-in { display: none; }
+
+.mb-lobby-invite { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
+.mb-lobby-invite-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mb-lobby-invite p { margin: 0; color: var(--mb-muted); font-size: 12px; font-weight: 600; line-height: 1.4; }
+.mb-lobby-invite p.mb-lobby-invite-ok { color: var(--mb-cyan); font-weight: 700; }
+/* the keys and the Ready bar sit at the bottom of the column however tall the window is */
+.mb-lobby-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; color: var(--mb-faint); font-size: 12px; font-weight: 600; }
+.mb-lobby-link { margin-left: auto; padding: 4px 2px; border: 0; background: none; color: var(--mb-muted); font: inherit; text-decoration: underline; cursor: pointer; }
+.mb-lobby-link:hover { color: var(--mb-text); }
+.mb-lobby-link:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+
+.mb-lobby-last { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.mb-lobby-last li:not(.mb-ss-label) { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 9px; background: var(--mb-surface); font-size: 13px; }
+.mb-lobby-last b { font-weight: 800; overflow-wrap: anywhere; }
+.mb-lobby-last-pos { color: var(--mb-faint); font: 700 11px var(--mb-ss-mono); }
+.mb-lobby-last-score { font: 700 12px var(--mb-ss-mono); }
+.mb-lobby-last-me { outline: 1px solid rgb(103 227 244 / 0.45); }
+
+/* player or spectator, and Ready; it stays in view while the column scrolls */
+.mb-lobby-bar { position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: 14px; margin: 0 -14px; padding: 10px 14px 12px; border-top: 1px solid var(--mb-line); background: #07080b; }
+.mb-lobby-role { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mb-lobby-mode { display: inline-flex; gap: 3px; padding: 3px; border-radius: 11px; outline: 1px solid var(--mb-line); background: var(--mb-surface); }
+.mb-lobby-mode-btn { padding: 6px 14px; border: 0; border-radius: 8px; background: none; color: var(--mb-muted); font: 800 13px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
+.mb-lobby-mode-btn:hover:not(:disabled):not(.mb-lobby-mode-on) { color: var(--mb-text); }
+.mb-lobby-mode-btn:disabled { opacity: 0.55; cursor: default; }
+.mb-lobby-mode-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
+.mb-lobby-mode-on { background: var(--mb-raised); color: var(--mb-text); }
+.mb-lobby-ready { width: 100%; height: 44px; border: 0; border-radius: 14px; background: var(--mb-text); color: var(--mb-bg); font: 900 15px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
+.mb-lobby-ready:active:not(:disabled) { transform: scale(0.98); }
+.mb-lobby-ready:disabled { opacity: 0.55; cursor: default; }
+.mb-lobby-ready:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+.mb-lobby-ready-on { background: var(--mb-cyan); }
+.mb-lobby-specnote { display: flex; align-items: center; min-height: 44px; margin: 0; color: var(--mb-muted); font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+
+.mb-lobby-toast { position: absolute; left: 50%; bottom: 20px; z-index: 3; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid var(--mb-line); border-radius: 12px; background: var(--mb-raised); color: var(--mb-text); font-size: 13px; font-weight: 700; transform: translateX(-50%); animation: mb-fade-in 160ms ease-out both; }
+.mb-lobby-toast-error { border-color: rgb(255 128 152 / 0.5); color: var(--mb-danger); }
+
+/* ---------- compact: 800x480 ---------- */
+@media (max-width: 1000px), (max-height: 560px) {
+  .mb-lobby { grid-template-columns: minmax(0, 1fr) 300px; }
+  .mb-lobby-main { gap: 6px; padding: 8px 12px; }
+  .mb-lobby-main > .mb-lobby-levels,
+  .mb-lobby-main > .mb-lobby-queue { margin-top: 6px; }
+  .mb-lobby-main > .mb-lobby-queue { min-height: 118px; }
+  .mb-lobby-main > .mb-ss-board { min-height: 104px; }
+  .mb-lobby-main > .mb-lobby-watch { min-height: 150px; }
+
+  .mb-lobby-hero-top { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; padding: 8px 10px; }
+  .mb-lobby-cover { width: 48px; height: 48px; border-radius: 10px; }
+  .mb-lobby-hero h2 { font-size: 18px; }
+  .mb-lobby-artist { font-size: 12px; }
+  .mb-lobby-chips { display: none; }
+  .mb-lobby-clock { gap: 3px; padding-left: 12px; }
+  .mb-lobby-crow { flex-direction: row; align-items: center; gap: 8px; }
+  .mb-lobby-time { font-size: 28px; }
+  .mb-lobby .mb-lobby-start { min-height: 26px; padding: 0 10px; font-size: 12px; }
+  .mb-lobby-ctext { padding: 4px 10px; font-size: 11px; }
+  .mb-lobby-long { display: none; }
+  .mb-lobby-short { display: inline; }
+
+  .mb-lobby-queue { gap: 3px; }
+  .mb-lobby-qhead { min-height: 28px; }
+  .mb-lobby .mb-lobby-add { gap: 5px; min-height: 28px; padding: 0 12px; font-size: 12.5px; }
+  .mb-tl-row { grid-template-columns: auto 16px minmax(0, 1fr) auto; gap: 6px; min-height: 34px; padding: 2px 6px; }
+  .mb-tl-cover { display: none; }
+  .mb-tl-txt b { font-size: 12px; }
+  .mb-tl-txt small { margin-top: 0; font-size: 10.5px; }
+  .mb-tl-act { width: 22px; height: 22px; }
+
+  .mb-lobby-levels { gap: 6px; }
+  .mb-lobby-lvhead { display: none; }
+  .mb-lobby .mb-ss-diffs { gap: 6px; }
+  .mb-lobby .mb-ss-diff { gap: 1px 6px; padding: 6px 7px; border-radius: 10px; }
+  .mb-lobby .mb-ss-diff > b { font-size: 13px; }
+  .mb-lobby .mb-ss-diff small { font-size: 10px; line-height: 1.3; }
+  .mb-lobby .mb-ss-diff .mb-ss-bar { display: none; }
+  .mb-lobby .mb-ss-board h3 { padding: 5px 6px 5px 10px; }
+
+  .mb-lobby-side { gap: 8px; padding: 10px 10px 0; }
+  .mb-lobby-stage { min-height: 92px; }
+  .mb-lobby-stage .mb-lobby-mewbox { left: 40%; }
+  .mb-lobby-bubble { max-width: 46%; padding: 5px 8px; font-size: 11.5px; }
+  .mb-lobby-plist, .mb-lobby-players { gap: 4px; }
+  .mb-lobby-plist { min-height: 90px; }
+  .mb-lobby-shead { font-size: 14px; }
+  .mb-lobby-pr { grid-template-columns: 28px minmax(0, 1fr); gap: 8px; min-height: 40px; padding: 0 10px; border-radius: 12px; }
+  .mb-lobby-pr .mb-ss-av { --size: 28px !important; }
+  .mb-lobby-pr > .mb-lobby-pill { display: none; }
+  .mb-lobby-pill-in { display: inline; margin-left: auto; padding: 2px 6px; font-size: 10px; }
+  .mb-lobby-who b { font-size: 13px; }
+  .mb-lobby-who small { margin-top: 1px; font-size: 11px; }
+  .mb-lobby-invite { flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 10px; }
+  .mb-lobby-invite > p:not([role]) { display: none; }
+  .mb-lobby-invite-row { width: 100%; }
+  .mb-lobby-keys { gap: 5px; font-size: 11px; }
+  .mb-lobby-ofs { display: none; }
+  .mb-lobby-bar { flex-direction: row; align-items: center; gap: 14px; margin: 0 -10px; padding: 8px 10px 10px; }
+  .mb-lobby-role { flex: none; }
+  .mb-lobby-role > .mb-ss-label { display: none; }
+  .mb-lobby-mode-btn { padding: 4px 10px; font-size: 12px; }
+  .mb-lobby-ready { flex: 1 1 0; height: 38px; font-size: 14px; }
+  .mb-lobby-specnote { flex: 1 1 0; min-height: 38px; font-size: 11.5px; }
+}
+
+/* ---------- narrow: one column, the whole lobby scrolls ---------- */
+@media (max-width: 640px) {
+  .mb-lobby { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; overflow-y: auto; }
+  .mb-lobby-main { overflow: visible; }
+  .mb-lobby-main > .mb-lobby-queue { flex: none; }
+  .mb-tl { flex: none; max-height: 240px; }
+  .mb-lobby-main > .mb-ss-board { flex: none; height: 240px; }
+  .mb-lobby-main > .mb-lobby-watch { flex: none; height: 260px; }
+  .mb-lobby-plist { flex: none; max-height: none; }
+  .mb-lobby-players { overflow: visible; }
+  .mb-lobby-hero-top { grid-template-columns: 48px minmax(0, 1fr); }
+  .mb-lobby-clock { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 0 0; border-top: 1px solid var(--mb-line); border-left: 0; }
+  .mb-lobby .mb-ss-diffs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mb-lobby-side { overflow: visible; border-top: 1px solid var(--mb-line); border-left: 0; }
+  .mb-lobby-stage { flex: none; height: 150px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-lobby, .mb-lobby-toast, .mb-lobby-bubble, .mb-lobby-time { animation: none; }
+  .mb-tl-progress, .mb-lobby-mode-btn, .mb-lobby-ready { transition: none; }
+}

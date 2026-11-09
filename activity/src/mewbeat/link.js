@@ -99,8 +99,11 @@ export function createMewbeatLink({
     if (running) sendSync();
   }
 
-  function sendChartRequest(request) {
-    return send({ type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty }) !== false;
+  // `retry` goes out with the first send only (a player's "Try again"); the resends that wait for a "pending" are ordinary.
+  function sendChartRequest(request, retry = false) {
+    const message = { type: "mewbeat_chart", audioKey: request.audioKey, difficulty: request.difficulty };
+    if (retry) message.retry = true;
+    return send(message) !== false;
   }
 
   // Resends a request nobody answered yet (a lost reply) or that the server answered "pending"; a refused
@@ -128,12 +131,12 @@ export function createMewbeatLink({
   // Returns false when nothing went out: already in flight, link stopped, or
   // the socket refused it (not ready yet). A refused key is released, so the
   // next requestChart goes out instead of being deduped against nothing.
-  function requestChart(audioKey, difficulty) {
+  function requestChart(audioKey, difficulty, { retry = false } = {}) {
     const key = chartKey(audioKey, difficulty);
     if (!running || inflightCharts.has(key)) return false;
     const request = { audioKey, difficulty };
     inflightCharts.set(key, request);
-    if (sendChartRequest(request)) {
+    if (sendChartRequest(request, retry)) {
       chartSends.set(key, 1);
       scheduleChartRetry(key);
       return true;

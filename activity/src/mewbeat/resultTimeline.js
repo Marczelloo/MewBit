@@ -8,6 +8,8 @@ export const JUDGE_COUNT_MS = 420;
 export const JUDGE_STEP_MS = 180; // as .mb-res-judges li in mewbeat.css
 // The grade's pop settles this far in (.mb-res-grade), and the impacts peak about 15 ms into the sample.
 export const IMPACT_DELAY_MS = 165;
+// A full combo's fanfare comes this long after the impact, while the impact still rings (both samples are about 2 s).
+export const FULL_COMBO_DELAY_MS = 450;
 const OFFSET_SHOWS_MS = 60; // its rise has only just begun at its step
 
 const IMPACTS = { S: "rank-impact-pass-ss", A: "rank-impact-pass", B: "rank-impact-fail", C: "rank-impact-fail", D: "rank-impact-fail-d" };
@@ -35,9 +37,18 @@ export function countTicks(value, start, duration, most) {
   return ticks;
 }
 
-// Everything the screen sounds, in order, with the grade's impact last. rate climbs with the run's accuracy on the
+// A finished run played by hand without a miss (autoplay and calibration are no score to be proud of).
+export const isFullCombo = (summary) => Boolean(summary?.finished) && !summary.autoplay && !summary.calibration && summary.counts?.miss === 0;
+
+// What a skip still sounds: the grade's impact and whatever follows it.
+export function skipEvents(events) {
+  const from = events.findIndex(({ at }) => at >= REVEAL.grade + IMPACT_DELAY_MS);
+  return from < 0 ? [] : events.slice(from);
+}
+
+// Everything the screen sounds, in order, with the grade's impact last, or the full combo's fanfare when the run has one. rate climbs with the run's accuracy on the
 // score's ticks, as in osu!, and a little with every stat on the dinks.
-export function resultSoundEvents({ grade, score, accuracy, maxCombo, fevers }) {
+export function resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo = false }) {
   const events = [{ at: REVEAL.score, name: "swoosh", level: SWOOSH_LEVEL, rate: 1 }];
   let dinks = 0;
   const dink = (at, name = "dink", level = 1) => {
@@ -64,6 +75,8 @@ export function resultSoundEvents({ grade, score, accuracy, maxCombo, fevers }) 
   dink(REVEAL.timing, "dink-max");
 
   events.sort((a, b) => a.at - b.at);
-  events.push({ at: REVEAL.grade + IMPACT_DELAY_MS, name: IMPACTS[grade] ?? IMPACTS.D, level: 1, rate: 1 });
+  const impactAt = REVEAL.grade + IMPACT_DELAY_MS;
+  events.push({ at: impactAt, name: IMPACTS[grade] ?? IMPACTS.D, level: 1, rate: 1 });
+  if (fullCombo) events.push({ at: impactAt + FULL_COMBO_DELAY_MS, name: "full-combo", level: 1, rate: 1 });
   return events;
 }

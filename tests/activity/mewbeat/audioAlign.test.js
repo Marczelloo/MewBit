@@ -5,9 +5,11 @@ const { pathToFileURL } = require("node:url");
 
 let audioLagMs;
 let riseEnvelope;
+let energyInto;
+let riseFromEnergy;
 
 test.before(async () => {
-  ({ audioLagMs, riseEnvelope } = await import(
+  ({ audioLagMs, riseEnvelope, energyInto, riseFromEnergy } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/audioAlign.js")).href
   ));
 });
@@ -80,4 +82,26 @@ test("a chord counts once", () => {
 
 test("a song too short for the envelope gives an empty one", () => {
   assert.equal(riseEnvelope([new Float32Array(10)], 100).length, 0);
+});
+
+test("the energy folded in pieces gives the same envelope as the whole song at once", () => {
+  const times = beats(60);
+  const left = clicks(times.map((t) => t + 30));
+  const right = clicks(times.map((t) => t + 30)).map((v) => v * 0.5);
+  const whole = riseEnvelope([left, right], RATE);
+  const frames = Math.floor(left.length / 1);
+  const energy = new Float32Array(frames);
+  for (let at = 0; at < frames; at += 777) {
+    const to = Math.min(at + 777, frames);
+    energyInto(energy, at, left.slice(at, to), right.slice(at, to), 1);
+  }
+  const pieces = riseFromEnergy(energy);
+  assert.equal(pieces.length, whole.length);
+  assert.deepEqual(Array.from(pieces), Array.from(whole));
+  assert.equal(audioLagMs(pieces, times), audioLagMs(whole, times));
+});
+
+test("a mono song counts as both channels", () => {
+  const left = clicks(beats(60).map((t) => t + 30));
+  assert.deepEqual(Array.from(riseEnvelope([left], RATE)), Array.from(riseEnvelope([left, left], RATE)));
 });

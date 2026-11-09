@@ -16,7 +16,7 @@ const FIRST_AT = Date.UTC(2026, 9, 12);
 const NOW = Date.UTC(2026, 10, 9);
 
 // stars and the player's best grade per level (easy, normal, hard, hell); bpm and stars null are an uncharted song.
-const SONGS = [
+export const SONGS = [
   { title: "MEGALOVANIA", artist: "Toby Fox", len: 156, bpm: 240, stars: [2.4, 4.1, 5.8, 7.3], grades: ["S", "A", "C", null], plays: [3, 5, 2, 0] },
   { title: "Hopes and Dreams", artist: "Toby Fox", len: 185, bpm: 170, stars: [2.1, 3.8, 5.2, 6.9], grades: ["S", "S", "B", null], plays: [2, 4, 3, 0] },
   { title: "MORE", artist: "K/DA", len: 217, bpm: 115, stars: [1.9, 3.4, 4.7, 6.2], grades: [null, "B", null, null], plays: [0, 2, 0, 0] },
@@ -34,7 +34,7 @@ const SCORE_BY_GRADE = { S: 641_900, A: 512_300, B: 441_000, C: 318_400, D: 201_
 const ACCURACY_BY_GRADE = { S: 98.4, A: 94.2, B: 87.6, C: 77.3, D: 68.1 };
 
 const slug = (title) => title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-const audioKeyOf = (song) => `mock:${slug(song.title)}:${song.len * 1000}`;
+export const audioKeyOf = (song) => `mock:${slug(song.title)}:${song.len * 1000}`;
 
 // name, rating, global rank, server rank, average accuracy
 const PEOPLE = {
@@ -243,7 +243,19 @@ function ranking({ scope }) {
   };
 }
 
+// The four levels of one song, as the room lobby's tiles want them: stars, notes and the player's best.
+function songStats({ audioKey }) {
+  const song = SONGS.find((candidate) => audioKeyOf(candidate) === audioKey);
+  if (!song?.stars) return { status: "ok", stats: null };
+  const stats = Object.fromEntries(LEVELS.map((level, i) => {
+    const grade = song.grades[i];
+    return [level, { stars: song.stars[i], notes: NOTES[level], best: grade ? { score: SCORE_BY_GRADE[grade], grade } : null }];
+  }));
+  return { status: "ok", stats };
+}
+
 const ANSWERS = {
+  mewbeat_song_stats: songStats,
   mewbeat_played: played,
   mewbeat_board: board,
   mewbeat_profile: profile,

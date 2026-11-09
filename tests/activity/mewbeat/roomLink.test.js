@@ -363,6 +363,22 @@ test("leaving the room (null snapshot) drops the run", async () => {
   assert.equal(env.link.state().stage, "idle");
 });
 
+test("sitOut drops the round, keeps the room, and does not engage the same round again", async () => {
+  const env = setup();
+  await loaded(env);
+  env.link.sitOut();
+  assert.equal(env.anchors.at(-1), "clear");
+  assert.equal(env.link.state().stage, "idle");
+  env.link.setRoom(snapshot({ serverNow: 2000 }), env.scheduler.now());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(env.link.state().stage, "idle");
+  assert.equal(env.calls.filter((c) => c.startsWith("load:")).length, 1);
+  // the next round is joined as usual
+  env.link.setRoom(snapshot({ round: 2 }), env.scheduler.now());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(env.link.state().stage, "ready");
+});
+
 test("leaveRound drops the run and ignores the stale snapshot", async () => {
   const env = setup();
   await loaded(env);

@@ -32,6 +32,7 @@ export function createSoloAudio({
   fetchAudio,
   createContext = () => new (globalThis.AudioContext ?? globalThis.webkitAudioContext)(),
   now = () => performance.now(),
+  aligner = null, // alignClient.js: scans the song off the main thread; without it align runs inline
 } = {}) {
   let ctx = null;
   let gain = null;
@@ -46,6 +47,8 @@ export function createSoloAudio({
   let loadAbort = null; // aborts the download of the load in flight (superseded or closed)
   let rise = null; // the loaded song's riseEnvelope, made the first time a chart asks
   let lagMs = 0; // the loaded song's sounds come this long after its chart: song time t is buffer time t + lagMs
+  let alignSeq = 0; // bumps on every background alignment and every new song, so an older answer is dropped
+  let aligning = null; // the background alignment in flight, which play() waits for
   // Playback state. source is non-null only while a source node is scheduled or playing.
   let source = null;
   let sourceStartCtx = 0; // context time at which the song position startOffsetMs is (or was) audible
@@ -123,6 +126,8 @@ export function createSoloAudio({
       loadedKey = audioKey;
       rise = null;
       lagMs = 0;
+      alignSeq += 1;
+      aligning = null;
       return { durationMs: durationMs() };
     })();
     loading = { key: audioKey, promise };
@@ -170,6 +175,28 @@ export function createSoloAudio({
     return lagMs;
   }
 
+  // The same, without holding the page up: the scan runs in the aligner's worker. play() waits for it, so the lag is
+  // set before the source starts (the count-in is longer than the scan). Resolves when the lag is known.
+  function alignInBackground(noteTimesMs) {
+    if (!buffer) return Promise.resolve(0);
+    if (!aligner || rise) return Promise.resolve(align(noteTimesMs));
+    const seq = ++alignSeq;
+    const songBuffer = buffer;
+    const channels = [songBuffer.getChannelData(0)];
+    if (songBuffer.numberOfChannels > 1) channels.push(songBuffer.getChannelData(1));
+    const job = aligner
+      .align({ key: loadedKey, channels, sampleRate: songBuffer.sampleRate, timesMs: noteTimesMs })
+      .then((lag) => {
+        if (lag !== null && seq === alignSeq && buffer === songBuffer) lagMs = lag;
+        return lagMs;
+      }, () => lagMs)
+      .finally(() => {
+        if (aligning === job) aligning = null;
+      });
+    aligning = job;
+    return job;
+  }
+
   // Starts (or restarts) playback at fromMs. With whenPerfMs the song position fromMs becomes audible at
   // that perf time (rooms start together); songTimeAt is negative until then. A negative fromMs is silence
   // before the song, the clock runs through it. Rejects when the context cannot run, so a run is never left silent.
@@ -179,6 +206,10 @@ export function createSoloAudio({
     stopClip({ fadeMs: 0 });
     dropSource();
     const seq = ++playSeq;
+    if (aligning) {
+      await aligning;
+      if (seq !== playSeq) return;
+    }
     if (c.state !== "running") {
       await c.resume();
       if (seq !== playSeq) return;
@@ -392,6 +423,9 @@ export function createSoloAudio({
     buffer = null;
     rise = null;
     lagMs = 0;
+    alignSeq += 1;
+    aligning = null;
+    aligner?.close?.();
     loadedKey = null;
     loadSeq += 1;
     loadAbort?.abort();
@@ -412,6 +446,7 @@ export function createSoloAudio({
   return {
     load,
     align,
+    alignInBackground,
     play,
     pause,
     resume,

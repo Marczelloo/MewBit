@@ -197,6 +197,14 @@ export function createRoomLink({
     abandon();
   }
 
+  // The player sits this round out but stays in the room (their chart failed and they went back to the lobby):
+  // the round is dropped and, like one whose audio failed, not engaged again on the next snapshot.
+  function sitOut() {
+    const round = engaged ?? latest?.room?.round ?? null;
+    if (round != null) failedRound = round;
+    abandon();
+  }
+
   let offEnded = null;
   function start() {
     offEnded?.();
@@ -235,6 +243,7 @@ export function createRoomLink({
     // room controls
     setRoom,
     leaveRound,
+    sitOut,
     serverClock,
     state: () => state,
     onState: (fn) => {

@@ -70,6 +70,18 @@ test("gives a level its board, with your pinned best on the global one", async (
   assert.deepEqual(none.own, { rank: null, best: null });
 });
 
+test("gives the room lobby the four levels of a song, and nothing for an uncharted one", async () => {
+  const { tracks } = await request("mewbeat_played", { scope: "server" });
+  const song = tracks.find((track) => track.bests.normal);
+  const reply = await request("mewbeat_song_stats", { audioKey: song.audioKey });
+  assert.equal(reply.status, "ok");
+  assert.deepEqual(Object.keys(reply.stats), ["easy", "normal", "hard", "hell"]);
+  assert.ok(Number.isFinite(reply.stats.normal.stars) && Number.isFinite(reply.stats.normal.notes));
+  assert.ok(reply.stats.normal.best.grade && reply.stats.normal.best.score > 0);
+  const uncharted = tracks.find((track) => track.stars === null);
+  assert.equal((await request("mewbeat_song_stats", { audioKey: uncharted.audioKey })).stats, null);
+});
+
 test("answers an unknown type with an error", async () => {
   const reply = await request("mewbeat_nope", {});
   assert.deepEqual([reply.status, reply.reason], ["error", "unknown"]);

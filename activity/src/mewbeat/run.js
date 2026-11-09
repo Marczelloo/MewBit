@@ -211,7 +211,8 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     return { events: eventLog.map((event) => ({ ...event })), fevers: feverStarts.slice(), presses, emptyPresses };
   }
 
-  function snapshot(songMs) {
+  // `withHits` false leaves the hit list out: the HUD flush runs on every judgement and never reads it.
+  function snapshot(songMs, withHits = true) {
     const heardMs = heard(songMs);
     const feverActive = score.feverUntil !== null && heardMs < score.feverUntil;
     const accuracy = accuracyOf(score.counts);
@@ -233,7 +234,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       skipped: skipped - openingSkips,
       ranked: false,
       difficultyChanged: flags.difficultyChanged,
-      hits: hits.slice(),
+      hits: withHits ? hits.slice() : null,
     };
   }
 
@@ -251,8 +252,11 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
 
   // Notes with t <= toHeardMs whose end (t + len) is >= fromHeardMs, so a hold stays listed until
   // its tail has left the window. Binary search for the first t that can qualify (the longest
-  // hold bounds how far back that is).
-  function visibleNotes(fromHeardMs, toHeardMs) {
+  // hold bounds how far back that is). With `reuse` the list and its entries are the same objects on every
+  // call (the renderer reads them within the frame and keeps none), so a frame allocates nothing.
+  const sharedView = [];
+  const sharedEntries = [];
+  function visibleNotes(fromHeardMs, toHeardMs, reuse = false) {
     const earliest = fromHeardMs - maxLen;
     let lo = 0;
     let hi = notes.length;
@@ -261,12 +265,26 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       if (notes[mid].t < earliest) lo = mid + 1;
       else hi = mid;
     }
-    const visible = [];
+    const visible = reuse ? sharedView : [];
+    let count = 0;
     for (let i = lo; i < notes.length && notes[i].t <= toHeardMs; i += 1) {
       const len = lenOf(notes[i]);
       if (notes[i].t + len < fromHeardMs) continue;
-      visible.push({ t: notes[i].t, lane: notes[i].lane, outcome: judge.outcomeOf(i), len, hold: holdState(i) });
+      if (!reuse) {
+        visible.push({ t: notes[i].t, lane: notes[i].lane, outcome: judge.outcomeOf(i), len, hold: holdState(i) });
+        continue;
+      }
+      let entry = sharedEntries[count];
+      if (!entry) entry = sharedEntries[count] = { t: 0, lane: 0, outcome: "pending", len: 0, hold: "pending" };
+      entry.t = notes[i].t;
+      entry.lane = notes[i].lane;
+      entry.outcome = judge.outcomeOf(i);
+      entry.len = len;
+      entry.hold = holdState(i);
+      visible[count] = entry;
+      count += 1;
     }
+    if (reuse) visible.length = count;
     return visible;
   }
 

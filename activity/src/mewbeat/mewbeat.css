@@ -133,10 +133,6 @@
 }
 
 /* ---------- game screen ---------- */
-/* Registered so the stage can fade --mb-vibe and animate --mb-pulse without per-frame React state. */
-@property --mb-pulse { syntax: "<number>"; inherits: true; initial-value: 0; }
-@property --mb-vibe { syntax: "<number>"; inherits: true; initial-value: 0; }
-
 .mb-game {
   position: fixed;
   inset: 0;
@@ -192,25 +188,22 @@
   text-transform: uppercase;
 }
 
-/* stage: Mewbit left, highway centre, cards right. --mb-vibe (0..1.4) and --mb-pulse (0..1) drive the scenery. */
+/* stage: Mewbit left, highway centre, cards right. The scenery follows --mb-vibe (0..1.4), set on .mb-backdrop only, and
+   each hit flips data-pulse on .mb-stage between "a" and "b" (two identical animations restart the pulse). Everything
+   that moves is opacity or transform, so a hit never restyles the subtree: an element's resting opacity is --mb-base,
+   its pulse starts --mb-amp above that and decays back over 250 ms, and a vibe change fades --mb-base over 400 ms.
+   Only full effects pulse (the attribute is never set otherwise). */
 .mb-stage {
-  --mb-pulse-scale: 1;
   container-type: size;
   position: relative;
   min-height: 0;
   overflow: hidden;
-  transition: --mb-vibe 400ms ease-out;
 }
-.mb-fx-reduced .mb-stage { --mb-pulse-scale: 0; }
-.mb-pulse-a { animation: mb-pulse-a 250ms ease-out both; }
-.mb-pulse-b { animation: mb-pulse-b 250ms ease-out both; }
-.mb-fx-off .mb-stage { animation: none; transition: none; }
-@keyframes mb-pulse-a { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
-@keyframes mb-pulse-b { from { --mb-pulse: 1; } to { --mb-pulse: 0; } }
 
 /* scenery: painted layers on one canvas, pinned to the bottom edge so the floor survives any crop.
-   Only opacity changes per frame; a filter here would re-rasterise a full-screen layer on every beat. */
-.mb-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+   Only opacity changes per frame; a filter here would re-rasterise a full-screen layer on every beat.
+   Isolated, so the spotlights' blend mode never reaches past the backdrop. */
+.mb-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; isolation: isolate; contain: paint; }
 .mb-scene-set { position: absolute; inset: 0; }
 .mb-scene-leaving { animation: mb-scene-out 700ms ease-in-out both; }
 @keyframes mb-scene-out { to { opacity: 0; } }
@@ -218,13 +211,25 @@
 .mb-layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 100%; user-select: none; }
 .mb-layer-fever { opacity: 0; transition: opacity 400ms ease-out; }
 .mb-fever .mb-layer-fever { opacity: 1; }
-.mb-layer-lit { opacity: calc(0.1 + var(--mb-vibe) * 0.3 + var(--mb-pulse) * 0.7 * var(--mb-pulse-scale)); }
-.mb-fever .mb-layer-lit { opacity: calc(0.55 + var(--mb-pulse) * 0.45 * var(--mb-pulse-scale)); }
-.mb-layer-neon { opacity: calc(0.7 + var(--mb-vibe) * 0.15 + var(--mb-pulse) * 0.3 * var(--mb-pulse-scale)); }
-.mb-layer-glow { opacity: calc(0.15 + var(--mb-vibe) * 0.25 + var(--mb-pulse) * 0.6 * var(--mb-pulse-scale)); }
+.mb-layer-lit { --mb-base: calc(0.1 + var(--mb-vibe) * 0.3); --mb-amp: 0.7; }
+.mb-fever .mb-layer-lit { --mb-base: 0.55; --mb-amp: 0.45; }
+.mb-layer-neon { --mb-base: calc(0.7 + var(--mb-vibe) * 0.15); --mb-amp: 0.3; }
+.mb-layer-glow { --mb-base: calc(0.15 + var(--mb-vibe) * 0.25); --mb-amp: 0.6; }
+.mb-spot { --mb-base: calc(0.15 + var(--mb-vibe) * 0.25); --mb-amp: 0.15; }
+.mb-layer-lit, .mb-layer-neon, .mb-layer-glow, .mb-spot { opacity: var(--mb-base); transition: opacity 400ms ease-out; }
 /* An idle stage sits dim and the vibe lifts it. */
-.mb-backdrop-dim { position: absolute; inset: 0; background: #07040f; opacity: calc(0.3 - var(--mb-vibe) * 0.3); }
-.mb-fx-off .mb-layer-fever { transition: none; }
+.mb-backdrop-dim { position: absolute; inset: 0; background: #07040f; opacity: calc(0.3 - var(--mb-vibe) * 0.3); transition: opacity 400ms ease-out; }
+.mb-fx-off .mb-layer-fever,
+.mb-fx-off .mb-layer-lit,
+.mb-fx-off .mb-layer-neon,
+.mb-fx-off .mb-layer-glow,
+.mb-fx-off .mb-spot,
+.mb-fx-off .mb-backdrop-dim,
+.mb-fx-off .mb-aura { transition: none; }
+.mb-stage[data-pulse="a"] :is(.mb-layer-lit, .mb-layer-neon, .mb-layer-glow) { animation: mb-pulse-a 250ms ease-out; }
+.mb-stage[data-pulse="b"] :is(.mb-layer-lit, .mb-layer-neon, .mb-layer-glow) { animation: mb-pulse-b 250ms ease-out; }
+@keyframes mb-pulse-a { from { opacity: calc(var(--mb-base) + var(--mb-amp)); } to { opacity: var(--mb-base); } }
+@keyframes mb-pulse-b { from { opacity: calc(var(--mb-base) + var(--mb-amp)); } to { opacity: var(--mb-base); } }
 .mb-spot {
   position: absolute;
   top: -10%;
@@ -234,12 +239,17 @@
   background: linear-gradient(to bottom, rgb(103 227 244 / 0.2), transparent 80%);
   clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
   mix-blend-mode: screen;
-  opacity: calc(0.15 + var(--mb-vibe) * 0.25 + var(--mb-pulse) * 0.15);
 }
 .mb-spot-l { left: 8%; transform: rotate(-4deg); animation: mb-sweep-l 6s ease-in-out infinite; }
 .mb-spot-r { right: 8%; transform: rotate(4deg); background: linear-gradient(to bottom, rgb(255 110 199 / 0.22), transparent 80%); animation: mb-sweep-r 7s ease-in-out infinite; }
+/* The sweep keeps running through a pulse: it is restated next to it, and animations are matched by name. */
+.mb-stage[data-pulse="a"] .mb-spot-l { animation: mb-sweep-l 6s ease-in-out infinite, mb-pulse-a 250ms ease-out; }
+.mb-stage[data-pulse="b"] .mb-spot-l { animation: mb-sweep-l 6s ease-in-out infinite, mb-pulse-b 250ms ease-out; }
+.mb-stage[data-pulse="a"] .mb-spot-r { animation: mb-sweep-r 7s ease-in-out infinite, mb-pulse-a 250ms ease-out; }
+.mb-stage[data-pulse="b"] .mb-spot-r { animation: mb-sweep-r 7s ease-in-out infinite, mb-pulse-b 250ms ease-out; }
+/* Reduced effects stop the sweep and the blend, so the spotlights go. */
 .mb-fx-reduced .mb-spot,
-.mb-fx-off .mb-spot { animation: none; }
+.mb-fx-off .mb-spot { display: none; }
 @keyframes mb-sweep-l { 0%, 100% { transform: rotate(-18deg); } 50% { transform: rotate(14deg); } }
 @keyframes mb-sweep-r { 0%, 100% { transform: rotate(16deg); } 50% { transform: rotate(-12deg); } }
 
@@ -298,9 +308,15 @@
   position: absolute;
   inset: -12%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgb(255 110 199 / calc(var(--mb-vibe) * 0.35)), rgb(103 227 244 / calc(var(--mb-vibe) * 0.18)) 45%, transparent 70%);
-  transform: scale(calc(1 + var(--mb-pulse) * 0.06 * var(--mb-pulse-scale)));
+  /* The gradient at the full vibe of 1.4 (0.25 / 0.128 at a vibe of 1), faded by the inline opacity (vibe / 1.4). */
+  background: radial-gradient(circle, rgb(255 110 199 / 0.49), rgb(103 227 244 / 0.252) 45%, transparent 70%);
+  will-change: opacity, transform;
+  transition: opacity 400ms ease-out;
 }
+.mb-stage[data-pulse="a"] .mb-aura { animation: mb-aura-a 250ms ease-out; }
+.mb-stage[data-pulse="b"] .mb-aura { animation: mb-aura-b 250ms ease-out; }
+@keyframes mb-aura-a { from { transform: scale(1.06); } to { transform: scale(1); } }
+@keyframes mb-aura-b { from { transform: scale(1.06); } to { transform: scale(1); } }
 .mb-char .mb-mewbit { position: absolute; inset: 0; width: 100%; height: 100%; }
 .mb-char .mb-mewbit-bubble { right: 18%; font-size: 20px; }
 
@@ -316,17 +332,22 @@
   overflow: hidden;
   transition: outline-color 200ms ease-out;
 }
-/* A faint cyan rim on each hit: a border, not a shadow, so nothing glows from a zero offset. */
+/* A faint cyan rim on each hit: a border, not a shadow, so nothing glows from a zero offset. Invisible until the pulse. */
 .mb-highway::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid rgb(103 227 244 / calc(var(--mb-pulse) * 0.25));
+  border: 1px solid rgb(103 227 244 / 0.25);
   border-radius: inherit;
   pointer-events: none;
+  opacity: 0;
 }
+.mb-stage[data-pulse="a"] .mb-highway::after { animation: mb-rim-a 250ms ease-out; }
+.mb-stage[data-pulse="b"] .mb-highway::after { animation: mb-rim-b 250ms ease-out; }
+@keyframes mb-rim-a { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mb-rim-b { from { opacity: 1; } to { opacity: 0; } }
 /* The FEVER backdrop is much brighter, so the lanes need more cover to keep the notes readable. */
-.mb-highway-fever { outline: 2px solid var(--mb-gold); background: linear-gradient(rgb(12 14 18 / 0.55), rgb(12 14 18 / 0.97) 30%); }
+.mb-fever .mb-highway { outline: 2px solid var(--mb-gold); background: linear-gradient(rgb(12 14 18 / 0.55), rgb(12 14 18 / 0.97) 30%); }
 .mb-fevertime { position: absolute; top: 0; right: 0; left: 0; height: 3px; background: var(--mb-gold); transform-origin: left center; }
 .mb-fx-off .mb-mult,
 .mb-fx-off .mb-judgement,
@@ -340,7 +361,7 @@
 .mb-fx-off .mb-res-in,
 .mb-fx-off .mb-res-judges li,
 .mb-fx-off .mb-res-newbest::after,
-.mb-fx-off .mb-res-board li,
+.mb-fx-off .mb-res-lb .mb-ss-pl,
 .mb-fx-off .mb-res-standings li { animation: none; }
 .mb-fx-off .mb-fever-ready .mb-fever-bar::after { animation: none; opacity: 1; }
 /* Effects off drops the big blurred layer too: it is the costliest paint on the screen. */
@@ -418,6 +439,9 @@
 }
 .mb-state b { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
 .mb-state span { color: var(--mb-muted); font-size: 14px; }
+/* "Try again" and where else to go, under a charting failure */
+.mb-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.mb-state-actions .mb-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px; font-size: 14px; font-weight: 800; }
 
 .mb-grade { font-size: 72px; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
 .mb-grade-S { color: var(--mb-gold); }
@@ -473,6 +497,13 @@
   outline: 1px solid rgb(255 255 255 / 0.08);
   backdrop-filter: blur(6px);
 }
+/* A blur re-samples what is behind it every frame; reduced and off effects go without (the panels are near opaque). */
+.mb-fx-reduced .mb-board,
+.mb-fx-reduced .mb-card,
+.mb-fx-reduced .mb-add-scrim,
+.mb-fx-off .mb-board,
+.mb-fx-off .mb-card,
+.mb-fx-off .mb-add-scrim { backdrop-filter: none; }
 .mb-card .mb-label { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; color: var(--mb-faint); }
 .mb-track-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mb-track-cover { flex: none; width: 64px; height: 64px; border-radius: 14px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
@@ -748,19 +779,24 @@
   .mb-res-in,
   .mb-res-judges li,
   .mb-res-newbest::after,
-  .mb-res-board li,
+  .mb-res-lb .mb-ss-pl,
   .mb-res-standings li,
   .mb-feverbanner,
   .mb-spot,
-  .mb-pulse-a,
-  .mb-pulse-b,
+  .mb-stage[data-pulse] :is(.mb-layer-lit, .mb-layer-neon, .mb-layer-glow, .mb-aura, .mb-spot),
+  .mb-stage[data-pulse] .mb-highway::after,
   .mb-fever-ready .mb-fever-bar::after { animation: none; }
   .mb-scene-leaving { display: none; }
   .mb-feverbanner, .mb-fever-ready .mb-fever-bar::after { opacity: 1; }
   .mb-btn,
   .mb-highway,
-  .mb-stage,
   .mb-layer-fever,
+  .mb-layer-lit,
+  .mb-layer-neon,
+  .mb-layer-glow,
+  .mb-spot,
+  .mb-backdrop-dim,
+  .mb-aura,
   .mb-mult-fg { transition: none; }
 }
 
@@ -1024,7 +1060,7 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-fx-reduced .mb-res-mew,
 .mb-fx-reduced .mb-res-bubble,
 .mb-fx-reduced .mb-res-grade,
-.mb-fx-reduced .mb-res-board li,
+.mb-fx-reduced .mb-res-lb .mb-ss-pl,
 .mb-fx-reduced .mb-res-standings li { animation: mb-res-fade 240ms ease-out backwards; }
 .mb-fx-reduced .mb-res-grade::before,
 .mb-fx-reduced .mb-res-newbest::after { animation: none; }
@@ -1129,18 +1165,45 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 /* Whichever lists the panel holds, a short one sits in the middle of the free height (auto margins, so a long one still scrolls). */
 .mb-res-side > :first-child { margin-top: auto; }
 .mb-res-side > :last-child { margin-bottom: auto; }
-.mb-res-board li { display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 52px; padding: 8px 10px; border-radius: 10px; font-variant-numeric: tabular-nums; animation: mb-res-row-in 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(120ms + var(--i, 0) * 50ms); }
-.mb-res-board li:nth-child(even) { background: rgb(255 255 255 / 0.02); }
-.mb-res-board .mb-res-av { width: 32px; height: 32px; }
-.mb-res-board .mb-res-who b { font-size: 13px; }
-.mb-res-board .mb-res-who b, .mb-res-board .mb-res-who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mb-res-board .mb-res-score b { font-size: 13px; }
-.mb-res-board li.mb-res-me { outline: 1px solid rgb(103 227 244 / 0.45); }
-.mb-res-board li:first-child .mb-res-pos { color: var(--mb-gold); }
 .mb-res-empty { margin: 0; padding: 18px 10px; border: 1px dashed var(--mb-line); border-radius: 12px; color: var(--mb-muted); font-size: 13px; line-height: 1.4; text-align: center; }
-.mb-res-standings h3, .mb-res-board h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 10px; font-size: 15px; font-weight: 900; }
-.mb-res-board h3 { padding: 0 10px; }
-.mb-res-standings h3 small, .mb-res-board h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+.mb-res-standings h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 10px; font-size: 15px; font-weight: 900; }
+.mb-res-standings h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
+/* The level's leaderboard: song select's rows and toggle (songSelect.css scopes theirs under .mb-ss, a whole screen), made compact for this column. */
+.mb-res-lb {
+  --mb-ss-easy: var(--mb-cyan);
+  --mb-ss-normal: var(--mb-violet);
+  --mb-ss-hard: var(--mb-pink);
+  --mb-ss-hell: var(--mb-danger);
+  --mb-ss-mono: "JetBrains Mono", ui-monospace, monospace;
+  flex: none;
+  container-type: inline-size;
+  overflow: hidden;
+  border: 1px solid var(--mb-line);
+  border-radius: 14px;
+  background: var(--mb-surface);
+}
+.mb-res-lb h3 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: 0; padding: 10px 10px 8px 12px; color: var(--mb-muted); font: 500 11px/1.2 var(--mb-ss-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.mb-res-lb .mb-ss-dl { color: var(--c); }
+.mb-res-lb .mb-ss-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; outline: 1px solid var(--mb-line); background: var(--mb-bg); letter-spacing: 0.04em; text-transform: none; }
+.mb-res-lb .mb-ss-seg button { min-height: 24px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--mb-muted); font: 700 11px/1 var(--mb-ss-mono); cursor: pointer; }
+.mb-res-lb .mb-ss-seg button:hover { color: var(--mb-text); }
+.mb-res-lb .mb-ss-seg button:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: -2px; }
+.mb-res-lb .mb-ss-seg .mb-ss-seg-on { background: rgb(103 227 244 / 0.14); color: var(--mb-cyan); }
+.mb-res-lb .mb-ss-empty { padding: 18px 12px; }
+/* A row is a plain line here (it opens nobody); the accuracy column only appears when the column is wide enough for it. */
+.mb-res-lb .mb-ss-pl { display: grid; grid-template-columns: 20px 24px minmax(0, 1fr) 14px 60px; align-items: center; gap: 6px; padding: 5px 10px; border-top: 1px solid var(--mb-line); font: 500 12px/1.2 var(--mb-ss-mono); font-variant-numeric: tabular-nums; animation: mb-res-row-in 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(120ms + var(--i, 0) * 50ms); }
+.mb-res-lb .mb-ss-pl-mine { background: rgb(103 227 244 / 0.09); }
+.mb-res-lb .mb-ss-pl-pin { border-top-color: rgb(255 255 255 / 0.22); }
+.mb-res-lb .mb-ss-rk { color: var(--mb-faint); font-weight: 700; text-align: right; }
+.mb-res-lb .mb-ss-pl-mine .mb-ss-rk { color: var(--mb-cyan); }
+.mb-res-lb .mb-ss-nm { overflow: hidden; font: 800 13px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.mb-res-lb .mb-ss-gr { font-weight: 900; text-align: center; }
+.mb-res-lb .mb-ss-r { display: none; color: var(--mb-muted); text-align: right; }
+.mb-res-lb .mb-ss-s { font-weight: 700; text-align: right; }
+@container (min-width: 330px) {
+  .mb-res-lb .mb-ss-pl { grid-template-columns: 22px 24px minmax(0, 1fr) 16px 58px 70px; gap: 8px; }
+  .mb-res-lb .mb-ss-r { display: block; }
+}
 .mb-res-standings ol { gap: 10px; }
 .mb-res-standings li {
   display: grid;
@@ -1173,7 +1236,7 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-fx-off .mb-res .mb-btn:hover:not(:disabled),
 .mb-fx-reduced .mb-res .mb-btn:hover:not(:disabled) { translate: none; }
 @media (prefers-reduced-motion: reduce) {
-  .mb-res-grade, .mb-res-grade::before, .mb-res-mew, .mb-res-bubble, .mb-res-in, .mb-res-judges li, .mb-res-newbest::after, .mb-res-board li, .mb-res-standings li { animation: none; }
+  .mb-res-grade, .mb-res-grade::before, .mb-res-mew, .mb-res-bubble, .mb-res-in, .mb-res-judges li, .mb-res-newbest::after, .mb-res-lb .mb-ss-pl, .mb-res-standings li { animation: none; }
   .mb-res .mb-btn { transition: none; }
   .mb-res .mb-btn.mb-btn:hover:not(:disabled) { translate: none; }
 }
@@ -1186,76 +1249,8 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
   .mb-res-side { border-top: 1px solid var(--mb-line); border-left: 0; overflow: visible; }
 }
 
-/* ---------- room lobby (docs/superpowers/specs/mewbeat-mockups/lobby-v3.html) ---------- */
-/* Fills the game's second grid row like song select and results; the header stays usable above it. */
-.mb-lobby {
-  grid-area: 2 / 1;
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(270px, 32%, 380px);
-  grid-template-rows: minmax(0, 1fr);
-  min-height: 0;
-  background:
-    radial-gradient(90% 60% at 100% 0%, rgb(167 139 250 / 0.1), transparent 60%),
-    radial-gradient(70% 60% at 0% 100%, rgb(255 110 199 / 0.08), transparent 60%),
-    var(--mb-bg);
-  animation: mb-fade-in 240ms ease-out both;
-}
-.mb-lobby-lbl { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mb-faint); }
-/* nothing here scrolls, not even to reach a focused button (so clip, not hidden): Mewbit gives way when the window is short */
-.mb-lobby-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; padding: 14px 20px; overflow: clip; }
-
-/* the next song and the clock, on one line */
-.mb-lobby-next { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; gap: 14px; align-items: center; flex: none; }
-.mb-lobby-cover { width: 88px; aspect-ratio: 1; border-radius: 14px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
-.mb-lobby-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
-.mb-lobby-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.mb-lobby-next h2 { display: -webkit-box; margin: 2px 0 0; overflow: hidden; font-size: clamp(18px, 2.2vw, 26px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.mb-lobby-artist { overflow: hidden; color: var(--mb-muted); font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
-.mb-lobby-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.mb-lobby-chip { padding: 3px 7px; border-radius: 7px; outline: 1px solid var(--mb-line); background: var(--mb-raised); color: var(--mb-muted); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }
-
-.mb-lobby-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; padding-left: 16px; border-left: 1px solid var(--mb-line); }
-.mb-lobby-time { font: 700 clamp(40px, 5.6vw, 60px) "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.06em; line-height: 0.95; font-variant-numeric: tabular-nums; }
-.mb-lobby-start { min-height: 30px; padding: 0 12px; font-size: 13px; }
-
-/* one card in two columns: the song, the clock and what it waits for, beside Mewbit (a spectator gets the live board there) */
-.mb-lobby-hero {
-  display: grid;
-  flex: 1 1 0;
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 32%);
-  overflow: clip;
-  border-radius: 16px;
-  outline: 1px solid var(--mb-line);
-  outline-offset: -1px;
-  background: var(--mb-surface);
-}
-.mb-lobby-hero-solo { grid-template-columns: minmax(0, 1fr); }
-.mb-lobby-hero-watch { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr); min-height: 116px; }
-.mb-lobby-hero-left { display: flex; flex-direction: column; justify-content: center; gap: 10px; min-width: 0; padding: 12px 14px; container-type: inline-size; }
-.mb-lobby-hero-left .mb-lobby-count-text { max-width: none; font-size: 13px; }
-/* a narrow card keeps the song on one line and gives the clock its own */
-@container (max-width: 420px) {
-  .mb-lobby-next { grid-template-columns: 64px minmax(0, 1fr); gap: 10px 12px; }
-  .mb-lobby-cover { width: 64px; }
-  .mb-lobby-clock { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; padding-left: 0; border-left: 0; }
-  .mb-lobby-clock .mb-lobby-lbl { margin-right: auto; }
-}
-.mb-lobby-watch { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; padding: 12px 14px; border-left: 1px solid var(--mb-line); }
-.mb-lobby-watch > :last-child { flex: 1 1 0; min-height: 0; overflow-y: auto; }
-/* each second of the clock lands; the final ones hit harder */
-.mb-lobby-time { display: block; transform-origin: right center; }
-.mb-lobby-time-tick { animation: mb-lobby-tick 300ms ease-out both; }
-.mb-lobby-time-final { color: var(--mb-cyan); text-shadow: 0 0 24px rgb(103 227 244 / 0.45); animation: mb-lobby-tick-final 480ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
-@keyframes mb-lobby-tick { from { transform: scale(1.06); opacity: 0.7; } }
-@keyframes mb-lobby-tick-final { from { transform: scale(1.4); } }
-.mb-lobby-count-text { margin: 0; max-width: 320px; color: var(--mb-muted); font-size: 14px; line-height: 1.45; }
-.mb-lobby-count-text strong { color: var(--mb-text); }
-
-/* Mewbit fills its column, out of the layout, so the column never decides the card's height */
-.mb-lobby-mew { position: relative; min-width: 0; min-height: 0; border-left: 1px solid var(--mb-line); }
-.mb-lobby-spot { position: absolute; top: 0; left: 50%; width: 120%; height: 100%; transform: translateX(-50%); pointer-events: none; background: linear-gradient(180deg, rgb(167 139 250 / 0.14), transparent 75%); clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%); }
+/* ---------- Mewbit stage pieces shared by the room lobby and the game scene ---------- */
+/* The lobby layout itself is in lobby.css (docs/superpowers/specs/mewbeat-mockups/lobby-and-minimized.html). */
 .mb-lobby-mewbox { position: absolute; inset: 0; container-type: size; transform-origin: center bottom; }
 .mb-lobby-mewbox .mb-mewbit { position: absolute; inset: 0; width: 100%; height: 100%; }
 .mb-lobby-beat-a { animation: mb-lobby-beat-a 420ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
@@ -1278,121 +1273,8 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 @keyframes mb-lobby-ring { from { opacity: 0.32; transform: scale(0.8); } to { opacity: 0; transform: scale(1.3); } }
 @keyframes mb-lobby-ring-final { from { opacity: 0.9; transform: scale(0.7); } to { opacity: 0; transform: scale(1.65); } }
 .mb-fx-off .mb-lobby-ring { display: none; }
-.mb-lobby-bubble {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 1;
-  max-width: calc(100% - 20px);
-  padding: 7px 10px;
-  border-radius: 12px 12px 12px 3px;
-  background: var(--mb-text);
-  color: var(--mb-bg);
-  font-weight: 800;
-  font-size: 12.5px;
-  line-height: 1.25;
-  animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
-}
 
-/* queue timeline: one segment per song, wider for longer songs */
-.mb-lobby-queue { display: flex; flex: none; flex-direction: column; gap: 6px; }
-.mb-lobby-note { margin: 0; color: var(--mb-faint); font-size: 12.5px; }
-.mb-tl { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
-.mb-tl-seg { position: relative; display: flex; flex-direction: column; gap: 9px; flex-basis: 0; min-width: 124px; padding-bottom: 4px; }
-.mb-tl-bar { position: relative; height: 10px; border-radius: 5px; overflow: hidden; background: var(--mb-high-bg, #161920); }
-.mb-tl-bar i { position: absolute; inset: 0; transform-origin: left; background: var(--mb-cyan); transition: transform 300ms linear; }
-.mb-tl-mine .mb-tl-bar { background: var(--mb-pink); }
-.mb-tl-done { opacity: 0.55; }
-.mb-tl-txt { min-width: 0; padding-right: 22px; }
-.mb-tl-txt b { display: block; overflow: hidden; font-size: 13px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
-.mb-tl-txt small { display: block; margin-top: 2px; overflow: hidden; color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; white-space: nowrap; text-overflow: ellipsis; }
-.mb-tl-now .mb-tl-txt small { color: var(--mb-cyan); }
-.mb-tl-mine .mb-tl-txt b { color: var(--mb-pink); }
-.mb-tl-x { position: absolute; right: 0; bottom: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--mb-faint); cursor: pointer; }
-.mb-tl-x:hover { background: var(--mb-raised); color: var(--mb-danger); }
-.mb-tl-x:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
-.mb-tl-x:disabled { opacity: 0.4; cursor: default; }
-
-/* my difficulty and the informational ready toggle */
-.mb-lobby-mine { display: grid; flex: none; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
-.mb-lobby-actions { display: flex; gap: 8px; align-items: stretch; }
-.mb-lobby-add { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border-radius: 14px; font-size: 14px; white-space: nowrap; }
-.mb-lobby-role { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
-.mb-lobby-watching { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.mb-lobby-pick { grid-column: 1 / -1; min-width: 0; }
-/* Player / Spectator segmented control */
-.mb-lobby-mode { display: inline-flex; align-self: flex-start; padding: 3px; gap: 3px; border-radius: 11px; outline: 1px solid var(--mb-line); background: var(--mb-surface); }
-.mb-lobby-mode-btn { padding: 6px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--mb-muted); font: 800 13px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; }
-.mb-lobby-mode-btn:hover:not(:disabled):not(.mb-lobby-mode-on) { color: var(--mb-text); }
-.mb-lobby-mode-btn:disabled { opacity: 0.55; cursor: default; }
-.mb-lobby-mode-btn:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
-.mb-lobby-mode-on { background: var(--mb-raised); color: var(--mb-text); }
-/* last round, shown to a spectator between rounds */
-.mb-lobby-last { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; max-width: 360px; }
-.mb-lobby-last li:not(.mb-lobby-lbl) { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 9px; background: var(--mb-surface); font-size: 13px; }
-.mb-lobby-last b { font-weight: 800; overflow-wrap: anywhere; }
-.mb-lobby-last-pos { color: var(--mb-faint); font: 700 11px "JetBrains Mono", ui-monospace, monospace; }
-.mb-lobby-last-score { font: 700 12px "JetBrains Mono", ui-monospace, monospace; }
-.mb-lobby-last-me { outline: 1px solid rgb(103 227 244 / 0.45); }
-.mb-lobby-diffs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
-.mb-lobby-diff { padding: 8px 10px; border: 0; border-radius: 12px; outline: 1px solid var(--mb-line); background: var(--mb-surface); color: var(--mb-text); font: 800 14px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; text-align: left; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
-.mb-lobby-diff:hover:not(:disabled) { background: var(--mb-raised); }
-.mb-lobby-diff:active:not(:disabled) { transform: scale(0.97); }
-.mb-lobby-diff:disabled { opacity: 0.55; cursor: default; }
-.mb-lobby-diff:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
-.mb-lobby-diff-cyan { --c: var(--mb-cyan); }
-.mb-lobby-diff-violet { --c: var(--mb-violet); }
-.mb-lobby-diff-pink { --c: var(--mb-pink); }
-.mb-lobby-diff-hell { --c: var(--mb-danger); }
-/* numbers under the name: stars, notes, best score; they sit in a fixed block so the card does not jump when stats arrive */
-.mb-lobby-diff { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.mb-lobby-diff small { color: var(--mb-faint); font: 500 11px/1.35 "JetBrains Mono", ui-monospace, monospace; overflow-wrap: anywhere; }
-.mb-lobby-diff-stars { color: var(--c) !important; }
-.mb-lobby-diff-best { margin-top: 2px; color: var(--mb-muted) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mb-lobby-diff-best b { font-weight: 800; }
-.mb-lobby-diff-on { outline: 2px solid var(--c); background: var(--mb-raised); }
-.mb-lobby-ready { min-width: 130px; padding: 10px 20px; border: 0; border-radius: 14px; background: var(--mb-text); color: var(--mb-bg); font: 900 15px "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background-color 120ms ease-out, transform 120ms ease-out; }
-.mb-lobby-ready:active:not(:disabled) { transform: scale(0.97); }
-.mb-lobby-ready:disabled { opacity: 0.55; cursor: default; }
-.mb-lobby-ready:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
-.mb-lobby-ready-on { background: var(--mb-cyan); }
-
-/* players, invite, keys */
-.mb-lobby-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; padding: 16px 14px; overflow-y: auto; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
-.mb-lobby-side h3 { display: flex; align-items: baseline; justify-content: space-between; margin: 0; font-size: 15px; font-weight: 900; }
-.mb-lobby-side h3 small { color: var(--mb-muted); font: 700 13px "JetBrains Mono", ui-monospace, monospace; }
-.mb-lobby-players { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.mb-lobby-pl { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--mb-line); border-radius: 14px; background: var(--mb-surface); }
-.mb-lobby-pl-me { border-color: rgb(103 227 244 / 0.55); background: linear-gradient(90deg, rgb(103 227 244 / 0.12), rgb(103 227 244 / 0.03) 60%), var(--mb-raised); }
-.mb-lobby-av { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
-.mb-lobby-av-text { background: var(--mb-violet); color: var(--mb-bg); font-size: 12px; font-weight: 900; }
-.mb-lobby-who { min-width: 0; }
-.mb-lobby-who b { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 800; }
-.mb-lobby-who b > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mb-lobby-who small { display: block; margin-top: 3px; color: var(--mb-faint); font-size: 12px; }
-.mb-lobby-you { flex: none; padding: 2px 5px; border-radius: 5px; background: var(--mb-cyan); color: var(--mb-bg); font: 700 9.5px "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.08em; }
-.mb-lobby-state { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
-.mb-lobby-pill { padding: 4px 8px; border-radius: 7px; background: var(--mb-high-bg, #161920); font: 700 11px "JetBrains Mono", ui-monospace, monospace; }
-.mb-lobby-pill-cyan { color: var(--mb-cyan); }
-.mb-lobby-pill-violet { color: var(--mb-violet); }
-.mb-lobby-pill-pink { color: var(--mb-pink); }
-.mb-lobby-pill-hell { color: var(--mb-danger); }
-.mb-lobby-st { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.mb-lobby-st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.mb-lobby-st-ok { color: var(--mb-cyan); }
-.mb-lobby-st-wait { color: var(--mb-faint); }
-
-.mb-lobby-invite { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding: 12px; border: 1px solid var(--mb-line); border-radius: 16px; background: var(--mb-surface); }
-.mb-lobby-invite p { margin: 0; color: var(--mb-muted); font-size: 12.5px; line-height: 1.45; }
-.mb-lobby-invite .mb-btn { min-height: 38px; }
-.mb-lobby-invite p.mb-lobby-invite-ok { color: var(--mb-cyan); font-weight: 700; }
-.mb-lobby-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--mb-faint); font-size: 12px; }
-.mb-lobby-link { margin-left: auto; padding: 4px 2px; border: 0; background: none; color: var(--mb-muted); font: inherit; text-decoration: underline; cursor: pointer; }
-.mb-lobby-link:hover { color: var(--mb-text); }
-.mb-lobby-link:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
-
-.mb-lobby-toast { position: absolute; left: 50%; bottom: 20px; z-index: 3; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid var(--mb-line); border-radius: 12px; background: var(--mb-raised); color: var(--mb-text); font-size: 13px; font-weight: 700; transform: translateX(-50%); animation: mb-fade-in 160ms ease-out both; }
-.mb-lobby-toast-error { border-color: rgb(255 128 152 / 0.5); color: var(--mb-danger); }
+/* leave-round confirm text and the joining screen */
 .mb-lobby-confirm-text { margin: 0; color: var(--mb-muted); font-size: 13px; line-height: 1.45; text-align: center; }
 .mb-lobby-join { grid-area: 2 / 1; position: relative; z-index: 1; display: grid; place-items: center; align-content: center; gap: 12px; background: var(--mb-bg); text-align: center; }
 .mb-lobby-join b { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
@@ -1400,27 +1282,8 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-lobby-join .mb-btn { margin-top: 4px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .mb-lobby, .mb-lobby-toast, .mb-lobby-bubble, .mb-lobby-time, .mb-lobby-mewbox { animation: none; }
+  .mb-lobby-mewbox { animation: none; }
   .mb-lobby-ring { display: none; }
-  .mb-tl-bar i, .mb-lobby-diff, .mb-lobby-ready { transition: none; }
-}
-/* A short window: the cards give their height to the top card, where Mewbit stands. */
-@media (max-height: 640px) {
-  .mb-lobby-diffs { gap: 6px; margin-top: 2px; }
-  .mb-lobby-diff { padding: 5px 8px; font-size: 13px; }
-  .mb-lobby-diff small { font-size: 10px; line-height: 1.25; }
-  .mb-lobby-diff-best { margin-top: 0; }
-  .mb-lobby-chips { display: none; }
-}
-@media (max-width: 760px) {
-  .mb-lobby { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
-  .mb-lobby-main { overflow: visible; padding: 14px 16px; }
-  .mb-lobby-hero, .mb-lobby-hero-watch { flex: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
-  .mb-lobby-mew { height: 140px; border-top: 1px solid var(--mb-line); border-left: 0; }
-  .mb-lobby-hero-watch .mb-lobby-watch { border-top: 1px solid var(--mb-line); border-left: 0; }
-  .mb-lobby-mine { grid-template-columns: minmax(0, 1fr); }
-  .mb-lobby-diffs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mb-lobby-side { overflow: visible; border-top: 1px solid var(--mb-line); border-left: 0; }
 }
 
 /* Room "add songs": song select in a window over the lobby. */
@@ -1470,7 +1333,7 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-spectate-step:active { transform: scale(0.94); }
 .mb-spectate-step:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
-  .mb-spectate-step, .mb-lobby-mode-btn { transition: none; }
+  .mb-spectate-step { transition: none; }
 }
 
 
