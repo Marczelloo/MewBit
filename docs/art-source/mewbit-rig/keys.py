@@ -10,7 +10,7 @@ from segment import BODY, HAIR, HEAD, classes, cut_alpha
 
 SHOULDERS = {"L": (312, 300), "R": (470, 300)}
 # Keys whose hand may sit over the head layer; everywhere else the head is never touched.
-OVER_HEAD = {"arm_phones", "arm_chin", "arm_brow", "arm_peace", "arm_paw", "arm_one", "arm_two", "arm_three"}
+OVER_HEAD = {"arm_phones", "arm_chin", "arm_brow", "arm_peace", "arm_paw", "arm_one", "arm_two", "arm_three", "arm_shush"}
 # Eyes and mouth are always the drawing's, whatever Klein did to them.
 FACE = [(360, 180, 30, 24), (420, 170, 34, 24), (398, 216, 26, 15)]
 LEFT_OF, RIGHT_OF, JAW = 345, 415, 230

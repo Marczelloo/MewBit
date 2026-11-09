@@ -12,7 +12,7 @@ from anims import ANIMS
 from armcut import cut_key, left_plate, right_plate
 from armcuts import CUTS, DRAWN_R
 from arms import SIGN, back_map, between, turned
-from rig import CENTER_X, FEET_Y, FIGURE_HEIGHT, OUT_FEET_Y, OUT_SIZE, SOURCE_FIGURE, ELBOW, EYE_ELLIPSES, EYE_OUTLINES, HEAD_CROP, SHOULDER_L, WRIST, aligned_patch, bone_arm, bone_body, bone_head, bone_chest, bone_jacket, build_layers, compose, head_variants, outline_mask, to_game, warp
+from rig import PAD, to_image, CENTER_X, FEET_Y, FIGURE_HEIGHT, OUT_FEET_Y, OUT_SIZE, SOURCE_FIGURE, ELBOW, EYE_ELLIPSES, EYE_OUTLINES, HEAD_CROP, SHOULDER_L, WRIST, aligned_patch, bone_arm, bone_body, bone_head, bone_chest, bone_jacket, build_layers, compose, head_variants, outline_mask, to_game, warp
 from segment import SOURCE, cut_drawing, load
 
 ORDER = [("hairBack", bone_head), ("body", bone_body), ("hairFront", bone_head), ("jacket", bone_jacket), ("arm", bone_arm), ("head", bone_head)]
@@ -29,6 +29,15 @@ SPECK = 80
 # Eyes with brows, then the mouth.
 FACE_PARTS = [(360, 172, 34, 34), (422, 164, 38, 34), (398, 216, 28, 17)]
 WINK_EYE = 1
+# Which take of each Klein face plate is used.
+FACE_TAKES = {"happy": 23, "sad": 7, "wince": 23, "joy": 103, "ah": 7, "oh": 7, "ee": 7}
+# The talking mouths and the wide smile are bigger than the drawing's own mouth.
+MOUTH_OPEN = (398, 220, 34, 26)
+PLATE_PARTS = {"joy": FACE_PARTS[:2] + [(398, 220, 44, 30)], "ah": [MOUTH_OPEN], "oh": [MOUTH_OPEN], "ee": [MOUTH_OPEN]}
+# Plates that may cover the mouth's dark lines, which the hair test would otherwise keep.
+MOUTH_ONLY = {"ah", "oh", "ee"}
+# A talking portrait: a square of the drawing around the head, at its own size.
+BUST_BOX = (170, 22, 590, 442)
 
 
 # Kage: the anime shadow of gloom over her brow, vertical strokes falling from the top of her face over a cold shade.
@@ -93,18 +102,18 @@ def expressions(color, layer, heads):
         eyes |= ndi.binary_dilation(outline_mask(outline, size), iterations=2)
     allowed = ndi.gaussian_filter((eyes | ~hair).astype(np.float32), 0.7)
     out = dict(heads)
-    for name, take in {"happy": 23, "sad": 7, "wince": 23}.items():
+    for name, take in FACE_TAKES.items():
         paths = sorted(glob.glob(f"face-{name}-{take}/*.png"))
         if not paths:
             continue
         full = color.copy()
         full[y0:y1, x0:x1] = aligned_patch(paths[0], color)
         mask = np.zeros(size, np.float32)
-        for cx, cy, rx, ry in FACE_PARTS:
+        for cx, cy, rx, ry in PLATE_PARTS.get(name, FACE_PARTS):
             mask = np.maximum(mask, ellipse(cx, cy, rx, ry, 2.5))
         rim = (mask > 0.05) & (mask < 0.5) & (color.min(2) > 0.7) & (full.min(2) > 0.7)
         full = np.clip(full * color[rim].mean(0) / full[rim].mean(0), 0, 1)
-        weight = (mask * allowed)[..., None]
+        weight = (mask if name in MOUTH_ONLY else mask * np.maximum(allowed, ellipse(*PLATE_PARTS.get(name, FACE_PARTS)[-1], 2.5) * (name == "joy")))[..., None]
         variant = layer.copy()
         variant[..., :3] = (color * (1 - weight) + full * weight) * layer[..., 3:4]
         out[name] = variant.astype(np.float32)
@@ -144,6 +153,8 @@ class Scene:
         cx, cy, rx, ry = FACE_PARTS[-1]
         mouth = ndi.gaussian_filter((((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 < 1).astype(np.float32), 2.5)[..., None]
         self.heads["star"] = (self.heads["open"] * (1 - mouth) + self.heads["happy"] * mouth).astype(np.float32)
+        cx, cy, rx, ry = MOUTH_OPEN
+        self.mouth = ndi.gaussian_filter((((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 < 1).astype(np.float32), 2.5)[..., None]
         self.keys = {}
         self._plate = None
         self._left = None
@@ -431,12 +442,24 @@ def render_frame(anim, frame, scene):
     return with_fx(figure_frame(anim, frame, scene), anim, np.float64(frame / anim.frames))
 
 
+def to_bust(premultiplied):
+    x0, y0, x1, y1 = BUST_BOX
+    return to_image(premultiplied).crop((x0 + PAD[0], y0 + PAD[1], x1 + PAD[0], y1 + PAD[1])).convert("RGBA")
+
+
+def finish(anim, premultiplied):
+    return drop_specks((to_bust if getattr(anim, "bust", False) else to_game)(premultiplied))
+
+
 def figure_frame(anim, frame, scene):
     anim.at_frame(frame)
     t = np.float64(frame / anim.frames)
     name = pick(anim, frame, scene)
     base = scene.layers
     face = scene.heads[anim.eyes[frame]]
+    mouths = getattr(anim, "mouths", None)
+    if mouths and mouths[frame]:
+        face = (face * (1 - scene.mouth) + scene.heads[mouths[frame]] * scene.mouth).astype(np.float32)
     gloom = float(anim.gloom(t)) if getattr(anim, "gloom", None) else 0.0
     star = getattr(anim, "star", None)
     if star and anim.eyes[frame] == "star":
@@ -454,7 +477,7 @@ def figure_frame(anim, frame, scene):
     # The drawing as it is, with no arm of its own off its place.
     if not name and not drawn:
         stack = [head if layer == "head" else at(base[layer], bone) for layer, bone in ORDER]
-        return drop_specks(to_game(compose(stack)))
+        return finish(anim, compose(stack))
 
     clearance = scene.clearance(two)
     plate = scene.plate if two else None
@@ -487,7 +510,7 @@ def figure_frame(anim, frame, scene):
         for side, (src, dst) in drawn.items():
             layer, bone = (base["arm"], bone_arm) if side == "L" else (plate["arm"], bone_jacket)
             stack.append(warp(layer, bone, t, LIMB_MARGIN, 3, (back_map(src, dst, clearance), dst)))
-    return drop_specks(to_game(compose(stack + hanging + [head] + faces + hands)))
+    return finish(anim, compose(stack + hanging + [head] + faces + hands))
 
 
 def main():

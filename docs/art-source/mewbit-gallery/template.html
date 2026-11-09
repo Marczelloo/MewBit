@@ -156,6 +156,7 @@ const GROUPS = [
   { id: "unlock", title: "Odblokowanie", note: "Po wpisaniu kodu Konami." },
   { id: "lobby", title: "Lobby i odliczanie", note: "Odliczanie 3, 2, 1 na palcach i start rundy." },
   { id: "results", title: "Wyniki", note: "Ekran podsumowania po grze, po ogłoszeniu oceny." },
+  { id: "tutorial", title: "Tutorial", note: "W grze nie ma jeszcze kodu tutoriala, więc na razie są tylko tutaj." },
 ];
 const POSES = {
   neutral: { group: "game", order: run(64), fps: 16, when: "Poza rozgrywką i przy combo poniżej 10." },
@@ -188,6 +189,11 @@ const POSES = {
   okay: { group: "results", order: run(48), fps: 12, when: "Ocena B lub C." },
   sad: { group: "results", order: run(48), fps: 12, when: "Ocena poniżej C." },
   newbest: { group: "results", order: run(26), fps: 24, hold: true, when: "Nowy rekord." },
+  talk: { group: "tutorial", order: run(48), fps: 16, unused: true, when: "Zwykłe kroki tutoriala. Popiersie na wprost, mówi i mruga. Pętla: koniec wraca do startu. Nowa." },
+  explain: { group: "tutorial", order: run(48), fps: 16, unused: true, when: "Klawisze, offset i charting. Popiersie z uniesionym palcem, którym stuka w powietrze na akcentach, i mówi. Pętla. Nowa." },
+  happy: { group: "tutorial", order: run(32), fps: 16, unused: true, when: "Powitanie i rozwidlenie. Popiersie, zamknięte oczy, szeroki uśmiech, lekko podskakuje. Pętla. Nowa." },
+  wave: { group: "tutorial", order: run(58), fps: 24, hold: true, unused: true, when: "Koniec tutoriala. Cała postać podnosi rękę, macha do gracza i wraca do pozy neutralnej. Raz. Nowa." },
+  wink: { group: "tutorial", order: run(50), fps: 24, hold: true, unused: true, bubble: "you know the code ✦", when: "Sekret po kodzie Konami. Palec przy ustach, puszcza oczko i wraca do pozy neutralnej. Raz. Nowa." },
 };
 const FRAMES = JSON.parse(document.getElementById("frame-data").textContent);
 const pad = (n) => String(n).padStart(2, "0");

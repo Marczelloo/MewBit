@@ -552,7 +552,90 @@ def fever300():
     return a
 
 
+def mouth_track(a, runs):
+    """Mouth per frame from (state, frames) runs; None is the drawing's own closed smile."""
+    a.mouths = [state for state, hold in runs for _ in range(hold)]
+    assert len(a.mouths) == a.frames, len(a.mouths)
+
+
+def talk():
+    # A portrait for the tutorial: she says a line, pauses, says the rest. Every curve closes the loop.
+    a = Anim(
+        48, 16, bust=True,
+        head_tilt=wave(1, 1.8, 0.05), nod=plus(wave(2, 1.6, 0.02), beat(3, 1.4)), slump=wave(2, 1.6), hip_x=wave(1, 2),
+        hair_x=wave(1, 6, 0.04), hair_y=wave(2, 1.8, 0.04),
+    )
+    eyes_blink(a, 14, half=False)
+    eyes_blink(a, 37, half=False)
+    mouth_track(a, [(None, 3), ("ah", 3), ("ee", 2), ("oh", 3), ("ah", 2), ("ee", 3), (None, 3), ("oh", 3), ("ah", 3), ("ee", 2), ("ah", 3), ("oh", 2), (None, 4), ("ee", 2), ("ah", 3), ("oh", 3), (None, 4)])
+    return a
+
+
+def explain():
+    # The same portrait with the finger up, tapping the air on the stressed words.
+    a = Anim(
+        48, 16, bust=True,
+        series=(("arm_one", None),), elev=const(0), rests={"arm_one": 0}, wob_l=beat(3, 4.5, 0.9),
+        head_tilt=plus(const(-1.5), wave(1, 2.2, 0.05)), nod=plus(wave(2, 1.2, 0.02), beat(3, 3, 0.93)), slump=wave(2, 1.6), hip_x=wave(1, 2),
+        hair_x=wave(1, 6, 0.04), hair_y=wave(2, 1.8, 0.04),
+    )
+    eyes_blink(a, 22, half=False)
+    mouth_track(a, [(None, 2), ("oh", 3), ("ah", 3), ("ee", 2), ("ah", 3), (None, 3), ("ee", 2), ("oh", 3), ("ah", 3), ("ee", 3), (None, 3), ("ah", 3), ("oh", 2), ("ee", 3), ("ah", 3), ("ee", 2), (None, 5)])
+    return a
+
+
+def happy():
+    # Eyes shut in a wide smile, bouncing a little.
+    n = 32
+    a = Anim(
+        n, 16, bust=True,
+        head_tilt=wave(1, 2.2, 0.04), nod=beat(2, 2.2), head_bob=beat(2, 0.5), slump=wave(2, 1.4), hip_x=wave(1, 2), hip_drop=beat(2, 1.8),
+        hair_x=wave(1, 9, 0.04), hair_y=beat(2, 4, 0.08),
+    )
+    a.eyes = ["joy"] * n
+    return a
+
+
+def wave_hello():
+    # The goodbye at the end of the tutorial: the hand comes up, waves and goes back to the drawing.
+    n = 58
+    a = Anim(
+        n, 24, loop=False,
+        series=((None, 16), ("arm_low", None), ("arm_fore", 50), ("arm_mid", 75), ("arm_wave", None)),
+        rests={"arm_wave": 128},
+        elev=track(n, (0, 16), (3, 12), (6, 30), (12, 122), (14, 134), (17, 128), (40, 128), (43, 134), (49, 40), (54, 16), (57, 16)),
+        wob_l=track(n, (0, 0), (16, 0), (20, 13), (24, -11), (28, 13), (32, -11), (36, 11), (40, 0), (57, 0)),
+        hip_drop=track(n, (0, 0), (3, 10), (7, 0), (13, 6), (18, 2), (40, 2), (46, 4), (54, 0), (57, 0)), knee=track(n, (0, 0), (3, 3), (7, 0), (57, 0)),
+        hip_x=track(n, (0, 0), (12, -5), (40, -5), (54, 0), (57, 0)), lean=track(n, (0, 0), (12, -0.7), (40, -0.7), (54, 0), (57, 0)),
+        head_tilt=track(n, (0, 0), (3, 1), (12, -4), (20, -2), (24, -4.5), (28, -2), (32, -4.5), (36, -2), (40, -3.5), (54, 0), (57, 0)),
+        nod=track(n, (0, 0), (3, 4), (8, -2), (13, 3), (18, 0), (46, 2), (54, 0), (57, 0)),
+        hair_x=track(n, (0, 0), (6, 8), (14, -9), (22, 4), (30, -4), (38, 4), (46, -5), (52, 3), (57, 0)), hair_y=track(n, (0, 0), (3, 4), (8, -5), (14, 5), (22, 0), (47, 3), (57, 0)),
+    )
+    eyes_shut(a, 18, 38, "happy")
+    eyes_blink(a, 48, half=False)
+    return a
+
+
+def wink_secret():
+    # The Konami secret: finger to the lips, a wink, and back to the drawing as if nothing happened.
+    n = 50
+    a = Anim(
+        n, 24, loop=False,
+        series=((None, 16), ("arm_low", None), ("arm_fore", 50), ("arm_mid", 75), ("arm_shush", None)),
+        rests={"arm_shush": 128},
+        elev=track(n, (0, 16), (3, 12), (6, 30), (12, 122), (14, 133), (17, 128), (35, 128), (41, 40), (46, 16), (49, 16)),
+        wob_l=track(n, (0, 0), (20, 0), (23, 2.5), (27, 0), (49, 0)),
+        hip_drop=track(n, (0, 0), (3, 10), (7, 0), (13, 7), (18, 2), (35, 3), (46, 0), (49, 0)), knee=track(n, (0, 0), (3, 3), (7, 0), (49, 0)),
+        hip_x=track(n, (0, 0), (12, -5), (35, -5), (46, 0), (49, 0)), lean=track(n, (0, 0), (12, -0.8), (35, -0.8), (46, 0), (49, 0)),
+        head_tilt=track(n, (0, 0), (3, 1), (12, -4.5), (18, -3), (30, -3.5), (46, 0), (49, 0)), nod=track(n, (0, 0), (3, 4), (8, -2), (13, 3), (18, 0), (46, 0), (49, 0)),
+        hair_x=track(n, (0, 0), (6, 8), (14, -9), (22, 3), (32, 0), (40, 5), (49, 0)), hair_y=track(n, (0, 0), (3, 4), (8, -5), (14, 5), (22, 0), (49, 0)),
+    )
+    eyes_shut(a, 15, 32, "wink", ("wink1", "wink2"))
+    return a
+
+
 ANIMS = {
+    "talk": talk, "explain": explain, "happy": happy, "wave": wave_hello, "wink": wink_secret,
     "neutral": neutral, "vibe1": vibe1, "vibe2": vibe2, "vibe3": vibe3, "fever": fever, "miss": miss, "crushed": crushed, "crushed_cry": crushed_cry,
     "milestone": milestone, "charting": charting, "emerge": emerge, "reveal": reveal, "stretch": stretch, "adjust": adjust,
     "peek": peek, "hype": hype, "go": go, "go_old": go_old, "count3": count3, "count2": count2, "count1": count1, "crushed_old": crushed_old, "cheer": cheer, "okay": okay, "sad": sad, "newbest": newbest,
