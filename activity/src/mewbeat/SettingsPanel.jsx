@@ -113,7 +113,7 @@ function Group({ id, title, children }) {
 
 // The settings window. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs" }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs", onBlockCalibration }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -123,7 +123,6 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   const [draft, setDraft] = useState({});
   const [capture, setCapture] = useState(null); // lane index waiting for a key
   const [keyError, setKeyError] = useState(null);
-  const [clicksPending, setClicksPending] = useState(false);
   const panelRef = useRef(null);
   const onActionRef = useRef(onAction);
   onActionRef.current = onAction;
@@ -458,6 +457,26 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
               </section>
               <section className="mb-row mb-row-stack mb-calib">
                 <div className="mb-row-head">
+                  <span className="mb-row-label">Activity audio</span>
+                  <output className="mb-value">{formatOffset(valueOf("soloOffsetMs"))}</output>
+                </div>
+                <p className="mb-row-help">One block falls and a click plays here in the Activity, no song needed. Sets the offset for Solo and rooms.</p>
+                <div className="mb-calib-row">
+                  <button type="button" className="mb-btn" onClick={() => onBlockCalibration?.("activity")}>Calibrate with a block</button>
+                </div>
+              </section>
+              <section className="mb-row mb-row-stack mb-calib">
+                <div className="mb-row-head">
+                  <span className="mb-row-label">Bot audio</span>
+                  <output className="mb-value">{formatOffset(valueOf("offsetMs"))}</output>
+                </div>
+                <p className="mb-row-help">{liveCalibration ? "The bot plays the clicks in your voice channel while a block falls for each. Sets the offset for Live." : "Sets the offset for Live, so it only works there: the clicks come from the bot in voice."}</p>
+                <div className="mb-calib-row">
+                  <button type="button" className="mb-btn" disabled={!liveCalibration} onClick={() => onBlockCalibration?.("live")}>Calibrate with a block</button>
+                </div>
+              </section>
+              <section className="mb-row mb-row-stack mb-calib">
+                <div className="mb-row-head">
                   <span className="mb-row-label">Calibrate from taps</span>
                   <div className="mb-row-head-end">
                     {timing?.offsetMs !== null && timing?.offsetMs !== undefined ? (
@@ -471,23 +490,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                     ? `Play and tap along to what you hear: ${timing?.taps ?? 0}/${MIN_TAPS} taps.`
                     : `Your last ${timing.taps} taps suggest ${formatOffset(timing.offsetMs)} (taps spread ±${timing.spreadMs} ms).${autoOffset ? " Auto offset keeps it updated." : ""}`}
                 </p>
-                <p className="mb-row-help">
-                  {liveCalibration
-                    ? "Calibration clicks: the bot plays a metronome in voice. Close settings and press any lane key on each click as you hear it. The notes stay hidden, so only your ears count."
-                    : "Calibration clicks play through the bot in voice, so they only work in Live. Here, tap along to a song instead."}
-                </p>
                 <div className="mb-calib-row">
-                  <button
-                    type="button"
-                    className="mb-btn"
-                    disabled={clicksPending || !liveCalibration}
-                    onClick={() => {
-                      setClicksPending(true);
-                      Promise.resolve(onActionRef.current?.("mewbeat_calibrate")).finally(() => setClicksPending(false));
-                    }}
-                  >
-                    Play calibration clicks
-                  </button>
                   <button
                     type="button"
                     className="mb-btn"

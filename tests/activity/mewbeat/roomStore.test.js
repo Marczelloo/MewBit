@@ -12,7 +12,7 @@ test.before(async () => {
 });
 
 // requests whose replies the test controls: request() answers from `replies` by type.
-function setup(replies = {}) {
+function setup(replies = {}, options = {}) {
   const sent = [];
   const rooms = [];
   const requests = {
@@ -27,9 +27,49 @@ function setup(replies = {}) {
       return true;
     },
   };
-  const store = createRoomStore({ requests, now: () => 42, onRoom: (room, at) => rooms.push({ room, at }) });
+  const store = createRoomStore({ requests, now: () => 42, onRoom: (room, at) => rooms.push({ room, at }), ...options });
   return { store, sent, rooms };
 }
+
+test("an invite code goes with every join until the player leaves", async () => {
+  let spent = 0;
+  const { store, sent } = setup({}, { invite: "abc", onInviteDone: () => { spent += 1; } });
+  await store.join();
+  store.handle({ type: "mewbeat_socket_ready" });
+  await Promise.resolve();
+  assert.deepEqual(sent.map((m) => m.invite), ["abc", "abc"]);
+  store.leave();
+  await store.join();
+  assert.equal(sent.at(-1).invite, undefined);
+  assert.equal(spent, 1);
+});
+
+test("an expired invite falls back to the player's own room and says so", async () => {
+  let answers = 0;
+  let spent = 0;
+  const sent = [];
+  const requests = {
+    request: async (type, body) => {
+      sent.push(body);
+      answers += 1;
+      return answers === 1 ? { type, status: "error", reason: "invite_expired" } : { type, status: "ok" };
+    },
+    send: () => true,
+  };
+  const store = createRoomStore({ requests, invite: "old", onInviteDone: () => { spent += 1; } });
+  const reply = await store.join();
+  assert.equal(reply.status, "ok");
+  assert.deepEqual(sent, [{ invite: "old" }, {}]);
+  assert.equal(store.get().inviteExpired, true);
+  assert.equal(store.get().joinError, null);
+  assert.equal(spent, 1);
+});
+
+test("inviteLink asks the bot for a link instead of a post", async () => {
+  const { store, sent } = setup();
+  await store.inviteLink();
+  assert.deepEqual(sent, [{ type: "mewbeat_room_invite", link: true }]);
+});
 
 test("join sends the request and remembers that the client wants in", async () => {
   const { store, sent } = setup();

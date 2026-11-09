@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
 import LevelBoard from "./LevelBoard.jsx";
 import PlayerPanel from "./PlayerPanel.jsx";
+import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { arrangeRows } from "./songList.js";
 import "./songSelect.css";
 
@@ -216,7 +217,8 @@ const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary })
 // a song is picked, and a picked song shows its leaderboard; without it (the room's add-songs window) the left
 // side is the song's details alone.
 export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose, onSelected }) {
-  const [scope, setScope] = useState("server");
+  const isPrivate = usePrivatePlace();
+  const [scope, setScope] = useState(isPrivate ? "global" : "server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
   const [found, setFound] = useState({ status: "idle", rows: [] });
@@ -532,7 +534,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
       <aside className="mb-ss-list">
         <div className="mb-ss-tabs" role="tablist" aria-label="Songs">
-          {SCOPES.map(({ id, label }) => (
+          {scopesFor(SCOPES, isPrivate).map(({ id, label }) => (
             <button
               key={id}
               type="button"

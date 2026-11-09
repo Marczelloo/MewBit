@@ -1,9 +1,11 @@
 // The room as the Activity sees it: the newest snapshot the bot pushed, whether this client wants to be
 // in the room, and the requests that go with it. Joining is remembered, so a socket that dropped and came
 // back (the server removes a member when its socket closes) re-joins on its own.
-export function createRoomStore({ requests, now = () => performance.now(), onRoom = () => {} }) {
+// invite is the code of an invite link: until the player leaves, joining means that room. onInviteDone says it is spent.
+export function createRoomStore({ requests, now = () => performance.now(), onRoom = () => {}, invite: startInvite = null, onInviteDone = () => {} }) {
   const listeners = new Set();
-  let view = { room: null, receivedAt: 0, joining: false, joinError: null };
+  let view = { room: null, receivedAt: 0, joining: false, joinError: null, inviteExpired: false };
+  let invite = startInvite;
   let wanted = false;
   let joinToken = 0;
   let counter = 0;
@@ -21,12 +23,23 @@ export function createRoomStore({ requests, now = () => performance.now(), onRoo
     }
   }
 
+  function spendInvite() {
+    if (invite === null) return;
+    invite = null;
+    onInviteDone();
+  }
+
   async function join() {
     wanted = true;
     const mine = ++joinToken;
     set({ joining: true, joinError: null });
-    const reply = await act("mewbeat_room_join");
+    const reply = await act("mewbeat_room_join", invite ? { invite } : {});
     if (mine !== joinToken || !wanted) return reply;
+    if (reply.reason === "invite_expired") {
+      spendInvite();
+      set({ inviteExpired: true });
+      return join();
+    }
     set({ joining: false, joinError: reply.status === "ok" ? null : reply.reason ?? "unreachable" });
     return reply;
   }
@@ -35,6 +48,7 @@ export function createRoomStore({ requests, now = () => performance.now(), onRoo
     const was = wanted;
     wanted = false;
     joinToken += 1;
+    spendInvite();
     onRoom(null, now());
     set({ room: null, joining: false, joinError: null });
     if (was) requests.send({ type: "mewbeat_room_leave", id: `rs${++counter}` });
@@ -71,6 +85,7 @@ export function createRoomStore({ requests, now = () => performance.now(), onRoo
     queueRemove: (index, audioKey) => act("mewbeat_room_queue_remove", audioKey == null ? { index } : { index, audioKey }),
     queueMove: (from, to, audioKey) => act("mewbeat_room_queue_move", { from, to, audioKey }),
     invite: () => act("mewbeat_room_invite"),
+    inviteLink: () => act("mewbeat_room_invite", { link: true }),
     // Per-difficulty stars, note counts and my best for a song; null when the bot can't tell (never throws).
     songStats: async (audioKey) => {
       const reply = await act("mewbeat_song_stats", { audioKey });

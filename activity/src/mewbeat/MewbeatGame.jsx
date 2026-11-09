@@ -4,6 +4,7 @@ import { fetchMewbeatAudio } from "../api.js";
 import { createAlignClient } from "./alignClient.js";
 import { makeAlignWorker } from "./alignWorkerFactory.js";
 import { TrackCard } from "./GameHud.jsx";
+import CalibrationPanel from "./CalibrationPanel.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
 import { Aura, FeverBanner, FeverTime, MissFlash, Readout, StageBackdrop, StageHost, StagedFeverBar, StagedGameHud, UnrankedChip } from "./StageLeaves.jsx";
 import { MIN_TAPS } from "./calibration.js";
@@ -15,6 +16,7 @@ import { createLiveBoardStore } from "./liveBoard.js";
 import { createMockLink } from "./mockLink.js";
 import { createMockRequest, MOCK_USER_ID } from "./mockRequests.js";
 import { createMewbeatRequests } from "./requests.js";
+import { PrivatePlace } from "./placeContext.js";
 import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
 import { createSoloAudio, musicGain } from "./soloAudio.js";
@@ -237,7 +239,8 @@ function MewbeatRoot(props) {
   const { context, player, settings } = props;
   const botPlaying = Boolean(player?.currentTrack);
   const liveAvailable = MOCK_PREVIEW || botPlaying;
-  const [mode, setMode] = useState(() => (liveAvailable ? "live" : "solo"));
+  const roomInviteRef = useRef(context?.roomInvite ?? null);
+  const [mode, setMode] = useState(() => (roomInviteRef.current ? "room" : liveAvailable ? "live" : "solo"));
   const contextRef = useRef(context);
   contextRef.current = context;
   // One audio engine (and AudioContext) for the screen's life, shared by every solo link.
@@ -259,13 +262,13 @@ function MewbeatRoot(props) {
   // fed by the session's message handler.
   const socketRef = props.mewbeatSocketRef;
   const [requests] = useState(() => createMewbeatRequests((payload) => socketRef?.current?.send?.(payload) ?? false));
-  return <MewbeatSession key={mode} {...props} minimized={minimized} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} musicVolumeRef={musicVolumeRef} previewMusic={previewMusic} requests={requests} />;
+  return <PrivatePlace value={Boolean(context?.guildId?.startsWith("dm:"))}><MewbeatSession key={mode} {...props} minimized={minimized} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} musicVolumeRef={musicVolumeRef} previewMusic={previewMusic} requests={requests} roomInviteRef={roomInviteRef} /></PrivatePlace>;
 }
 
 // A preview resolves the song on the bot first, which can take a while for a search result.
 const PREVIEW_PREPARE_TIMEOUT_MS = 30_000;
 
-function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, player, feed, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose, onPresence, minimized, voiceChannelName }) {
+function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, player, feed, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose, onPresence, minimized, voiceChannelName, roomInviteRef }) {
   const solo = mode === "solo";
   const roomMode = mode === "room" && !MOCK_PREVIEW;
   const userId = context?.user?.id ?? null;
@@ -274,13 +277,16 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const dialogRef = useRef(null);
   const menuButtonRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [blockCalibration, setBlockCalibration] = useState(null); // the block calibration window: "activity" or "live"
+  const [botClicks, setBotClicks] = useState(null); // the bot's clicks for it: "starting", "running" or "failed"
+  const botClicksMineRef = useRef(false); // this player asked for them, so their run ends in the window, not in Results
   const [menuOpen, setMenuOpen] = useState(false); // the menu over Live, a room, or solo outside a run
   const [settingsFromMenu, setSettingsFromMenu] = useState(false);
   const [pickedSong, setPickedSong] = useState(null); // what song select has selected, for the minimized tile
   const [link] = useState(() => createLink(mode, mewbeatSocketRef, audio, () => userIdRef.current));
   const [liveBoard] = useState(createLiveBoardStore);
   // A room's snapshots go to the store, which hands them on to the link (it loads and times the round).
-  const [store] = useState(() => (roomMode ? createRoomStore({ requests, onRoom: (next, at) => link.setRoom(next, at) }) : null));
+  const [store] = useState(() => (roomMode ? createRoomStore({ requests, onRoom: (next, at) => link.setRoom(next, at), invite: roomInviteRef?.current ?? null, onInviteDone: () => { if (roomInviteRef) roomInviteRef.current = null; } }) : null));
   const linkState = useLinkState(link);
   const soloState = solo ? linkState : null;
   const roomLinkState = roomMode ? linkState : null;
@@ -418,7 +424,30 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating } = game;
+  const { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
+
+  const playBotClicks = () => {
+    botClicksMineRef.current = true;
+    setBotClicks("starting");
+    Promise.resolve(onAction?.("mewbeat_calibrate")).then((done) => {
+      if (done === false) setBotClicks("failed");
+    });
+  };
+  const openBlockCalibration = (kind) => {
+    setBlockCalibration(kind);
+    if (kind === "live") playBotClicks();
+  };
+  const closeBlockCalibration = () => {
+    // The clicks would run on for everyone in the channel.
+    if (blockCalibration === "live" && calibrating) onAction?.("skip", { quiet: true, ...(trackId ? { expectedTrackId: trackId } : {}) });
+    else botClicksMineRef.current = false;
+    setBlockCalibration(null);
+    setBotClicks(null);
+  };
+
+  useEffect(() => {
+    if (calibrationNotes) setBotClicks((current) => (current === "starting" ? "running" : current));
+  }, [calibrationNotes]);
   // The player being watched has their own difficulty: while the run is on another one, swap its chart.
   useEffect(() => {
     if (!watchingLive || phase !== "playing" || !targetDifficulty || !runDifficulty || runDifficulty === targetDifficulty) return;
@@ -673,7 +702,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     return () => window.clearTimeout(id);
   }, [heldSummaryId]);
   const endBanner = holdingCard ? (isFullCombo(endSummary) ? "FULL COMBO!" : "SONG COMPLETE") : null;
-  const showCard = Boolean(endSummary) && !holdingCard && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  const ownBotClicks = Boolean(endSummary?.calibration) && botClicksMineRef.current;
+  useEffect(() => {
+    if (!ownBotClicks) return;
+    botClicksMineRef.current = false;
+    setDismissedId(endSummary.id);
+  }, [ownBotClicks, endSummary]);
+  const showCard = Boolean(endSummary) && !holdingCard && !ownBotClicks && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
   // The hook keeps a finished run's numbers for its end card. Past that, the stage shows an empty run: the next song
   // spends a while loading and charting before its own run exists.
   const stagedShown = running || holdingCard || showCard;
@@ -853,7 +888,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       showMewbit={settings?.showMewbit !== false}
       keys={keys}
       offsetMs={savedOffset}
-      notice={roomLinkState?.error ?? actionNotice}
+      notice={roomLinkState?.error ?? actionNotice ?? (roomStoreView?.inviteExpired ? roomErrorText("invite_expired") : null)}
+      sdk={context?.sdk ?? null}
       onAddSongs={() => setAddOpen(true)}
       onCalibrate={() => { setSettingsFromMenu(false); setSettingsOpen(true); }}
     />
@@ -1117,7 +1153,15 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           }}
         />
       ) : null}
-      {settingsOpen ? <SettingsPanel
+      {settingsOpen && blockCalibration ? <CalibrationPanel
+          audio={audio}
+          settings={settings}
+          live={blockCalibration === "live" ? { notes: calibrationNotes, songTimeAt: link.songClock.songTimeAt, request: botClicks, onReplay: playBotClicks } : null}
+          onApply={(offsetMs) => onAction?.("mewbeat_settings", { settings: { [blockCalibration === "live" ? "offsetMs" : "soloOffsetMs"]: offsetMs } })}
+          onClose={closeBlockCalibration}
+        /> : null}
+      {settingsOpen && !blockCalibration ? <SettingsPanel
+          onBlockCalibration={openBlockCalibration}
           settings={settings}
           onAction={onAction}
           onClose={closeSettings}

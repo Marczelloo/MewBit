@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Avatar, Notice, useReply } from "./PlayerPanel.jsx";
+import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { formatCount, formatPercent } from "./playerFormat.js";
 import { DIFFICULTIES, gradeClass } from "./SongSelect.jsx";
 
@@ -33,7 +34,8 @@ export function BoardRow({ rank, entry, mine, pinned, size = 26, index = 0, onOp
 // The board of one level of one song. audioKey null (or enabled false) asks for nothing yet. Returns what the heading's
 // toggle and the rows need; Results asks later than song select does, once its own score has been sent.
 export function useLevelBoard({ request, audioKey, difficulty, userId, limit = BOARD_LIMIT, enabled = true }) {
-  const [scope, setScope] = useState("server");
+  const isPrivate = usePrivatePlace();
+  const [scope, setScope] = useState(isPrivate ? "global" : "server");
   const wanted = Boolean(audioKey) && enabled && typeof request === "function";
   const [state, retry] = useReply(request, "mewbeat_board", wanted ? { audioKey, difficulty, scope, limit } : null);
   const entries = state.reply?.entries ?? [];
@@ -44,11 +46,12 @@ export function useLevelBoard({ request, audioKey, difficulty, userId, limit = B
 }
 
 export function BoardHeading({ difficulty, scope, onScope }) {
+  const scopes = scopesFor(BOARD_SCOPES, usePrivatePlace());
   return (
     <h3>
       <span>Leaderboard · <span className="mb-ss-dl">{DIFFICULTIES.find((d) => d.id === difficulty)?.label ?? difficulty}</span></span>
       <span className="mb-ss-seg" role="group" aria-label="Leaderboard scope">
-        {BOARD_SCOPES.map(({ id, label }) => (
+        {scopes.map(({ id, label }) => (
           <button key={id} type="button" aria-pressed={scope === id} className={scope === id ? "mb-ss-seg-on" : undefined} onClick={() => onScope(id)}>{label}</button>
         ))}
       </span>

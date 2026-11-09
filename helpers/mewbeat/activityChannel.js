@@ -1,7 +1,9 @@
+const { randomBytes } = require("node:crypto");
 const Log = require("../logs/log");
 const { audioKeyOf } = require("./audioKey");
 const { summarizeCharts } = require("./chartSummary");
 const { createLiveBoard } = require("./liveBoard");
+const { isPrivatePlace } = require("./places");
 const { createRanking } = require("./ranking");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
 const { DIFFICULTIES: ROOM_DIFFICULTIES, MAX_PLAYERS, createRooms } = require("./rooms");
@@ -30,6 +32,7 @@ const STATS_MAPS = 50;
 const MAX_PRESSES = 200000;
 const GRADES = ["S", "A", "B", "C", "D"];
 const INVITE_COOLDOWN_MS = 60_000;
+const INVITE_LINK_TTL_MS = 6 * 60 * 60 * 1000;
 const ROUND_PHASES = ["loading", "countdown", "playing"];
 
 function errorReply(message) {
@@ -66,6 +69,7 @@ function createMewbeatChannel({
   soloTracks = createSoloTracks(),
   scoreStore, historyStore, statsStore, loadScoring,
   postInvite,
+  newInviteCode = () => randomBytes(8).toString("base64url"),
   warmAudio = () => {},
   // eslint-disable-next-line no-unused-vars
   broadcast = () => {}, sendToUser,
@@ -241,6 +245,7 @@ function createMewbeatChannel({
   async function invite(guildId, userId, type, id, profile) {
     const fail = (reason, extra) => ({ type, id, status: "error", reason, ...extra });
     if (!rooms.snapshot(guildId)?.members.some((member) => member.userId === userId)) return fail("not_in_room");
+    if (isPrivatePlace(guildId)) return fail("no_voice_channel"); // the bot can't post in a DM; the client shares a link instead
     if (typeof postInvite !== "function") return fail("send_failed");
 
     const until = inviteCooldownUntil.get(guildId) ?? 0;
@@ -265,6 +270,42 @@ function createMewbeatChannel({
       return fail(result?.reason === "no_voice_channel" ? "no_voice_channel" : "send_failed");
     }
     return { type, id, status: "ok" };
+  }
+
+  // A code for a link that brings anyone into this room, wherever they open it from. One per room while it lasts.
+  const inviteLinks = new Map(); // code -> { room, expiresAt }
+
+  function inviteLink(guildId, userId, type, id) {
+    if (!rooms.snapshot(guildId)?.members.some((member) => member.userId === userId)) {
+      return { type, id, status: "error", reason: "not_in_room" };
+    }
+    for (const [code, link] of inviteLinks) if (link.expiresAt <= now()) inviteLinks.delete(code);
+    let code = [...inviteLinks].find(([, link]) => link.room === guildId)?.[0];
+    if (!code) {
+      code = newInviteCode();
+      inviteLinks.set(code, { room: guildId, expiresAt: now() + INVITE_LINK_TTL_MS });
+    }
+    return { type, id, status: "ok", code };
+  }
+
+  function roomOfInvite(code) {
+    const link = typeof code === "string" ? inviteLinks.get(code) : null;
+    return link && link.expiresAt > now() && rooms.snapshot(link.room) ? link.room : null;
+  }
+
+  // Joining through a link moves the socket into that room: session.roomScope is what later room messages go to.
+  async function joinByInvite(guildId, userId, message, profile, session) {
+    const { type, id } = message;
+    const room = roomOfInvite(message.invite);
+    if (!room) return { type, id, status: "error", reason: "invite_expired" };
+    const previous = session.roomScope ?? guildId;
+    if (previous !== room) {
+      rooms.leave(previous, userId);
+      liveBoard.remove(previous, userId, "room");
+    }
+    const reply = await roomRequest(room, userId, message, profile);
+    session.roomScope = reply.status === "ok" && room !== guildId ? room : undefined;
+    return reply;
   }
 
   // Room requests answer the sender with { type, id, status, reason }; the
@@ -303,7 +344,8 @@ function createMewbeatChannel({
       case "mewbeat_room_loaded":
         if (typeof message.audioKey !== "string") return reply({ ok: false, reason: "bad_request" });
         return reply(rooms.loaded(guildId, userId, message.audioKey));
-      case "mewbeat_room_invite": return invite(guildId, userId, type, id, profile);
+      case "mewbeat_room_invite":
+        return message.link === true ? inviteLink(guildId, userId, type, id) : invite(guildId, userId, type, id, profile);
       default: return errorReply("Unknown mewbeat message.");
     }
   }
@@ -426,8 +468,10 @@ function createMewbeatChannel({
     return Number.isInteger(limit) && limit >= 1 ? Math.min(limit, max) : fallback;
   }
 
-  async function submit(guildId, userId, message, profile) {
+  // guildId is where the player runs the Activity, which is what the score counts for; room is the room they are in.
+  async function submit(guildId, userId, message, profile, room = guildId) {
     const { id, mode, audioKey, difficulty, chartVersion, events, fevers, flags, round } = message;
+    const place = isPrivatePlace(guildId) ? null : guildId;
     // Every refusal is logged with what the client claimed, so a run that
     // "didn't count" can be traced afterwards.
     let storedVersion = null;
@@ -487,7 +531,7 @@ function createMewbeatChannel({
       newBest = scoreStore.submit({
         chartKey,
         userId,
-        guildId,
+        guildId: place,
         profile,
         score: run.score,
         accuracy: run.accuracy,
@@ -503,9 +547,9 @@ function createMewbeatChannel({
     // now, for the song in it, and the run was a real one. Anything else is
     // scored and stored like a solo run.
     if (mode === "room" && !flags?.autoplay) {
-      const room = rooms.snapshot(guildId);
-      if (room && room.phase === "playing" && room.current?.audioKey === audioKey && Number.isInteger(round) && round === room.round) {
-        rooms.submitted(guildId, userId, { score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty });
+      const snapshot = rooms.snapshot(room);
+      if (snapshot && snapshot.phase === "playing" && snapshot.current?.audioKey === audioKey && Number.isInteger(round) && round === snapshot.round) {
+        rooms.submitted(room, userId, { score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty });
       }
     }
     if (!calibration) {
@@ -523,7 +567,7 @@ function createMewbeatChannel({
         grade: run.grade,
         ranked,
         mode: MODES.includes(mode) ? mode : "live",
-        guildId,
+        guildId: place,
         chartVersion: stored.version,
       });
     }
@@ -563,10 +607,10 @@ function createMewbeatChannel({
         newBest,
         best: scoreStore.bestOf(chartKey, userId),
         rank: {
-          server: scoreStore.rankOf({ chartKey, userId, guildId }),
+          server: scoreStore.rankOf({ chartKey, userId, guildId: place }),
           global: scoreStore.rankOf({ chartKey, userId, guildId: null }),
         },
-        serverTop: scoreStore.board({ chartKey, guildId, limit: SERVER_TOP }),
+        serverTop: scoreStore.board({ chartKey, guildId: place, limit: SERVER_TOP }),
       },
     };
   }
@@ -768,23 +812,30 @@ function createMewbeatChannel({
   }
 
   return {
-    // The reply, or a promise of it; `profile` is { id, username, avatarUrl }.
-    async handle(guildId, userId, message, profile) {
+    // The reply, or a promise of it; `profile` is { id, username, avatarUrl }. `session` belongs to the socket and
+    // holds roomScope once it joined another place's room through an invite link. A DM has no server board to read.
+    async handle(guildId, userId, message, profile, session = {}) {
+      const room = session.roomScope ?? guildId;
+      const boards = isPrivatePlace(guildId) ? null : guildId;
       switch (message?.type) {
         case "mewbeat_sync": return sync(guildId, message);
         case "mewbeat_chart": return chart(guildId, userId, message);
         case "mewbeat_solo_prepare": return soloPrepare(guildId, userId, message);
-        case "mewbeat_submit": return submit(guildId, userId, message, profile);
-        case "mewbeat_board": return board(guildId, userId, message);
+        case "mewbeat_submit": return submit(guildId, userId, message, profile, room);
+        case "mewbeat_board": return board(boards, userId, message);
         case "mewbeat_song_stats": return songStats(guildId, userId, message);
-        case "mewbeat_played": return played(guildId, userId, message);
-        case "mewbeat_profile": return playerProfile(guildId, userId, message, profile);
+        case "mewbeat_played": return played(boards, userId, message);
+        case "mewbeat_profile": return playerProfile(boards, userId, message, profile);
         case "mewbeat_stats": return playerStats(guildId, userId, message, profile);
-        case "mewbeat_ranking": return rankingBoard(guildId, userId, message, profile);
-        case "mewbeat_live": return live(guildId, userId, message, profile);
-        default:
-          if (message?.type?.startsWith("mewbeat_room_")) return roomRequest(guildId, userId, message, profile);
-          return errorReply("Unknown mewbeat message.");
+        case "mewbeat_ranking": return rankingBoard(boards, userId, message, profile);
+        case "mewbeat_live": return live(message.session === "room" ? room : guildId, userId, message, profile);
+        default: {
+          if (!message?.type?.startsWith("mewbeat_room_")) return errorReply("Unknown mewbeat message.");
+          if (message.type === "mewbeat_room_join" && message.invite != null) return joinByInvite(guildId, userId, message, profile, session);
+          const reply = await roomRequest(room, userId, message, profile);
+          if (message.type === "mewbeat_room_leave") session.roomScope = undefined;
+          return reply;
+        }
       }
     },
     // Called once the user's last socket in the guild is gone.

@@ -154,6 +154,23 @@ export function createSoloAudio({
     return heard + (perfMs - now()) / 1000;
   }
 
+  // Plays a decoded sample so it is heard at the given perf time, on the same clock as the song and outside the
+  // music volume. Returns what cancels it.
+  function playSampleAt(sample, whenPerfMs, level = 1) {
+    const c = context();
+    const sampleGain = c.createGain();
+    sampleGain.gain.value = level;
+    sampleGain.connect(c.destination);
+    const node = c.createBufferSource();
+    node.buffer = sample;
+    node.connect(sampleGain);
+    node.onended = () => sampleGain.disconnect();
+    node.start(Math.max(c.currentTime, ctxTimeAt(whenPerfMs)));
+    return () => {
+      try { node.stop(); } catch { /* already over */ }
+    };
+  }
+
   function dropSource() {
     if (!source) return;
     const old = source;
@@ -457,6 +474,7 @@ export function createSoloAudio({
     preview,
     highlight,
     stopClip,
+    playSampleAt,
     songTimeAt,
     positionMs,
     playing: () => started && pausedAtMs === null,

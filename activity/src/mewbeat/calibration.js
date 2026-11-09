@@ -17,6 +17,39 @@ function median(sorted) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// The offset that centres these errors, snapped to the slider's step, and the median absolute deviation around it.
+function centreOf(samples) {
+  const sorted = samples.slice().sort((a, b) => a - b);
+  const centre = median(sorted);
+  const spreadMs = Math.round(median(sorted.map((x) => Math.abs(x - centre)).sort((a, b) => a - b)));
+  const snapped = Math.round(centre / OFFSET_STEP) * OFFSET_STEP;
+  return { offsetMs: Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, snapped)), spreadMs };
+}
+
+// One press against one block's click, in ms (positive: after the sound). Null when no offset could explain it.
+export function blockError(pressMs, soundMs) {
+  const errorMs = pressMs - soundMs;
+  return errorMs >= OFFSET_MIN && errorMs <= OFFSET_MAX ? errorMs : null;
+}
+
+// The bot's clicks come every 1.5 s (helpers/mewbeat/calibrationTrack.js): a block falls, then its press window runs
+// out, just as the next block starts.
+export const BLOCK_FALL_LIVE_MS = 1000;
+export const BLOCK_LISTEN_LIVE_MS = 500;
+
+// The click whose block belongs on the lane at this moment of the song, past `afterMs`; null when none does.
+export function nextBlockNote(notes, clockMs, offsetMs, afterMs = -Infinity) {
+  return notes.find((note) => {
+    const arrival = note.t + offsetMs;
+    return note.t > afterMs && arrival - BLOCK_FALL_LIVE_MS <= clockMs && clockMs <= arrival + BLOCK_LISTEN_LIVE_MS;
+  }) ?? null;
+}
+
+// What the presses of the block calibration suggest. One press is already an answer, more of them a better one.
+export function blockEstimate(errors) {
+  return errors.length ? { ...centreOf(errors), presses: errors.length } : null;
+}
+
 // The note of `lane` (any lane when null) nearest to heardMs within CAPTURE_MS, or null. notes are
 // sorted by t.
 export function nearestNote(notes, lane, heardMs) {
@@ -64,11 +97,7 @@ export function createTapTiming() {
   function estimate() {
     const taps = samples.length;
     if (taps < MIN_TAPS) return { offsetMs: null, taps, spreadMs: null, total };
-    const sorted = samples.slice().sort((a, b) => a - b);
-    const centre = median(sorted);
-    const spreadMs = Math.round(median(sorted.map((x) => Math.abs(x - centre)).sort((a, b) => a - b)));
-    const snapped = Math.round(centre / OFFSET_STEP) * OFFSET_STEP;
-    return { offsetMs: Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, snapped)), taps, spreadMs, total };
+    return { ...centreOf(samples), taps, total };
   }
 
   function reset() {

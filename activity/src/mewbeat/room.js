@@ -223,6 +223,7 @@ const ROOM_ERRORS = {
   not_in_room: "You're not in the room.",
   not_host: "Only the host can do that.",
   queue_changed: "The queue just changed. Try again.",
+  invite_expired: "That invite has expired, so this is your own room.",
   wrong_phase: "Not possible while a round is running.",
   empty_queue: "Add a song to the queue first.",
   queue_full: "The queue is full (5 per player, 20 in total).",

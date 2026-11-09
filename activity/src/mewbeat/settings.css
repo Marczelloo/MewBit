@@ -183,6 +183,23 @@
 .mb-settings .mb-calib-row { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
 .mb-settings .mb-calib-row .mb-btn { min-height: 34px; padding: 0 12px; font-size: 13px; }
 
+/* the block calibration window */
+.mb-settings.mb-cal { width: min(600px, 100vw - 48px); height: min(430px, 100vh - 64px); }
+.mb-cal-body { display: grid; flex: 1 1 0; grid-template-columns: 112px minmax(0, 1fr); gap: 20px; min-height: 0; padding: 18px 20px 20px; }
+.mb-cal-lane { position: relative; overflow: hidden; border-radius: 12px; outline: 1px solid var(--mb-line); background: var(--mb-raised); cursor: pointer; touch-action: none; }
+.mb-cal-block { position: absolute; top: -9px; left: 10px; right: 10px; height: 18px; border-radius: 5px; background: var(--mb-cyan); will-change: transform; }
+.mb-cal-line { position: absolute; left: 0; right: 0; height: 2px; margin-top: -1px; background: rgb(255 255 255 / 0.85); }
+.mb-cal-marker { position: absolute; left: 4px; right: 4px; height: 4px; margin-top: -2px; border-radius: 2px; background: var(--mb-pink); }
+.mb-cal-marker-on { background: var(--mb-cyan); }
+.mb-cal-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.mb-cal-result { display: flex; align-items: center; min-height: 34px; font-size: 14px; color: var(--mb-muted); }
+.mb-cal-last { font-size: 22px; font-weight: 900; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--mb-text); }
+.mb-cal-strip { position: relative; height: 22px; border-radius: 6px; background: var(--mb-raised); }
+.mb-cal-strip-zero { position: absolute; top: 3px; bottom: 3px; left: 50%; width: 2px; margin-left: -1px; background: rgb(255 255 255 / 0.5); }
+.mb-cal-dot { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: rgb(255 255 255 / 0.4); }
+.mb-cal-dot-last { background: var(--mb-pink); }
+.mb-cal-side .mb-calib-row { margin-top: auto; }
+
 .mb-settings .mb-btn:disabled { opacity: 0.4; cursor: default; }
 .mb-settings .mb-btn:disabled:hover { background: var(--mb-raised); border-color: rgb(255 255 255 / 0.14); box-shadow: none; }
 .mb-settings .mb-seg:disabled:hover { background: transparent; }

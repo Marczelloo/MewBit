@@ -10,7 +10,6 @@ import Mewbit from "./mewbit/Mewbit.jsx";
 import {
   countdownDigit,
   formatClock,
-  inviteMessage,
   isHost,
   loadedCount,
   lobbyPose,
@@ -24,6 +23,7 @@ import {
   songProgress,
   timelineOf,
 } from "./room.js";
+import { sendRoomInvite } from "./roomInvite.js";
 import "./lobby.css";
 
 // While idle Mewbit runs the manifest's "idle" routine (neutral for a while, then a stretch or a headphone
@@ -179,7 +179,7 @@ function Timeline({ room, userId, nowPerf, mapping, busy, onRemove, onMove }) {
 // The room lobby: the song on deck with the round clock, the queue, the levels and their leaderboard on the left;
 // Mewbit, who is here and what each of them plays, invite, keys and my own controls on the right.
 // `view` is "lobby" (between rounds) or "watching" (a round is running without this player).
-export default function Lobby({ room, userId, view, receivedAt, serverClock, store, request, board, effects, showMewbit = true, keys, offsetMs, notice, standings = [], onAddSongs, onCalibrate }) {
+export default function Lobby({ room, userId, view, receivedAt, serverClock, store, request, board, effects, showMewbit = true, keys, offsetMs, notice, sdk = null, standings = [], onAddSongs, onCalibrate }) {
   const me = memberOf(room, userId);
   const host = isHost(room, userId);
   const active = roundActive(room);
@@ -448,8 +448,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               className="mb-btn"
               disabled={busy === "invite"}
               onClick={() => run("invite", async () => {
-                const reply = await store.invite();
-                const note = inviteMessage(reply);
+                const note = await sendRoomInvite({ store, sdk });
                 if (mounted.current) setInviteNote(note);
                 return { status: "ok" };
               })}
@@ -457,7 +456,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               {busy === "invite" ? "Sending…" : "Send invite"}
             </button>
           </div>
-          <p>Posts one message in the voice channel chat with a Join button. Invited players don't need a code.</p>
+          <p>Posts a Join button in your voice channel's chat. Not on one? Share a link to this room with anyone.</p>
           {inviteNote ? <p className={inviteNote.ok ? "mb-lobby-invite-ok" : "mb-field-error"} role="status">{inviteNote.text}</p> : null}
         </div>
 

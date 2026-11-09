@@ -97,6 +97,20 @@ describe("activity socket release", () => {
     assert.deepEqual(calls, [["g1", "ann"]]);
   });
 
+  it("counts a window that joined through an invite for the room it joined, not its own place", () => {
+    const socket = fakeSocket({ guildId: "g1", identity: ann });
+    const invited = fakeSocket({ guildId: "dm:one", roomScope: "g1", identity: { id: "ann" } });
+    const calls = [];
+    assert.equal(releaseSession({
+      sockets: new Set([socket, invited]), socket, guildId: "g1", identity: ann, disconnect: (...args) => calls.push(args),
+    }), false);
+    // Its own place no longer holds a seat for it.
+    assert.equal(releaseSession({
+      sockets: new Set([socket, invited]), socket, guildId: "dm:one", identity: ann, disconnect: (...args) => calls.push(args),
+    }), true);
+    assert.deepEqual(calls, [["dm:one", "ann"]]);
+  });
+
   it("releases the old seat of a socket that signs in again as someone else or for another guild", () => {
     // The socket already carries its new identity and guild when the old pair is released.
     const socket = fakeSocket({ guildId: "g2", identity: { id: "bo" } });

@@ -24,6 +24,36 @@ test("nearestNote finds the closest note of the lane inside the capture window",
   assert.equal(nearestNote(notes, 1, 2500 + CAPTURE_MS + 1), null);
 });
 
+test("blockError measures against the click and refuses what no offset could explain", () => {
+  const { blockError } = calibration;
+  assert.equal(blockError(1040, 1000), 40);
+  assert.equal(blockError(960, 1000), -40);
+  assert.equal(blockError(700, 1000), -300);
+  assert.equal(blockError(699, 1000), null);
+  assert.equal(blockError(1700, 1000), 700);
+  assert.equal(blockError(1701, 1000), null);
+});
+
+test("blockEstimate answers from one press and takes the median of several", () => {
+  const { blockEstimate } = calibration;
+  assert.equal(blockEstimate([]), null);
+  assert.deepEqual(blockEstimate([42]), { offsetMs: 40, spreadMs: 0, presses: 1 });
+  assert.deepEqual(blockEstimate([40, 60, 500]), { offsetMs: 60, spreadMs: 20, presses: 3 });
+  assert.equal(blockEstimate([900]).offsetMs, 700);
+});
+
+test("nextBlockNote gives each click its block, one at a time, on the offset in use", () => {
+  const { nextBlockNote } = calibration;
+  const clicks = [{ t: 3000 }, { t: 4500 }, { t: 6000 }];
+  assert.equal(nextBlockNote(clicks, 1999, 0), null);
+  assert.equal(nextBlockNote(clicks, 2000, 0).t, 3000);
+  assert.equal(nextBlockNote(clicks, 3500, 0).t, 3000);
+  assert.equal(nextBlockNote(clicks, 3500, 0, 3000).t, 4500); // the next block starts as the last window closes
+  assert.equal(nextBlockNote(clicks, 2100, 200), null); // a later offset lands the block later, so it starts later
+  assert.equal(nextBlockNote(clicks, 2200, 200).t, 3000);
+  assert.equal(nextBlockNote(clicks, 6501, 0, 4500), null);
+});
+
 test("no suggestion before MIN_TAPS taps", () => {
   const timing = calibration.createTapTiming();
   tapAll(timing, { lateMs: 40, count: calibration.MIN_TAPS - 1 });

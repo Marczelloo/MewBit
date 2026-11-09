@@ -21,3 +21,4 @@ All samples come from [osu-resources](https://github.com/ppy/osu-resources) (com
 | `rank-impact-pass.wav` | Grade A | `Results/rank-impact-pass.wav` |
 | `rank-impact-fail.wav` | Grades B and C | `Results/rank-impact-fail.wav` |
 | `rank-impact-fail-d.wav` | Grade D | `Results/rank-impact-fail-d.wav` |
+| `glitch.wav` | The glitch into the game | Not from osu-resources: a mix made for mewbeat of three [CC0](https://creativecommons.org/publicdomain/zero/1.0/) sounds from Freesound (their 128 kbps previews), [Glitch SFX - 0.46 sek.wav](https://freesound.org/people/h0p1r4e7o/sounds/673771/) by h0p1r4e7o, [Glitch (4)](https://freesound.org/people/am_92/sounds/717346/) by am_92 and [autechre-stutter.wav](https://freesound.org/people/nowism/sounds/484477/) by nowism |

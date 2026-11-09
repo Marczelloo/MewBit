@@ -100,6 +100,113 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual(typeof lastRoom().serverNow, "number");
   });
 
+  describe("invite links and conversations", () => {
+    const DM = "dm:instance1";
+    const link = (send, profile, id = "link") => send(profile, { type: "mewbeat_room_invite", id, link: true });
+
+    it("gives one code per room, and only to someone in it", async () => {
+      const { send } = setup();
+      assert.strictEqual((await link(send, ANN)).reason, "not_in_room");
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      const first = await link(send, ANN);
+      assert.strictEqual(first.status, "ok");
+      assert.strictEqual(typeof first.code, "string");
+      assert.strictEqual((await link(send, ANN)).code, first.code);
+    });
+
+    it("joining by invite moves the socket out of its own room and into the invited one", async () => {
+      const { channel, send, pushes } = setup();
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      const { code } = await link(send, ANN);
+      const session = {};
+      await channel.handle(DM, BO.id, { type: "mewbeat_room_join", id: "2" }, BO, session);
+
+      const reply = await channel.handle(DM, BO.id, { type: "mewbeat_room_join", id: "3", invite: code }, BO, session);
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(session.roomScope, "g1");
+      assert.deepStrictEqual(pushes.filter((push) => push.guildId === "g1").at(-1).userIds, ["ann", "bo"]);
+
+      await channel.handle(DM, BO.id, { type: "mewbeat_room_ready", id: "4", ready: true }, BO, session);
+      const member = pushes.filter((push) => push.guildId === "g1").at(-1).payload.room.members.find((m) => m.userId === "bo");
+      assert.strictEqual(member.ready, true);
+
+      await channel.handle(DM, BO.id, { type: "mewbeat_room_leave", id: "5" }, BO, session);
+      assert.strictEqual(session.roomScope, undefined);
+      assert.deepStrictEqual(pushes.filter((push) => push.guildId === "g1").at(-1).userIds, ["ann"]);
+    });
+
+    it("refuses a code that is unknown, past its time, or whose room is gone", async () => {
+      const { channel, send, advance } = setup();
+      const join = (code) => channel.handle(DM, BO.id, { type: "mewbeat_room_join", id: "2", invite: code }, BO, {});
+      assert.strictEqual((await join("nope")).reason, "invite_expired");
+
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      const { code } = await link(send, ANN);
+      advance(6 * 60 * 60 * 1000);
+      assert.strictEqual((await join(code)).reason, "invite_expired");
+
+      const fresh = await link(send, ANN);
+      await send(ANN, { type: "mewbeat_room_leave", id: "3" });
+      assert.strictEqual((await join(fresh.code)).reason, "invite_expired");
+    });
+
+    it("leaves the socket unmoved when the invited room is full", async () => {
+      const { channel, send } = setup();
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      const { code } = await link(send, ANN);
+      for (let i = 0; i < 49; i += 1) await send({ id: `p${i}`, username: `P${i}` }, { type: "mewbeat_room_join", id: `j${i}` });
+      const session = {};
+      const reply = await channel.handle(DM, BO.id, { type: "mewbeat_room_join", id: "2", invite: code }, BO, session);
+      assert.strictEqual(reply.reason, "room_full");
+      assert.strictEqual(session.roomScope, undefined);
+    });
+
+    it("has no voice channel to post in from a conversation", async () => {
+      const posted = [];
+      const { channel } = setup({ postInvite: async (invite) => { posted.push(invite); return { ok: true }; } });
+      await channel.handle(DM, ANN.id, { type: "mewbeat_room_join", id: "1" }, ANN);
+      const reply = await channel.handle(DM, ANN.id, { type: "mewbeat_room_invite", id: "2" }, ANN);
+      assert.strictEqual(reply.reason, "no_voice_channel");
+      assert.deepStrictEqual(posted, []);
+    });
+
+    it("counts a run from a conversation globally and for no server", async () => {
+      const { channel, send } = setup();
+      const ask = (message) => channel.handle(DM, ANN.id, message, ANN);
+      await ask({ type: "mewbeat_room_join", id: "1" });
+      await ask({ type: "mewbeat_room_queue_add", id: "2", uri: "abc", source: "youtube" });
+      const run = await ask({
+        type: "mewbeat_submit", id: "3", mode: "solo", audioKey: KEY, difficulty: "hard", chartVersion: VERSION, events: perfectEvents(), fevers: [], flags: {},
+      });
+      assert.strictEqual(run.status, "ok");
+
+      const board = (scope) => ({ type: "mewbeat_board", id: "4", audioKey: KEY, difficulty: "hard", scope, limit: 10 });
+      assert.deepStrictEqual((await ask(board("global"))).entries.map((entry) => entry.userId), ["ann"]);
+      assert.deepStrictEqual((await send(BO, board("server"))).entries, []);
+    });
+
+    it("a run from a conversation still finishes the round of the room it joined", async () => {
+      const { channel, send, advance, lastRoom } = setup();
+      await send(ANN, { type: "mewbeat_room_join", id: "1" });
+      const { code } = await link(send, ANN);
+      const session = {};
+      await channel.handle(DM, BO.id, { type: "mewbeat_room_join", id: "2", invite: code }, BO, session);
+      await send(ANN, { type: "mewbeat_room_queue_add", id: "3", uri: "abc", source: "youtube" });
+      await send(ANN, { type: "mewbeat_room_ready", id: "4", difficulty: "hard" });
+      await channel.handle(DM, BO.id, { type: "mewbeat_room_ready", id: "5", difficulty: "hard" }, BO, session);
+      await send(ANN, { type: "mewbeat_room_start", id: "6" });
+      await send(ANN, { type: "mewbeat_room_loaded", id: "7", audioKey: KEY });
+      await channel.handle(DM, BO.id, { type: "mewbeat_room_loaded", id: "8", audioKey: KEY }, BO, session);
+      advance(5000);
+      assert.strictEqual(lastRoom().phase, "playing");
+
+      await channel.handle(DM, BO.id, {
+        type: "mewbeat_submit", id: "9", mode: "room", round: 1, audioKey: KEY, difficulty: "hard", chartVersion: VERSION, events: perfectEvents(), fevers: [], flags: {},
+      }, BO, session);
+      assert.strictEqual(lastRoom().members.find((member) => member.userId === "bo").submitted, true);
+    });
+  });
+
   it("needs an id and the unlock like every mewbeat message", async () => {
     const locked = setup({ unlocked: false });
     assert.deepStrictEqual(

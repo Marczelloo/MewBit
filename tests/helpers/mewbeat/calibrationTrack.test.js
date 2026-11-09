@@ -21,7 +21,7 @@ function calibrationTrack(identifier = "mewbeat:calibration:120:64:3000", length
 
 describe("mewbeat calibration track", () => {
   it("asks the plugin for the default clicks", () => {
-    assert.equal(`mewbeat:${calibrationQuery()}`, "mewbeat:calibration:120:64:3000");
+    assert.equal(`mewbeat:${calibrationQuery()}`, "mewbeat:calibration:40:20:3000");
     assert.deepEqual(parseCalibration(`mewbeat:${calibrationQuery()}`), CALIBRATION);
   });
 

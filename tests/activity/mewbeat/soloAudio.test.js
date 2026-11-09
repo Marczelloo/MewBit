@@ -93,6 +93,22 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
   return { env, ctx, audio };
 }
 
+test("playSampleAt lands a sample at the perf time it should be heard, and can be cancelled", () => {
+  const { env, audio } = harness();
+  const sample = { duration: 0.1 };
+  const cancel = audio.playSampleAt(sample, env.perf + 200, 0.5);
+  const node = env.sources.at(-1);
+  assert.equal(node.buffer, sample);
+  assert.ok(Math.abs(node.started.when - 0.2) < 1e-6);
+  assert.equal(env.gains.at(-1).gain.value, 0.5);
+  cancel();
+  assert.equal(node.stopped, true);
+  // Already past: it plays at once rather than being scheduled in the past.
+  env.perf += 1000;
+  audio.playSampleAt(sample, env.perf - 100);
+  assert.equal(env.sources.at(-1).started.when, 1);
+});
+
 test("plays from 0 and tracks song time on the context clock", async () => {
   const { env, audio } = harness();
   assert.equal(audio.songTimeAt(env.perf), null);

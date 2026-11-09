@@ -1,4 +1,5 @@
 import { DiscordSDK } from "@discord/embedded-app-sdk";
+import { parseRoomInvite } from "./mewbeat/roomInvite.js";
 
 const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID || "1418000096221466715";
 const devGuildId = import.meta.env.VITE_ACTIVITY_DEV_GUILD_ID || "demo";
@@ -10,14 +11,13 @@ function readGuildId(sdk) {
   return resolveGuild(sdk).guildId;
 }
 
-/* A DM or group DM has no guild at all, and the fallback below quietly turned
-   that into the string "demo" — so the gateway answered "the bot is not
-   connected to this Discord server", which is true of a server that does not
-   exist but tells the person nothing. `inGuild` keeps the two apart. */
+/* A DM or group DM has no guild at all, so it goes by its Activity instance:
+   the game's rooms need a name to form under. `inGuild` keeps the two apart. */
 function resolveGuild(sdk) {
   const query = new URLSearchParams(window.location.search);
   const real = sdk?.guildId || query.get("guild_id") || query.get("guildId") || null;
-  return { guildId: real || devGuildId, inGuild: Boolean(real) };
+  if (real) return { guildId: real, inGuild: true };
+  return { guildId: sdk?.instanceId ? `dm:${sdk.instanceId}` : devGuildId, inGuild: false };
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -93,6 +93,7 @@ export async function setupDiscord() {
     user: auth.user || { id: "discord-user", username: "Discord user" },
     sdk,
     instanceId: sdk.instanceId,
+    roomInvite: parseRoomInvite(sdk.customId),
   };
 }
 

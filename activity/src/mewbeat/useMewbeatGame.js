@@ -852,5 +852,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     if (!runRef.current && (current === "failed" || current === "uncharted")) beginChartingRef.current({ retry: true });
   }, []);
 
-  return { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating };
+  return { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
 }

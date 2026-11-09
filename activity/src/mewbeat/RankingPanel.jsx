@@ -1,4 +1,5 @@
 import { Avatar, Notice, useReply } from "./PlayerPanel.jsx";
+import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { formatCount, formatPercent } from "./playerFormat.js";
 
 const RANKING_LIMIT = 50;
@@ -36,6 +37,7 @@ function RankRow({ entry, mine, pinned, onOpenPlayer }) {
 // Everyone by rating, across all servers or on this one. userId is yours: your row is lit, and pinned under the
 // list with your rank when you are further down than the rows shown. A row opens that player's profile.
 export default function RankingPanel({ request, userId, scope, onScope, onOpenPlayer }) {
+  const scopes = scopesFor(SCOPES, usePrivatePlace());
   const [state, retry] = useReply(request, "mewbeat_ranking", { scope, limit: RANKING_LIMIT });
   const entries = state.reply?.entries ?? [];
   const own = state.reply?.own;
@@ -55,7 +57,7 @@ export default function RankingPanel({ request, userId, scope, onScope, onOpenPl
       <h3>
         <span>{scope === "global" ? "Global ranking" : "Server ranking"}</span>
         <span className="mb-ss-seg" role="group" aria-label="Ranking scope">
-          {SCOPES.map(({ id, label }) => (
+          {scopes.map(({ id, label }) => (
             <button key={id} type="button" aria-pressed={scope === id} className={scope === id ? "mb-ss-seg-on" : undefined} onClick={() => onScope(id)}>{label}</button>
           ))}
         </span>

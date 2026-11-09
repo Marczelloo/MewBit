@@ -41,11 +41,12 @@ function startHeartbeat({
 
 // Tells the mewbeat channel a user is gone from a guild, but only when none of
 // their other sockets in that guild are left. `socket` is the one being
-// released and doesn't count as another window.
+// released and doesn't count as another window. A socket that joined through
+// an invite link counts for the room it joined.
 function releaseSession({ sockets, socket, guildId, identity, disconnect }) {
   if (!guildId || !identity) return false;
   const otherWindow = [...sockets].some((other) => other !== socket
-    && other.authorized && other.guildId === guildId && other.identity?.id === identity.id);
+    && other.authorized && (other.roomScope ?? other.guildId) === guildId && other.identity?.id === identity.id);
   if (otherWindow) return false;
   disconnect(guildId, identity.id);
   return true;

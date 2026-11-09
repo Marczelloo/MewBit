@@ -57,6 +57,7 @@ import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
 import { createKonamiMatcher } from "./mewbeat/konami.js";
 import { isDesktopClient } from "./mewbeat/platform.js";
 import GlitchCut from "./mewbeat/GlitchCut.jsx";
+import { prepareGlitchSound } from "./mewbeat/glitchSound.js";
 import { createStore } from "./mewbeat/hudStore.js";
 import UnlockReveal from "./mewbeat/UnlockReveal.jsx";
 
@@ -428,8 +429,8 @@ function getActionFeedback(action, payload = {}, result = null, state = null) {
     case "play": return payload.playNow ? (track ? `Playing now: ${track}` : "Playing now") : (track ? `Added to queue: ${track}` : "Added to queue");
     case "surprise_me": return track ? `Picked ${result?.surpriseMoodLabel ? `a ${result.surpriseMoodLabel.toLowerCase()} pick` : result?.surpriseIntent && result.surpriseIntent !== "freestyle" ? "for this room" : "from today’s chart"}: ${track}` : "Picked a verified surprise track";
     case "stop": return "Playback stopped and queue cleared";
-    case "mewbeat_calibrate": return result?.status === "queued" ? "Calibration clicks play next" : "Calibration clicks are playing: tap along";
-    case "skip": return "Skipped to the next track";
+    case "mewbeat_calibrate": return result?.status === "queued" ? "Calibration clicks play next" : null;
+    case "skip": return payload.quiet ? null : "Skipped to the next track";
     case "previous": return "Restarted the current track";
     case "shuffle": return "Queue shuffled";
     case "play_next": return "Moved to play next";
@@ -2783,15 +2784,6 @@ function App() {
         if (!alive) return;
         setContext(nextContext);
 
-        /* Launched from a DM or a group DM there is no guild, so there is no
-           room, no queue and nothing to play into. Reconciling anyway would
-           make the gateway answer about a server that was never involved. */
-        if (nextContext.mode === "discord" && nextContext.inGuild === false) {
-          setConnection({ status: "no-guild", message: "This conversation has no voice channel." });
-          finishHydration();
-          return;
-        }
-
         const connectLocalPreview = nextContext.mode === "local" && import.meta.env.VITE_ACTIVITY_CONNECT_LOCAL === "true";
         if (nextContext.mode === "local" && !connectLocalPreview) {
           setConnection({ status: "preview", message: nextContext.reason || "Local Activity preview" });
@@ -3360,7 +3352,27 @@ function App() {
 
   /* Terminal states: the room cannot be joined at all, so the cockpit would be
      a set of controls wired to nothing. */
-  const gate = connection.status === "no-guild" ? "dm" : connection.status === "error" ? "error" : null;
+  const gate = connection.status === "error" ? "error" : context.mode === "discord" && context.inGuild === false ? "dm" : null;
+
+  useEffect(() => {
+    if (mewbeatUnlocked && mewbeatDesktop) prepareGlitchSound();
+  }, [mewbeatDesktop, mewbeatUnlocked]);
+
+  // A DM has no player to show and an invite link is there to play, so both go straight into the game, once.
+  const opensGame = gate === "dm" || Boolean(context.roomInvite);
+  const gameAutoOpened = useRef(false);
+  useEffect(() => {
+    if (!opensGame || gameAutoOpened.current || !mewbeatDesktop || connection.status !== "live" || (showLoader && !gate)) return;
+    if (mewbeatUnlocked) {
+      gameAutoOpened.current = true;
+      setMewbeatCut({ dimFrom: 0 });
+    } else if (context.roomInvite) {
+      gameAutoOpened.current = true;
+      void Promise.resolve(onAction("mewbeat_unlock")).then((done) => {
+        if (done !== false) setMewbeatCut({ dimFrom: 0 });
+      });
+    }
+  }, [connection.status, context.roomInvite, gate, mewbeatDesktop, mewbeatUnlocked, onAction, opensGame, showLoader]);
 
   /* Not terminal: everything still renders and the queue still reads, but
      nothing can play or be searched, so this warns without taking the surface
@@ -3389,6 +3401,7 @@ function App() {
           path={typeof window === "undefined" ? "/" : window.location.pathname}
           detail={gate === "error" ? connection.message : null}
           onRetry={gate === "error" ? () => window.location.reload() : null}
+          action={gate === "dm" && mewbeatUnlocked && mewbeatDesktop ? { label: "Play mewbeat", onClick: () => setMewbeatCut({ dimFrom: 0 }) } : null}
         />
       ) : null}
       {showLoader && !gate ? <SignalLoader ready={!isHydrating} message={connection.message} onPhase={setLoaderPhase} onDone={hideLoader} /> : null}
@@ -3451,7 +3464,7 @@ function App() {
       </FrozenWhile>
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
       {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
-      {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}
+      {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} volume={state.mewbeat?.settings?.sfx === false ? 0 : state.mewbeat?.settings?.sfxVolume} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}
       {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} player={mewbeatPlayer} feed={mewbeatFeed} settings={mewbeatSettings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={closeMewbeat} onPresence={setGamePresence} voiceChannelName={state.guild?.voiceChannelName ?? null} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>

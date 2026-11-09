@@ -21,9 +21,9 @@ const COPY = {
   },
   dm: {
     kicker: "NO SERVER",
-    title: "MewBit plays in a server.",
+    title: "The music player needs a server.",
     body:
-      "This conversation has no voice channel for a room to form in, so there is no queue to share and nothing to play into. Open the Activity from a voice channel in a server MewBit has been invited to.",
+      "This conversation has no voice channel for the bot to play into, so there is no queue to share. For the music, open the Activity from a voice channel in a server MewBit has been invited to.",
   },
   error: {
     kicker: "NOT CONNECTED",
@@ -43,7 +43,7 @@ const COPY = {
  * joined. It is built from the loader's own parts because it is the same world,
  * but it holds still: these are destinations, not waits.
  */
-export default function ActivityGate({ variant = "outside", path = "/", detail = null, onRetry = null }) {
+export default function ActivityGate({ variant = "outside", path = "/", detail = null, onRetry = null, action = null }) {
   const copy = COPY[variant] || COPY.outside;
 
   return (
@@ -64,6 +64,12 @@ export default function ActivityGate({ variant = "outside", path = "/", detail =
         {detail ? <p className="gate-detail">{detail}</p> : null}
 
         <div className="gate-actions">
+          {action ? (
+            <button type="button" className="gate-btn is-primary" onClick={action.onClick}>
+              {action.label}
+            </button>
+          ) : null}
+
           {onRetry ? (
             <button type="button" className="gate-btn is-primary" onClick={onRetry}>
               <ArrowClockwise size={14} weight="bold" aria-hidden="true" />

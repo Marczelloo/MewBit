@@ -58,6 +58,7 @@ const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormal
 const Log = require("../logs/log");
 const { markAlive, releaseSession, startHeartbeat } = require("./socketLifecycle");
 const { createMewbeatChannel } = require("../mewbeat/activityChannel");
+const { isPrivatePlace, isValidPrivatePlace } = require("../mewbeat/places");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { chartStore } = require("../mewbeat/chartStore");
 const { audioStore } = require("../mewbeat/sharedAudio");
@@ -350,6 +351,10 @@ async function authenticateRequest(client, request, guildId, config) {
   if (!token) throw Object.assign(new Error("Activity authentication is required."), { statusCode: 401 });
 
   const identity = await fetchDiscordUser(token);
+  if (isPrivatePlace(guildId)) {
+    if (!isValidPrivatePlace(guildId)) throw Object.assign(new Error("That conversation is not valid."), { statusCode: 400 });
+    return { ...identity, member: null };
+  }
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw Object.assign(new Error("The bot is not connected to this Discord server."), { statusCode: 404 });
 
@@ -433,6 +438,9 @@ function enforceRateLimit(request, scope, limit, windowMs) {
 function isAllowedOrigin(origin, config) {
   return !origin || config.allowedOrigins.includes("*") || config.allowedOrigins.includes(origin);
 }
+
+// A DM has no player or server settings; only what belongs to the account works there.
+const PRIVATE_PLACE_ACTIONS = new Set(["mewbeat_unlock", "mewbeat_settings"]);
 
 function assertPlayerVoiceAccess(player, identity, action) {
   if (identity.dev || !player?.voiceChannel) return;
@@ -587,7 +595,7 @@ function buildActivityState(client, guildId, userId) {
   const currentTrack = shownTrack ? serializeTrack(withAutoplayRequesterLabel(shownTrack, client)) : null;
   const filters = getEqualizerState(guildId) || player?.filters || {};
   const guild = client.guilds.cache.get(guildId);
-  const settings = guildState.getGuildState(guildId);
+  const settings = isPrivatePlace(guildId) ? null : guildState.getGuildState(guildId);
   const lyrics = serializeLyrics(getLyricsState(guildId));
   const paused = Boolean(livePlaybackState?.paused || player?.isPaused);
   // A track enters playbackState only on Lavalink TrackStart. Using that
@@ -750,7 +758,7 @@ async function resolveMewbeatTrack(_guildId, { uri, source }) {
 // userIds is an array of user ids, or null for everyone in the guild.
 function sendToGuildSockets(guildId, userIds, payload) {
   for (const socket of sockets) {
-    if (!socket.authorized || socket.guildId !== guildId) continue;
+    if (!socket.authorized || (socket.roomScope ?? socket.guildId) !== guildId) continue;
     if (userIds && !userIds.includes(socket.identity?.id)) continue;
     sendSocket(socket, payload);
   }
@@ -933,7 +941,10 @@ async function queueTrackList({ guildId, identity, player, tracks, what }) {
 }
 
 async function runActivityAction({ guildId, identity, action, payload = {} }) {
-  assertControlPermission(guildId, identity, action);
+  if (!isPrivatePlace(guildId)) assertControlPermission(guildId, identity, action);
+  else if (!PRIVATE_PLACE_ACTIONS.has(action)) {
+    throw Object.assign(new Error("That needs a voice channel in a server."), { statusCode: 400 });
+  }
   const player = getPlayer(guildId);
   assertPlayerVoiceAccess(player, identity, action);
 
@@ -1738,8 +1749,9 @@ function createActivityServer(client) {
           // leave the old seat (and host role) behind in a mewbeat room.
           if (socket.authorized && socket.identity && (socket.guildId !== guildId || socket.identity.id !== identity.id)) {
             releaseSession({
-              sockets, socket, guildId: socket.guildId, identity: socket.identity, disconnect: mewbeatChannel.disconnect,
+              sockets, socket, guildId: socket.roomScope ?? socket.guildId, identity: socket.identity, disconnect: mewbeatChannel.disconnect,
             });
+            socket.roomScope = undefined;
           }
           socket.identity = identity;
           if (socket.guildId) unregisterActivitySession(socket.guildId, socket);
@@ -1762,7 +1774,7 @@ function createActivityServer(client) {
           // covers a few windows at once, so a submit or room_loaded is not throttled away.
           const mewbeatLimit = consumeRateLimit(`ws-mewbeat:${socket.identity.id}`, { limit: 1500, windowMs: 60_000 });
           if (!mewbeatLimit.allowed) throw Object.assign(new Error("Too many mewbeat messages. Try again shortly."), { statusCode: 429 });
-          const reply = await mewbeatChannel.handle(socket.guildId, socket.identity.id, message, mewbeatProfileOf(socket.identity));
+          const reply = await mewbeatChannel.handle(socket.guildId, socket.identity.id, message, mewbeatProfileOf(socket.identity), socket);
           if (reply) sendSocket(socket, reply);
           return;
         }
@@ -1786,7 +1798,7 @@ function createActivityServer(client) {
       unregisterActivitySession(guildId, socket);
       sockets.delete(socket);
       if (!socket.authorized || !identity) return;
-      releaseSession({ sockets, socket, guildId, identity, disconnect: mewbeatChannel.disconnect });
+      releaseSession({ sockets, socket, guildId: socket.roomScope ?? guildId, identity, disconnect: mewbeatChannel.disconnect });
     };
     socket.on("close", release);
     socket.on("error", (error) => {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { effectiveEffects } from "./effects.js";
 import { CUT, FRAME_MS, cutAt } from "./glitch.js";
 import { GlitchFilters, paintNoise, setGlitchFilter, useGlitchPage } from "./GlitchFx.jsx";
+import { playGlitchSound } from "./glitchSound.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import "./mewbeat.css";
 
@@ -9,13 +10,13 @@ const LOAD_WAIT_MS = 1500;
 
 // The short glitch that carries you into the game: the screen tears, cuts to black while the game mounts
 // behind it, then the game resolves out of the noise. Without full effects it opens the game straight away.
-export default function GlitchCut({ effects = "full", load, dimFrom = 0, onCut, onDone }) {
+export default function GlitchCut({ effects = "full", load, dimFrom = 0, volume, onCut, onDone }) {
   const prefersReduced = usePrefersReducedMotion();
   const calm = effectiveEffects(effects, prefersReduced) !== "full";
   const rootRef = useRef(null);
   const noiseRef = useRef(null);
   const latest = useRef({});
-  latest.current = { load, dimFrom, onCut, onDone };
+  latest.current = { load, dimFrom, volume, onCut, onDone };
 
   useGlitchPage(!calm);
 
@@ -25,6 +26,7 @@ export default function GlitchCut({ effects = "full", load, dimFrom = 0, onCut, 
       latest.current.onDone?.();
       return undefined;
     }
+    playGlitchSound(latest.current.volume);
     let ready = false;
     let cutAtTime = null;
     let wait = 0;
