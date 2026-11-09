@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mewbeat song select mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+:root{--bg:#050608;--surface:#0c0e12;--raised:#111318;--text:#f4f6f9;--muted:#9ba4b2;--faint:#6b7380;--high:#c3cbd7;--cyan:#67e3f4;--violet:#a78bfa;--pink:#ff6ec7;--gold:#ffd479;--danger:#ff8098;--line:rgb(255 255 255/.1);--mono:"JetBrains Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:#17191f;color:var(--text);font:600 14px/1.3 "Hanken Grotesk","Segoe UI",sans-serif}
+button{font:inherit;color:inherit}
+.page{max-width:1280px;margin:0 auto;padding:18px 16px 28px}
+.switch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.switch b{margin-right:6px;color:var(--high);font-weight:800}
+.switch button{min-height:34px;padding:0 12px;border:0;border-radius:9px;background:#262a33;cursor:pointer}
+.switch button.on{background:var(--cyan);color:#06222a;font-weight:800}
+.game{display:grid;grid-template-columns:minmax(0,1fr) 470px;height:720px;overflow:hidden;border-radius:14px;outline:1px solid var(--line);background:radial-gradient(90% 60% at 100% 0%,rgb(167 139 250/.1),transparent 60%),radial-gradient(70% 60% at 0% 100%,rgb(255 110 199/.08),transparent 60%),var(--bg)}
+.label{color:var(--faint);font:500 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.left{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:14px 20px 18px;overflow:hidden}
+.mode{display:flex;align-items:center;gap:2px}
+.tab{padding:7px 10px;border:0;border-bottom:2px solid transparent;background:none;color:var(--faint);font-weight:700;font-size:13px;cursor:pointer}
+.tab.on{border-color:var(--cyan);color:var(--text)}
+.back{margin-left:auto;min-height:30px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--muted);font-size:12px;cursor:pointer}
+.panel{border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.me{display:grid;grid-template-columns:64px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 16px}
+.av{display:grid;place-items:center;border-radius:50%;font-weight:900;color:#0b0d11}
+.me .av{width:64px;height:64px;font-size:26px}
+.me h2{margin:0;font-size:24px;font-weight:900;letter-spacing:-.02em}
+.me small{color:var(--muted);font-size:13px}
+.rating{text-align:right}
+.rating b{display:block;font:700 30px/1 var(--mono);letter-spacing:-.03em}
+.rating b i{color:var(--muted);font-size:14px;font-style:normal;margin-left:4px}
+.ranks{display:flex;justify-content:flex-end;gap:12px;margin-top:6px;color:var(--muted);font:500 12px/1 var(--mono)}
+.ranks em{color:var(--text);font-style:normal;font-weight:700}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(190px,1.5fr)}
+.tile{padding:11px 14px;border-left:1px solid var(--line)}
+.tile:first-child{border-left:0}
+.tile b{display:block;margin-top:7px;font:700 20px/1 var(--mono);font-variant-numeric:tabular-nums}
+.grades{display:flex;gap:10px;margin-top:6px}
+.grades span{font:700 13px/1.2 var(--mono);color:var(--muted)}
+.grades span i{display:block;font-style:normal;font-size:15px;font-weight:900}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.block{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.block h3{display:flex;align-items:center;justify-content:space-between;margin:0;padding:11px 14px 9px;color:var(--muted);font:500 11px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.line{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:9px;padding:7px 14px;border-top:1px solid var(--line)}
+.cover{display:block;border-radius:8px}
+.line .cover{width:34px;height:34px}
+.tt{min-width:0}
+.tt b{display:block;overflow:hidden;font-size:13px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.tt small{display:block;color:var(--faint);font:500 11px/1.4 var(--mono)}
+.val{text-align:right;font:700 13px/1.2 var(--mono)}
+.val small{display:block;color:var(--faint);font-size:11px;font-weight:500}
+.S{color:var(--gold)}.A{color:var(--cyan)}.B{color:var(--violet)}.C{color:var(--high)}.D{color:var(--danger)}
+.e{--c:var(--cyan)}.n{--c:var(--violet)}.h{--c:var(--pink)}.x{--c:var(--danger)}
+.dl{color:var(--c)}
+.hero{display:grid;grid-template-columns:104px minmax(0,1fr);align-items:end;gap:14px}
+.hero .cover{width:104px;height:104px;border-radius:14px;outline:1px solid rgb(255 255 255/.14)}
+.hero h2{margin:5px 0 0;font-size:26px;font-weight:900;letter-spacing:-.03em;line-height:1.05}
+.hero .art{color:var(--muted)}
+.chips{display:flex;gap:6px;margin-top:7px}
+.chip{padding:5px 8px;border-radius:8px;background:var(--raised);outline:1px solid var(--line);color:var(--muted);font:500 11px/1 var(--mono)}
+.diffs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.diff{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border:0;border-radius:12px;background:var(--surface);outline:1px solid var(--line);text-align:left;cursor:pointer}
+.diff.on{outline:2px solid var(--c);background:var(--raised)}
+.diff b{font-size:14px;font-weight:800}
+.diff small{color:var(--faint);font:500 11.5px/1.3 var(--mono)}
+.bar{height:3px;margin:5px 0;border-radius:2px;background:#161920;overflow:hidden}.bar i{display:block;height:100%;background:var(--c)}
+.mods{display:flex;align-items:center;gap:8px;padding:9px 12px}
+.mods .label{margin-right:4px}
+.slot{flex:1;min-height:30px;display:grid;place-items:center;border-radius:8px;background:rgb(255 255 255/.03);color:var(--faint);font:500 11px/1 var(--mono)}
+.board{flex:1}
+.board h3{padding:8px 8px 8px 14px}
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:9px;background:var(--bg);outline:1px solid var(--line);letter-spacing:.04em;text-transform:none}
+.seg button{min-height:24px;padding:0 10px;border:0;border-radius:7px;background:none;color:var(--muted);font:700 11px/1 var(--mono);cursor:pointer}
+.seg button.on{background:rgb(103 227 244/.14);color:var(--cyan)}
+.rows{flex:1;min-height:0;overflow:hidden}
+.pl{display:grid;grid-template-columns:30px 26px minmax(0,1fr) 24px 62px 86px;align-items:center;gap:9px;padding:5px 14px;border-top:1px solid var(--line);font:500 12.5px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.pl .av{width:26px;height:26px;font-size:12px}
+.pl .nm{overflow:hidden;font:800 13px/1.2 "Hanken Grotesk",sans-serif;text-overflow:ellipsis;white-space:nowrap}
+.pl .rk{color:var(--faint);font-weight:700;text-align:right}
+.pl .gr{font-weight:900;text-align:center}
+.pl .r{color:var(--muted);text-align:right}
+.pl .s{text-align:right;font-weight:700}
+.pl.mine{background:rgb(103 227 244/.09)}
+.pl.mine .rk{color:var(--cyan)}
+.pl.pin{border-top:1px solid rgb(255 255 255/.22)}
+.right{display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--line);background:rgb(5 6 8/.55)}
+.rtabs{display:flex;gap:2px;padding:12px 14px 0}
+.search{display:flex;align-items:center;gap:8px;min-height:38px;margin:8px 14px;padding:0 12px;border-radius:12px;background:var(--surface);outline:1px solid var(--line);color:var(--faint);font-size:13px}
+.tools{display:flex;gap:8px;align-items:center;padding:0 14px 8px}
+.select{display:flex;align-items:center;gap:6px;min-height:30px;padding:0 10px;border-radius:9px;background:var(--surface);outline:1px solid var(--line);color:var(--high);font:700 12px/1 var(--mono);white-space:nowrap}
+.select small{color:var(--faint);font-size:11px;font-weight:500}
+.spacer{flex:1}
+.head,.song{display:grid;grid-template-columns:44px minmax(0,1fr) repeat(4,38px);align-items:center;gap:8px;padding-inline:14px}
+.head{padding-bottom:5px;border-bottom:1px solid var(--line)}
+.head span{text-align:center;font:700 10px/1 var(--mono);letter-spacing:.04em}
+.list{flex:1;min-height:0;overflow:hidden}
+.song{min-height:60px;padding-block:7px;border-bottom:1px solid rgb(255 255 255/.05);cursor:pointer}
+.song:hover{background:rgb(255 255 255/.04)}
+.song.on{background:rgb(103 227 244/.09)}
+.song .cover{width:44px;height:44px}
+.song .tt small{color:var(--muted);font:500 12px/1.3 "Hanken Grotesk",sans-serif}
+.song .meta{display:block;color:var(--faint);font:500 11px/1.3 var(--mono)}
+.lv{display:flex;flex-direction:column;align-items:center;gap:3px;font:700 12.5px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--c)}
+.lv i{font-style:normal;font-size:12px;font-weight:900;min-height:13px}
+.lv.none{color:var(--faint)}
+.actions{padding:10px 14px 12px;border-top:1px solid var(--line)}
+.play{width:100%;min-height:44px;border:0;border-radius:12px;background:var(--cyan);color:#06222a;font-weight:900;font-size:15px}
+.play:disabled{background:#1c2027;color:var(--faint)}
+.rankhead{display:grid;grid-template-columns:42px 34px minmax(0,1fr) 70px 90px;gap:10px;padding:8px 14px;color:var(--faint);font:500 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.rk-row{display:grid;grid-template-columns:42px 34px minmax(0,1fr) 70px 90px;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line);font:500 13px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.rk-row .av{width:34px;height:34px;font-size:15px}
+.rk-row .nm{font:800 15px/1.2 "Hanken Grotesk",sans-serif}
+.rk-row.mine{background:rgb(103 227 244/.09)}
+.rk-row .n1{font-weight:900;text-align:right;color:var(--muted)}
+.rk-row .pp{text-align:right;font-weight:700}
+.rk-row .acc{text-align:right;color:var(--muted)}
+.note{margin:12px 2px 0;color:var(--muted);font-size:13px}
+.jud{padding:12px 14px}
+.jbar{display:flex;gap:2px;height:10px;margin:10px 0 12px;overflow:hidden;border-radius:5px}
+.jbar i{display:block}
+.jcells{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.jcell span{display:block;color:var(--j);font-size:13px;font-weight:800}
+.jcell b{display:block;margin-top:3px;font:700 19px/1 var(--mono);font-variant-numeric:tabular-nums}
+.jcell small{display:block;margin-top:3px;color:var(--faint);font:500 11px/1 var(--mono)}
+.six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.six .tile:nth-child(3n+1){border-left:0}
+.six .tile:nth-child(n+4){border-top:1px solid var(--line)}
+.six .tile small{display:block;margin-top:4px;color:var(--faint);font:500 11px/1.2 var(--mono)}
+.timing{padding:0 14px 12px}
+.tbig{display:flex;align-items:baseline;gap:6px;font:700 24px/1 var(--mono)}
+.tbig small{color:var(--muted);font-size:12px;font-weight:500}
+.tline{position:relative;height:6px;margin:14px 0 8px;border-radius:3px;background:#1a1d24}
+.tline i{position:absolute;top:0;bottom:0;border-radius:3px;background:var(--cyan)}
+.tline u{position:absolute;top:-4px;bottom:-4px;left:50%;width:1px;background:var(--high)}
+.tscale{display:flex;justify-content:space-between;color:var(--faint);font:500 11px/1 var(--mono)}
+.trow{display:flex;justify-content:space-between;margin-top:11px;color:var(--muted);font:500 12px/1 var(--mono)}
+.trow em{color:var(--text);font-style:normal;font-weight:700}
+.fc{color:var(--gold)}
+.frame{overflow:hidden;border-radius:14px;outline:1px solid var(--line)}
+.frame .game{border-radius:0;outline:0}
+.hdr{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:16px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
+.word{font-size:18px;font-weight:900;letter-spacing:-.02em}
+.modes{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--surface)}
+.modes span{display:grid;place-items:center;min-height:26px;padding:0 14px;border-radius:999px;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.modes span.on{background:rgb(103 227 244/.14);color:var(--cyan)}
+.hdr-end{display:flex;justify-content:flex-end}
+.hdr-btn{min-height:34px;padding:0 12px;border:1px solid rgb(255 255 255/.14);border-radius:10px;background:var(--raised);font-size:13px;font-weight:700}
+.pl,.rk-row{cursor:pointer;transition:background-color 120ms ease-out}
+.pl:hover,.rk-row:hover{background:rgb(255 255 255/.05)}
+.pl.mine:hover,.rk-row.mine:hover{background:rgb(103 227 244/.13)}
+.viewing{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.viewing .back{margin-left:0}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="switch">
+    <b>Stan ekranu:</b>
+    <button data-s="profile" class="on">Nic nie wybrano: profil</button>
+    <button data-s="song">Wybrana piosenka</button>
+    <button data-s="stats">Rozszerzone statystyki</button>
+    <button data-s="rank">Ranking ogólny</button>
+    <button data-s="profile" data-u="kuba">Profil innego gracza</button>
+  </div>
+  <div class="frame">
+  <header class="hdr"><span class="word">mewbeat</span><div class="modes"><span>Live</span><span class="on">Solo</span><span>Room</span></div><div class="hdr-end"><span class="hdr-btn">☰ Menu&nbsp; Esc</span></div></header>
+  <div class="game">
+    <section class="left" id="left"></section>
+    <aside class="right">
+      <div class="rtabs">
+        <button class="tab on">This server</button><button class="tab">Everywhere</button><button class="tab">Played by you</button>
+      </div>
+      <div class="search">⌕&nbsp; Search YouTube, Spotify, Deezer…</div>
+      <div class="tools">
+        <span class="select"><small>Sort</small> Stars ▾</span>
+        <span class="select" title="Which level the sort and the filters look at"><small>Level</small> <span class="dl n">Normal</span> ▾</span>
+        <span class="select"><small>Filter</small> All ▾</span>
+        <span class="spacer"></span>
+        <span class="select">↓</span>
+      </div>
+      <div class="head"><span></span><span></span><span class="dl e">EZ</span><span class="dl n">NM</span><span class="dl h">HD</span><span class="dl x">HL</span></div>
+      <div class="list" id="list"></div>
+      <div class="actions"><button class="play" id="play" disabled>Pick a song</button></div>
+    </aside>
+  </div>
+  </div>
+  <p class="note">Klikaj piosenki po prawej albo przełączniki u góry. Dane są przykładowe; tytuły i gracze tylko dla zobrazowania układu.</p>
+</div>
+<script>
+const G=(h)=>`linear-gradient(135deg,hsl(${h} 80% 55%),hsl(${(h+60)%360} 70% 22%))`;
+const cover=(h)=>`<span class="cover" style="background:${G(h)}"></span>`;
+const av=(n,h)=>`<span class="av" style="background:hsl(${h} 75% 70%)">${n[0].toUpperCase()}</span>`;
+const SONGS=[
+ {t:"MEGALOVANIA",a:"Toby Fox",h:210,len:"2:36",bpm:240,st:[2.4,4.1,5.8,7.3],g:["S","A","C",null]},
+ {t:"Hopes and Dreams",a:"Toby Fox",h:40,len:"3:05",bpm:170,st:[2.1,3.8,5.2,6.9],g:["S","S","B",null]},
+ {t:"MORE",a:"K/DA",h:320,len:"3:37",bpm:115,st:[1.9,3.4,4.7,6.2],g:[null,"B",null,null]},
+ {t:"Five Nights at Freddy's 2 Song",a:"The Living Tombstone",h:120,len:"3:00",bpm:125,st:[1.7,3.2,4.4,5.7],g:["A","A",null,null]},
+ {t:"Rude Buster",a:"Toby Fox",h:265,len:"2:11",bpm:133,st:[1.6,3.0,4.3,5.5],g:[null,"S","A","D"]},
+ {t:"Coffin Dance",a:"Vicetone",h:175,len:"2:32",bpm:128,st:[1.5,2.8,4.0,5.1],g:[null,null,null,null]},
+ {t:"REVOLVANIA",a:"NyxTheShield",h:0,len:"3:12",bpm:190,st:[2.0,2.7,5.0,6.5],g:["B",null,null,null]},
+ {t:"GHOST",a:"Camellia",h:290,len:"4:20",bpm:174,st:[1.3,2.5,3.9,5.3],g:[null,"C",null,null]},
+];
+const CLS=["e","n","h","x"],LV=["Easy","Normal","Hard","Hell"];
+let state="profile",song=0,lv=1,scope="server",viewing=null;
+const PEOPLE={shiro:[0,"2,104","#1","—","12 plays together"],kuba:[40,"1,190","#3","#2","same server"],vex:[265,"1,003","#4","—",""],neko:[320,"874","#5","#3","same server"],luna:[175,"716","#6","—",""],ola:[290,"602","#7","#4","same server"],dawid:[120,"455","#8","#5","same server"],tomek:[90,"398","#9","—",""]};
+function list(){document.getElementById("list").innerHTML=SONGS.map((s,i)=>`<div class="song ${state==="song"&&song===i?"on":""}" data-i="${i}">${cover(s.h)}<span class="tt"><b>${s.t}</b><small>${s.a}</small><span class="meta">${s.len} · ${s.bpm} BPM</span></span>${s.st.map((v,k)=>`<span class="lv ${CLS[k]}">${v.toFixed(1)}<i class="${s.g[k]||""}">${s.g[k]||""}</i></span>`).join("")}</div>`).join("");
+ document.querySelectorAll(".song").forEach(el=>el.onclick=()=>{song=+el.dataset.i;set("song")});
+ const p=document.getElementById("play");if(state==="song"){p.disabled=false;p.textContent="Play  ·  "+LV[lv]}else{p.disabled=true;p.textContent="Pick a song"}}
+const mode=(on)=>viewing?`<div class="mode"><button class="tab ${on==="profile"?"on":""}" data-s="profile">Profile</button><button class="tab ${on==="stats"?"on":""}" data-s="stats">Stats</button><div class="viewing"><span>Viewing ${viewing}</span><button class="back" data-s="profile" data-me>← Your profile</button></div></div>`:`<div class="mode"><button class="tab ${on==="profile"?"on":""}" data-s="profile">Profile</button><button class="tab ${on==="stats"?"on":""}" data-s="stats">Stats</button><button class="tab ${on==="rank"?"on":""}" data-s="rank">Ranking</button></div>`;
+const JUD=[["Perfect","--cyan",184210,71.2],["Great","--violet",48930,18.9],["Good","--high",15204,5.9],["Miss","--danger",10346,4.0]];
+const COMBOS=[["Rude Buster","Normal","n",265,"812","812",1],["Hopes and Dreams","Normal","n",40,"744","1,020"],["MEGALOVANIA","Normal","n",210,"689","1,204"],["FNAF 2 Song","Easy","e",120,"512","512",1],["MORE","Normal","n",320,"366","884"]];
+function stats(){return `${mode("stats")}
+<div class="panel jud"><span class="label">Judgements · all plays</span><div class="jbar">${JUD.map(j=>`<i style="width:${j[3]}%;background:var(${j[1]})"></i>`).join("")}</div><div class="jcells">${JUD.map(j=>`<div class="jcell" style="--j:var(${j[1]})"><span>${j[0]}</span><b>${j[2].toLocaleString("en-US")}</b><small>${j[3]}%</small></div>`).join("")}</div></div>
+<div class="panel tiles six"><div class="tile"><span class="label">Key presses</span><b>291,402</b><small>32,712 on empty air</small></div><div class="tile"><span class="label">Holds held</span><b>1h 12m</b><small>longest 14.2 s</small></div><div class="tile"><span class="label">Best combo</span><b>812</b><small>Rude Buster</small></div><div class="tile"><span class="label">Full combos</span><b class="fc">14</b><small>of 312 plays</small></div><div class="tile"><span class="label">FEVERs</span><b>486</b><small>1.6 per play</small></div><div class="tile"><span class="label">Time played</span><b>11h 40m</b><small>48 songs</small></div></div>
+<div class="two"><div class="panel block"><h3>Timing</h3><div class="timing"><div class="tbig">+6 ms<small>a little late</small></div><div class="tline"><i style="left:44%;width:20%"></i><u></u></div><div class="tscale"><span>early</span><span>0</span><span>late</span></div><div class="trow"><span>Spread</span><em>±18 ms</em></div><div class="trow"><span>Early hits</span><em>38%</em></div><div class="trow"><span>Late hits</span><em>62%</em></div></div></div>
+<div class="panel block"><h3>Max combo by map</h3>${COMBOS.map(r=>`<div class="line">${cover(r[3])}<span class="tt"><b>${r[0]}</b><small class="${r[2]}"><span class="dl">${r[1]}</span></small></span><span class="val ${r[6]?"fc":""}">${r[4]}<small>${r[6]?"full combo":"of "+r[5]}</small></span></div>`).join("")}</div></div>`}
+const RECENT=[["MEGALOVANIA","Normal","n",210,"A","94.21%","512,300"],["Rude Buster","Hard","h",265,"A","91.08%","398,700"],["MORE","Normal","n",320,"B","85.49%","381,500"],["FNAF 2 Song","Easy","e",120,"A","92.60%","244,100"],["GHOST","Normal","n",290,"C","74.02%","201,900"],["Hopes and Dreams","Hard","h",40,"B","86.33%","455,800"]];
+const BEST=[["Hopes and Dreams","Normal · ★3.8","n",40,"S","312"],["MEGALOVANIA","Hard · ★5.8","h",210,"C","287"],["Rude Buster","Normal · ★3.0","n",265,"S","241"],["MEGALOVANIA","Normal · ★4.1","n",210,"A","228"],["FNAF 2 Song","Normal · ★3.2","n",120,"A","176"],["MORE","Normal · ★3.4","n",320,"B","149"]];
+function profile(){return `${mode("profile")}
+${viewing?`<div class="panel me">${av(viewing,PEOPLE[viewing][0])}<div><h2>${viewing}</h2><small>playing since Oct 2026</small></div><div class="rating"><b>${PEOPLE[viewing][1]}<i>pp</i></b><div class="ranks"><span>Global <em>${PEOPLE[viewing][2]}</em></span><span>Server <em>${PEOPLE[viewing][3]}</em></span></div></div></div>`:`<div class="panel me">${av("Meowczelloo",190)}<div><h2>Meowczelloo</h2><small>playing since Oct 2026</small></div><div class="rating"><b>1,248<i>pp</i></b><div class="ranks"><span>Global <em>#2</em></span><span>Server <em>#1</em></span></div></div></div>`}
+<div class="panel tiles"><div class="tile"><span class="label">Plays</span><b>312</b></div><div class="tile"><span class="label">Avg accuracy</span><b>86.4%</b></div><div class="tile"><span class="label">Songs</span><b>48</b></div><div class="tile"><span class="label">Played</span><b>11h 40m</b></div><div class="tile"><span class="label">Best grades</span><div class="grades"><span><i class="S">S</i>9</span><span><i class="A">A</i>21</span><span><i class="B">B</i>34</span><span><i class="C">C</i>19</span><span><i class="D">D</i>6</span></div></div></div>
+<div class="two"><div class="panel block"><h3>Recent plays</h3>${RECENT.map(r=>`<div class="line">${cover(r[3])}<span class="tt"><b>${r[0]}</b><small class="${r[2]}"><span class="dl">${r[1]}</span> · ${r[5]}</small></span><span class="val"><span class="${r[4]}">${r[4]}</span><small>${r[6]}</small></span></div>`).join("")}</div>
+<div class="panel block"><h3>Best plays</h3>${BEST.map(r=>`<div class="line">${cover(r[3])}<span class="tt"><b>${r[0]}</b><small class="${r[2]}"><span class="dl">${r[1]}</span></small></span><span class="val">${r[5]} pp<small class="${r[4]}">${r[4]}</small></span></div>`).join("")}</div></div>`}
+const BOARD={server:[["Meowczelloo",190,"A","94.21%","512,300",1],["kuba",40,"A","92.10%","498,200"],["neko",320,"B","88.75%","441,000"],["dawid",120,"B","84.60%","402,500"],["ola",265,"C","77.31%","318,400"]],
+global:[["shiro",0,"S","98.40%","641,900"],["kuba",40,"S","96.12%","602,300"],["vex",265,"A","93.90%","560,800"],["luna",175,"A","91.44%","531,200"],["neko",320,"A","90.20%","520,700"],["ola",290,"B","87.55%","489,300"],["tomek",90,"B","85.01%","471,000"]]};
+function board(){const rows=BOARD[scope].map((p,i)=>`<div class="pl ${p[5]?"mine":""}" data-u="${p[0]}"><span class="rk">${i+1}</span>${av(p[0],p[1])}<span class="nm">${p[0]}</span><span class="gr ${p[2]}">${p[2]}</span><span class="r">${p[3]}</span><span class="s">${p[4]}</span></div>`).join("");
+ const pin=scope==="global"?`<div class="pl mine pin"><span class="rk">12</span>${av("Meowczelloo",190)}<span class="nm">Meowczelloo</span><span class="gr A">A</span><span class="r">94.21%</span><span class="s">512,300</span></div>`:"";
+ return `<div class="panel block board ${CLS[lv]}"><h3><span>Leaderboard · <span class="dl">${LV[lv]}</span></span><span class="seg"><button data-b="server" class="${scope==="server"?"on":""}">This server</button><button data-b="global" class="${scope==="global"?"on":""}">Global</button></span></h3><div class="rows">${rows}</div>${pin}</div>`}
+function detail(){const s=SONGS[song];return `<div class="mode"><span class="label">Selected song</span><button class="back" data-s="profile">← Profile</button></div>
+<div class="hero">${cover(s.h)}<div><span class="label">played 14×</span><h2>${s.t}</h2><div class="art">${s.a}</div><div class="chips"><span class="chip">${s.len}</span><span class="chip">${s.bpm} BPM</span><span class="chip">youtube</span><span class="chip">♪ Preview</span></div></div></div>
+<div class="diffs">${LV.map((l,k)=>`<button class="diff ${CLS[k]} ${lv===k?"on":""}" data-l="${k}"><b>${l}</b><small>★ ${s.st[k].toFixed(1)}</small><span class="bar"><i style="width:${Math.min(100,s.st[k]/8*100)}%"></i></span><small>${s.g[k]?`<b class="${s.g[k]}" style="font-size:12px">${s.g[k]}</b> your best`:"no score yet"}</small></button>`).join("")}</div>
+<div class="panel mods"><span class="label">Modifiers</span><span class="slot">soon</span><span class="slot">soon</span><span class="slot">soon</span><span class="slot">soon</span></div>
+${board()}`}
+const RANK=[["shiro",0,"2,104","95.2%"],["Meowczelloo",190,"1,248","86.4%",1],["kuba",40,"1,190","89.0%"],["vex",265,"1,003","90.7%"],["neko",320,"874","84.3%"],["luna",175,"716","88.1%"],["ola",290,"602","81.9%"],["dawid",120,"455","79.4%"]];
+function ranking(){return `${mode("rank")}<div class="panel block" style="flex:1"><h3><span>Global ranking</span><span class="seg"><button class="on">Global</button><button>This server</button></span></h3><div class="rankhead"><span style="text-align:right">#</span><span></span><span>Player</span><span style="text-align:right">Acc</span><span style="text-align:right">Rating</span></div>${RANK.map((p,i)=>`<div class="rk-row ${p[4]?"mine":""}" data-u="${p[0]}"><span class="n1">${i+1}</span>${av(p[0],p[1])}<span class="nm">${p[0]}</span><span class="acc">${p[3]}</span><span class="pp">${p[2]} pp</span></div>`).join("")}</div>`}
+function bind(){document.querySelectorAll("#left [data-s]").forEach(b=>b.onclick=()=>{if(b.dataset.me!==undefined||b.dataset.s==="rank")viewing=null;set(b.dataset.s)});
+ document.querySelectorAll("#left [data-u]").forEach(r=>r.onclick=()=>{viewing=PEOPLE[r.dataset.u]?r.dataset.u:null;set("profile")});
+ document.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>{lv=+b.dataset.l;render()});
+ document.querySelectorAll("[data-b]").forEach(b=>b.onclick=()=>{scope=b.dataset.b;render()})}
+function render(){document.getElementById("left").innerHTML=state==="profile"?profile():state==="song"?detail():state==="stats"?stats():ranking();list();bind();
+ document.querySelectorAll(".switch button").forEach(b=>b.classList.toggle("on",b.dataset.s===state&&(b.dataset.u||null)===viewing))}
+function set(s){state=s;render()}
+document.querySelectorAll(".switch button").forEach(b=>b.onclick=()=>{viewing=b.dataset.u||null;set(b.dataset.s)});
+render();
+</script>
+</body>
+</html>
