@@ -76,20 +76,55 @@ function onsetsOf(features) {
 }
 
 // How well the onsets from..to sit on a comb of period P: |sum w e^(2 pi i h t / P)| over harmonics 1, 2 and 4. The second
-// and fourth harmonic come from the first by doubling the angle, which saves most of the trigonometry.
+// and fourth harmonic come from the first by doubling the angle, which saves most of the trigonometry. Onsets of several
+// bands often share a time: the angle's cosine and sine are taken once for such a run (the same numbers, summed in the same order).
 function combScore(on, from, to, P) {
   const k = TAU / P;
   let re1 = 0, im1 = 0, re2 = 0, im2 = 0, re4 = 0, im4 = 0;
+  let at = NaN, c1 = 0, s1 = 0, c2 = 0, s2 = 0, c4 = 0, s4 = 0;
   for (let i = from; i < to; i++) {
-    const x = k * on.t[i], w = on.w[i];
-    const c1 = Math.cos(x), s1 = Math.sin(x);
-    const c2 = c1 * c1 - s1 * s1, s2 = 2 * s1 * c1;
-    const c4 = c2 * c2 - s2 * s2, s4 = 2 * s2 * c2;
+    const t = on.t[i], w = on.w[i];
+    if (t !== at) {
+      at = t;
+      const x = k * t;
+      c1 = Math.cos(x); s1 = Math.sin(x);
+      c2 = c1 * c1 - s1 * s1; s2 = 2 * s1 * c1;
+      c4 = c2 * c2 - s2 * s2; s4 = 2 * s2 * c2;
+    }
     re1 += w * c1; im1 += w * s1;
     re2 += w * c2; im2 += w * s2;
     re4 += w * c4; im4 += w * s4;
   }
   return Math.hypot(re1, im1) * 0.5 + Math.hypot(re2, im2) + Math.hypot(re4, im4);
+}
+
+// combScore of several overlapping windows [from[w], to[w]) at one period, the angles of the onsets taken once for all of
+// them (a window of the tempogram shares three quarters of its onsets with the next ones). `sums` of a window of weight 0 is 0.
+function combScores(on, froms, tos, P, trig) {
+  const k = TAU / P, lo = froms[0], hi = tos[tos.length - 1];
+  let at = NaN, c1 = 0, s1 = 0, c2 = 0, s2 = 0, c4 = 0, s4 = 0;
+  for (let i = lo; i < hi; i++) {
+    const t = on.t[i];
+    if (t !== at) {
+      at = t;
+      const x = k * t;
+      c1 = Math.cos(x); s1 = Math.sin(x);
+      c2 = c1 * c1 - s1 * s1; s2 = 2 * s1 * c1;
+      c4 = c2 * c2 - s2 * s2; s4 = 2 * s2 * c2;
+    }
+    const o = (i - lo) * 6;
+    trig[o] = c1; trig[o + 1] = s1; trig[o + 2] = c2; trig[o + 3] = s2; trig[o + 4] = c4; trig[o + 5] = s4;
+  }
+  return froms.map((from, w) => {
+    let re1 = 0, im1 = 0, re2 = 0, im2 = 0, re4 = 0, im4 = 0;
+    for (let i = from; i < tos[w]; i++) {
+      const o = (i - lo) * 6, wt = on.w[i];
+      re1 += wt * trig[o]; im1 += wt * trig[o + 1];
+      re2 += wt * trig[o + 2]; im2 += wt * trig[o + 3];
+      re4 += wt * trig[o + 4]; im4 += wt * trig[o + 5];
+    }
+    return Math.hypot(re1, im1) * 0.5 + Math.hypot(re2, im2) + Math.hypot(re4, im4);
+  });
 }
 
 const bestIndex = (values) => values.reduce((best, x, i) => (x > values[best] ? i : best), 0);
@@ -129,13 +164,24 @@ function tempoStretches(on, P0, startMs, endMs) {
   const steps = Math.round(COARSE_SPAN / COARSE_STEP);
   const periods = [];
   for (let j = -steps; j <= steps; j++) periods.push(P0 * Math.exp(j * COARSE_STEP));
-  const starts = [], windows = [];
+  const starts = [], froms = [], tos = [], sums = [];
   for (let a = startMs; a + HOP_MS < endMs; a += HOP_MS) {
     const from = lowerBound(on.t, a), to = lowerBound(on.t, a + WINDOW_MS);
     let sum = 0;
     for (let i = from; i < to; i++) sum += on.w[i];
     starts.push(a);
-    windows.push(periods.map((P) => (sum > 0 ? combScore(on, from, to, P) / sum / 2.5 : 0))); // 1: every onset on the comb
+    froms.push(from);
+    tos.push(to);
+    sums.push(sum);
+  }
+  // windows[w][j]: window w's comb score at period j, 1 when every onset sits on the comb. The angles are taken once per period.
+  const windows = starts.map(() => new Array(periods.length));
+  if (starts.length) {
+    const trig = new Float64Array(6 * Math.max(0, tos[tos.length - 1] - froms[0]));
+    periods.forEach((P, j) => {
+      const scores = combScores(on, froms, tos, P, trig);
+      for (let w = 0; w < starts.length; w++) windows[w][j] = sums[w] > 0 ? scores[w] / sums[w] / 2.5 : 0;
+    });
   }
   if (!windows.length) return [{ a: startMs, b: endMs, P: P0 }];
   const path = tempoPath(windows, periods, P0);
