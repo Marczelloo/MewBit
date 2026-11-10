@@ -6,6 +6,7 @@
 const {
   COPY_MELODY,
   EASY_SAME_CUTS,
+  FADE_FALLS,
   FAST_RUNS,
   FILL_FLOOR,
   FREE_TIME,
@@ -40,6 +41,8 @@ const FLAGS = {
   copyMelody: { label: "Normal: powtórka bez kopii, gdy kopia gubi melodię", levels: { normal: { copyMelody: COPY_MELODY } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
+  // Normal: a quiet ending that plays on at one loudness is not a fade-out, and keeps its notes (fades.js fadeOutOf).
+  fadeFalls: { label: "Normal: ciche zakończenie o równej głośności nie jest wyciszeniem (bez przerzedzania nut)", levels: { normal: { fadeOut: FADE_FALLS } } },
   // Normal: the bursts of melodyRuns also where a quarter beat is under 100 ms, gaps from 70 ms (generate.js finish).
   fastRuns: { label: "Normal: krótkie serie szybkiej melodii także w szybkich utworach (ćwierć bitu poniżej 100 ms, odstęp w serii od 70 ms)", levels: { normal: { fastRuns: FAST_RUNS } } },
   // Normal: a long stretch or a rest is not filled with a barely audible sound (selection.js selectMoments).

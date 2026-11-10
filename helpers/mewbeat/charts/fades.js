@@ -10,13 +10,26 @@ const SILENT = 0.05; // the song's sound ends where the energy stays under this
 
 const fades = new WeakMap();
 
+// Whether the mean energy of the last third of a stretch is under `share` of its first third's.
+function falls(at, { startMs, endMs }, share) {
+  const third = (endMs - startMs) / 3;
+  const mean = (from) => {
+    let sum = 0, count = 0;
+    for (let t = from; t < from + third; t += STEP_MS, count++) sum += at(t);
+    return count > 0 ? sum / count : 0;
+  };
+  return mean(endMs - third) < share * mean(startMs);
+}
+
 // fadeOutOf(ctx, rule) -> { startMs, endMs } | null
 // From the song's last moment at rule.loud or louder to its last sound, when that is at least rule.minSec long and under
 // rule.quiet half a second before the sound ends. With rule.from it starts only where the energy first falls under that:
-// a slow fade that keeps playing almost loud for a while (Bad Piggies 2:19-2:24) keeps its notes there.
+// a slow fade that keeps playing almost loud for a while (Bad Piggies 2:19-2:24) keeps its notes there. With rule.falls it is
+// a fade-out only when the energy falls through it: its last third under that share of its first. A quiet ending that plays
+// on as loud as it began is a part of the song, not a fade.
 function fadeOutOf(ctx, rule) {
   if (!fades.has(ctx)) fades.set(ctx, new Map());
-  const key = `${rule.loud}:${rule.quiet}:${rule.minSec}:${rule.from}`;
+  const key = `${rule.loud}:${rule.quiet}:${rule.minSec}:${rule.from}:${rule.falls}`;
   const cache = fades.get(ctx);
   if (!cache.has(key)) {
     const at = (t) => ctx.energy.at(t);
@@ -28,7 +41,7 @@ function fadeOutOf(ctx, rule) {
     if (rule.from !== undefined) while (start < last && at(start) >= rule.from) start += STEP_MS;
     // a song never that loud has no fade-out: it is quiet all through
     const fade = loud > 0 && last - loud >= rule.minSec * 1000 && at(last - 500) < rule.quiet ? { startMs: start, endMs: last } : null;
-    cache.set(key, fade);
+    cache.set(key, fade && rule.falls !== undefined && !falls(at, fade, rule.falls) ? null : fade);
   }
   return cache.get(key);
 }

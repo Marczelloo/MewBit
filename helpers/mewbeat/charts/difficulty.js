@@ -244,6 +244,12 @@ const FLAT_LOUD = { fromBpm: 145, ref: 0.7 };
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
 const FADE_OUT = { loud: 0.6, from: 0.5, quiet: 0.35, minSec: 4, keep: 0.5, barBeats: 4, hold: { minBeats: 1, releaseBeats: 0.5, lastBeats: 2 } };
+// fades.js fadeOutOf (generator flag fadeFalls, Normal and the levels built on it): the end of a song is a fade-out only when
+// its energy falls, the last third under `falls` of the first. Asked for by ear (MEGALOVANIA 2:24-2:36: "a gap although the
+// notes play on"): the riff comes back quieter and plays at one loudness to the end (thirds .21 .22 .21), and the fade-out
+// took every other note of it, 9 moments in two seconds down to 4. Of the bot's 31 songs with a fade-out 9 end like that
+// (last third .90 of the first or more); the 22 that fade sit at .13 to .62.
+const FADE_FALLS = { ...FADE_OUT, falls: 0.7 };
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -637,6 +643,7 @@ module.exports = {
   EASY_FIGURES,
   EASY_FROM_NORMAL,
   EASY_SAME_CUTS,
+  FADE_FALLS,
   FADE_OUT,
   FAST_RUNS,
   FELT_TEMPO,

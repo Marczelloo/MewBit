@@ -180,6 +180,34 @@ klawisza; Normal pozwala długiemu holdowi biec pod rzadkimi nutami drugiej ręk
 
 Zestaw 4 w bocie: zestaw 3 + `freeTime`.
 
+### Ciche zakończenie to nie wyciszenie: `fadeFalls`
+
+Po odsłuchu zestawu 4: „w MEGALOVANII w dalszej części znowu była przerwa, chociaż nuty w piosence grały normalnie".
+
+Przyczyna: reguła wyciszenia (`fadeOut`). Od 2:24 do końca (2:36) piosenka gra cicho, ale równo: energia spada z 0,58
+do 0,21 i zostaje na tym poziomie (trzecie części końcówki: 0,21, 0,22, 0,21), a riff gra dalej (45 nut linii). Reguła
+uznała to za wyciszenie i zdjęła połowę nut z każdego taktu: 22 nuty Normala, z 9 na 4 bloczki na dwie sekundy.
+
+Flaga `fadeFalls`: zakończenie jest wyciszeniem tylko wtedy, gdy jego energia naprawdę opada (ostatnia trzecia część
+poniżej 0,7 pierwszej). Z 31 piosenek bota z wykrytym wyciszeniem 9 kończy się równo (stosunek 0,90 lub więcej), a 22
+prawdziwe wyciszenia mają 0,13–0,62, więc próg 0,7 leży w pustym miejscu między nimi.
+
+| MEGALOVANIA | bez flagi | z flagą |
+|---|---|---|
+| Normal, wszystkie momenty | 662 | 684 |
+| Normal, momenty po 2:24 | 25 | 47 |
+| Hard / Hell, wszystkie | 821 / 1124 | 846 / 1147 |
+| Easy | 336 | 336 |
+| Normal, dziury (z holdami) | 10 | 4 |
+| nuty linii zagrane | 90,5% | 94,9% |
+
+Korpus: F1 bez zmian (Easy 72,7, Normal 79,1, Hard 80,9). Rush E, Remix i Finale nuta w nutę takie same. Zmienia się
+9 piosenek bota: MEGALOVANIA, parodia Frozen, Hyper Spoiler, SANAH, Exit This Earth (Camellia), Puma Maciury i trzy
+inne. Cztery dziury, które zostają w Normalu MEGALOVANII (0:47,9, 1:03,9–1:04,9, 2:07,4), mają dokładnie jedno uderzenie
+i leżą w spadkach energii albo na granicy budżetu.
+
+Zestaw 5 w bocie: zestaw 4 + `fadeFalls`.
+
 ## Jak włączyć
 
 Jak w nocnym raporcie: dołączyć `feat/mewbeat-melody` do `feat/mewbeat`, potem dopisać nazwę flagi do
