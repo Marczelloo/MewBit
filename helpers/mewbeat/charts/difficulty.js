@@ -108,6 +108,12 @@ const TWO_KEY_TRILL = { minNotes: 4, maxGapBeats: 0.6, weight: 3 };
 // for by ear, as Normal hardly sped up with the music (train speed-ups per minute: people 26, Normal 17). Train F1 .8035
 // -> .8041.
 const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
+// selection.js farMoments, melodyPick.js withMelodySnap (generator flag melodySnap, Normal only): snappedMoments drops a sound
+// more than MAX_SNAP_DISTANCE_MS from its quarter-beat grid point, and 6.8% of the decoded melody's notes (72 songs; Rush E 40
+// of 514) have their sound dropped that way: at 162 BPM a quarter beat is 93 ms, so a sound is only 35-46 ms from a grid point.
+// With this a sound on a melody note may reach its grid point from up to `maxMs` (half a quarter beat is the geometric limit)
+// if the point holds no moment of its own.
+const MELODY_SNAP = { maxMs: 60 };
 // laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
 // single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
 // asks for one lane (a step of the scale), two from `twoLanes` semitones, three from `threeLanes` (and a beat for the leap);
@@ -604,6 +610,7 @@ module.exports = {
   MELODY_PICK,
   MELODY_RUNS,
   MELODY_SHIFT_PICK,
+  MELODY_SNAP,
   MINI_RESTS,
   NORMAL_HOLDS,
   PITCH_LANES,

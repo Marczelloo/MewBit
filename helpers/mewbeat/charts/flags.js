@@ -12,6 +12,7 @@ const {
   MELODY_KEEP,
   MELODY_LINES,
   MELODY_SHIFT_PICK,
+  MELODY_SNAP,
   PITCH_LANES,
   PLUS_MELODY,
   RUN_LANES,
@@ -48,6 +49,8 @@ const FLAGS = {
   melodyLines: { label: "Normal: trzyma linie melodii (dobre linie z dekodera wchodzą pierwsze, rozrzedzone do kroku poziomu)", levels: { normal: { melodyLines: MELODY_LINES } } },
   // Normal: the decoded melody is moved to where it meets the song's sounds best (generate.js pickedMelodyShift).
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
+  // Normal: a sound on a melody note may reach its quarter-beat grid point from up to 60 ms instead of being dropped (selection.js farMoments).
+  melodySnap: { label: "Normal: dźwięk na nucie melodii dochodzi do siatki z dalsza, do 60 ms, zamiast wypaść", levels: { normal: { melodySnap: MELODY_SNAP } } },
   // Normal: the lane moves the way the melody's pitch moves, by about as much (laneRules.js pitchCost). Lanes only: no note moves in time.
   pitchLanes: { label: "Normal: tor idzie za wysokością melodii (wyżej = w prawo)", levels: { normal: { pitchLanes: PITCH_LANES } } },
   // Hard, Hell: an extra on a note of the decoded melody scores more (generate.js plusNotes).

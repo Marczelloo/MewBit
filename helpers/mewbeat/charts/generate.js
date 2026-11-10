@@ -11,7 +11,7 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { heldLineMoments } = require("./melodyLines");
-const { ranks, withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
+const { ranks, withMelody, withMelodyRuns, withMelodySnap, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
@@ -27,7 +27,7 @@ const { accentSections, openWithFirstSound, sectionStarts } = require("./section
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { holdFadeOut, thinFadeOut } = require("./fades");
-const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, farMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -199,11 +199,14 @@ function scoredFor(ctx, diff) {
   ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
   const byScored = ctx.melodyScored.get(melody);
   // diff.melodyRuns (a flag): the moments where the melody runs fast are marked, for finish to add
-  const key = diff.melodyRuns ? "runs" : "plain";
+  // diff.melodySnap (a flag): and the sounds on a melody note that snappedMoments drops for their distance come in at their grid
+  // point, so this `scored` is a longer array than the snapped one and has a key of its own
+  const key = (diff.melodyRuns ? "runs" : "plain") + (diff.melodySnap ? `|snap${diff.melodySnap.maxMs}` : "");
   byScored.has(scored) || byScored.set(scored, {});
   const cached = byScored.get(scored);
   if (!cached[key]) {
-    const picked = withMelody(scored, melody, diff.melodyPick);
+    const offered = diff.melodySnap ? withMelodySnap(scored, farMoments(ctx, diff.scoreLevel, diff.feltTempo, diff.melodySnap.maxMs), melody) : scored;
+    const picked = withMelody(offered, melody, diff.melodyPick);
     cached[key] = diff.melodyRuns ? withMelodyRuns(picked, melody, diff.melodyRuns) : picked;
   }
   return cached[key];

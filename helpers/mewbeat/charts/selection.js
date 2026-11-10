@@ -155,6 +155,28 @@ function snappedMoments(ctx, level, felt = null) {
   return (ctx.snappedMoments[key] = [...onGrid.values()].sort(byTime));
 }
 
+// farMoments(ctx, level, felt, maxMs) -> the moments snappedMoments drops, and only for their distance: under a trusted grid,
+// further than MAX_SNAP_DISTANCE_MS but at most maxMs from the nearest grid point. They come as snappedMoments makes its own
+// ({ ...c, t: the grid point, raw: c.t }; metric and down stay those of the time as measured, as they do there), time-ordered
+// by their sound; nothing without a snapped grid, where nothing is dropped. The caller decides which of them to take
+// (melodyPick.js withMelodySnap). Kept on the ctx per maxMs.
+function farMoments(ctx, level, felt, maxMs) {
+  const { timing } = ctx;
+  if (!timing?.snapped) return [];
+  ctx.farMoments ??= {};
+  const key = `${scoreKey(level, felt)}|${maxMs}`;
+  if (ctx.farMoments[key]) return ctx.farMoments[key];
+  const grid = timing.gridPoints(GRID_DIVISION);
+  const far = [];
+  for (const c of scoreMoments(ctx, level, felt)) {
+    const i = nearestIndex(grid, c.t);
+    const trusted = i >= 0 && timing.intervalOk(c.t) && timing.intervalOk(grid[i]);
+    const away = trusted ? Math.abs(grid[i] - c.t) : 0;
+    if (away > MAX_SNAP_DISTANCE_MS && away <= maxMs) far.push({ ...c, t: grid[i], raw: c.t });
+  }
+  return (ctx.farMoments[key] = far);
+}
+
 // --- the budget of a phrase ----------------------------------------------------------------
 
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -565,4 +587,4 @@ function plusFigures(scored, occupied, room, diff, timing, fromMs, toMs) {
   return chosen.sort(byTime);
 }
 
-module.exports = { audibleOf, extraMoments, gapOf, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
+module.exports = { audibleOf, extraMoments, farMoments, gapOf, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
