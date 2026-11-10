@@ -114,6 +114,11 @@ const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
 // With this a sound on a melody note may reach its grid point from up to `maxMs` (half a quarter beat is the geometric limit)
 // if the point holds no moment of its own.
 const MELODY_SNAP = { maxMs: 60 };
+// generate.js finish (generator flag fastRuns, Normal only, with melodyRuns): over about 150 BPM a quarter beat is under the
+// 100 ms of MELODY_RUNS.minGapMs and of Normal's minNoteGapMs (Rush E 93 ms, Finale 79 ms; 36 of 75 songs), so the bursts of
+// melodyRuns could never appear there: withRunNotes asks `minGapMs` of its notes instead, and spacedMoments and the final
+// floors let a gap that short stand. Every other note of Normal keeps 100 ms from the selection on.
+const FAST_RUNS = { minGapMs: 70 };
 // laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
 // single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
 // asks for one lane (a step of the scale), two from `twoLanes` semitones, three from `threeLanes` (and a beat for the leap);
@@ -595,6 +600,7 @@ module.exports = {
   EASY_FROM_NORMAL,
   EASY_SAME_CUTS,
   FADE_OUT,
+  FAST_RUNS,
   FELT_TEMPO,
   FIGURES,
   FLAT_LOUD,

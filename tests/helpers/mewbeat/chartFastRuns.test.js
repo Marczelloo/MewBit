@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, INTERNAL_LEVELS, MAX_SNAP_DISTANCE_MS, MELODY_SNAP } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, FAST_RUNS, INTERNAL_LEVELS, MAX_SNAP_DISTANCE_MS, MELODY_RUNS, MELODY_SNAP } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { withMelodySnap } = require("../../../helpers/mewbeat/charts/melodyPick");
@@ -10,6 +10,7 @@ const { makeLayeredFeatures } = require("./fixtures");
 
 const notesOf = (features, flags) => generateAll(features, "k", flags).normal.notes;
 const timesOf = (notes) => [...new Set(notes.map((n) => n.t))];
+const gapsOf = (notes) => timesOf(notes).map((t, i, all) => t - all[i - 1]).slice(1);
 const withLine = (features, line) => ({ ...features, decodedMelody: line, decodedMelodyTuned: line });
 
 const noLevelHas = (param) => {
@@ -87,5 +88,77 @@ describe("a sound on a melody note may reach the grid from further away (flag me
     assert.deepEqual(notesOf(features, ["melodySnap"]), notesOf(features));
     const onGrid = withLine(features, snappedMoments(analyse(features), "normal").map((m) => ({ t: m.t, pitch: 60 })));
     assert.deepEqual(notesOf(onGrid, ["melodySnap"]), notesOf(onGrid));
+  });
+});
+
+describe("the bursts of a fast melody where a quarter beat is under 100 ms (flag fastRuns)", () => {
+  // A melody on every sixteenth of the song, which is fast at any tempo: every moment on it may start a burst.
+  const fastLine = (bpm) => {
+    const sixteenth = 60000 / bpm / 4;
+    return Array.from({ length: Math.floor(120000 / sixteenth) }, (_, i) => ({ t: Math.round(i * sixteenth), pitch: 60 + ((i * 7) % 9) }));
+  };
+  const song = (bpm) => withLine(makeLayeredFeatures({ bpm, durationMs: 128000 }), fastLine(bpm));
+  const chains = (notes) => {
+    const times = timesOf(notes);
+    const out = [];
+    for (let i = 0, start = 0; i < times.length; i++) {
+      if (i > 0 && times[i] - times[i - 1] >= MELODY_RUNS.minGapMs) start = i;
+      (out[start] ??= []).push(times[i]);
+    }
+    return out.filter(Boolean);
+  };
+
+  it("is a flag of Normal, and no level has it without the flag", () => {
+    assert.deepEqual(FLAGS.fastRuns.levels, { normal: { fastRuns: FAST_RUNS } });
+    noLevelHas("fastRuns");
+  });
+
+  it("puts bursts at 180 BPM (a quarter beat is 83 ms) that the plain generator cannot", () => {
+    const features = song(180);
+    const plain = notesOf(features), fast = notesOf(features, ["fastRuns"]);
+    assert.ok(gapsOf(plain).every((g) => g >= MELODY_RUNS.minGapMs));
+    const short = gapsOf(fast).filter((g) => g < MELODY_RUNS.minGapMs);
+    assert.ok(short.length > 20, `${short.length} short gaps`);
+    assert.ok(Math.min(...gapsOf(fast)) >= FAST_RUNS.minGapMs);
+    // a burst is at most maxRun short gaps (maxRun + 1 moments); its notes sit on different lanes, a lane coming back only
+    // after the lane gap (a burst of four notes spans 250 ms)
+    const laneGap = DIFFICULTIES.normal.minLaneGapMs;
+    for (const chain of chains(fast)) {
+      assert.ok(chain.length <= MELODY_RUNS.maxRun + 1, `${chain.length} moments in a row`);
+      const inChain = fast.filter((n) => chain.includes(n.t));
+      for (const a of inChain) {
+        for (const b of inChain) if (a !== b && a.lane === b.lane) assert.ok(Math.abs(a.t - b.t) >= laneGap, `lane ${a.lane} at ${a.t} and ${b.t}`);
+      }
+      for (let i = 1; i < chain.length; i++) {
+        const before = new Set(fast.filter((n) => n.t === chain[i - 1]).map((n) => n.lane));
+        assert.ok(fast.filter((n) => n.t === chain[i]).every((n) => !before.has(n.lane)), `a lane repeated at ${chain[i]}`);
+      }
+    }
+    assert.ok(chains(fast).some((chain) => chain.length >= 3), "no burst of three moments");
+    // everything the plain chart plays is still there but for what the bursts displace
+    const kept = new Set(timesOf(fast));
+    assert.ok(timesOf(plain).filter((t) => kept.has(t)).length > 0.9 * timesOf(plain).length);
+  });
+
+  it("changes nothing where a quarter beat is over 100 ms (120 BPM)", () => {
+    const features = song(120);
+    assert.deepEqual(notesOf(features, ["fastRuns"]), notesOf(features));
+    assert.ok(timesOf(notesOf(features)).length > 100);
+  });
+
+  it("changes nothing without a decoded melody, for either flag", () => {
+    for (const bpm of [180, 120]) {
+      const features = makeLayeredFeatures({ bpm, durationMs: 128000 });
+      for (const flag of ["fastRuns", "melodySnap"]) assert.deepEqual(notesOf(features, [flag]), notesOf(features), `${flag} at ${bpm}`);
+    }
+  });
+
+  it("is a no-op for the floors without melodyRuns", () => {
+    const saved = DIFFICULTIES.normal.melodyRuns;
+    DIFFICULTIES.normal.melodyRuns = undefined;
+    try {
+      const features = song(180);
+      assert.deepEqual(notesOf(features, ["fastRuns"]), notesOf(features));
+    } finally { DIFFICULTIES.normal.melodyRuns = saved; }
   });
 });

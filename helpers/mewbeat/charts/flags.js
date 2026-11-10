@@ -6,6 +6,7 @@
 const {
   COPY_MELODY,
   EASY_SAME_CUTS,
+  FAST_RUNS,
   HARD_HOLDS,
   HEARD_CHORDS,
   MELODY_DUEL,
@@ -37,6 +38,8 @@ const FLAGS = {
   copyMelody: { label: "Normal: powtórka bez kopii, gdy kopia gubi melodię", levels: { normal: { copyMelody: COPY_MELODY } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
+  // Normal: the bursts of melodyRuns also where a quarter beat is under 100 ms, gaps from 70 ms (generate.js finish).
+  fastRuns: { label: "Normal: krótkie serie szybkiej melodii także w szybkich utworach (ćwierć bitu poniżej 100 ms, odstęp w serii od 70 ms)", levels: { normal: { fastRuns: FAST_RUNS } } },
   // Hard: its own holds on sustains and rests, let go with the sound (generate.js plusNotes). Hell, built on Hard, follows.
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).

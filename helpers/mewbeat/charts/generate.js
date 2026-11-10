@@ -563,11 +563,17 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const settled = diff.restBridge
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
-  const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
+  // diff.fastRuns (a flag, with melodyRuns): over about 150 BPM a quarter beat is under 100 ms, the gap withRunNotes asks and
+  // the note gap spacedMoments and the final floors keep, so no burst could stand there. The burst asks fastRuns.minGapMs
+  // instead and those two floors let a gap that short stand. Every other note was chosen 100 ms from its neighbours. The lane
+  // stages keep their own 150 ms lane gap, so the notes of a burst fall on different lanes (a lane returns after 150 ms).
+  const bursts = diff.melodyRuns && diff.fastRuns;
+  const burstGap = bursts ? { ...diff, minNoteGapMs: Math.min(diff.minNoteGapMs ?? Infinity, bursts.minGapMs) } : diff;
+  const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, bursts ? { ...diff.melodyRuns, minGapMs: bursts.minGapMs } : diff.melodyRuns)) : settled;
   const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin, melodyMoments(ctx, diff))) : ran;
   const hushed = diff.dipSilence ? step("dipSilence", dipped, silentUpper(dipped, ctx, diff.dipSilence)) : dipped;
   const thinned = diff.drumless ? step("drumless", hushed, thinDrumless(hushed, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : hushed;
-  const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
+  const spaced = step("spacedMoments", thinned, spacedMoments(thinned, burstGap));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const shared = step("holdShare", floored, ctx.phrases.length === 0
@@ -593,7 +599,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
-  const final = step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing));
+  const final = step("finalFloors", faded, enforceFloors(faded, burstGap, ctx.timing));
   if (!(diff.sameCuts && diff.cutFrom)) return final;
   const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);
   return step("sameCuts", final, sameCuts(final, above, ctx.timing, diff.sameCuts));
