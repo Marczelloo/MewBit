@@ -1,11 +1,15 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, HEARD_CHORDS, INTERNAL_LEVELS, MELODY_SHIFT_PICK, PLUS_MELODY } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, HEARD_CHORDS, INTERNAL_LEVELS, MELODY_KEEP, MELODY_SHIFT_PICK, PLUS_MELODY } = require("../../../helpers/mewbeat/charts/difficulty");
+const { thinDips } = require("../../../helpers/mewbeat/charts/dips");
+const { fadeOutOf, thinFadeOut } = require("../../../helpers/mewbeat/charts/fades");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { thinned } = require("../../../helpers/mewbeat/charts/localThin");
 const { snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
-const { makeLayeredFeatures } = require("./fixtures");
+const { buildTiming } = require("../../../helpers/mewbeat/charts/timing");
+const { makeFeatures, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const notesOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "k", flags)).map(([level, chart]) => [level, chart.notes]));
@@ -107,5 +111,57 @@ describe("chords only where several pitches begin (flag heardChords)", () => {
 
   it("chords stay where several pitches begin, and where the pitched line does not carry the phrase", () => {
     for (const features of [heard(2), heard(3), heard(1, (m) => m.t % 1000 < 500)]) assert.deepEqual(notesOf(features, ["heardChords"]), notesOf(features));
+  });
+});
+
+describe("thinning leaves the notes of the melody (flag melodyKeep)", () => {
+  const BEAT = 500;
+  const every = (ms, fromMs, toMs) => Array.from({ length: Math.ceil((toMs - fromMs) / ms) }, (_, i) => ({ t: fromMs + i * ms, lane: 0 }));
+  const times = (notes) => notes.map((n) => n.t);
+
+  it("is a flag of Normal, and no level has it without the flag", () => {
+    assert.deepEqual(FLAGS.melodyKeep.levels, { normal: { melodyKeep: MELODY_KEEP } });
+    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.melodyKeep, undefined);
+  });
+
+  it("changes nothing in a song with no decoded melody", () => {
+    const features = makeLayeredFeatures();
+    assert.deepEqual(notesOf(features, ["melodyKeep"]), notesOf(features));
+  });
+
+  it("a slower stretch gives up its other moments first, and the melody's only when it has no other", () => {
+    const timing = { beats: Array.from({ length: 200 }, (_, i) => i * BEAT), snapped: true, beatMsAt: () => BEAT, medianMs: BEAT };
+    const notes = every(250, 0, 10001), half = new Array(10).fill(0.5);
+    // the melody plays off the beat: without the flag those are the moments that go
+    const melody = new Set(times(notes).filter((t) => t % BEAT !== 0));
+    assert.ok(thinned(notes, half, timing).every((n) => !melody.has(n.t)));
+    const after = thinned(notes, half, timing, Infinity, melody);
+    assert.ok(after.length < notes.length - 15, `${after.length}`);
+    assert.equal(after.filter((n) => melody.has(n.t)).length, melody.size);
+    // every moment on the melody: the same ones go as without it
+    assert.deepEqual(thinned(notes, half, timing, Infinity, new Set(times(notes))), thinned(notes, half, timing));
+  });
+
+  it("a melody note stays through a dip of the music", () => {
+    const values = Array.from({ length: 20 }, (_, i) => (i === 8 || i === 9 ? 0.4 : 0.8));
+    const ctx = { features: { energy: { hopMs: 500, values } }, timing: { beats: Array.from({ length: 21 }, (_, i) => i * BEAT) }, onsets: Array.from({ length: 40 }, (_, i) => ({ t: i * 250, s: 0.8 })) };
+    const notes = [3750, 4000, 4250, 4500, 4750, 5250].map((t) => ({ t, lane: 0 }));
+    const rule = DIFFICULTIES.normal.dipThin;
+    assert.deepEqual(times(thinDips(notes, ctx, rule)), [3750, 4000, 4500, 5250]);
+    assert.deepEqual(times(thinDips(notes, ctx, rule, new Set([4250]))), [3750, 4000, 4250, 4500, 5250]);
+  });
+
+  it("the fade-out keeps a melody note before a moment on the beat", () => {
+    const duration = 64000;
+    const fading = (t) => (t < 50000 ? 0.8 : Math.max(0, (0.8 * (60000 - t)) / 10000));
+    const ctx = { timing: buildTiming(makeFeatures({ durationMs: duration }), duration), phrases: [], durationMs: duration, energy: { at: fading }, eventTimes: [], onsets: [] };
+    const rule = DIFFICULTIES.normal.fadeOut;
+    const notes = every(BEAT / 2, 40000, 59000);
+    const { startMs } = fadeOutOf(ctx, rule);
+    const offBeat = new Set(times(notes).filter((t) => t >= startMs && t % BEAT !== 0));
+    assert.ok(thinFadeOut(notes, ctx, rule).every((n) => !offBeat.has(n.t)));
+    const after = thinFadeOut(notes, ctx, rule, offBeat);
+    assert.equal(after.length, thinFadeOut(notes, ctx, rule).length);
+    assert.ok(after.filter((n) => n.t >= startMs).every((n) => offBeat.has(n.t)));
   });
 });

@@ -35,8 +35,9 @@ function fadeOutOf(ctx, rule) {
 
 // thinFadeOut(notes, ctx, rule) -> notes
 // In the fade-out rule.keep of the moments stay: a moment with a hold first, then by its place in the bar (downbeat,
-// beat, half beat, finer), then the stronger sound, then the earlier one.
-function thinFadeOut(notes, ctx, rule) {
+// beat, half beat, finer), then the stronger sound, then the earlier one. A moment of `kept` (a set of times, or null) comes
+// right after the held ones.
+function thinFadeOut(notes, ctx, rule, kept = null) {
   const fade = fadeOutOf(ctx, rule);
   if (!fade) return notes;
   const inside = groupByTime(notes).filter((m) => m[0].t >= fade.startMs && m[0].t < fade.endMs);
@@ -55,8 +56,8 @@ function thinFadeOut(notes, ctx, rule) {
   for (const group of groups) {
     const keep = Math.ceil(group.length * rule.keep);
     const ranked = group
-      .map((m) => ({ t: m[0].t, held: m.some((n) => n.len > 0) ? 0 : 1, slot: slotRank(ctx.timing, m[0].t), heard: strengthAt(ctx, m[0].t) ?? 0 }))
-      .sort((a, b) => a.held - b.held || a.slot - b.slot || b.heard - a.heard || a.t - b.t);
+      .map((m) => ({ t: m[0].t, held: m.some((n) => n.len > 0) ? 0 : 1, kept: kept?.has(m[0].t) ? 0 : 1, slot: slotRank(ctx.timing, m[0].t), heard: strengthAt(ctx, m[0].t) ?? 0 }))
+      .sort((a, b) => a.held - b.held || a.kept - b.kept || a.slot - b.slot || b.heard - a.heard || a.t - b.t);
     for (const r of ranked.slice(keep)) dropped.add(r.t);
   }
   return dropped.size === 0 ? notes : notes.filter((n) => !dropped.has(n.t));

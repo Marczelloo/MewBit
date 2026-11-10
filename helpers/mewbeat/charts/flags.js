@@ -3,7 +3,7 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
-const { EASY_SAME_CUTS, HARD_HOLDS, HEARD_CHORDS, MELODY_SHIFT_PICK, PLUS_MELODY } = require("./difficulty");
+const { EASY_SAME_CUTS, HARD_HOLDS, HEARD_CHORDS, MELODY_KEEP, MELODY_SHIFT_PICK, PLUS_MELODY } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
@@ -26,6 +26,8 @@ const FLAGS = {
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
+  // Normal: thinning a slower stretch, an energy dip or the fade-out leaves the notes of the decoded melody (generate.js melodyMoments).
+  melodyKeep: { label: "Normal: przerzedzanie oszczędza nuty melodii", levels: { normal: { melodyKeep: MELODY_KEEP } } },
   // Normal: the decoded melody is moved to where it meets the song's sounds best (generate.js pickedMelodyShift).
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
   // Hard, Hell: an extra on a note of the decoded melody scores more (generate.js plusNotes).

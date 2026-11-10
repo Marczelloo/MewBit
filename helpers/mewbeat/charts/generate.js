@@ -212,6 +212,18 @@ function budgetOf(ctx, phrase, diff) {
   return Math.max(own, below);
 }
 
+// diff.melodyKeep (a flag): the moments on a note of the decoded melody, as the level scores them, which the stages that thin
+// a slower stretch, an energy dip or the fade-out take last or leave; null without the flag or a melody.
+function melodyMoments(ctx, diff) {
+  if (!diff.melodyKeep) return null;
+  ctx.melodyMoments ??= new Map();
+  if (!ctx.melodyMoments.has(diff)) {
+    const on = scoredFor(ctx, diff).filter((m) => m.melody).map((m) => m.t);
+    ctx.melodyMoments.set(diff, on.length > 0 ? new Set(on) : null);
+  }
+  return ctx.melodyMoments.get(diff);
+}
+
 // Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
 function keptShare(ctx, diff) {
   ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
@@ -223,7 +235,7 @@ function keptShare(ctx, diff) {
 function followingTheMusic(ctx, notes, phrase, diff) {
   if (!diff.localThin || isFlatLoud(ctx, diff)) return notes;
   const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
-  return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below));
+  return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff));
 }
 
 // How calm the music is at a time (calm.js), the same for every level; null where the level's holds do not read it.
@@ -491,7 +503,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, diff.melodyRuns)) : settled;
-  const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin)) : ran;
+  const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin, melodyMoments(ctx, diff))) : ran;
   const hushed = diff.dipSilence ? step("dipSilence", dipped, silentUpper(dipped, ctx, diff.dipSilence)) : dipped;
   const thinned = diff.drumless ? step("drumless", hushed, thinDrumless(hushed, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : hushed;
   const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff));
@@ -519,7 +531,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const laid = diff.sustainHolds?.pad ? step("padLanes", searched, padLanes(searched, ctx, diff.sustainHolds, ctx.timing)) : searched;
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
-  const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut), ctx, diff.fadeOut)) : limited;
+  const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
   const final = step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing));
   if (!(diff.sameCuts && diff.cutFrom)) return final;
   const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);

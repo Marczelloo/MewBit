@@ -37,8 +37,8 @@ function localKeep(features, durationMs, { reach, power, floor, knee }) {
 
 // The notes without the moments the music gives up: per run of seconds under full keep, off the beat first, then evenly along
 // the run. A held moment stays (a slower stretch is where a long note belongs), no stretch opens past MAX_GAP_BEATS, and
-// at most `spare` moments go.
-function thinned(notes, keep, timing, spare = Infinity) {
+// at most `spare` moments go. The moments of `last` (a set of times, or null) go only when no other is left to take.
+function thinned(notes, keep, timing, spare = Infinity, last = null) {
   const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
   const held = new Set(notes.filter((n) => n.len > 0).map((n) => n.t));
   const beats = timing.beats ?? [];
@@ -70,11 +70,14 @@ function thinned(notes, keep, timing, spare = Infinity) {
     const run = times.slice(i, j);
     const count = Math.round(run.reduce((sum, t) => sum + 1 - keepAt(t), 0));
     const open = run.filter((t) => !held.has(t));
-    const off = open.filter(isOff);
-    const on = open.filter((t) => !isOff(t));
-    const fromOff = Math.min(count, off.length);
-    evenly(off, fromOff);
-    evenly(on, Math.min(count - fromOff, on.length));
+    const first = last ? open.filter((t) => !last.has(t)) : open;
+    const later = last ? open.filter((t) => last.has(t)) : [];
+    let left = count;
+    for (const group of [first.filter(isOff), first.filter((t) => !isOff(t)), later.filter(isOff), later.filter((t) => !isOff(t))]) {
+      const take = Math.min(left, group.length);
+      evenly(group, take);
+      left -= take;
+    }
     i = j;
   }
   return gone.size === 0 ? notes : notes.filter((n) => !gone.has(n.t));

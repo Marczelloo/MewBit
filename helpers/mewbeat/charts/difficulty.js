@@ -68,6 +68,12 @@ const STAIRS = { minNotes: 3, maxGapBeats: 1, weight: 3 };
 // .8018 -> .8036, moments on the melody 27.1 -> 36.6% (people 37.0%), a melody direction on 74% of single notes (65%).
 // A song with no melody file is charted as before.
 const MELODY_PICK = { bonus: 1.25, minStrength: 0 };
+// generate.js melodyMoments (flag melodyKeep): the moments on a note of the decoded melody are the last a slower stretch
+// gives up (localThin.js), stay through an energy dip (dips.js thinDips) and come right after the held ones in the fade-out
+// (fades.js thinFadeOut). The bot's songs: the melody's notes lost to those three stages 5.3 -> 1.0% (dips 2.1 -> 0), Normal
+// plays 61.9 -> 66.1% of the melody, 12.8 -> 15.8 points over the same melody moved in time, with 0.9% more moments. The 80
+// corpus songs: F1 against people .805 -> .807 on Normal (recall .858 -> .863), .736 -> .734 on Easy.
+const MELODY_KEEP = true;
 // generate.js pickedMelodyShift (flag melodyShiftPick): the decoded melody is moved to where the most of its notes meet a sound
 // Normal scores, looked for within reachMs of the file's times in steps of stepMs; a note meets a sound within matchMs. The
 // shift of the melody file stays unless another one matches `margin` more of the notes.
@@ -548,6 +554,7 @@ module.exports = {
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,
+  MELODY_KEEP,
   MELODY_ONLY,
   MELODY_PICK,
   MELODY_RUNS,

@@ -49,9 +49,10 @@ function onBeat(beats, t) {
 
 // thinDips(notes, ctx, rule) -> notes without the moments in an energy dip that are weaker than rule.below of the music
 // around (the 80th percentile of the onsets within AROUND_MS outside the dip), or off the beat and weaker than
-// rule.offBeatBelow, or off the beat at all where the dip goes under rule.deep. Holds stay.
+// rule.offBeatBelow, or off the beat at all where the dip goes under rule.deep. Holds stay, and so do the moments of `kept`
+// (a set of times, or null).
 // rule = diff.dipThin = { drop, level, below, offBeatBelow, deep }.
-function thinDips(notes, ctx, rule) {
+function thinDips(notes, ctx, rule, kept = null) {
   const beats = ctx.timing?.beats;
   if (!rule || !Array.isArray(beats) || beats.length < 2) return notes;
   const dips = energyDipsOf(ctx, rule);
@@ -67,7 +68,7 @@ function thinDips(notes, ctx, rule) {
   };
   const dropped = new Set();
   for (const n of notes) {
-    if (n.len > 0 || dropped.has(n.t)) continue;
+    if (n.len > 0 || dropped.has(n.t) || kept?.has(n.t)) continue;
     const dip = dips.find(([a, b]) => n.t >= a && n.t < b);
     if (!dip || !(ref(dip) > 0)) continue;
     const rel = strengthAt(onsets, times, n.t) / ref(dip);
