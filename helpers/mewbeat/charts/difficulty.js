@@ -137,6 +137,22 @@ const FILL_FLOOR = { minS: 0.25 };
 // give the same within .001. Before the first note and after the last nothing is filled: a first version did, and put a
 // lone note nine seconds into the Camellia remix's fade-out.
 const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
+// freeTime.js freePhrases (generator flag freeTime, every level): a phrase has no tempo the grid could fit when the beats the
+// tracker gave (not the fitted grid) are spread wider than `spread` of their median interval (`minBeats` or more of them),
+// the sounds sit under `onGrid` on the grid's quarter lines (1 all on a line, 0 anywhere) and `minLead` or more notes of
+// the decoded melody lock under `leadLock` to any quarter grid at the fitted tempo. Its moments keep the times they were
+// heard at and are scored by strength alone, as a half beat at a middling distance from the grid (selection.js scoreMoments,
+// snappedMoments); the grid is not trusted there (timing.intervalOk), no beat is played for the pulse, no section opens on
+// a line of the grid and an energy dip thins by strength only. Asked for by ear (Rush E: "five piano keys by 0:08 and four
+// blocks", "skips a note from 0:12", "the lead got lost"): the song speeds up and changes tempo, the grid lays 387 ms beats
+// over 0:07-0:41, 1:18-1:30 and 2:04 to the end, and the piano's strikes there sat at chance distance from its lines; a
+// strike further than 35 ms from a line was not a moment at all (0:07.16), a loud one on a "quarter beat" scored under a
+// weak one on a "beat". The three conditions together mark those 11 phrases of Rush E and none of MEGALOVANIA or Finale;
+// the beats' spread alone marks 6% of the corpus' phrases, mostly breakdowns the grid still fits, where a chart off the
+// grid is further from people's (Normal F1 62.1 -> 57.8 inside them). With all three, 68 of 1910 corpus phrases: Normal F1
+// inside them 56.9 -> 54.7, Hard 59.5 -> 55.3, Easy 48.0 -> 40.6, nothing over the whole corpus (78.5, 80.0, 72.5 -> 72.3);
+// a lock under .3 gives Normal +4.0 on 30 phrases but leaves Rush E 0:12-0:24 on the grid.
+const FREE_TIME = { spread: 0.045, minBeats: 6, onGrid: 0.3, minLead: 6, leadLock: 0.5 };
 // laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
 // single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
 // asks for one lane (a step of the scale), two from `twoLanes` semitones, three from `threeLanes` (and a beat for the leap);
@@ -627,6 +643,7 @@ module.exports = {
   FIGURES,
   FILL_FLOOR,
   FLAT_LOUD,
+  FREE_TIME,
   HARD_HOLDS,
   HEARD_CHORDS,
   HARD_PLUS,

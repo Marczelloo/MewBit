@@ -133,6 +133,53 @@ piosenkę, na które nikt się nie skarżył, więc zostaje 0,25.
 Zestaw 3 w bocie: zestaw 2 + `fillFloor`. Poza Rush E (644 → 639 chwil na Normalu) trzy pozostałe piosenki testowe
 są nuta w nutę takie same jak w zestawie 2.
 
+### Fragmenty bez stałego tempa: `freeTime`
+
+Po zestawie 3 gracz zgłosił w Rush E: do 0:08 gra pięć klawiszy, a bloczków jest cztery; od 0:12 mapa pomija nutę i nie
+gęstnieje razem z muzyką; „lead 6 i 7 się pogubiły”.
+
+Przyczyna jest jedna. Rush E przyspiesza i zmienia tempo, a siatka rytmu kładzie stałe 387 ms na bit przez całe
+0:07–0:41, 1:18–1:30 i 2:04 do końca. Uderzenia pianina leżą tam względem linii siatki tak jak przypadek. Skutki:
+
+- dźwięk dalej niż 35 ms od linii w ogóle nie był kandydatem na bloczek (głośne uderzenie w 0:07,16 przepadało),
+- głośny dźwięk na „ćwierćbicie” przegrywał z ledwo słyszalnym na „bicie” (0:07,71 z dźwiękiem o sile 0,24 w 0:07,77),
+- bloczki stały do 35 ms obok dźwięku,
+- przerzedzanie w spadku energii zdejmowało głośne uderzenie, bo było „poza bitem” (0:14,44).
+
+Flaga **`freeTime`** (wszystkie poziomy, wyłączona): fragment bez stałego tempa jest mapowany poza siatką. Bloczki stoją
+tam, gdzie dźwięk został usłyszany, i są wybierane według samej głośności. Fragment jest „bez tempa”, gdy naraz:
+
+1. śledzenie bitów w pluginie nie trzyma tempa (jego bity się rozjeżdżają),
+2. dźwięki nie leżą na liniach siatki,
+3. nuty melodii z dekodera nie układają się w żadną siatkę w tym tempie.
+
+Każdy z tych warunków osobno jest częsty w muzyce, do której siatka pasuje (breakdown, wokal, kilka wolnych nut), i tam
+mapa poza siatką jest dalsza od map ludzi. Sam pierwszy warunek łapie 6% fragmentów korpusu i pogarsza zgodność z ludźmi
+w tych fragmentach (Normal F1 62,1 → 57,8). Trzy razem łapią 68 z 1910 fragmentów korpusu.
+
+| | bez flagi | z flagą |
+|---|---|---|
+| Rush E, Normal: nuty melodii bez bloczka | 24% | 15% |
+| Rush E, Normal: dziury (bit lub dłużej, 2+ dźwięki w środku) | 30 (16,2 s) | 22 (11,2 s) |
+| Rush E, Hard / Hell: nuty melodii bez bloczka | 19% / 11% | 12% / 6% |
+| Rush E, melodia ponad kontrolę | 25,3 | 33,9 |
+| Korpus, F1 Easy / Normal / Hard | 73,0 / 79,1 / 81,0 | 72,7 / 79,1 / 80,9 |
+| Korpus, tylko złapane fragmenty, F1 Normal | 56,9 | 54,7 |
+| Zbiór bota, melodia ponad kontrolę | 21,6 | 22,7 |
+
+Rush E: 11 z 25 fragmentów (0:07–0:41, 1:18–1:30, 2:04–koniec). Początek: bloczki w 0:00,13, 0:04,10, 0:05,84, 0:07,16,
+0:07,71, czyli pięć na pięć klawiszy, potem każde uderzenie przyspieszającego E osobno. MEGALOVANIA i Finale: żaden
+fragment, mapy nuta w nutę takie same. Remix: 6 z 94 fragmentów (0:31–0:35, 4:05–4:25).
+
+Flaga zmienia też inne piosenki bota (30 z 81), najbardziej: Say My Name (19 z 47 fragmentów), Alexander Hamilton (10),
+Skarazula Marazula (8), GHOST (7), REVOLVANIA (7, 2:10–2:40). Tych nie sprawdzałem uchem.
+
+Czego nie naprawia: hold z 0:07,16 trwa 1,6 s i biegnie pod trzema kolejnymi uderzeniami (plugin słyszy wybrzmiewanie
+klawisza; Normal pozwala długiemu holdowi biec pod rzadkimi nutami drugiej ręki). Ostrzejszy próg trzeciego warunku
+(0,3 zamiast 0,5) daje w korpusie zysk zamiast straty (+4,0 F1 na 30 fragmentach), ale zostawia Rush E 0:12–0:24 na siatce.
+
+Zestaw 4 w bocie: zestaw 3 + `freeTime`.
+
 ## Jak włączyć
 
 Jak w nocnym raporcie: dołączyć `feat/mewbeat-melody` do `feat/mewbeat`, potem dopisać nazwę flagi do

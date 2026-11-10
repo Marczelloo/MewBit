@@ -26,6 +26,7 @@ const { laneTheRest, nested, rhythmOf, sameCuts, sortedOnsets, withBeats } = req
 const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
+const { freePhrases, inFree } = require("./freeTime");
 const { holdFadeOut, thinFadeOut } = require("./fades");
 const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
@@ -45,8 +46,11 @@ const SAME_MOMENT_MS = 3; // a note this close to a time in the source is the on
 function analyse(raw, flags) {
   const features = withFittedBeats(withMergedLead(raw));
   const durationMs = Math.round(features.durationMs);
-  const timing = buildTiming(features, durationMs);
-  const phrases = buildPhrases(features, timing, durationMs);
+  const fitted = buildTiming(features, durationMs);
+  const phrases = buildPhrases(features, fitted, durationMs);
+  // the phrases with no tempo to hold (the flag freeTime): there the grid is not trusted, as where it has a hole
+  const free = freePhrases(raw, features, fitted, phrases, withFlags({}, "normal", flags).freeTime);
+  const timing = free.length > 0 ? { ...fitted, intervalOk: (t) => !inFree(free, t) && fitted.intervalOk(t) } : fitted;
   const leaders = chooseLeaders(phrases);
   const vocal = isVocalSong(phrases);
   const energy = withIntensity(energyLookup(features), features, phrases); // with each section's intensity (intensity.js)
@@ -61,6 +65,7 @@ function analyse(raw, flags) {
     busy: busyFactor(features),
     flags: normalFlags(flags), // the experimental switches that are on (flags.js); diffOf reads their overrides
     phrases,
+    free,
     leaders,
     vocal,
     supports: phrases.map((phrase, i) => supportLayers(phrase, leaders[i], vocal)), // the layers charted beside the leader
@@ -320,7 +325,7 @@ function musicNotes(ctx, i, diff, trace, before = null) {
   const lineRoom = lines ? Math.round(diff.melodyLines.room * budget) : 0;
   const loud = loudMoments(ctx, diff);
   const holeRoom = loud ? Math.ceil(diff.loudHoles.room * budget) : 0;
-  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom, loud, holeRoom });
+  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom, loud, holeRoom, free: ctx.free.includes(phrase) });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 
@@ -548,11 +553,13 @@ function holdsCappedByPhrase(notes, ctx, diff, isSustain) {
 // No hold runs past the end of the song, whatever produced it. Sections open on a note; only then, with every moment
 // of the chart known, do holds let go on the next one. The hold share is capped per phrase (a cap over the whole song
 // would demote holds unevenly and break the repeats); real sustains are kept before gap holds. With the moments
-// settled, each one gets its size (chords.js) and its lanes (lanes.js).
+// settled, each one gets its size (chords.js) and its lanes (lanes.js). A section that starts in a free phrase (freeTime.js)
+// opens on no note of its own: its time is a line of the grid, and the note it would push aside is the sound itself.
 function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const step = (stage, before, after) => (trace ? trace.step(stage, before, after) : after);
   const held = step("clipHolds", notes, clipHolds([...notes].sort(byTime), ctx.durationMs, diff, ctx.timing));
-  const sectioned = step("accents", held, accentSections(held, ctx.sections, diff, ctx.timing, ctx.energy, protect));
+  const sections = ctx.free.length > 0 ? ctx.sections.filter((section) => !inFree(ctx.free, section.t)) : ctx.sections;
+  const sectioned = step("accents", held, accentSections(held, sections, diff, ctx.timing, ctx.energy, protect));
   const accented = diff.firstSound ? step("firstSound", sectioned, openWithFirstSound(sectioned, ctx.onsets, diff, ctx.timing, ctx.energy)) : sectioned;
   const upper = upperRhythm(ctx, diff);
   const inside = upper ? step("nested", accented, nested(accented, upper)) : accented;

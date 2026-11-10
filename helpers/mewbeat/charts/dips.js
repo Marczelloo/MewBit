@@ -4,6 +4,7 @@
 // under half the density around them 30% of the time (Normal 18%) and leave 15% empty (4%). The features carry only a
 // 500 ms energy curve; a frame of it under rule.drop of the level around finds 89% of those dips. In such a frame people
 // play Normal's off-beat notes weaker than the music around 43% of the time and its weak notes 31%, against 80% outside.
+const { inFree } = require("./freeTime");
 const { lowerBound } = require("./util");
 
 const AROUND_MS = 2000; // the music a dip is weighed against, either side
@@ -50,7 +51,8 @@ function onBeat(beats, t) {
 // thinDips(notes, ctx, rule) -> notes without the moments in an energy dip that are weaker than rule.below of the music
 // around (the 80th percentile of the onsets within AROUND_MS outside the dip), or off the beat and weaker than
 // rule.offBeatBelow, or off the beat at all where the dip goes under rule.deep. Holds stay, and so do the moments of `kept`
-// (a set of times, or null).
+// (a set of times, or null). In a free phrase (ctx.free, freeTime.js) no moment is off the beat: the grid does not fit there,
+// so only the weak ones go.
 // rule = diff.dipThin = { drop, level, below, offBeatBelow, deep }.
 function thinDips(notes, ctx, rule, kept = null) {
   const beats = ctx.timing?.beats;
@@ -72,7 +74,7 @@ function thinDips(notes, ctx, rule, kept = null) {
     const dip = dips.find(([a, b]) => n.t >= a && n.t < b);
     if (!dip || !(ref(dip) > 0)) continue;
     const rel = strengthAt(onsets, times, n.t) / ref(dip);
-    const offBeat = !onBeat(beats, n.t);
+    const offBeat = !inFree(ctx.free ?? [], n.t) && !onBeat(beats, n.t);
     if (rel < rule.below || (offBeat && (rel < rule.offBeatBelow || dip[2] < (rule.deep ?? 0)))) dropped.add(n.t);
   }
   const held = new Set(notes.filter((n) => n.len > 0).map((n) => n.t));

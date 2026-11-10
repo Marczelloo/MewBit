@@ -3,6 +3,7 @@
 // best moments of the phrase fill the budget. This file scores and budgets moments and selects them; generate.js charts
 // them.
 const { DENSITY_WINDOW_MS, LEAD_IN_MS, MAX_SNAP_DISTANCE_MS, SILENCE_ENERGY } = require("./difficulty");
+const { inFree } = require("./freeTime");
 const { beatMsOf } = require("./holds");
 const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE, REPEAT } = require("./momentWeights");
 const { hasSteadyPulse } = require("./phrases");
@@ -10,6 +11,8 @@ const { lowerBound, nearestIndex } = require("./util");
 
 const HOLE_BEATS = 2;
 const GRID_DIVISION = 4; // the notes of Normal sit on quarter beats, as v26's did (Hard's grid, cut to its quarter beats)
+const FREE_METER = { metric: 1, down: 0, grid: 0 }; // what a candidate of a free phrase is scored as: a half beat
+const FREE_GRID_RANK = 0.5; // ...at the song's middle distance from the grid
 const byTime = (a, b) => a.t - b.t;
 
 // Every onset of the features as { t, s, source }, time-ordered: the bands, then the drums, bass and lead layers.
@@ -97,6 +100,9 @@ function rankColumn(values) {
 // scoreMoments(ctx, level) -> [{ t, s, score, metric, down, grid, source }], time-ordered: the candidates of the whole song with
 // K's score (a logit: how likely people put a note there), from the features as measured (the scores were fitted on
 // those, not on the lead merged). `felt` is diff.feltTempo (meterTimingOf). Kept on the ctx, as every phrase asks.
+// A candidate in a free phrase (ctx.free, freeTime.js; the flag freeTime) has no place in a bar to be scored by: the grid
+// does not fit there. It is scored as a half beat at a middling distance from the grid, so its strength alone tells it from
+// its neighbours, and marked `free`.
 function scoreMoments(ctx, level, felt = null) {
   ctx.scored ??= {};
   const key = scoreKey(level, felt);
@@ -104,7 +110,9 @@ function scoreMoments(ctx, level, felt = null) {
   const { coef, intercept } = K[level];
   const candidates = candidatesOf(ctx.raw);
   const meterTiming = meterTimingOf(ctx.timing, felt);
-  const meters = candidates.map((c) => meterOf(meterTiming, c.t));
+  const free = ctx.free?.length > 0 ? candidates.map((c) => inFree(ctx.free, c.t)) : null;
+  const placed = candidates.map((c) => meterOf(meterTiming, c.t));
+  const meters = free ? placed.map((m, i) => (free[i] ? FREE_METER : m)) : placed;
   const columns = {
     raw_strength: rankColumn(candidates.map((c) => c.s)),
     m_beat: meters.map((m) => (m.metric === 0 ? 1 : 0)),
@@ -112,8 +120,9 @@ function scoreMoments(ctx, level, felt = null) {
     m_quarter: meters.map((m) => (m.metric === 2 ? 1 : 0)),
     m_other: meters.map((m) => (m.metric === 3 ? 1 : 0)),
     m_down: meters.map((m) => m.down),
-    d_grid: rankColumn(meters.map((m) => m.grid)),
+    d_grid: rankColumn(placed.map((m) => m.grid)), // ranked over the whole song, so the rest of it scores as without free phrases
   };
+  if (free) columns.d_grid = columns.d_grid.map((rank, i) => (free[i] ? FREE_GRID_RANK : rank));
   ctx.scored[key] = candidates.map((c, i) => ({
     t: c.t,
     s: c.s,
@@ -122,6 +131,7 @@ function scoreMoments(ctx, level, felt = null) {
     down: meters[i].down,
     grid: meters[i].grid,
     source: c.source,
+    ...(free?.[i] ? { free: true } : {}),
   }));
   return ctx.scored[key];
 }
@@ -131,8 +141,8 @@ function scoreMoments(ctx, level, felt = null) {
 // `raw` being the time it had. Two moments on one grid point leave the higher score (ties: the one that moved less). Under a
 // trusted grid a moment that cannot move is not played: it is further than MAX_SNAP_DISTANCE_MS from the grid point. Without a
 // grid, or where the beats are too irregular for it to be trusted (timing.intervalOk; a stretch with no beats at all), the
-// moments keep their times: there is no grid there to be on, and dropping them would empty the stretch. Kept on the ctx. The
-// budget is counted on scoreMoments, as it was fitted.
+// moments keep their times: there is no grid there to be on, and dropping them would empty the stretch. A free phrase is such
+// a stretch (generate.js analyse). Kept on the ctx. The budget is counted on scoreMoments, as it was fitted.
 function snappedMoments(ctx, level, felt = null) {
   ctx.snappedMoments ??= {};
   const key = scoreKey(level, felt);
@@ -294,7 +304,7 @@ function gapOf(diff, timing) {
 // the phrase before (`edges.before`, its time) with the sounds that lie after that note in `edges.carry` (earlier moments,
 // they may be chosen too). What the foreground leaves of the budget goes first to what the drums and bass repeat (`edges.figures`,
 // the times of figures.js), then to beats and half beats in the rests where something sounds; a beat nothing sounds on is played
-// only where the phrase has a steady pulse. The budget is never passed, but for the figures' `edges.figureRoom` and the lines'
+// only where the phrase has a steady pulse and a grid that fits (not `edges.free`, freeTime.js). The budget is never passed, but for the figures' `edges.figureRoom` and the lines'
 // `edges.lineRoom`. With diff.melodyLines (a flag) the moments of the melody's held lines (`edges.lines`, the times of
 // melodyLines.js) are played too, beats before the rest, even under diff.foreground ("linia"): after everything else, where
 // they fit between the notes the phrase chose, or with melodyLines.first before the foreground, which then takes what the
@@ -386,7 +396,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   }
 
   // The pulse: a beat nothing sounds on, in a phrase whose beats are carried by drums or bass.
-  if (snapped && hasSteadyPulse(phrase)) {
+  if (snapped && !edges.free && hasSteadyPulse(phrase)) {
     const sounding = scored.map((c) => c.raw ?? c.t); // a beat is heard where the music sounded, not where its moment moved to
     const beats = timing.beats.filter((t) => t >= phrase.startMs && t < phrase.endMs);
     const isDown = (t) => timing.downbeats.some((d) => Math.abs(d - t) < DOWNBEAT_MS);

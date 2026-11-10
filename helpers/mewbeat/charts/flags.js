@@ -8,6 +8,7 @@ const {
   EASY_SAME_CUTS,
   FAST_RUNS,
   FILL_FLOOR,
+  FREE_TIME,
   HARD_HOLDS,
   HEARD_CHORDS,
   LOUD_HOLES,
@@ -43,6 +44,8 @@ const FLAGS = {
   fastRuns: { label: "Normal: krótkie serie szybkiej melodii także w szybkich utworach (ćwierć bitu poniżej 100 ms, odstęp w serii od 70 ms)", levels: { normal: { fastRuns: FAST_RUNS } } },
   // Normal: a long stretch or a rest is not filled with a barely audible sound (selection.js selectMoments).
   fillFloor: { label: "Normal: dopełnienia nie biorą ledwo słyszalnych dźwięków (jedna długa nuta = jeden bloczek)", levels: { normal: { fillFloor: FILL_FLOOR } } },
+  // Every level: a phrase the tracker found no steady beat in is charted off the grid, by the strength of its sounds (freeTime.js).
+  freeTime: { label: "Wszystkie poziomy: fragment bez stałego tempa idzie za dźwiękiem, nie za siatką", levels: { normal: { freeTime: FREE_TIME } } },
   // Hard: its own holds on sustains and rests, let go with the sound (generate.js plusNotes). Hell, built on Hard, follows.
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
