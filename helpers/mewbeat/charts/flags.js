@@ -25,7 +25,6 @@ const {
   MELODY_SHIFT_PICK,
   PITCH_LANES,
   PLUS_MELODY,
-  RUN_LANES,
 } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
@@ -38,8 +37,8 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // sustainHolds and sustainPads in v41 (difficulty.js SUSTAIN_HOLDS), melodyOnsetShift, drumless, feltTempoUp, melodyOnly and
 // dipSilence in v42 (difficulty.js DRUMLESS, MELODY_ONLY, DIP_SILENCE, FELT_TEMPO), chordSlow, holdSlow, slowDynamics and
 // flatLoud in v43 (difficulty.js CHORD_SLOW, HOLD_SLOW, SLOW_DYNAMICS, FLAT_LOUD).
-// figuresQuarter was dropped (0% of its notes hit on the test songs), musicFirst (no gain by ear) and tempoBudget (it thinned
-// fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear). hardPlus, plusFigures, easyFromNormal,
+// figuresQuarter was dropped (0% of its notes hit on the test songs), musicFirst (no gain by ear), tempoBudget (it thinned
+// fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear) and runLanes (after fastRuns it moved 3% of Normal's notes and nothing one could hear). hardPlus, plusFigures, easyFromNormal,
 // easyFigures, normalHolds and hellPlus became part of Easy, Hard and Hell in v44 (difficulty.js EASY_FROM_NORMAL,
 // EASY_FIGURES, HARD_PLUS, PLUS_FIGURES, NORMAL_HOLDS, HELL_PLUS).
 const FLAGS = {
@@ -82,8 +81,6 @@ const FLAGS = {
   pitchLanes: { label: "Normal: tor idzie za wysokością melodii (wyżej = w prawo)", levels: { normal: { pitchLanes: PITCH_LANES } } },
   // Hard, Hell: an extra on a note of the decoded melody scores more (generate.js plusNotes).
   plusMelody: { label: "Hard, Hell: dodatkowe nuty chętniej na melodii", levels: { hard: { plusMelody: PLUS_MELODY }, hell: { plusMelody: PLUS_MELODY } } },
-  // Normal: a fast run of the melody is one staircase or roll across neighbouring lanes (laneRules.js runCost). Lanes only.
-  runLanes: { label: "Normal: szybki bieg melodii to schodki po sąsiednich torach", levels: { normal: { runLanes: RUN_LANES } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

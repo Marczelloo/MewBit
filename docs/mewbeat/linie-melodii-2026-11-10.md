@@ -288,7 +288,7 @@ zostało 120 ms. Flaga czeka na odsłuch jako zamiana za `leadVoice` (zestaw 8);
 - `pitchLanes`: 20% nut Normala zmienia tor (Rush E 47%, Finale 36%, MEGALOVANIA 31%), momenty i akordy bez zmian.
   Zestaw 7.
 - `runLanes`: po `fastRuns` rusza 3% nut Normala, schodki 55% → 56%, powtórek na tym samym torze o 17 więcej na
-  80 utworach. Bez słyszalnego efektu, do usunięcia.
+  80 utworach. Bez słyszalnego efektu; flaga usunięta z kodu, mapy z `pitchLanes` i bez flag zostały co do nuty.
 - `melodyLinesFirst` zamiast `melodyLines`: melodia zagrana 82,8% → 84,3%, ponad kontrolę 15,3 → 18,3 p.p.,
   momenty Normala −1,3%, F1 Normal 79,1 → 78,1, Easy 72,8 → 71,8. Więcej melodii za mniej zgodności z ludźmi: do
   odsłuchu jako osobna zamiana.

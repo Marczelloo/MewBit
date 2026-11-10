@@ -177,9 +177,9 @@ function melodyPull(direction, lane, prev, before, gapMs, beatMs) {
   return lane === restart ? STEP_PULL : lane === prev ? WRONG_SIDE : 1;
 }
 
-// --- the contour of the melody (diff.pitchLanes, diff.runLanes) --------------------------------------------------
+// --- the contour of the melody (diff.pitchLanes) -----------------------------------------------------------------
 
-// pitchTrack(ctx, times, beatOf, pitchRule, runRule) -> [{ pitch, delta, steps, up, down, run, start }] per moment
+// pitchTrack(ctx, times, beatOf, pitchRule) -> [{ pitch, delta, steps, up, down }] per moment
 // What the lead line (or failing it nothing: the bass is a different voice, its pitches would not compare) plays at each
 // moment, as a contour. `times` holds null for a chord; a chord and a moment the line does not play are null in the result.
 //   delta  the semitones from the moment before to this one (null when that one has no pitch or is over pitchRule.maxGapBeats away)
@@ -187,32 +187,28 @@ function melodyPull(direction, lane, prev, before, gapMs, beatMs) {
 //          (and a beat for the leap, WIDE_STEP_BEATS); 0 for a repeated pitch
 //   up, down  how far the next pitchRule.lookMoments steps (each within lookBeats of the last) climb and fall at most from
 //          here, in lanes: the room the contour will want, so the lane is chosen with it in mind
-//   run    1 / -1 for a note a fast one-way run reaches (runRule: at least minNotes notes in a row, each within maxGapBeats of the
-//          last and a semitone or more above / below it), 0 otherwise; the run's first note has run 0 and start { direction, steps }
-function pitchTrack(ctx, times, beatOf, pitchRule, runRule) {
+function pitchTrack(ctx, times, beatOf, pitchRule) {
   const out = new Array(times.length).fill(null);
   const features = ctx?.features;
-  if (!features || !(pitchRule || runRule)) return out;
+  if (!features || !pitchRule) return out;
   const { line, times: at } = linesOf(features).tonal[0];
   const pitch = times.map((t) => {
     const i = t === null ? -1 : nearestIndex(at, t);
     return i >= 0 && Math.abs(at[i] - t) <= MATCH_MS ? line[i].pitch : null;
   });
-  const maxGap = pitchRule?.maxGapBeats ?? 0;
-  const move = new Array(times.length).fill(0); // the semitone step into each moment inside a run's gap
+  const maxGap = pitchRule.maxGapBeats;
   for (let m = 0; m < times.length; m++) {
     if (pitch[m] === null) continue;
-    const here = { pitch: pitch[m], delta: null, steps: 0, up: 0, down: 0, run: 0, start: null };
+    const here = { pitch: pitch[m], delta: null, steps: 0, up: 0, down: 0 };
     const gap = m > 0 && pitch[m - 1] !== null ? times[m] - times[m - 1] : Infinity;
     if (gap <= maxGap * beatOf(times[m])) {
       here.delta = pitch[m] - pitch[m - 1];
       const size = Math.abs(here.delta);
       if (size >= MOVED_SEMITONES) here.steps = Math.sign(here.delta) * (1 + (size >= pitchRule.twoLanes ? 1 : 0) + (size >= pitchRule.threeLanes && gap >= WIDE_STEP_BEATS * beatOf(times[m]) ? 1 : 0));
     }
-    if (runRule && gap <= runRule.maxGapBeats * beatOf(times[m]) && Math.abs(pitch[m] - pitch[m - 1]) >= MOVED_SEMITONES) move[m] = Math.sign(pitch[m] - pitch[m - 1]);
     out[m] = here;
   }
-  for (let m = 0; pitchRule && m < times.length; m++) {
+  for (let m = 0; m < times.length; m++) {
     if (!out[m]) continue;
     let [climb, k] = [0, m + 1];
     for (; k <= m + pitchRule.lookMoments && out[k] && out[k].delta !== null && times[k] - times[k - 1] <= pitchRule.lookBeats * beatOf(times[k]); k++) {
@@ -220,15 +216,6 @@ function pitchTrack(ctx, times, beatOf, pitchRule, runRule) {
       out[m].up = Math.max(out[m].up, climb);
       out[m].down = Math.max(out[m].down, -climb);
     }
-  }
-  for (let m = 1; runRule && m < times.length; ) {
-    let end = m;
-    while (move[m] !== 0 && end + 1 < times.length && move[end + 1] === move[m]) end++;
-    if (move[m] !== 0 && end - m + 2 >= runRule.minNotes) {
-      for (let k = m; k <= end; k++) out[k].run = move[m];
-      out[m - 1].start = { direction: move[m], steps: end - m + 1 };
-    }
-    m = end + 1;
   }
   return out;
 }
@@ -278,24 +265,6 @@ function pitchCost(rule, here, lane, prev, recall, gapMs, beatMs) {
 // is the way to get through it without starting over in the middle.
 function pitchRoom(rule, here, lane) {
   return rule.weight * rule.room * (Math.max(0, lane + here.up - 3) + Math.max(0, here.down - lane));
-}
-
-// What a note of a fast one-way run (`direction` 1 / -1) costs on `lane` after one on `prev`: the staircase goes to the
-// neighbouring lane the way the run goes, and at the edge wraps to the far end (a roll, 1234 1234) rather than turning
-// back against the pitch. A lane on the right side that is not the neighbour costs rule.nearMiss, any other rule.miss.
-function runCost(rule, direction, lane, prev) {
-  const next = prev + direction;
-  const inside = next >= 0 && next < 4;
-  const target = inside ? next : direction > 0 ? 0 : 3;
-  if (lane === target) return 0;
-  return rule.weight * (inside && direction * (lane - prev) > 0 ? rule.nearMiss : rule.miss);
-}
-
-// What the first note of a run costs on `lane` when the run has less room to climb (or fall) from there than it could have:
-// each step short of the three a full staircase can take costs rule.startRoom (a four-note run from the far lane never wraps).
-function runStartCost(rule, start, lane) {
-  const room = start.direction > 0 ? 3 - lane : lane;
-  return rule.startRoom * (Math.min(start.steps, 3) - Math.min(start.steps, room));
 }
 
 // --- the rules -----------------------------------------------------------------------------------------------
@@ -405,6 +374,6 @@ function normalViolations(notes, timing = null, { durationMs = Infinity } = {}) 
 }
 
 module.exports = {
-  TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, normalViolations, pitchCost, pitchRoom, pitchTrack, recallLane, runCost, runStartCost,
+  TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, normalViolations, pitchCost, pitchRoom, pitchTrack, recallLane,
   stairSteps,
 };

@@ -202,14 +202,6 @@ const FREE_TIME = { spread: 0.045, minBeats: 6, onGrid: 0.3, minLead: 6, leadLoc
 // pairs with it, MEGALOVANIA 121 -> 145 of 212). People follow the pitch no more than chance does (47% with it, 41%
 // against), so this is the user's wish, not the corpus.
 const PITCH_LANES = { weight: 3, maxGapBeats: 2, twoLanes: 4, threeLanes: 8, offTarget: 0.8, wrongSide: 2.5, recall: 2, recallMoments: 4, room: 2, lookMoments: 4, lookBeats: 1 };
-// laneRules.js runCost, runStartCost (generator flag runLanes, Normal only): a fast run (at least minNotes single notes on
-// the melody, each within maxGapBeats of the last and a semitone or more above or below it) is laid as one staircase, a lane a
-// note the way the pitch goes, and at the edge wraps to the far end (a roll, 1234 1234) instead of turning back against the
-// pitch. A lane on the right side that is not the neighbour costs `nearMiss`, any other `miss`, times `weight`; the first note
-// pays `startRoom` for each step of the staircase (up to three) its lane has no room for. It stands in for stairs and the
-// weak melody term on the notes it covers. At weight 3 it lost to pitchLanes' own pull on the same notes (run pairs on a
-// neighbouring lane 40.5% against 45.3% for pitchLanes alone); at 6 together they reach 46.0% and the pitch agreement holds.
-const RUN_LANES = { minNotes: 3, maxGapBeats: 0.6, weight: 6, nearMiss: 1.4, miss: 3.9, startRoom: 1.5 };
 // melodyLines.js heldLineMoments, selection.js selectMoments (flag melodyLines, Normal only): the decoded melody held as lines.
 // A line is a run of at least `minNotes` melody notes, each within the larger of `joinBeats` beats and `joinMs` of the last. Only
 // 6% of the melody's notes sit in a line Normal plays whole (72 songs): one by one the budget, a louder neighbour inside the gap
@@ -710,7 +702,6 @@ module.exports = {
   PLUS_FIGURES,
   PLUS_MELODY,
   QUIET_LONE,
-  RUN_LANES,
   SLOW_DYNAMICS,
   SOLO_LEAD,
   STAIRS,
