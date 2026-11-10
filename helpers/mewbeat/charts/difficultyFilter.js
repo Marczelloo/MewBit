@@ -268,11 +268,16 @@ function applyDifficulty(events, diff, timing, energyAt, prevNotes = [], phraseE
   return items.sort(byTime).map((n) => (trace ? { ...bare(n), tid: n.tid } : bare(n)));
 }
 
+// The gap two moments must keep: the level's, or `close.gapMs` if that is shorter and one of the two is a moment of `close.times`.
+const gapBetween = (a, b, noteGap, close) => (close && (close.times.has(a) || close.times.has(b)) ? Math.min(noteGap, close.gapMs) : noteGap);
+
 // Final whole-song pass: drops only notes that break minNoteGapMs (any lane,
 // between distinct times), minLaneGapMs (same lane, counted from the end of a hold)
 // or a hold's rules (see holds.js). The earlier note wins. `timing` (optional) gives
-// the beat length for Normal's half-beat spacing next to a hold.
-function enforceFloors(notes, diff, timing = null) {
+// the beat length for Normal's half-beat spacing next to a hold. `close` (optional,
+// { times, gapMs }: the fastRuns flag) lets a moment of `times` and its neighbour
+// stand gapMs apart.
+function enforceFloors(notes, diff, timing = null, close = null) {
   const noteGap = diff.minNoteGapMs ?? 0;
   const laneGap = diff.minLaneGapMs ?? 0;
   const reach = Math.max(noteGap, laneGap);
@@ -281,7 +286,7 @@ function enforceFloors(notes, diff, timing = null) {
   let active = []; // kept holds that can still constrain later notes
   const out = [];
   for (const note of [...notes].sort(byTime)) {
-    if (note.t !== lastT && note.t - lastT < noteGap) continue;
+    if (note.t !== lastT && note.t - lastT < gapBetween(lastT, note.t, noteGap, close)) continue;
     if (note.t - laneFree[note.lane] < laneGap) continue;
     active = active.filter((h) => h.t + h.len + reach > note.t);
     const halfBeat = beatMsOf(timing, note.t) / 2;
@@ -296,13 +301,14 @@ function enforceFloors(notes, diff, timing = null) {
 }
 
 // The moments a chart keeps before its lanes are known: only the gap between moments counts, and the earlier note wins.
-function spacedMoments(notes, diff) {
+// `close` as in enforceFloors.
+function spacedMoments(notes, diff, close = null) {
   const noteGap = diff.minNoteGapMs ?? 0;
   const seen = new Set();
   let lastT = -Infinity;
   const out = [];
   for (const note of [...notes].sort(byTime)) {
-    if (note.t !== lastT && note.t - lastT < noteGap) continue;
+    if (note.t !== lastT && note.t - lastT < gapBetween(lastT, note.t, noteGap, close)) continue;
     const key = `${note.t}:${note.lane}`;
     if (seen.has(key)) continue;
     seen.add(key);

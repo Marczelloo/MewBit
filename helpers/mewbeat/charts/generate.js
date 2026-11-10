@@ -11,7 +11,7 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { heldLineMoments } = require("./melodyLines");
-const { ranks, withMelody, withMelodyRuns, withMelodySnap, withRunNotes } = require("./melodyPick");
+const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
@@ -27,7 +27,7 @@ const { accentSections, openWithFirstSound, sectionStarts } = require("./section
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { holdFadeOut, thinFadeOut } = require("./fades");
-const { extraMoments, farMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -199,14 +199,11 @@ function scoredFor(ctx, diff) {
   ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
   const byScored = ctx.melodyScored.get(melody);
   // diff.melodyRuns (a flag): the moments where the melody runs fast are marked, for finish to add
-  // diff.melodySnap (a flag): and the sounds on a melody note that snappedMoments drops for their distance come in at their grid
-  // point, so this `scored` is a longer array than the snapped one and has a key of its own
-  const key = (diff.melodyRuns ? "runs" : "plain") + (diff.melodySnap ? `|snap${diff.melodySnap.maxMs}` : "");
+  const key = diff.melodyRuns ? "runs" : "plain";
   byScored.has(scored) || byScored.set(scored, {});
   const cached = byScored.get(scored);
   if (!cached[key]) {
-    const offered = diff.melodySnap ? withMelodySnap(scored, farMoments(ctx, diff.scoreLevel, diff.feltTempo, diff.melodySnap.maxMs), melody) : scored;
-    const picked = withMelody(offered, melody, diff.melodyPick);
+    const picked = withMelody(scored, melody, diff.melodyPick);
     cached[key] = diff.melodyRuns ? withMelodyRuns(picked, melody, diff.melodyRuns) : picked;
   }
   return cached[key];
@@ -257,7 +254,7 @@ function melodyMoments(ctx, diff) {
 }
 
 // diff.melodyLines (a flag): the times of the moments the decoded melody's held lines play (melodyLines.js), over the whole
-// song, which selectMoments takes before the foreground; null without the flag or a melody, or when no line is held. Kept on the ctx.
+// song, which selectMoments plays on top of a phrase's notes; null without the flag or a melody, or when no line is held. Kept on the ctx.
 function melodyLineMoments(ctx, diff) {
   if (!diff.melodyLines) return null;
   ctx.melodyLineMoments ??= new Map();
@@ -267,20 +264,6 @@ function melodyLineMoments(ctx, diff) {
     ctx.melodyLineMoments.set(diff, held && held.size > 0 ? held : null);
   }
   return ctx.melodyLineMoments.get(diff);
-}
-
-// diff.melodyLines or diff.melodyDuel (flags): each moment's time to its rank of strength among the song's moments (0 the
-// quietest, 1 the loudest), which selectMoments compares a melody moment with its neighbour by; null without either flag or a
-// melody. Kept on the ctx.
-function momentLoudness(ctx, diff) {
-  if (!diff.melodyLines && !diff.melodyDuel) return null;
-  ctx.momentLoudness ??= new Map();
-  if (!ctx.momentLoudness.has(diff)) {
-    const scored = decodedMelodyOf(ctx, diff) ? scoredFor(ctx, diff) : null;
-    const loud = scored ? ranks(scored.map((m) => m.s)) : null;
-    ctx.momentLoudness.set(diff, loud ? new Map(scored.map((m, i) => [m.t, loud[i]])) : null);
-  }
-  return ctx.momentLoudness.get(diff);
 }
 
 // Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
@@ -322,7 +305,7 @@ function musicNotes(ctx, i, diff, trace, before = null) {
   const figureRoom = weakLead ? Math.round(diff.figures.extra * budget) : 0;
   const lines = melodyLineMoments(ctx, diff);
   const lineRoom = lines ? Math.round(diff.melodyLines.room * budget) : 0;
-  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom, loud: momentLoudness(ctx, diff) });
+  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 
@@ -565,15 +548,17 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
     : released;
   // diff.fastRuns (a flag, with melodyRuns): over about 150 BPM a quarter beat is under 100 ms, the gap withRunNotes asks and
   // the note gap spacedMoments and the final floors keep, so no burst could stand there. The burst asks fastRuns.minGapMs
-  // instead and those two floors let a gap that short stand. Every other note was chosen 100 ms from its neighbours. The lane
-  // stages keep their own 150 ms lane gap, so the notes of a burst fall on different lanes (a lane returns after 150 ms).
+  // instead and those two floors let a gap that short stand next to a note of a burst, and only there: any other two notes
+  // keep the level's gap. The lane stages keep their own 150 ms lane gap, so the notes of a burst fall on different lanes (a
+  // lane returns after 150 ms).
   const bursts = diff.melodyRuns && diff.fastRuns;
-  const burstGap = bursts ? { ...diff, minNoteGapMs: Math.min(diff.minNoteGapMs ?? Infinity, bursts.minGapMs) } : diff;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, bursts ? { ...diff.melodyRuns, minGapMs: bursts.minGapMs } : diff.melodyRuns)) : settled;
+  const stood = bursts && ran !== settled ? new Set(settled.map((n) => n.t)) : null;
+  const burstGap = stood ? { gapMs: bursts.minGapMs, times: new Set(ran.map((n) => n.t).filter((t) => !stood.has(t))) } : null;
   const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin, melodyMoments(ctx, diff))) : ran;
   const hushed = diff.dipSilence ? step("dipSilence", dipped, silentUpper(dipped, ctx, diff.dipSilence)) : dipped;
   const thinned = diff.drumless ? step("drumless", hushed, thinDrumless(hushed, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : hushed;
-  const spaced = step("spacedMoments", thinned, spacedMoments(thinned, burstGap));
+  const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff, burstGap));
   const floored = diff.oneHoldAtATime ? step("oneHold", spaced, oneHoldAtATime(spaced)) : spaced;
   const isSustain = (n) => sustained.has(`${n.t}:${n.lane}`);
   const shared = step("holdShare", floored, ctx.phrases.length === 0
@@ -599,7 +584,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
-  const final = step("finalFloors", faded, enforceFloors(faded, burstGap, ctx.timing));
+  const final = step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing, burstGap));
   if (!(diff.sameCuts && diff.cutFrom)) return final;
   const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);
   return step("sameCuts", final, sameCuts(final, above, ctx.timing, diff.sameCuts));

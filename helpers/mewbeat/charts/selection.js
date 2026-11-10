@@ -155,28 +155,6 @@ function snappedMoments(ctx, level, felt = null) {
   return (ctx.snappedMoments[key] = [...onGrid.values()].sort(byTime));
 }
 
-// farMoments(ctx, level, felt, maxMs) -> the moments snappedMoments drops, and only for their distance: under a trusted grid,
-// further than MAX_SNAP_DISTANCE_MS but at most maxMs from the nearest grid point. They come as snappedMoments makes its own
-// ({ ...c, t: the grid point, raw: c.t }; metric and down stay those of the time as measured, as they do there), time-ordered
-// by their sound; nothing without a snapped grid, where nothing is dropped. The caller decides which of them to take
-// (melodyPick.js withMelodySnap). Kept on the ctx per maxMs.
-function farMoments(ctx, level, felt, maxMs) {
-  const { timing } = ctx;
-  if (!timing?.snapped) return [];
-  ctx.farMoments ??= {};
-  const key = `${scoreKey(level, felt)}|${maxMs}`;
-  if (ctx.farMoments[key]) return ctx.farMoments[key];
-  const grid = timing.gridPoints(GRID_DIVISION);
-  const far = [];
-  for (const c of scoreMoments(ctx, level, felt)) {
-    const i = nearestIndex(grid, c.t);
-    const trusted = i >= 0 && timing.intervalOk(c.t) && timing.intervalOk(grid[i]);
-    const away = trusted ? Math.abs(grid[i] - c.t) : 0;
-    if (away > MAX_SNAP_DISTANCE_MS && away <= maxMs) far.push({ ...c, t: grid[i], raw: c.t });
-  }
-  return (ctx.farMoments[key] = far);
-}
-
 // --- the budget of a phrase ----------------------------------------------------------------
 
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -318,10 +296,9 @@ function gapOf(diff, timing) {
 // the times of figures.js), then to beats and half beats in the rests where something sounds; a beat nothing sounds on is played
 // only where the phrase has a steady pulse. The budget is never passed, but for the figures' `edges.figureRoom` and the lines'
 // `edges.lineRoom`. With diff.melodyLines (a flag) the moments of the melody's held lines (`edges.lines`, the times of
-// melodyLines.js) come before the foreground, beats before the rest, even under diff.foreground ("linia"); the long stretches
-// never swap one out. With diff.melodyDuel (a flag) the foreground, about to take a moment off the melody, takes a melody
-// moment inside its gap instead when that one is not clearly quieter (`edges.loud`, a moment's time to its rank of strength in
-// the song; "melodia").
+// melodyLines.js) are played too, beats before the rest, even under diff.foreground ("linia"): after everything else, where
+// they fit between the notes the phrase chose, or with melodyLines.first before the foreground, which then takes what the
+// lines leave of the budget; the long stretches never swap one out.
 function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   const snapped = !!timing?.snapped;
   const beatAt = (t) => beatMsOf(timing, t);
@@ -341,40 +318,24 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     chosen.splice(nearest(c.t).i, 0, { t: c.t, s: c.s, reason, source: c.source, score: c.score, down: c.down, held: reason === "linia" });
   };
 
-  // The melody's held lines (diff.melodyLines): before the foreground, as many as the budget and the lines' room hold.
-  if (edges.lines?.size > 0) {
-    const most = budget + (edges.lineRoom ?? 0);
+  // The melody's held lines (diff.melodyLines), beats before the rest. With melodyLines.first they come before the foreground,
+  // as many as the budget and the lines' room hold, and the foreground takes what is left; without it they come last, on top
+  // of what the phrase chose, as many as the lines' room holds: no note gives its place to a line.
+  const linesFirst = !!diff.melodyLines?.first;
+  const holdLines = (most) => {
     const held = scored.filter((c) => edges.lines.has(c.t)).sort((a, b) => a.metric - b.metric || b.score - a.score || a.t - b.t);
     for (const c of held) {
       if (chosen.length >= most) break;
-      if (fits(c.t)) add(c, "linia");
+      if (!chosen.some((n) => n.t === c.t) && fits(c.t)) add(c, "linia");
     }
-  }
-
-  // The best melody moment inside the gap of a moment that is about to be taken (diff.melodyDuel), if the melody's is not clearly
-  // quieter than it: the best score, then the nearest.
-  const duelWinner = (c) => {
-    if (!diff.melodyDuel || !edges.loud || c.melody) return null;
-    const loud = edges.loud.get(c.t);
-    if (loud === undefined) return null;
-    let best = null;
-    for (const m of scored) {
-      if (!m.melody || Math.abs(m.t - c.t) >= gapAt(c.t) || chosen.some((n) => n.t === m.t) || !fits(m.t)) continue;
-      const theirs = edges.loud.get(m.t);
-      if (theirs === undefined || loud - theirs >= diff.melodyDuel.louder) continue;
-      if (!best || m.score > best.score || (m.score === best.score && Math.abs(m.t - c.t) < Math.abs(best.t - c.t))) best = m;
-    }
-    return best;
   };
+  if (edges.lines?.size > 0 && linesFirst) holdLines(budget + (edges.lineRoom ?? 0));
 
   // The foreground.
   const foreground = scored.filter((c) => c.score >= diff.foreground).sort((a, b) => b.down - a.down || b.score - a.score || a.t - b.t);
   for (const c of foreground) {
     if (chosen.length >= budget) break;
-    if (!fits(c.t)) continue;
-    const winner = duelWinner(c);
-    if (winner) add(winner, "melodia");
-    else add(c, "ocena");
+    if (fits(c.t)) add(c, "ocena");
   }
 
   // A long stretch with a sound in it, between two notes and at the phrase's edges.
@@ -431,6 +392,8 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
       add({ t, s: PULSE_STRENGTH, source: "pulse", score: -Infinity, down: Number(isDown(t)) }, "puls");
     }
   }
+
+  if (edges.lines?.size > 0 && !linesFirst) holdLines(chosen.length + (edges.lineRoom ?? 0));
 
   return chosen.map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
@@ -587,4 +550,4 @@ function plusFigures(scored, occupied, room, diff, timing, fromMs, toMs) {
   return chosen.sort(byTime);
 }
 
-module.exports = { audibleOf, extraMoments, farMoments, gapOf, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
+module.exports = { audibleOf, extraMoments, gapOf, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };

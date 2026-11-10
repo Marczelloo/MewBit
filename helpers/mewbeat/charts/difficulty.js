@@ -108,16 +108,14 @@ const TWO_KEY_TRILL = { minNotes: 4, maxGapBeats: 0.6, weight: 3 };
 // for by ear, as Normal hardly sped up with the music (train speed-ups per minute: people 26, Normal 17). Train F1 .8035
 // -> .8041.
 const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
-// selection.js farMoments, melodyPick.js withMelodySnap (generator flag melodySnap, Normal only): snappedMoments drops a sound
-// more than MAX_SNAP_DISTANCE_MS from its quarter-beat grid point, and 6.8% of the decoded melody's notes (72 songs; Rush E 40
-// of 514) have their sound dropped that way: at 162 BPM a quarter beat is 93 ms, so a sound is only 35-46 ms from a grid point.
-// With this a sound on a melody note may reach its grid point from up to `maxMs` (half a quarter beat is the geometric limit)
-// if the point holds no moment of its own.
-const MELODY_SNAP = { maxMs: 60 };
 // generate.js finish (generator flag fastRuns, Normal only, with melodyRuns): over about 150 BPM a quarter beat is under the
 // 100 ms of MELODY_RUNS.minGapMs and of Normal's minNoteGapMs (Rush E 93 ms, Finale 79 ms; 36 of 75 songs), so the bursts of
 // melodyRuns could never appear there: withRunNotes asks `minGapMs` of its notes instead, and spacedMoments and the final
-// floors let a gap that short stand. Every other note of Normal keeps 100 ms from the selection on.
+// floors let a gap that short stand next to a note of a burst. Any other two notes of Normal keep 100 ms. Asked for by ear
+// (Rush E: "no grouping of notes in the faster runs"; its Normal goes from 511 to 615 moments, the melody's notes played from
+// 49% to 62%). People's Normal does not play these: corpus F1 .805 -> .791, precision .772 -> .743, moments +4.5%.
+// A sound of the melody dropped for being 35-60 ms off the grid was tried too (melodySnap) and removed: it changed 0.2-0.4%
+// of the moments and no measure.
 const FAST_RUNS = { minGapMs: 70 };
 // laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
 // single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
@@ -148,13 +146,17 @@ const RUN_LANES = { minNotes: 3, maxGapBeats: 0.6, weight: 6, nearMiss: 1.4, mis
 // moments, 0 the quietest) is at least `minLoud`: the listening test of 2026-11, where the melody picked the moments alone, lost
 // because quiet melody notes took the place of loud, full ones and left holes, so a quiet line is not held. A moment off the line
 // closer than the level's gap and `louder` of a rank louder keeps its place and the line's moment gives way. What is left of the
-// line is thinned to the level's step (every second note of a fast run, on beats and half beats first), and the held moments are
-// chosen before the foreground, may take a phrase `room` of its budget over it.
-const MELODY_LINES = { joinBeats: 1, joinMs: 450, minNotes: 4, heard: 0.6, minLoud: 0.3, louder: 0.3, room: 0.15 };
-// selection.js selectMoments (flag melodyDuel, Normal only): a moment on a melody note wins a close call. When the foreground is
-// about to take a moment off the melody and a melody moment lies inside the gap and is not `louder` of a rank quieter than it
-// (a rank of the strength over the song's moments), the melody's moment is taken instead; a clearly louder sound keeps its place.
-const MELODY_DUEL = { louder: 0.2 };
+// line is thinned to the level's step (every second note of a fast run, on beats and half beats first). The held moments are
+// played on top of what a phrase chose, where they fit, up to `room` of its budget: no note gives its place to a line. On top
+// of the night's melody flags (melodyKeep, copyMelody, melodyShiftPick), the melody's notes played over what a line moved two
+// beats gets: bot 18.2 -> 19.8 points, corpus 10.8 -> 12.2; corpus F1 .807 -> .807, recall .864 -> .868, moments +1.1%.
+const MELODY_LINES = { joinBeats: 1, joinMs: 450, minNotes: 4, heard: 0.6, minLoud: 0.3, louder: 0.3, room: 0.3 };
+// The same lines chosen before the foreground (flag melodyLinesFirst, Normal only), which then takes what they leave of the
+// budget, `room` of it over: a line wins its place from a sound that is not clearly louder. More of the melody (bot 18.2 ->
+// 21.9, corpus 10.8 -> 15.8) for notes people play (corpus F1 .807 -> .795, recall .864 -> .847; Easy, cut from Normal, .733 ->
+// .718): one for the ear. A melody moment winning single close calls in the foreground (melodyDuel) was tried and removed: it
+// cost the same F1 for half the melody.
+const MELODY_LINES_FIRST = { ...MELODY_LINES, room: 0.15, first: true };
 // dips.js thinDips: Normal slows down where the music dips for a moment inside a loud passage; asked for by ear
 // (MEGALOVANIA, Camellia remix, 2:18-2:23). Train, audio dips of 400 ms+: people thin 35% of them to under half the density
 // around, v39 21%, this 41%. Dropping every off-beat moment where the energy falls under `deep` of the level around, as
@@ -609,14 +611,13 @@ module.exports = {
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,
-  MELODY_DUEL,
   MELODY_KEEP,
   MELODY_LINES,
+  MELODY_LINES_FIRST,
   MELODY_ONLY,
   MELODY_PICK,
   MELODY_RUNS,
   MELODY_SHIFT_PICK,
-  MELODY_SNAP,
   MINI_RESTS,
   NORMAL_HOLDS,
   PITCH_LANES,

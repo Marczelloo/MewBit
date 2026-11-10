@@ -9,11 +9,10 @@ const {
   FAST_RUNS,
   HARD_HOLDS,
   HEARD_CHORDS,
-  MELODY_DUEL,
   MELODY_KEEP,
   MELODY_LINES,
+  MELODY_LINES_FIRST,
   MELODY_SHIFT_PICK,
-  MELODY_SNAP,
   PITCH_LANES,
   PLUS_MELODY,
   RUN_LANES,
@@ -44,16 +43,14 @@ const FLAGS = {
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
-  // Normal: a moment on a melody note wins a close call with a neighbour that is not clearly louder (selection.js selectMoments).
-  melodyDuel: { label: "Normal: nuta melodii wygrywa z sąsiadem, który nie jest wyraźnie głośniejszy", levels: { normal: { melodyDuel: MELODY_DUEL } } },
   // Normal: thinning a slower stretch, an energy dip or the fade-out leaves the notes of the decoded melody (generate.js melodyMoments).
   melodyKeep: { label: "Normal: przerzedzanie oszczędza nuty melodii", levels: { normal: { melodyKeep: MELODY_KEEP } } },
-  // Normal: the decoder's good, loud lines of melody are held whole, thinned to the level's step (melodyLines.js, selection.js).
-  melodyLines: { label: "Normal: trzyma linie melodii (dobre linie z dekodera wchodzą pierwsze, rozrzedzone do kroku poziomu)", levels: { normal: { melodyLines: MELODY_LINES } } },
+  // Normal: the decoder's good, loud lines of melody, thinned to the level's step, are played on top of what a phrase chose (melodyLines.js, selection.js).
+  melodyLines: { label: "Normal: trzyma linie melodii (dobre linie z dekodera dogrywane do tego, co już wybrane; nic nie traci miejsca)", levels: { normal: { melodyLines: MELODY_LINES } } },
+  // Normal: the same lines chosen before everything else; a line wins its place from a sound that is not clearly louder (selection.js).
+  melodyLinesFirst: { label: "Normal: linie melodii wchodzą pierwsze (więcej melodii kosztem części głośnych nut)", levels: { normal: { melodyLines: MELODY_LINES_FIRST } } },
   // Normal: the decoded melody is moved to where it meets the song's sounds best (generate.js pickedMelodyShift).
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
-  // Normal: a sound on a melody note may reach its quarter-beat grid point from up to 60 ms instead of being dropped (selection.js farMoments).
-  melodySnap: { label: "Normal: dźwięk na nucie melodii dochodzi do siatki z dalsza, do 60 ms, zamiast wypaść", levels: { normal: { melodySnap: MELODY_SNAP } } },
   // Normal: the lane moves the way the melody's pitch moves, by about as much (laneRules.js pitchCost). Lanes only: no note moves in time.
   pitchLanes: { label: "Normal: tor idzie za wysokością melodii (wyżej = w prawo)", levels: { normal: { pitchLanes: PITCH_LANES } } },
   // Hard, Hell: an extra on a note of the decoded melody scores more (generate.js plusNotes).

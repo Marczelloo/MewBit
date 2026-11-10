@@ -36,25 +36,6 @@ function withMelody(scored, melody, rule) {
   });
 }
 
-// withMelodySnap(scored, far, melody) -> scored with the moments of `far` (selection.js farMoments: the sounds snappedMoments
-// drops for being too far from their grid point) that begin a melody note added at their grid point, where the point holds no
-// moment yet (the melodySnap flag). A melody note whose sound sits 35-60 ms from the grid is thus offered to the budget like
-// any other, instead of being lost before the selection sees it. Two on one point leave the higher score (ties: the nearer
-// sound), as snappedMoments does; time-ordered, like `scored`, which is returned as it is when nothing is added.
-function withMelodySnap(scored, far, melody) {
-  if (!Array.isArray(melody) || melody.length === 0 || far.length === 0) return scored;
-  const starts = melody.map((n) => n.t).filter(Number.isFinite).sort((a, b) => a - b);
-  const taken = new Set(scored.map((m) => m.t));
-  const added = new Map();
-  for (const c of far) {
-    const k = nearestIndex(starts, c.raw);
-    if (k < 0 || Math.abs(starts[k] - c.raw) > ONSET_MS || taken.has(c.t)) continue;
-    const kept = added.get(c.t);
-    if (!kept || c.score > kept.score || (c.score === kept.score && Math.abs(c.raw - c.t) < Math.abs(kept.raw - kept.t))) added.set(c.t, c);
-  }
-  return added.size > 0 ? [...scored, ...added.values()].sort((a, b) => a.t - b.t) : scored;
-}
-
 // withMelodyRuns(scored, melody, rule) -> scored with a moment marked `melodyRun: true` where a melody note begins and
 // the melody runs fast: the note before or after it begins within rule.fastMs.
 function withMelodyRuns(scored, melody, rule) {
@@ -104,4 +85,4 @@ function withRunNotes(notes, scored, timing, rule) {
   return added.length ? [...notes, ...added].sort((a, b) => a.t - b.t) : notes;
 }
 
-module.exports = { ONSET_MS, ranks, withMelody, withMelodyRuns, withMelodySnap, withRunNotes };
+module.exports = { ONSET_MS, ranks, withMelody, withMelodyRuns, withRunNotes };
