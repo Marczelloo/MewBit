@@ -11,7 +11,7 @@ const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
 const { heldLineMoments } = require("./melodyLines");
-const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
+const { ranks, withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
@@ -266,6 +266,19 @@ function melodyLineMoments(ctx, diff) {
   return ctx.melodyLineMoments.get(diff);
 }
 
+// diff.loudHoles (a flag): the times of the song's loud moments (strength of rank loudHoles.minLoud or more among the level's
+// moments), which selectMoments may play in a stretch a phrase left empty; null without the flag. Kept on the ctx.
+function loudMoments(ctx, diff) {
+  if (!diff.loudHoles) return null;
+  ctx.loudMoments ??= new Map();
+  if (!ctx.loudMoments.has(diff)) {
+    const scored = scoredFor(ctx, diff);
+    const loud = ranks(scored.map((m) => m.s));
+    ctx.loudMoments.set(diff, new Set(scored.filter((m, k) => loud[k] >= diff.loudHoles.minLoud).map((m) => m.t)));
+  }
+  return ctx.loudMoments.get(diff);
+}
+
 // Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
 function keptShare(ctx, diff) {
   ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
@@ -305,7 +318,9 @@ function musicNotes(ctx, i, diff, trace, before = null) {
   const figureRoom = weakLead ? Math.round(diff.figures.extra * budget) : 0;
   const lines = melodyLineMoments(ctx, diff);
   const lineRoom = lines ? Math.round(diff.melodyLines.room * budget) : 0;
-  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom });
+  const loud = loudMoments(ctx, diff);
+  const holeRoom = loud ? Math.ceil(diff.loudHoles.room * budget) : 0;
+  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom, loud, holeRoom });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 

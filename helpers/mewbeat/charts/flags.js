@@ -9,6 +9,7 @@ const {
   FAST_RUNS,
   HARD_HOLDS,
   HEARD_CHORDS,
+  LOUD_HOLES,
   MELODY_KEEP,
   MELODY_LINES,
   MELODY_LINES_FIRST,
@@ -43,6 +44,8 @@ const FLAGS = {
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
+  // Normal: a stretch a phrase left empty takes a loud sound in it, on top of its budget (selection.js selectMoments).
+  loudHoles: { label: "Normal: dziura z głośnym dźwiękiem w środku dostaje nutę (ponad limit sekcji)", levels: { normal: { loudHoles: LOUD_HOLES } } },
   // Normal: thinning a slower stretch, an energy dip or the fade-out leaves the notes of the decoded melody (generate.js melodyMoments).
   melodyKeep: { label: "Normal: przerzedzanie oszczędza nuty melodii", levels: { normal: { melodyKeep: MELODY_KEEP } } },
   // Normal: the decoder's good, loud lines of melody, thinned to the level's step, are played on top of what a phrase chose (melodyLines.js, selection.js).

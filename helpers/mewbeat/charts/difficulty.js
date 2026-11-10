@@ -117,6 +117,18 @@ const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
 // A sound of the melody dropped for being 35-60 ms off the grid was tried too (melodySnap) and removed: it changed 0.2-0.4%
 // of the moments and no measure.
 const FAST_RUNS = { minGapMs: 70 };
+// selection.js selectMoments (generator flag loudHoles, Normal only): a stretch of `beats` (and `minMs`) or more between two
+// notes that a phrase left empty takes the best moment in it whose strength is of rank `minLoud` or more in the song, on top
+// of the budget, up to `room` of it (rounded up). Asked for by ear (Rush E with the melody flags: "gaps although notes are
+// playing"): there the sounds in a hole were loud ones under the foreground (a quarter beat scores low) in a phrase whose
+// budget was spent, with no weaker note for the long stretches to swap out. Rush E, holes of a beat or more with 2+ decoded
+// notes inside and no hold over them: 14 (11.7 s) -> 8 (4.4 s), 538 -> 550 moments; what is left has no snapped moment or
+// lies inside the gap of a chosen note. Over the bot's 74 songs such holes (1.5 beats, 500 ms) are rare with or without it:
+// 2.2 -> 2.0 a song, fewer than a chart moved two beats has (3.4). On top of the melody flags and melodyLines: corpus F1
+// .807 -> .807, precision .766 -> .765, recall .868 -> .870, moments +0.4% (bot +0.9%); minLoud .33, 2 beats and room .5
+// give the same within .001. Before the first note and after the last nothing is filled: a first version did, and put a
+// lone note nine seconds into the Camellia remix's fade-out.
+const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
 // laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
 // single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
 // asks for one lane (a step of the scale), two from `twoLanes` semitones, three from `threeLanes` (and a beat for the leap);
@@ -611,6 +623,7 @@ module.exports = {
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,
+  LOUD_HOLES,
   MELODY_KEEP,
   MELODY_LINES,
   MELODY_LINES_FIRST,

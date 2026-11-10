@@ -298,7 +298,10 @@ function gapOf(diff, timing) {
 // `edges.lineRoom`. With diff.melodyLines (a flag) the moments of the melody's held lines (`edges.lines`, the times of
 // melodyLines.js) are played too, beats before the rest, even under diff.foreground ("linia"): after everything else, where
 // they fit between the notes the phrase chose, or with melodyLines.first before the foreground, which then takes what the
-// lines leave of the budget; the long stretches never swap one out.
+// lines leave of the budget; the long stretches never swap one out. With diff.loudHoles (a flag) a stretch of loudHoles.beats
+// (and minMs) or more between two notes (the last of the phrase before too) that all of this left empty takes the best of the
+// song's loud moments in it (`edges.loud`, their times; "dziura"), up to `edges.holeRoom` over what the phrase has: a loud
+// sound under the foreground with the budget spent was a hole to the ear.
 function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   const snapped = !!timing?.snapped;
   const beatAt = (t) => beatMsOf(timing, t);
@@ -394,6 +397,26 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   }
 
   if (edges.lines?.size > 0 && !linesFirst) holdLines(chosen.length + (edges.lineRoom ?? 0));
+
+  // A stretch between two notes still empty with a loud sound in it (diff.loudHoles), on top of everything: its best loud
+  // moment, one at a time. Before the first note and after the last one nothing is a hole (a lead-in, a fade-out).
+  if (diff.loudHoles && edges.loud?.size > 0) {
+    const most = chosen.length + (edges.holeRoom ?? 0);
+    while (chosen.length < most) {
+      let best = null;
+      const marks = [...(lastBefore === null ? [] : [lastBefore]), ...chosen.map((n) => n.t)];
+      for (let i = 1; i < marks.length; i++) {
+        const from = marks[i - 1];
+        const to = marks[i];
+        if (to - from < Math.max(diff.loudHoles.beats * beatAt(from), diff.loudHoles.minMs)) continue;
+        for (const c of pool) {
+          if (c.t > from && c.t < to && edges.loud.has(c.t) && fits(c.t) && (!best || c.score > best.score)) best = c;
+        }
+      }
+      if (!best) break;
+      add(best, "dziura");
+    }
+  }
 
   return chosen.map(({ t, s, reason, source }) => ({ t, s, reason, source }));
 }
