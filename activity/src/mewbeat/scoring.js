@@ -1,3 +1,5 @@
+import { modifierMultiplier } from "./modifiers.js";
+
 export const WINDOWS = { perfect: 50, great: 90, good: 125 };
 // A press this early, but past the good window, still takes the note, as a miss (osu!mania's early
 // miss band): mashing ahead of the notes breaks combo instead of waiting for them to arrive.
@@ -5,9 +7,21 @@ export const EARLY_MISS_MS = 150;
 // Hold tails are judged against the tap windows scaled by this factor.
 export const HOLD_WINDOW_SCALE = 1.5;
 export const BASE_POINTS = { perfect: 300, great: 200, good: 100, miss: 0 };
-export const VIBE_DELTA = { perfect: 0.03, great: 0.02, good: 0.01, miss: -0.06 };
+// A full fever bar takes feverNFor(parts) perfects: what a judgement adds is its weight over N, a miss takes a
+// fixed slice off. Tied to the chart's size, a map gives about the same few fevers however many notes it has.
+export const VIBE_WEIGHT = { perfect: 1, great: 0.6, good: 0.25 };
+export const VIBE_MISS = -0.05;
+export const FEVER_MIN_N = 30;
+export const FEVER_SHARE = 0.2;
 export const ACCURACY_WEIGHT = { perfect: 100, great: 80, good: 50, miss: 0 };
 export const FEVER_MS = 8000;
+
+export const HEALTH_START = 0.5;
+// Health a judgement adds. A miss costs more on a head or a tap than on a hold's tail.
+export const HEALTH_DELTA = { perfect: 0.01, great: 0.01, good: 0.005, miss: -0.08, missTail: -0.04 };
+export const FOUR_LIVES = 4;
+// With No Fail, every judgement after health first hit 0 is worth this share of its points.
+export const NO_FAIL_PENALTY = 0.5;
 
 export function judgementFor(absErrorMs, scale = 1) {
   if (absErrorMs <= WINDOWS.perfect * scale) return "perfect";
@@ -20,7 +34,16 @@ export function multiplierFor(combo) {
   return Math.min(4, 1 + Math.floor(combo / 10));
 }
 
-export function createScore() {
+// How many perfects fill the fever bar of a chart with this many judgements (a tap is one, a hold two).
+// Without a size the minimum applies.
+export function feverNFor(parts) {
+  return Math.max(FEVER_MIN_N, Math.round(FEVER_SHARE * (Number.isFinite(parts) ? parts : 0)));
+}
+
+// parts: the chart's judgement count (judgeablePartsOf), which sizes the fever bar. modifiers: ids from
+// modifiers.js. noFail is no modifier: a run that can never be lost and pays no penalty for it (calibration,
+// tutorial, autoplay, a spectator); the No Fail modifier is the one that costs points once health is gone.
+export function createScore({ parts, modifiers = [], noFail = false } = {}) {
   return {
     score: 0,
     combo: 0,
@@ -29,12 +52,38 @@ export function createScore() {
     feverUntil: null,
     fevers: 0,
     counts: { perfect: 0, great: 0, good: 0, miss: 0 },
+    health: HEALTH_START,
+    lives: modifiers.includes("fl") ? FOUR_LIVES : null,
+    failedAt: null,
+    depletedAt: null,
+    feverN: feverNFor(parts),
+    modMult: modifierMultiplier(modifiers),
+    rules: {
+      oneLife: modifiers.includes("ol"),
+      fourLives: modifiers.includes("fl"),
+      unlosable: noFail || modifiers.includes("nf"),
+      penalty: modifiers.includes("nf") && !noFail,
+    },
   };
 }
 
-// Round away float drift so a vibe that is "full" by arithmetic compares as 1.
-function clampVibe(vibe) {
-  return Math.min(1, Math.max(0, Math.round(vibe * 1e6) / 1e6));
+export const isFailed = (state) => state.failedAt !== null;
+export const healthOf = (state) => state.health;
+
+// Clamp to 0..1 and snap float drift, so a vibe or health that is "full" (or empty) by arithmetic compares as
+// 1 (or 0). Not rounded to a grid: steps of 1/N would lose a little each time and never add up to 1.
+const SNAP = 1e-9;
+function clampUnit(value) {
+  if (value >= 1 - SNAP) return 1;
+  return value <= SNAP ? 0 : value;
+}
+
+function vibeDelta(judgement, feverN) {
+  return judgement === "miss" ? VIBE_MISS : VIBE_WEIGHT[judgement] / feverN;
+}
+
+function healthDelta(judgement, part) {
+  return judgement === "miss" && part === "tail" ? HEALTH_DELTA.missTail : HEALTH_DELTA[judgement];
 }
 
 function feverActive(state, songMs) {
@@ -49,18 +98,34 @@ function settleFever(state, songMs) {
   return state;
 }
 
-export function applyJudgement(state, judgement, songMs) {
+// part is "head" (a tap counts as one) or "tail"; only the health cost of a miss differs between them.
+// A lost run stays as it was lost: nothing judged after the fail changes it.
+export function applyJudgement(state, judgement, songMs, part = "head") {
+  if (isFailed(state)) return state;
   const current = settleFever(state, songMs);
   const fever = feverActive(current, songMs);
-  const points = BASE_POINTS[judgement] * multiplierFor(current.combo) * (fever ? 2 : 1);
+  const penalty = current.depletedAt !== null && current.rules.penalty ? NO_FAIL_PENALTY : 1;
+  const points = Math.round(
+    BASE_POINTS[judgement] * multiplierFor(current.combo) * (fever ? 2 : 1) * current.modMult * penalty,
+  );
   const combo = judgement === "miss" ? 0 : current.combo + 1;
+  const health = clampUnit(current.health + healthDelta(judgement, part));
+  const missed = judgement === "miss";
+  const lives = current.lives !== null && missed ? current.lives - 1 : current.lives;
+  const lost = !current.rules.unlosable && (current.rules.oneLife
+    ? missed
+    : current.rules.fourLives ? lives === 0 : health === 0);
   return {
     ...current,
     score: current.score + points,
     combo,
     maxCombo: Math.max(current.maxCombo, combo),
-    vibe: fever ? current.vibe : clampVibe(current.vibe + VIBE_DELTA[judgement]),
+    vibe: fever ? current.vibe : clampUnit(current.vibe + vibeDelta(judgement, current.feverN)),
     counts: { ...current.counts, [judgement]: current.counts[judgement] + 1 },
+    health: current.rules.oneLife && missed && !current.rules.unlosable ? 0 : health,
+    lives,
+    failedAt: lost ? songMs : null,
+    depletedAt: current.depletedAt ?? (current.rules.penalty && health === 0 ? songMs : null),
   };
 }
 
@@ -75,7 +140,7 @@ export function canFever(state, songMs) {
 }
 
 export function startFever(state, songMs) {
-  if (!canFever(state, songMs)) return state;
+  if (isFailed(state) || !canFever(state, songMs)) return state;
   return { ...state, feverUntil: songMs + FEVER_MS, fevers: state.fevers + 1 };
 }
 

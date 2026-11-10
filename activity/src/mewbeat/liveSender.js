@@ -5,6 +5,7 @@
 // drops an entry 5 s after its last update), and exactly one final message with ended: true.
 // No browser globals: send, now and the timers are injected.
 
+const NONE = []; // a sample without modifiers: one shared list, so the reference check in same() holds
 const MIN_INTERVAL_MS = 250; // 4 Hz
 const KEEP_ALIVE_MS = 2000;
 
@@ -20,15 +21,18 @@ export function createLiveSender({
   clearTimer = clearTimeout,
 }) {
   let difficulty = initialDifficulty; // follows a mid-run difficulty change
-  let latest = null; // { score, combo, accuracy, vibe, fever } of the last update()
+  let latest = null; // { score, combo, accuracy, vibe, fever, failed, modifiers } of the last update()
   let lastSent = null;
   let lastAt = null;
   let trailing = null;
   let keepAlive = null;
   let ended = false;
 
-  const numbersOf = (sample) => ({ score: sample.score, combo: sample.combo, accuracy: sample.accuracy ?? null, vibe: sample.vibe ?? null, fever: Boolean(sample.fever) });
-  const same = (a, b) => Boolean(a && b) && a.score === b.score && a.combo === b.combo && a.accuracy === b.accuracy && a.vibe === b.vibe && a.fever === b.fever;
+  const numbersOf = (sample) => ({ score: sample.score, combo: sample.combo, accuracy: sample.accuracy ?? null, vibe: sample.vibe ?? null, fever: Boolean(sample.fever), failed: Boolean(sample.failed), modifiers: Array.isArray(sample.modifiers) ? sample.modifiers : NONE });
+  const same = (a, b) => Boolean(a && b) && a.score === b.score && a.combo === b.combo && a.accuracy === b.accuracy && a.vibe === b.vibe && a.fever === b.fever && a.failed === b.failed && sameList(a.modifiers, b.modifiers);
+
+  // The run keeps one list for its whole length, so the reference check is the normal path.
+  const sameList = (a, b) => a === b || a.join(",") === b.join(",");
 
   function clearTimers() {
     clearTimer(trailing);
@@ -39,7 +43,7 @@ export function createLiveSender({
 
   function transmit(sample, isEnd) {
     try {
-      send({ type: "mewbeat_live", session, audioKey, difficulty, score: sample.score, combo: sample.combo, accuracy: sample.accuracy, vibe: sample.vibe, fever: sample.fever, ended: isEnd });
+      send({ type: "mewbeat_live", session, audioKey, difficulty, score: sample.score, combo: sample.combo, accuracy: sample.accuracy, vibe: sample.vibe, fever: sample.fever, failed: sample.failed, modifiers: sample.modifiers, ended: isEnd });
     } catch {
       /* a refused or failed send is just a missed update */
     }

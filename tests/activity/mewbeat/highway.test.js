@@ -7,9 +7,14 @@ let approachMsFor;
 let noteY;
 let tempoScrollFactor;
 let scrollFactor;
+let approachFor;
+let hitYRatio;
+let REF_HIT_Y;
+let ghostAlpha;
+let MAX_APPROACH_MS;
 
 test.before(async () => {
-  ({ approachMsFor, noteY, scrollFactor, tempoScrollFactor } = await import(
+  ({ approachMsFor, approachFor, hitYRatio, REF_HIT_Y, MAX_APPROACH_MS, noteY, scrollFactor, tempoScrollFactor, ghostAlpha } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/highway.js")).href
   ));
 });
@@ -49,4 +54,46 @@ test("scrollFactor takes the larger of the tempo's and the pace's nudge, the pac
   assert.equal(scrollFactor({ bpm: 100, pace: 20 }), 1.4);
   assert.equal(scrollFactor({ bpm: 132 }), tempoScrollFactor(132));
   assert.equal(scrollFactor(null), 1);
+});
+
+test("approachFor at the reference hit line is today's approach, with and without the tempo nudge", () => {
+  assert.equal(approachFor(1, REF_HIT_Y), 2200);
+  assert.equal(approachFor(5, REF_HIT_Y), 1148);
+  assert.equal(approachFor(5, REF_HIT_Y, 1.25), Math.floor(1148 / 1.25));
+});
+
+test("approachFor keeps the pixel speed the same on a tall highway: a hit line 2.2 times as far, a window 2.2 times as long", () => {
+  const tall = Math.round(REF_HIT_Y * 2.2); // a 1440 px tall viewport against a 720 px one
+  assert.equal(approachFor(5, tall), Math.floor(1148 * (tall / REF_HIT_Y)));
+  assert.ok(Math.abs(approachFor(5, tall) / approachFor(5, REF_HIT_Y) - 2.2) < 0.01);
+  // pixels a second = hitY / approach: the same at both heights
+  assert.ok(Math.abs(tall / approachFor(5, tall) - REF_HIT_Y / approachFor(5, REF_HIT_Y)) < 0.001);
+});
+
+test("hitYRatio is clamped to 0.6 .. 3 and ignores a hit line it cannot read", () => {
+  assert.equal(hitYRatio(REF_HIT_Y), 1);
+  assert.equal(hitYRatio(10), 0.6);
+  assert.equal(hitYRatio(REF_HIT_Y * 10), 3);
+  assert.equal(hitYRatio(0), 1);
+  assert.equal(hitYRatio(NaN), 1);
+  assert.equal(hitYRatio(undefined), 1);
+});
+
+test("MAX_APPROACH_MS covers the longest approach approachFor can give", () => {
+  assert.equal(MAX_APPROACH_MS, 6600);
+  for (const speed of [1, 5, 10]) {
+    for (const hitY of [1, REF_HIT_Y, 5000]) assert.ok(approachFor(speed, hitY) <= MAX_APPROACH_MS);
+  }
+});
+
+test("ghostAlpha is solid to 65% of the way to the line, gone from 85%, linear in between", () => {
+  assert.equal(ghostAlpha(0), 1);
+  assert.equal(ghostAlpha(0.65), 1);
+  assert.equal(ghostAlpha(0.85), 0);
+  assert.equal(ghostAlpha(1.2), 0);
+  assert.ok(Math.abs(ghostAlpha(0.75) - 0.5) < 1e-9);
+  assert.ok(Math.abs(ghostAlpha(0.7) - 0.75) < 1e-9);
+  // a note's progress is its y over the hit line
+  assert.ok(Math.abs(ghostAlpha(noteY(1000, 500, 1000, 600) / 600) - 1) < 1e-9);
+  assert.equal(ghostAlpha(noteY(1000, 900, 1000, 600) / 600), 0);
 });

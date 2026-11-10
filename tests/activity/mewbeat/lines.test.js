@@ -11,7 +11,7 @@ test.before(async () => {
 
 const MOMENTS = [
   "combo", "miss", "crushed", "fever", "charting", "lobby", "count",
-  "gradeS", "gradeA", "gradeB", "gradeC", "gradeD", "fullCombo", "newBest",
+  "gradeS", "gradeA", "gradeB", "gradeC", "gradeD", "failed", "fullCombo", "newBest",
   "vibe", "trap", "reveal", "wink",
 ];
 // Pools shown while notes are falling: short enough to read at a glance.

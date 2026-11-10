@@ -161,11 +161,6 @@
 .mb-ss .mb-ss-trow { display: flex; justify-content: space-between; margin-top: 11px; color: var(--mb-muted); font: 500 12px/1 var(--mb-ss-mono); }
 .mb-ss .mb-ss-trow em { color: var(--mb-text); font-style: normal; font-weight: 700; }
 
-/* modifiers: four slots that do nothing yet */
-.mb-ss .mb-ss-mods { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
-.mb-ss .mb-ss-mods .mb-ss-label { margin-right: 4px; }
-.mb-ss .mb-ss-slot { display: grid; flex: 1; place-items: center; min-height: 30px; border-radius: 8px; background: rgb(255 255 255 / 0.03); color: var(--mb-faint); font: 500 11px/1 var(--mb-ss-mono); }
-
 /* level leaderboard */
 :is(.mb-ss, .mb-lobby) .mb-ss-board h3 { padding: 8px 8px 8px 14px; }
 :is(.mb-ss, .mb-lobby) .mb-ss-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; outline: 1px solid var(--mb-line); background: var(--mb-bg); letter-spacing: 0.04em; text-transform: none; }
@@ -194,6 +189,8 @@
 :is(.mb-ss, .mb-lobby) .mb-ss-pl-mine:hover { background: rgb(103 227 244 / 0.13); }
 :is(.mb-ss, .mb-lobby) .mb-ss-pl-pin { border-top-color: rgb(255 255 255 / 0.22); }
 :is(.mb-ss, .mb-lobby) .mb-ss-nm { overflow: hidden; font: 800 13px/1.2 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+:is(.mb-ss, .mb-lobby) .mb-ss-nm-tagged { display: flex; align-items: center; gap: 6px; }
+:is(.mb-ss, .mb-lobby) .mb-ss-nm-tagged > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :is(.mb-ss, .mb-lobby) .mb-ss-rk { color: var(--mb-faint); font-weight: 700; text-align: right; }
 :is(.mb-ss, .mb-lobby) .mb-ss-pl-mine .mb-ss-rk { color: var(--mb-cyan); }
 :is(.mb-ss, .mb-lobby) .mb-ss-gr { font-weight: 900; text-align: center; }
@@ -267,7 +264,22 @@
 
 @media (prefers-reduced-motion: reduce) {
   .mb-ss .mb-ss-back, .mb-ss .mb-ss-pl, .mb-ss .mb-ss-rankrow { transition: none; }
+  .mb-ss .mb-ss-spin { animation-duration: 3s; }
 }
+
+/* "Chart this map": the button where the note sat, with a line under it, and a spinner while the bot charts. */
+.mb-ss .mb-ss-chart { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.mb-ss .mb-ss-chart-btn { display: inline-flex; align-items: center; gap: 8px; }
+.mb-ss .mb-ss-chart-btn[aria-busy="true"] { color: var(--mb-cyan); }
+.mb-ss .mb-ss-spin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: mb-ss-spin 0.9s linear infinite;
+}
+@keyframes mb-ss-spin { to { transform: rotate(360deg); } }
 
 /* right side: the song list as a table. Columns are the cover, the song and one per level. */
 .mb-ss .mb-ss-list { container-type: inline-size; }
@@ -340,7 +352,8 @@
 .mb-ss .mb-ss-row:hover { background: rgb(255 255 255 / 0.04); }
 .mb-ss .mb-ss-row-on,
 .mb-ss .mb-ss-row-on:hover { background: rgb(103 227 244 / 0.09); }
-.mb-ss .mb-ss-art { display: block; width: 44px; aspect-ratio: 1; border-radius: 9px; object-fit: cover; }
+.mb-ss .mb-ss-art { display: block; width: 44px; height: auto; aspect-ratio: 1; border-radius: 9px; object-fit: cover; }
+.mb-ss .mb-ss-chip-unavailable { display: inline-flex; align-items: center; gap: 5px; color: var(--mb-faint); }
 .mb-ss .mb-ss-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .mb-ss .mb-ss-info b { overflow: hidden; font-size: 14px; font-weight: 800; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
 .mb-ss .mb-ss-info small { overflow: hidden; color: var(--mb-muted); font: 500 12px/1.3 "Hanken Grotesk", "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }

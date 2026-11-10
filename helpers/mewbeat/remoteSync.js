@@ -60,6 +60,17 @@ function createRemoteSync({
       await client.ensureTable({ name: table.name, columns: table.columns });
       for (const index of table.indexes) await client.ensureIndex({ ...index, table: table.name });
     }
+    // ensureTable leaves a table that already exists as it is, so a column added to TABLES later is added here:
+    // a row naming a column the table lacks would be refused, and the outbox would retry it forever.
+    if (!client.listTables) return;
+    const existing = new Map((await client.listTables()).map((info) => [info.tableName, new Set((info.columns ?? []).map((column) => column.name))]));
+    for (const table of Object.values(TABLES)) {
+      const names = existing.get(table.name);
+      if (!names) continue;
+      for (const column of table.columns) {
+        if (!names.has(column.name)) await client.addColumn(table.name, column);
+      }
+    }
   }
 
   async function attempt() {

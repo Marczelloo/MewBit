@@ -29,8 +29,10 @@ export const MEWBIT_POSES = {
   combo300: pose("combo300", "game", run(48), 24, { sync: "combo", bubble: "combo" }),
   // These three fit MISS_POSE_MS and CRUSHED_POSE_MS in missPose.js and MILESTONE_POSE_MS in useMewbeatGame.js;
   // crushed (a deeper miss: she sinks, head down, the gloom over her brow) plays in under a second and holds the gloom.
-  miss: pose("miss", "game", run(14), 24, { hold: true, bubble: "miss" }),
-  crushed: pose("crushed", "game", run(26), 30, { hold: true, bubble: "crushed" }),
+  // `keep`: the whole one-shot stays decoded while its screen is up, so a miss plays at once instead of decoding its
+  // frames mid-song and pushing the dance loop out of the cache.
+  miss: pose("miss", "game", run(14), 24, { hold: true, keep: true, bubble: "miss" }),
+  crushed: pose("crushed", "game", run(26), 30, { hold: true, keep: true, bubble: "crushed" }),
   milestone: pose("milestone", "game", run(21), 24, { hold: true }),
   fever: pose("fever", "game", run(48), 24, { sync: "fever", bubble: "fever" }),
   fever100: pose("fever100", "game", run(48), 24, { sync: "fever", bubble: "fever" }),

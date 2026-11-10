@@ -170,3 +170,28 @@ describe("mewbeat per-account record", () => {
     assert.strictEqual(getMewbeatRecord("u1").settings.offsetMs, 0);
   });
 });
+
+describe("mewbeat user settings: modifiers and FEVER mode", () => {
+  const { DEFAULT_SETTINGS, normalizeSettings, validateSettingsPatch } = require("../../../helpers/mewbeat/userSettings");
+
+  it("defaults to no modifiers and manual FEVER", () => {
+    assert.deepStrictEqual(DEFAULT_SETTINGS.modifiers, []);
+    assert.strictEqual(DEFAULT_SETTINGS.feverMode, "manual");
+  });
+
+  it("takes a list of modifier ids and auto FEVER, and refuses anything else", () => {
+    const settings = validateSettingsPatch({ modifiers: ["nf", "gn"], feverMode: "auto" }, {});
+    assert.deepStrictEqual(settings.modifiers, ["nf", "gn"]);
+    assert.strictEqual(settings.feverMode, "auto");
+    for (const patch of [{ modifiers: "nf" }, { modifiers: ["nf", "nf"] }, { modifiers: ["NoFail"] }, { feverMode: "space" }]) {
+      assert.throws(() => validateSettingsPatch(patch, {}), (error) => error.statusCode === 400);
+    }
+  });
+
+  it("does not share the stored list", () => {
+    const stored = { modifiers: ["mr"] };
+    const settings = normalizeSettings(stored);
+    settings.modifiers.push("gn");
+    assert.deepStrictEqual(stored.modifiers, ["mr"]);
+  });
+});

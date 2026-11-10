@@ -172,7 +172,9 @@
 /* stage: Mewbit left, highway centre, cards right. The scenery follows --mb-vibe (0..1.4), set on .mb-backdrop only, and
    each hit flips data-pulse on .mb-stage between "a" and "b" (two identical animations restart the pulse). Everything
    that moves is opacity or transform, so a hit never restyles the subtree: an element's resting opacity is --mb-base,
-   its pulse starts --mb-amp above that and decays back over 250 ms, and a vibe change fades --mb-base over 400 ms.
+   its pulse starts --mb-amp above that and decays back over 250 ms, and a vibe change fades --mb-base over 400 ms (the
+   game only passes the vibe on in steps of 0.05). The pulsing layers are promoted up front (will-change), so a hit
+   only changes a composited layer's opacity and nothing on top of them blurs the stage.
    Only full effects pulse (the attribute is never set otherwise). */
 .mb-stage {
   container-type: size;
@@ -198,6 +200,7 @@
 .mb-layer-glow { --mb-base: calc(0.15 + var(--mb-vibe) * 0.25); --mb-amp: 0.6; }
 .mb-spot { --mb-base: calc(0.15 + var(--mb-vibe) * 0.25); --mb-amp: 0.15; }
 .mb-layer-lit, .mb-layer-neon, .mb-layer-glow, .mb-spot { opacity: var(--mb-base); transition: opacity 400ms ease-out; }
+.mb-fx-full :is(.mb-layer-lit, .mb-layer-neon, .mb-layer-glow) { will-change: opacity; }
 /* An idle stage sits dim and the vibe lifts it. */
 .mb-backdrop-dim { position: absolute; inset: 0; background: #07040f; opacity: calc(0.3 - var(--mb-vibe) * 0.3); transition: opacity 400ms ease-out; }
 .mb-fx-off .mb-layer-fever,
@@ -256,13 +259,17 @@
   z-index: 4;
   pointer-events: none;
   background: radial-gradient(ellipse at center, transparent 58%, rgb(255 128 152 / 0.26) 100%);
-  animation: mb-missflash 260ms ease-out both;
+  opacity: 0;
+  will-change: opacity;
 }
+.mb-missflash[data-flash="a"] { animation: mb-missflash-a 260ms ease-out both; }
+.mb-missflash[data-flash="b"] { animation: mb-missflash-b 260ms ease-out both; }
 .mb-missflash-crushed {
   background: radial-gradient(ellipse at center, transparent 48%, rgb(255 128 152 / 0.42) 100%);
-  animation-duration: 420ms;
 }
-@keyframes mb-missflash { from { opacity: 1; } to { opacity: 0; } }
+.mb-missflash-crushed[data-flash] { animation-duration: 420ms; }
+@keyframes mb-missflash-a { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mb-missflash-b { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .mb-missflash { display: none; }
 }
@@ -346,6 +353,9 @@
 .mb-fx-off .mb-res-lb .mb-ss-pl,
 .mb-fx-off .mb-res-standings li { animation: none; }
 .mb-fx-off .mb-fever-ready .mb-fever-bar::after { animation: none; opacity: 1; }
+.mb-fx-off .mb-canvas-failed,
+.mb-fx-off .mb-highway-lost,
+.mb-fx-off .mb-health-track i { transition: none; }
 /* Effects off drops the big blurred layer too: it is the costliest paint on the screen. */
 .mb-fx-off .mb-res-backdrop { display: none; }
 .mb-fx-off .mb-highway,
@@ -445,9 +455,8 @@
   flex: 0 1 auto;
   min-height: 0;
   border-radius: 18px;
-  background: rgb(12 14 18 / 0.86);
+  background: rgb(12 14 18 / 0.9);
   outline: 1px solid rgb(255 255 255 / 0.1);
-  backdrop-filter: blur(8px);
   overflow: hidden;
   transition: outline-color 200ms ease-out;
 }
@@ -459,7 +468,7 @@
 .mb-fever .mb-board { outline-color: color-mix(in srgb, var(--mb-gold) 60%, transparent); }
 .mb-fever .mb-board::before { background: var(--mb-gold); }
 .mb-fx-off .mb-board, .mb-fx-off .mb-board::before { transition: none; }
-.mb-board > .mb-card { flex: none; border-radius: 0; background: none; outline: 0; backdrop-filter: none; }
+.mb-board > .mb-card { flex: none; border-radius: 0; background: none; outline: 0; }
 .mb-board > .mb-card + .mb-card { border-top: 1px solid var(--mb-line); }
 .mb-board > .mb-lb { flex: 0 1 auto; }
 .mb-lv-chip {
@@ -475,16 +484,12 @@
 .mb-card {
   padding: 14px;
   border-radius: 16px;
-  background: rgb(12 14 18 / 0.82);
+  background: rgb(12 14 18 / 0.86);
   outline: 1px solid rgb(255 255 255 / 0.08);
-  backdrop-filter: blur(6px);
 }
-/* A blur re-samples what is behind it every frame; reduced and off effects go without (the panels are near opaque). */
-.mb-fx-reduced .mb-board,
-.mb-fx-reduced .mb-card,
+/* No backdrop blur on the board and cards: the stage behind them changes on every hit, so a blur was re-sampled nearly
+   every frame. They are near-opaque panels instead. (The modal scrim is only up while a window is open.) */
 .mb-fx-reduced .mb-add-scrim,
-.mb-fx-off .mb-board,
-.mb-fx-off .mb-card,
 .mb-fx-off .mb-add-scrim { backdrop-filter: none; }
 .mb-card .mb-label { font: 500 10px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.1em; color: var(--mb-faint); }
 .mb-track-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -603,6 +608,47 @@
 .mb-fever-ready .mb-fever-bar::after { animation: mb-fever-glow 900ms ease-in-out infinite; }
 @keyframes mb-fever-glow { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 
+/* Health bar: the column in the gap left of the highway (FEVER has the right one). It fills from the bottom; its colour
+   is inline (green to yellow to red). Below 0.2 it pulses, full effects only. Four Lives / One Life put pips on top.
+   Once No Fail has run dry the bar dims and a chip says what the score now costs. */
+.mb-health {
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  right: calc(100% + 4px);
+  width: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.mb-health-pips { flex: none; display: flex; flex-direction: column; gap: 3px; }
+.mb-pip { display: block; width: 8px; height: 8px; border-radius: 50%; background: rgb(255 255 255 / 0.14); }
+.mb-pip-on { background: rgb(255 128 152); }
+.mb-health-bar { position: relative; flex: 1 1 0; width: 100%; min-height: 0; }
+.mb-health-track { position: absolute; inset: 0; border-radius: 999px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
+.mb-health-track i { display: block; width: 100%; height: 100%; transform-origin: bottom center; transition: transform 160ms ease-out; }
+.mb-health-fx.mb-health-critical .mb-health-track { animation: mb-health-pulse 700ms ease-in-out infinite; }
+.mb-health-spent .mb-health-track { opacity: 0.35; }
+.mb-health-chip {
+  flex: none;
+  color: var(--mb-gold);
+  font: 700 9px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+@keyframes mb-health-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* A lost run: the lanes fade out (the hook keeps the last frame on the canvas for as long), and in Live the whole
+   highway goes while the board stays. */
+.mb-canvas-failed { opacity: 0; transition: opacity 700ms ease-out; }
+.mb-highway-lost { opacity: 0; transition: opacity 300ms ease-out; }
+.mb-failedbanner { color: rgb(255 128 152); }
+.mb-lb-failed { margin-right: 6px; color: rgb(255 128 152); font-size: 9px; letter-spacing: 0.08em; }
+.mb-lb-lost .mb-lb-name { color: var(--mb-muted); }
+
 /* live leaderboard: top 5 of the session plus the player's own row */
 /* The board gives way first when the column runs out of height: its list scrolls, the cards above keep their size. */
 .mb-lb { display: flex; flex-direction: column; min-height: 0; }
@@ -612,7 +658,8 @@
 .mb-lb-rank { color: var(--mb-faint); font: 700 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
 .mb-lb-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; outline: 1px solid var(--mb-line); }
 .mb-lb-av-text { background: var(--mb-high-bg, #161920); color: var(--mb-high); font-size: 10px; font-weight: 800; }
-.mb-lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-lb-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.mb-lb-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mb-lb-score { font: 700 12px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .mb-lb-me { color: var(--mb-cyan); }
 .mb-lb-me .mb-lb-av { outline-color: var(--mb-cyan); }
@@ -627,7 +674,7 @@
   .mb-scene { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) auto; gap: 12px; height: auto; min-height: 100%; padding: 12px 16px 16px; }
   .mb-char, .mb-spot { display: none; }
   .mb-highway-slot { justify-self: center; width: min(100%, 460px); min-height: 260px; padding-top: 0; }
-  .mb-fever-meter { top: 0; }
+  .mb-fever-meter, .mb-health { top: 0; }
   .mb-highway { border-radius: 18px; }
   .mb-side { align-self: start; justify-self: center; width: min(100%, 460px); padding: 0; }
   .mb-header { flex-wrap: wrap; padding: 8px 16px; }
@@ -676,6 +723,8 @@
   max-width: min(260px, 90%);
   transform-origin: 0 100%;
   animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  /* Its own layer, so the tag's three drop-shadows paint once and the pop only scales the result. */
+  will-change: transform;
 }
 .mb-mewbit-off .mb-mewbit-bubble { animation: none; }
 
@@ -778,7 +827,8 @@
   .mb-spot,
   .mb-stage[data-pulse] :is(.mb-layer-lit, .mb-layer-neon, .mb-layer-glow, .mb-aura, .mb-spot),
   .mb-stage[data-pulse] .mb-highway::after,
-  .mb-fever-ready .mb-fever-bar::after { animation: none; }
+  .mb-fever-ready .mb-fever-bar::after,
+  .mb-health-fx.mb-health-critical .mb-health-track { animation: none; }
   .mb-scene-leaving { display: none; }
   .mb-feverbanner, .mb-fever-ready .mb-fever-bar::after { opacity: 1; }
   .mb-btn,
@@ -790,6 +840,9 @@
   .mb-spot,
   .mb-backdrop-dim,
   .mb-aura,
+  .mb-canvas-failed,
+  .mb-highway-lost,
+  .mb-health-track i,
   .mb-mult-fg { transition: none; }
 }
 
@@ -1043,6 +1096,19 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-res-backdrop img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0.22; transform: scale(1.2); filter: blur(40px) saturate(1.3); }
 .mb-res-backdrop::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--mb-bg) 35%, transparent), color-mix(in srgb, var(--mb-bg) 85%, transparent)); }
 .mb-res-main, .mb-res-side { position: relative; z-index: 1; }
+/* The song's painted scene shows through the results. The stage falls into a row of its own under a screen, so here it
+   takes the screen's cell (below it) and only its backdrop is left visible; the screen's background becomes a plain
+   gradient scrim, so no blur and no extra image is added. The vibe is fixed so the scene reads the same whatever the run
+   ended on. :has stops at direct children, which keeps matching cheap while a run is going. */
+.mb-game:has(> .mb-screen > .mb-res):has(> .mb-stage > .mb-backdrop) > .mb-stage { grid-area: 2 / 1; }
+.mb-game:has(> .mb-screen > .mb-res):has(> .mb-stage > .mb-backdrop) > .mb-stage > :not(.mb-backdrop) { visibility: hidden; }
+.mb-game:has(> .mb-screen > .mb-res):has(> .mb-stage > .mb-backdrop) .mb-backdrop { --mb-vibe: 0.5 !important; }
+.mb-game:has(> .mb-screen > .mb-res):has(> .mb-stage > .mb-backdrop) .mb-res {
+  background:
+    linear-gradient(90deg, rgb(7 6 12 / 0.6), transparent 62%),
+    linear-gradient(180deg, rgb(7 6 12 / 0.72), rgb(7 6 12 / 0.3) 40%, rgb(7 6 12 / 0.68));
+}
+.mb-game:has(> .mb-screen > .mb-res):has(> .mb-stage > .mb-backdrop) .mb-res-backdrop { display: none; }
 /* One staged entrance: each block rises in after the one above it (--d), once per summary. */
 .mb-res-in { animation: mb-res-rise 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: var(--d, 0ms); }
 @keyframes mb-res-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -1067,6 +1133,12 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-res-cover { flex: none; width: 64px; aspect-ratio: 1; border-radius: 14px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
 .mb-res-cover-empty { background: linear-gradient(140deg, var(--mb-pink), var(--mb-violet) 55%, #1b1440); }
 .mb-res-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* The label, the run's modifier chips and their multiplier on one line. */
+.mb-res-labelrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.mb-res-mult { font: 700 11px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-res-mult.is-up { color: var(--mb-gold); }
+.mb-res-mult.is-down { color: var(--mb-danger); }
+.mb-res-failed .mb-res-labelrow .mb-res-label { color: var(--mb-danger); }
 .mb-res-title h2 { margin: 4px 0 0; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; overflow-wrap: anywhere; }
 .mb-res-title small { color: var(--mb-muted); font-size: 13px; }
 .mb-res-ranked { margin-left: auto; text-align: right; }
@@ -1079,7 +1151,24 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-res-body { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) clamp(220px, 36%, 400px); gap: 14px; }
 .mb-res-cards { display: flex; flex-direction: column; gap: 16px; justify-content: center; min-width: 0; }
 .mb-res-card { background: var(--mb-surface); border: 1px solid var(--mb-line); border-radius: 18px; }
-.mb-res-mine { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; padding: 18px 20px; border-color: rgb(103 227 244 / 0.45); border-radius: 20px; }
+.mb-res-mine { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; padding: 18px 20px; border-color: rgb(103 227 244 / 0.45); border-radius: 20px; }
+.mb-res-failed .mb-res-mine { border-color: rgb(255 128 152 / 0.42); }
+/* A lost run's stamp, where the grade would be. */
+.mb-res-stamp { padding: 7px 12px; border: 3px solid var(--mb-danger); border-radius: 8px; background: rgb(255 128 152 / 0.08); color: var(--mb-danger); font: 900 26px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: 0.1em; transform: rotate(-7deg); animation: mb-res-stamp-in 320ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+@keyframes mb-res-stamp-in { from { opacity: 0; transform: rotate(-7deg) scale(1.9); } to { opacity: 1; transform: rotate(-7deg) scale(1); } }
+/* An S or a full combo: twelve flecks thrown from the grade once. Transforms and opacity only. */
+.mb-res-burst { position: absolute; top: 50%; left: 58px; width: 0; height: 0; pointer-events: none; }
+.mb-res-burst i { position: absolute; top: 0; left: 0; width: 6px; height: 10px; margin: -5px 0 0 -3px; border-radius: 1px; background: var(--c); opacity: 0; animation: mb-res-burst 1000ms cubic-bezier(0.15, 0.8, 0.3, 1) calc(var(--i) * 15ms) both; }
+@keyframes mb-res-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--rot)) scale(1); }
+}
+.mb-fx-reduced .mb-res-burst,
+.mb-fx-off .mb-res-burst { display: none; }
+.mb-fx-reduced .mb-res-stamp { animation: mb-res-fade 240ms ease-out backwards; }
+.mb-fx-off .mb-res-stamp { animation: none; }
+.mb-res-nf { margin: 6px 0 0; color: var(--mb-high); font: 500 11px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.04em; }
 .mb-res-grade { position: relative; isolation: isolate; width: 76px; font-size: 84px; line-height: 0.85; letter-spacing: -0.06em; text-align: center; animation: mb-res-grade-in 600ms cubic-bezier(0.3, 1.6, 0.5, 1) both; }
 @keyframes mb-res-grade-in { from { transform: scale(2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 /* One soft pulse in the grade's own colour once the pop has landed. */
@@ -1108,13 +1197,38 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-res-tip p { margin: 0; color: var(--mb-muted); font-size: 12.5px; line-height: 1.4; }
 .mb-res-calib { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 18px; }
 .mb-res-calib b { color: var(--mb-text); }
+/* The run graph: health as a soft area over the song, FEVER as pale bands, misses as red ticks along the bottom. The svg is
+   stretched to the card; strokes keep their width (vector-effect). */
+.mb-res-graph { padding: 12px 18px 10px; }
+.mb-res-graphhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mb-res-legend { display: inline-flex; gap: 14px; }
+.mb-res-legend > span { display: inline-flex; align-items: center; }
+.mb-rg-key { display: inline-block; width: 10px; height: 8px; margin-right: 6px; border-radius: 2px; }
+.mb-rg-key-fever { background: rgb(255 212 121 / 0.4); }
+.mb-rg-key-miss { width: 2px; height: 10px; border-radius: 0; background: var(--mb-danger); }
+.mb-res-graphplot { position: relative; height: 64px; margin-top: 8px; border-radius: 6px; background: rgb(255 255 255 / 0.025); }
+.mb-res-graphplot svg { display: block; width: 100%; height: 100%; }
+.mb-rg-fever { fill: rgb(255 212 121 / 0.16); }
+.mb-rg-area { fill: rgb(103 227 244 / 0.14); }
+.mb-rg-line { fill: none; stroke: var(--mb-cyan); stroke-width: 1.6; stroke-linejoin: round; }
+.mb-rg-misses { fill: none; stroke: var(--mb-danger); stroke-width: 1.5; }
+.mb-res-graph-lost .mb-rg-area { fill: rgb(255 128 152 / 0.12); }
+.mb-res-graph-lost .mb-rg-line { stroke: var(--mb-danger); }
+/* Where the run was lost: a line the height of the plot with its time beside it (on the left side when it is far right). */
+.mb-rg-lost { position: absolute; top: 0; bottom: 0; width: 0; }
+.mb-rg-lost i { position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: var(--mb-danger); }
+.mb-rg-lost b { position: absolute; top: 3px; left: 7px; color: var(--mb-danger); font: 700 10px/1 "JetBrains Mono", ui-monospace, monospace; white-space: nowrap; }
+.mb-rg-lost-left b { right: 7px; left: auto; }
 /* A short window tightens the cards so everything, footer included, still fits without scrolling. */
 @media (max-height: 780px) {
+  .mb-res-graph { padding: 8px 14px 6px; }
+  .mb-res-graphplot { height: 44px; margin-top: 6px; }
   .mb-res-mine { padding: 12px 16px; }
   .mb-res-stats { margin-top: 8px; }
   .mb-res-judges { margin-top: 8px; }
   .mb-res-hist { height: 44px; }
-  .mb-res-tip { max-width: none; }
+  .mb-res-stamp { padding: 5px 9px; border-width: 2px; font-size: 20px; letter-spacing: 0.06em; } /* narrower than the grade's column grows */
+  .mb-res-tip { max-width: none; flex: 0 1 190px; } /* beside the histogram, not under it, so the graph fits */
 }
 
 /* A size container: Mewbit is square, so it takes the smaller of the column's width and height (never taller than the stage). */
@@ -1226,13 +1340,14 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-fx-off .mb-res .mb-btn:hover:not(:disabled),
 .mb-fx-reduced .mb-res .mb-btn:hover:not(:disabled) { translate: none; }
 @media (prefers-reduced-motion: reduce) {
-  .mb-res-grade, .mb-res-grade::before, .mb-res-mew, .mb-res-bubble, .mb-res-in, .mb-res-judges li, .mb-res-newbest::after, .mb-res-lb .mb-ss-pl, .mb-res-standings li { animation: none; }
+  .mb-res-grade, .mb-res-grade::before, .mb-res-mew, .mb-res-bubble, .mb-res-in, .mb-res-judges li, .mb-res-newbest::after, .mb-res-lb .mb-ss-pl, .mb-res-standings li, .mb-res-stamp { animation: none; }
+  .mb-res-burst { display: none; }
   .mb-res .mb-btn { transition: none; }
   .mb-res .mb-btn.mb-btn:hover:not(:disabled) { translate: none; }
 }
 
 @media (max-width: 760px) {
-  .mb-res, .mb-res-has-side { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .mb-res, .mb-res-has-side { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow-y: auto; } /* rows keep their content's height, the screen scrolls */
   .mb-res-main { overflow: visible; }
   .mb-res-body { grid-template-columns: minmax(0, 1fr); }
   .mb-res-stage { display: none; }

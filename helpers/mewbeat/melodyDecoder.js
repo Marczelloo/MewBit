@@ -8,6 +8,7 @@ const path = require("node:path");
 const Log = require("../logs/log");
 const { melodyFileOf } = require("../../scripts/mewbeat-melody/build");
 const { audioKeyFile } = require("./audioKey");
+const { createPriorityGate } = require("./priorityGate");
 
 const DECODER_DIR = path.join(__dirname, "..", "..", "scripts", "mewbeat-melody", "decoder");
 const DEFAULT_IMAGE = "mewbeat-decoder";
@@ -66,14 +67,14 @@ async function runDocker({ audioFile, timeoutMs = RUN_TIMEOUT_MS, image = proces
 // Decodes a song's melody as it is charted: audio from `audio` (an audio store: get(audioKey, track, node) -> file), the Docker
 // step through `run`, the file written by scripts/mewbeat-melody/build.js to <dir>/melody/<audio key file>.json, which the chart
 // store lays on the features (chartStore.js). ensure() never rejects; it answers "present" (a file was there), "decoded", "failed"
-// or "off". One decode runs at a time, a key has one in flight, and a key that failed is not tried again until the process
+// or "off". One decode runs at a time (a play decode goes ahead of queued background ones, priorityGate.js), a key has one in flight, and a key that failed is not tried again until the process
 // restarts. Without Docker or the image it warns once and stops trying, as does the switch MEWBEAT_MELODY_DECODER=off.
 function createMelodyDecoder({ dir, audio, run = runDocker, log = Log, timeoutMs = RUN_TIMEOUT_MS, enabled = process.env.MEWBEAT_MELODY_DECODER !== "off" }) {
   const melodyDir = path.join(dir, "melody");
   const failedKeys = new Set();
   const pendingByKey = new Map();
-  // Decodes run one at a time across keys; the chain never rejects.
-  let queue = Promise.resolve();
+  // Decodes (the audio render and the Docker step) run one at a time across keys.
+  const gate = createPriorityGate({ concurrency: 1 });
   let unavailable = false;
 
   const fileOf = (key) => path.join(melodyDir, `${audioKeyFile(key)}.json`);
@@ -91,22 +92,20 @@ function createMelodyDecoder({ dir, audio, run = runDocker, log = Log, timeoutMs
     }
   }
 
-  async function decode(key, track, node, features) {
+  async function decode(key, track, node, features, priority) {
     const length = Number(track?.info?.length);
     if (length > MAX_TRACK_MS) throw failure(`the track is ${Math.round(length / 60000)} minutes long`);
-    const audioFile = await audio.get(key, track, node);
-    const job = queue.then(() => {
+    const decoded = await gate.run(async () => {
       if (unavailable) throw failure("the decoder is unavailable", { unavailable: true });
+      const audioFile = await audio.get(key, track, node);
       return run({ audioFile, timeoutMs });
-    });
-    queue = job.catch(() => {});
-    const decoded = await job;
+    }, { priority, key });
     await write(key, melodyFileOf(decoded, features, decoded.short ?? null));
   }
 
-  async function work(key, track, node, features) {
+  async function work(key, track, node, features, priority) {
     try {
-      await decode(key, track, node, features);
+      await decode(key, track, node, features, priority);
       return "decoded";
     } catch (error) {
       if (error?.unavailable) {
@@ -120,20 +119,26 @@ function createMelodyDecoder({ dir, audio, run = runDocker, log = Log, timeoutMs
     }
   }
 
-  function ensure(key, track, node, features) {
+  // priority: "play" (default) or "background"; a play request for a decode that waits as background takes over its place.
+  function ensure(key, track, node, features, { priority = "play" } = {}) {
     if (!enabled || unavailable) return Promise.resolve("off");
     if (has(key)) return Promise.resolve("present");
     if (failedKeys.has(key)) return Promise.resolve("failed");
     if (!features) return Promise.resolve("failed");
     const pending = pendingByKey.get(key);
-    if (pending) return pending;
+    if (pending) {
+      if (priority === "play") gate.promote(key);
+      return pending;
+    }
 
-    const request = work(key, track, node, features).finally(() => pendingByKey.delete(key));
+    const request = work(key, track, node, features, priority).finally(() => pendingByKey.delete(key));
     pendingByKey.set(key, request);
     return request;
   }
 
-  return { ensure, has, isEnabled: () => enabled && !unavailable };
+  const promote = (key) => gate.promote(key);
+
+  return { ensure, has, promote, isEnabled: () => enabled && !unavailable };
 }
 
 module.exports = { createMelodyDecoder, runDocker };

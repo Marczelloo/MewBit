@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ModifierTags } from "./ModifierPicker.jsx";
 import { Avatar, Notice, useReply } from "./PlayerPanel.jsx";
 import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { formatCount, formatPercent } from "./playerFormat.js";
@@ -17,7 +18,12 @@ export function BoardRow({ rank, entry, mine, pinned, size = 26, index = 0, onOp
     <>
       <span className="mb-ss-rk">{rank}</span>
       <Avatar name={entry.username} avatarUrl={entry.avatarUrl} size={size} />
-      <span className="mb-ss-nm">{entry.username}</span>
+      {/* The tags sit in the name cell, so the row keeps its columns. */}
+      {entry.modifiers?.length ? (
+        <span className="mb-ss-nm mb-ss-nm-tagged"><span>{entry.username}</span><ModifierTags modifiers={entry.modifiers} /></span>
+      ) : (
+        <span className="mb-ss-nm">{entry.username}</span>
+      )}
       <span className={`mb-ss-gr ${gradeClass(entry.grade)}`}>{entry.grade ?? "—"}</span>
       <span className="mb-ss-r">{formatPercent(entry.accuracy, 2)}</span>
       <span className="mb-ss-s">{formatCount(entry.score)}</span>

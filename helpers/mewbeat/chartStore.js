@@ -21,6 +21,8 @@ const NO_AUDIO_KEY = "no_audio_key";
 const TOO_FEW_NOTES = "too_few_notes";
 // How long a request for a new song waits for its melody to be decoded before the charts are made without it.
 const MELODY_WAIT_MS = 120_000;
+// Songs charted as background work (chartMap, the re-chart, the voice hook) at once; one more is refused with "full".
+const BACKGROUND_CAP = 40;
 // An explicit retry of a song that failed or came back uncharted runs the analysis again, but only once per this long.
 const RETRY_COOLDOWN_MS = 30_000;
 // A change to the flags file is seen by the first request after this long, so a request does not read the file each time.
@@ -85,10 +87,11 @@ function withPace(charts) {
 
 // Charts are made on a worker thread, one song at a time (chartRunner.js); the store's `generate` option replaces it in tests.
 let chartRunner = null;
-function generateOnWorker(features, audioKey, flags) {
+function generateOnWorker(features, audioKey, flags, options) {
   chartRunner ??= createChartRunner();
-  return chartRunner.run(features, audioKey, flags);
+  return chartRunner.run(features, audioKey, flags, options);
 }
+generateOnWorker.promote = (audioKey, flags) => chartRunner?.promote(audioKey, flags) ?? false;
 
 const READY = (charts) => ({ status: "ready", charts });
 const UNCHARTED = (reason) => ({ status: "uncharted", reason });
@@ -96,7 +99,7 @@ const UNCHARTED = (reason) => ({ status: "uncharted", reason });
 // `melodyDecoder` (melodyDecoder.js) decodes the melody of a song that has no melody file: a new song waits for it (up to
 // `melodyWaitMs`), a song with stored charts keeps them until the decode is done and then has them generated again. Without one
 // a melody file is only read when it is there.
-function createChartStore({ dir, analysis, generate = generateOnWorker, log = Log, melodyDecoder = null, melodyWaitMs = MELODY_WAIT_MS, now = Date.now, flagsTtlMs = FLAGS_TTL_MS }) {
+function createChartStore({ dir, analysis, generate = generateOnWorker, log = Log, melodyDecoder = null, melodyWaitMs = MELODY_WAIT_MS, now = Date.now, flagsTtlMs = FLAGS_TTL_MS, backgroundCap = BACKGROUND_CAP }) {
   const chartsByKey = new Map(); // keyed by memoryKey: the audio key and the flags
   const unchartedByKey = new Map(); // memoryKey -> reason
   // memoryKey -> summarizeCharts(charts). Kept after the charts leave memory, so the song lists and the rating
@@ -109,6 +112,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   let filesEpoch = 0; // counts the changes to what is known of the chart files
   let warming = null;
   const pendingByKey = new Map();
+  const backgroundIds = new Set(); // ids in pendingByKey that were asked for as background work
   const retriedAt = new Map(); // audio key -> when a forced retry last started
   const flagsFile = path.join(dir, FLAGS_FILE_NAME);
   let seenFlags = { text: null, state: { flags: {}, key: "" } };
@@ -309,8 +313,13 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   }
 
   // A new song waits for its melody, for `melodyWaitMs` at most; the decode then goes on and replaces the charts made without it.
-  async function waitForMelody(track, key, node, features) {
-    const decoding = melodyDecoder.ensure(key, track, node, features);
+  // Background work has no player waiting, so it waits for the decode however long it takes (and queues behind play decodes).
+  async function waitForMelody(track, key, node, features, priority) {
+    const decoding = melodyDecoder.ensure(key, track, node, features, { priority });
+    if (priority === "background") {
+      await decoding;
+      return;
+    }
     let timer;
     const late = new Promise((resolve) => {
       timer = setTimeout(() => resolve("late"), melodyWaitMs);
@@ -319,7 +328,9 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     if (result === "late") replaceWhenDecoded(decoding, key);
   }
 
-  async function resolve(track, key, node, { flags, key: flagged }) {
+  // priority: "play" or "background" (priorityGate.js). offline: no Lavalink node is used, so only cached features are charted
+  // and no melody is decoded (the pass over old songs, chartStore.rechart).
+  async function resolve(track, key, node, { flags, key: flagged }, { priority = "play", offline = false } = {}) {
     const id = memoryKey(key, flagged);
     await sweepOldVersions();
     const stored = readDisk(key, flagged);
@@ -329,10 +340,10 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
         return UNCHARTED(stored.reason);
       }
       // Not bound to the request: the charts on disk are served as they are.
-      if (melodyDecoder && !melodyDecoder.has(key)) {
+      if (melodyDecoder && !offline && !melodyDecoder.has(key)) {
         Promise.resolve()
           .then(() => analysis.peek?.(track))
-          .then((features) => features && replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features), key))
+          .then((features) => features && replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features, { priority }), key))
           .catch((error) => log.warning("mewbeat could not look for features to decode the melody", error?.message));
       }
       return remember(id, stored);
@@ -343,12 +354,12 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
       });
     }
 
-    const analysed = await analysis.getFeatures(track, node);
+    const analysed = await analysis.getFeatures(track, node, { priority });
     if (!analysed) return statusWithoutFeatures(track);
-    if (melodyDecoder && !melodyDecoder.has(key)) await waitForMelody(track, key, node, analysed);
+    if (melodyDecoder && !offline && !melodyDecoder.has(key)) await waitForMelody(track, key, node, analysed, priority);
     const features = await withDecodedMelody(analysed, key);
 
-    const charts = await generate(features, key, flags);
+    const charts = await generate(features, key, flags, { priority });
     if (!charts) {
       // Remembered like any chart so a spoken-word track is not regenerated per request.
       unchartedByKey.set(id, TOO_FEW_NOTES);
@@ -383,7 +394,13 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   // `retry` is an explicit "try again" from a player: for a song that is not charted and not being charted it forgets the
   // failure and the uncharted verdicts first (forgetUncharted) and runs the whole thing again, once per RETRY_COOLDOWN_MS.
   // The forced attempt is the pending request at once, so repeated calls share it; every other request keeps the blocks.
-  function getCharts(track, node, { retry = false } = {}) {
+  //
+  // `priority` is "play" (the default: a player waits) or "background" (a song chosen from a list, the re-chart, a track the bot
+  // plays in voice): background work queues behind play work in every step (analysis, melody decode, generation), is
+  // not queued twice, and is refused with { status: "full" } while backgroundCap songs are already being charted that way.
+  // A play request for a song that is charted as background takes over its place in the lines. `offline` charts from cached
+  // features only, with no node (see resolve).
+  function getCharts(track, node, { retry = false, priority = "play", offline = false } = {}) {
     const key = audioKeyOf(track);
     if (!key) return Promise.resolve(UNCHARTED(NO_AUDIO_KEY));
     // The calibration clicks are charted from their identifier, never analysed.
@@ -399,11 +416,36 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     }
     if (unchartedByKey.has(id)) return Promise.resolve(UNCHARTED(unchartedByKey.get(id)));
     const pending = pendingByKey.get(id);
-    if (pending) return pending;
+    if (pending) {
+      if (priority === "play" && backgroundIds.delete(id)) {
+        analysis.promote?.(track);
+        melodyDecoder?.promote?.(key);
+        generate.promote?.(key, state.flags);
+      }
+      return pending;
+    }
+    if (priority === "background" && backgroundIds.size >= backgroundCap) return Promise.resolve({ status: "full" });
 
-    const request = resolve(track, key, node, state).finally(() => pendingByKey.delete(id));
+    const request = resolve(track, key, node, state, { priority, offline }).finally(() => {
+      pendingByKey.delete(id);
+      backgroundIds.delete(id);
+    });
     pendingByKey.set(id, request);
+    if (priority === "background") backgroundIds.add(id);
     return request;
+  }
+
+  // Why a song cannot be charted offline now, or null when it can (the re-chart pass, chartStore.rechart): "has_charts" and
+  // "uncharted" are known verdicts, "no_melody" means its melody was never decoded (offline charts would be made without it
+  // and kept, so the song waits for a real play instead), "no_features" means the analysis is not cached. Sync, reads at
+  // most a chart file.
+  function rechartBlock(track) {
+    const key = audioKeyOf(track);
+    if (!key) return "no_key";
+    const verdict = known(key, currentFlags().key);
+    if (verdict) return verdict.status === "ready" ? "has_charts" : "uncharted";
+    if (melodyDecoder && !melodyDecoder.has(key)) return "no_melody";
+    return analysis.hasFeatures?.(track) ? null : "no_features";
   }
 
   // Synchronous lookup for UI hints; never analyses or generates. Null means
@@ -470,7 +512,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     return warming;
   }
 
-  return { getCharts, peekCharts, summaryReader, warmSummaries };
+  return { getCharts, peekCharts, rechartBlock, summaryReader, warmSummaries };
 }
 
 const DATA_DIR = path.join(__dirname, "..", "data", "mewbeat");

@@ -64,7 +64,46 @@ const sample = (score, combo = 0, accuracy = null) => ({ score, combo, accuracy 
 test("the first update goes out at once with the protocol fields", () => {
   const { sender, sent } = setup();
   sender.update(sample(0));
-  assert.deepEqual(sent, [{ at: 0, type: "mewbeat_live", session: "live:k", audioKey: "k", difficulty: "normal", score: 0, combo: 0, accuracy: null, vibe: null, fever: false, ended: false }]);
+  assert.deepEqual(sent, [{ at: 0, type: "mewbeat_live", session: "live:k", audioKey: "k", difficulty: "normal", score: 0, combo: 0, accuracy: null, vibe: null, fever: false, failed: false, modifiers: [], ended: false }]);
+});
+
+test("a lost run is flagged on the wire, and the flag is a change on its own", () => {
+  const { sender, scheduler, sent } = setup({ keepAliveMs: 1e9 });
+  sender.update(sample(100, 3, 95));
+  assert.equal(sent[0].failed, false);
+  scheduler.advance(300);
+  sender.update({ ...sample(100, 3, 95), failed: true });
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].failed, true);
+  sender.end({ ...sample(100, 3, 95), failed: true });
+  assert.deepEqual([sent.at(-1).failed, sent.at(-1).ended], [true, true]);
+});
+
+test("the run's modifiers go out with the numbers, and none means an empty list", () => {
+  const { sender, sent } = setup();
+  sender.update({ ...sample(100, 3, 95), modifiers: ["gn", "st"] });
+  assert.deepEqual(sent[0].modifiers, ["gn", "st"]);
+  const none = setup();
+  none.sender.update(sample(100, 3, 95));
+  assert.deepEqual(none.sent[0].modifiers, []);
+});
+
+test("the same list in a new array is no change, a different list is", () => {
+  const { sender, scheduler, sent } = setup({ keepAliveMs: 1e9 });
+  sender.update({ ...sample(100, 3, 95), modifiers: ["gn"] });
+  scheduler.advance(300);
+  sender.update({ ...sample(100, 3, 95), modifiers: ["gn"] });
+  assert.equal(sent.length, 1);
+  sender.update({ ...sample(100, 3, 95), modifiers: ["gn", "st"] });
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent[1].modifiers, ["gn", "st"]);
+});
+
+test("the final message carries the modifiers", () => {
+  const { sender, sent } = setup();
+  sender.update({ ...sample(100, 3, 95), modifiers: ["ol"] });
+  sender.end({ ...sample(120, 4, 95), modifiers: ["ol"] });
+  assert.deepEqual([sent.at(-1).modifiers, sent.at(-1).ended], [["ol"], true]);
 });
 
 test("vibe and FEVER go out with the numbers", () => {

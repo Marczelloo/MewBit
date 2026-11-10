@@ -28,10 +28,44 @@ export function scrollFactor(chart) {
   return Math.max(tempoScrollFactor(chart?.bpm), byPace);
 }
 
+// The notes fall at one pixel speed whatever the highway's height: the visible window grows with the hit line's distance
+// from the top (hitY), so a tall viewport shows more of the song instead of dropping the notes faster. REF_HIT_Y is the
+// hit line of a 720 px tall viewport: the stage is 720 - 51 (header: 8 + 34 + 8 padding and a 1 px border) = 669 px,
+// the highway slot takes 18 px of padding off the top (the canvas is 651 px tall) and the hit line sits 72 px from the
+// bottom (HIT_LINE_FROM_BOTTOM below). Speed 1 there is still 2200 ms, as the settings always said.
+export const REF_HIT_Y = 579;
+export const HIT_Y_RATIO_MIN = 0.6;
+export const HIT_Y_RATIO_MAX = 3;
+export function hitYRatio(hitY) {
+  if (!Number.isFinite(hitY) || hitY <= 0) return 1;
+  return Math.min(HIT_Y_RATIO_MAX, Math.max(HIT_Y_RATIO_MIN, hitY / REF_HIT_Y));
+}
+
+// The one place the approach (ms for a note to fall from the top to the hit line) is worked out: the player's speed
+// stretched by the highway's height, then shortened by the tempo factor (scrollFactor, 1 when tempo scrolling is off).
+// At REF_HIT_Y and tempo 1 it is approachMsFor(scrollSpeed).
+export function approachFor(scrollSpeed, hitY, tempo = 1) {
+  return Math.floor((approachMsFor(scrollSpeed) * hitYRatio(hitY)) / (tempo > 0 ? tempo : 1));
+}
+
+// The longest approach approachFor can give (slowest speed, tallest highway, no tempo nudge): run.swapChart keeps this
+// much of the old chart by default so nothing visible is ever cut.
+export const MAX_APPROACH_MS = Math.floor(approachMsFor(1) * HIT_Y_RATIO_MAX);
+
 // Vertical position of a note: 0 at the top when it is approachMs away, hitLineY on the line,
 // below it once it is past.
 export function noteY(t, heardMs, approachMs, hitLineY) {
   return hitLineY * (1 - (t - heardMs) / approachMs);
+}
+
+// Ghost Notes: a note is fully there up to GHOST_FROM of its way down to the hit line, gone by GHOST_TO, and fades
+// linearly in between. progress is y / hitY (0 at the top, 1 on the line).
+export const GHOST_FROM = 0.65;
+export const GHOST_TO = 0.85;
+export function ghostAlpha(progress) {
+  if (progress <= GHOST_FROM) return 1;
+  if (progress >= GHOST_TO) return 0;
+  return (GHOST_TO - progress) / (GHOST_TO - GHOST_FROM);
 }
 
 const LANES = 4;
@@ -44,6 +78,7 @@ const DRAWN_OUTCOMES = new Set(["pending", "skipped", "miss"]);
 const MAX_PARTICLES = 80;
 const HOLD_WIDTH = 0.38; // hold tail width, as a fraction of the lane
 const HOLD_ALPHA = 0.55;
+const HOLD_GRADIENT_UNITS = 100;
 const DROPPED_COLOR = "#5b6170";
 const DROPPED_ALPHA = 0.45;
 
@@ -54,6 +89,8 @@ const WHITE = "#f4f6f9";
 // Mockup v3 lane colours: cyan, violet, pink, white.
 const LANE_COLORS = [CYAN, VIOLET, PINK, WHITE];
 const JUDGEMENT_COLORS = { perfect: CYAN, great: VIOLET, good: "#c3cbd7", miss: "#ff8098" };
+// No Colors: every note and hold in one colour, so the lane has to be read from where the note is, not what it looks like.
+const MONO_COLOR = "#c9d1dc";
 
 function roundedRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -68,8 +105,10 @@ function roundedRect(ctx, x, y, w, h, r) {
 // Draws the four lanes, the receptors and the falling notes onto a canvas. All DOM and canvas
 // access lives in here, so the module's top level stays importable from Node.
 //   effects: "full" | "reduced" | "off". Reduced drops the particles, off drops the hit flashes too.
-//   render({ heardMs, approachMs, notes, lanesDown, flashes, feverActive })
+//   render({ heardMs, approachMs, notes, lanesDown, flashes, feverActive, ghost, mono })
 //     notes: run.visibleNotes() entries ({ t, lane, outcome, len, hold }); flashes: [{ lane, judgement, at }] with `at` in heard ms.
+//     ghost: Ghost Notes, upcoming notes and hold bodies fade out on the way to the line (see ghostAlpha).
+//     mono: No Colors, notes and hold bodies all in MONO_COLOR (the lanes and receptors keep theirs).
 //     Keep a flash object stable between frames, it is how particles are spawned only once.
 export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
   const ctx = canvas.getContext("2d");
@@ -78,9 +117,17 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
   let particles = [];
   let seenFlashes = new WeakSet();
   let lastFrameAt = null;
+  const noteSprites = new Map();
+  const holdGradients = new Map();
+  // Ghost Notes fades a hold body by where it is on the canvas, so its gradient lives in canvas space: one per colour and height.
+  const ghostGradients = new Map();
+  let ghostOn = false;
+  let monoOn = false;
+  const noteColor = (lane) => (monoOn ? MONO_COLOR : LANE_COLORS[lane]);
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
+    noteSprites.clear();
     const rect = canvas.getBoundingClientRect();
     width = Math.max(1, Math.round(rect.width));
     height = Math.max(1, Math.round(rect.height));
@@ -97,6 +144,7 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
   function gradientsAt() {
     if (gradientsFor === height) return;
     gradientsFor = height;
+    ghostGradients.clear();
     feverTint = ctx.createLinearGradient(0, 0, 0, height);
     feverTint.addColorStop(0, "rgba(255, 110, 199, 0.12)");
     feverTint.addColorStop(0.3, "rgba(255, 212, 121, 0.20)");
@@ -146,7 +194,46 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     }
   }
 
-  function drawNote(lane, y, laneWidth, alpha, color = LANE_COLORS[lane]) {
+  // A fully opaque note is stamped from a small canvas drawn once per lane and colour (the three fills below, with the
+  // lane's fractional x baked in, so the edges stay as sharp as when they were drawn every frame). A faded note keeps
+  // the three fills: its shadow shows through the body, which one stamped image would not.
+  const SPRITE_PAD = 2;
+  function noteSprite(lane, laneWidth, color) {
+    const key = `${lane}|${color}`;
+    let sprite = noteSprites.get(key);
+    if (sprite) return sprite;
+    const dpr = window.devicePixelRatio || 1;
+    const x = lane * laneWidth + laneWidth * 0.12;
+    const w = laneWidth * 0.76;
+    const fx = x - Math.floor(x);
+    const cssW = Math.ceil(w + fx + SPRITE_PAD * 2);
+    const cssH = NOTE_HEIGHT + 3 + SPRITE_PAD * 2;
+    const el = document.createElement("canvas");
+    el.width = Math.ceil(cssW * dpr);
+    el.height = Math.ceil(cssH * dpr);
+    const c = el.getContext("2d");
+    c.scale(dpr, dpr);
+    const ox = SPRITE_PAD + fx;
+    c.fillStyle = "rgba(0, 0, 0, 0.45)";
+    roundedRect(c, ox, SPRITE_PAD + 3, w, NOTE_HEIGHT, 8);
+    c.fill();
+    c.fillStyle = color;
+    roundedRect(c, ox, SPRITE_PAD, w, NOTE_HEIGHT, 8);
+    c.fill();
+    c.fillStyle = "rgba(255, 255, 255, 0.55)";
+    roundedRect(c, ox + w * 0.3, SPRITE_PAD + 5, w * 0.4, NOTE_HEIGHT - 10, 4);
+    c.fill();
+    sprite = { el, left: Math.floor(x) - SPRITE_PAD, cssW, cssH };
+    noteSprites.set(key, sprite);
+    return sprite;
+  }
+
+  function drawNote(lane, y, laneWidth, alpha, color = noteColor(lane)) {
+    if (alpha === 1) {
+      const sprite = noteSprite(lane, laneWidth, color);
+      ctx.drawImage(sprite.el, sprite.left, y - NOTE_HEIGHT / 2 - SPRITE_PAD, sprite.cssW, sprite.cssH);
+      return;
+    }
     const x = lane * laneWidth + laneWidth * 0.12;
     const w = laneWidth * 0.76;
     ctx.globalAlpha = alpha;
@@ -164,23 +251,54 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
 
   // The body of a hold: a rounded bar between two y values (top is the end, bottom the head or the
   // receptor). Effects "off" is flat colour; otherwise it shades from the lane colour to white.
-  function drawHoldTail(lane, topY, bottomY, laneWidth, color, alpha, flat) {
+  function drawHoldTail(lane, topY, bottomY, laneWidth, color, alpha, flat, ghost = false, hitY = 0) {
     const w = laneWidth * HOLD_WIDTH;
     const h = bottomY - topY;
     if (h <= 0) return;
     const x = lane * laneWidth + (laneWidth - w) / 2;
-    if (flat) {
-      ctx.fillStyle = color;
-    } else {
-      const grad = ctx.createLinearGradient(0, topY, 0, bottomY);
-      grad.addColorStop(0, color);
-      grad.addColorStop(1, "rgba(255, 255, 255, 0.9)");
-      ctx.fillStyle = grad;
-    }
     ctx.globalAlpha = alpha;
     roundedRect(ctx, x, topY, w, h, Math.min(w, h) / 2);
-    ctx.fill();
+    if (ghost) {
+      ctx.fillStyle = ghostGradient(color, hitY);
+      ctx.fill();
+    } else if (flat) {
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      // One unit gradient per colour (0..HOLD_GRADIENT_UNITS), mapped onto the tail by the transform at fill time. The
+      // path above is already in canvas space, so only the gradient is stretched; no gradient is built per frame.
+      ctx.save();
+      ctx.translate(0, topY);
+      ctx.scale(1, h / HOLD_GRADIENT_UNITS);
+      ctx.fillStyle = holdGradient(color);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.globalAlpha = 1;
+  }
+
+  // The lane colour down to the ghost fade: solid until GHOST_FROM of the way to the line, clear from GHOST_TO on.
+  function ghostGradient(color, hitY) {
+    let grad = ghostGradients.get(color);
+    if (!grad) {
+      grad = ctx.createLinearGradient(0, 0, 0, hitY);
+      grad.addColorStop(0, color);
+      grad.addColorStop(GHOST_FROM, color);
+      grad.addColorStop(GHOST_TO, `${color}00`);
+      ghostGradients.set(color, grad);
+    }
+    return grad;
+  }
+
+  function holdGradient(color) {
+    let grad = holdGradients.get(color);
+    if (!grad) {
+      grad = ctx.createLinearGradient(0, 0, 0, HOLD_GRADIENT_UNITS);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, "rgba(255, 255, 255, 0.9)");
+      holdGradients.set(color, grad);
+    }
+    return grad;
   }
 
   // One hold. pending: tail from the head up to the end, head on top. held: the tail starts at the
@@ -191,7 +309,7 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     const endY = noteY(note.t + note.len, heardMs, approachMs, hitY);
     const flat = effects === "off";
     if (note.hold === "held") {
-      drawHoldTail(note.lane, endY, hitY, laneWidth, LANE_COLORS[note.lane], HOLD_ALPHA, flat);
+      drawHoldTail(note.lane, endY, hitY, laneWidth, noteColor(note.lane), HOLD_ALPHA, flat, ghostOn, hitY);
     } else if (note.hold === "dropped") {
       const fade = Math.min(1, 1 - (heardMs - (note.t + note.len)) / MISS_FADE_MS);
       if (fade <= 0) return;
@@ -199,8 +317,9 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
       drawNote(note.lane, y, laneWidth, DROPPED_ALPHA * fade, DROPPED_COLOR);
     } else {
       const skipped = note.outcome === "skipped";
-      drawHoldTail(note.lane, endY, y, laneWidth, LANE_COLORS[note.lane], skipped ? SKIPPED_ALPHA * HOLD_ALPHA : HOLD_ALPHA, flat);
-      drawNote(note.lane, y, laneWidth, skipped ? SKIPPED_ALPHA : 1);
+      drawHoldTail(note.lane, endY, y, laneWidth, noteColor(note.lane), skipped ? SKIPPED_ALPHA * HOLD_ALPHA : HOLD_ALPHA, flat, ghostOn, hitY);
+      const headAlpha = ghostOn ? ghostAlpha(y / hitY) : 1;
+      if (headAlpha > 0) drawNote(note.lane, y, laneWidth, skipped ? SKIPPED_ALPHA * headAlpha : headAlpha);
     }
   }
 
@@ -260,8 +379,10 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     ctx.globalAlpha = 1;
   }
 
-  function render({ heardMs, approachMs, notes, lanesDown = [], flashes = [], feverActive = false }) {
+  function render({ heardMs, approachMs, notes, lanesDown = [], flashes = [], feverActive = false, ghost = false, mono = false }) {
     if (!width) resize();
+    ghostOn = ghost;
+    monoOn = mono;
     const laneWidth = width / LANES;
     const hitY = height - HIT_LINE_FROM_BOTTOM;
     drawLanes(feverActive, lanesDown, laneWidth, hitY);
@@ -280,7 +401,8 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
         const fade = 1 - (heardMs - note.t) / MISS_FADE_MS;
         if (fade > 0) drawNote(note.lane, y, laneWidth, 0.7 * Math.min(1, fade));
       } else {
-        drawNote(note.lane, y, laneWidth, outcome === "skipped" ? SKIPPED_ALPHA : 1);
+        const alpha = ghostOn ? ghostAlpha(y / hitY) : 1;
+        if (alpha > 0) drawNote(note.lane, y, laneWidth, outcome === "skipped" ? SKIPPED_ALPHA * alpha : alpha);
       }
     }
 
@@ -298,5 +420,11 @@ export function createHighwayRenderer(canvas, { effects = "full" } = {}) {
     ctx.clearRect(0, 0, width, height);
   }
 
-  return { resize, render, destroy };
+  // Where the hit line sits, in css px from the top of the canvas (measures the canvas first if it never was).
+  function hitY() {
+    if (!width) resize();
+    return height - HIT_LINE_FROM_BOTTOM;
+  }
+
+  return { resize, render, destroy, hitY };
 }

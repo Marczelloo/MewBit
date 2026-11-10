@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   musicVolume: 80, // solo and room audio (the Activity's own playback); the bot's live audio is not touched
   showMewbit: true,
   tempoScroll: true, // the song's tempo nudges the fall speed (activity highway.js tempoScrollFactor)
+  modifiers: Object.freeze([]), // ids from activity modifiers.js, checked in full when a run is submitted
+  feverMode: "manual", // "auto" starts FEVER as soon as the bar is full
 });
 
 const LIMITS = Object.freeze({ offsetMs: [-300, 700], soloOffsetMs: [-300, 700], scrollSpeed: [1, 10], hitVolume: [0, 100], sfxVolume: [0, 100], musicVolume: [0, 100] });
@@ -60,10 +62,24 @@ const FIELD_CHECKS = {
   musicVolume: (value) => (isIntegerIn(value, LIMITS.musicVolume) ? null : `Music volume must be a whole number from ${LIMITS.musicVolume[0]} to ${LIMITS.musicVolume[1]}.`),
   showMewbit: (value) => (typeof value === "boolean" ? null : "Show Mewbit must be on or off."),
   tempoScroll: (value) => (typeof value === "boolean" ? null : "Speed by tempo must be on or off."),
+  modifiers: (value) => (isModifierList(value) ? null : "Modifiers must be a list of modifier ids."),
+  feverMode: (value) => (FEVER_MODES.includes(value) ? null : "FEVER must be manual or auto."),
 };
 
+const FEVER_MODES = ["manual", "auto"];
+const MODIFIER_ID_PATTERN = /^[a-z]{2}$/;
+const MAX_MODIFIERS = 9;
+
+// Only the shape: the game drops what does not apply to a mode, and the submit checks the list against modifiers.js.
+function isModifierList(value) {
+  return Array.isArray(value)
+    && value.length <= MAX_MODIFIERS
+    && value.every((id) => typeof id === "string" && MODIFIER_ID_PATTERN.test(id))
+    && new Set(value).size === value.length;
+}
+
 function cloneSettings(settings) {
-  return { ...settings, keys: [...settings.keys] };
+  return { ...settings, keys: [...settings.keys], modifiers: [...settings.modifiers] };
 }
 
 /* Used on stored data: every invalid or missing field falls back to its
@@ -73,7 +89,7 @@ function normalizeSettings(raw) {
   const settings = cloneSettings(DEFAULT_SETTINGS);
   for (const field of SETTING_FIELDS) {
     if (field in source && !FIELD_CHECKS[field](source[field])) {
-      settings[field] = field === "keys" ? [...source.keys] : source[field];
+      settings[field] = Array.isArray(source[field]) ? [...source[field]] : source[field];
     }
   }
   return settings;
@@ -88,7 +104,7 @@ function validateSettingsPatch(patch, current) {
     if (!SETTING_FIELDS.includes(field)) throw badRequest(`Unknown mewbeat setting: ${String(field).slice(0, 40)}`);
     const problem = FIELD_CHECKS[field](value);
     if (problem) throw badRequest(problem);
-    settings[field] = field === "keys" ? [...value] : value;
+    settings[field] = Array.isArray(value) ? [...value] : value;
   }
   return settings;
 }

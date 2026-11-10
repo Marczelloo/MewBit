@@ -275,6 +275,21 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "7" })).reason, "empty_queue");
   });
 
+  it("shows the room the modifiers a player picked, and refuses a tempo or a clash", async () => {
+    const { send, lastRoom } = setup();
+    await send(ANN, { type: "mewbeat_room_join", id: "1" });
+    const annOf = () => lastRoom().members.find((member) => member.userId === "ann");
+    assert.deepStrictEqual(annOf().modifiers, []);
+    await send(ANN, { type: "mewbeat_room_ready", id: "2", ready: true });
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "3", modifiers: ["mr", "gn"] })).status, "ok");
+    assert.deepStrictEqual([annOf().modifiers, annOf().ready], [["gn", "mr"], true], "in the list's order, the ready state kept");
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "4", modifiers: ["fs"] })).reason, "solo_only");
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "5", modifiers: ["nf", "ol"] })).reason, "conflict");
+    assert.deepStrictEqual(annOf().modifiers, ["gn", "mr"], "a refused list changes nothing");
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "6", modifiers: [] })).status, "ok");
+    assert.deepStrictEqual(annOf().modifiers, []);
+  });
+
   it("passes spectate through, validates it, and runs the final seconds when the last Ready comes in", async () => {
     const { send, lastRoom } = setup();
     await send(ANN, { type: "mewbeat_room_join", id: "1" });

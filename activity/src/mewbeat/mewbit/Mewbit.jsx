@@ -31,9 +31,9 @@ export function usePrefersReducedMotion() {
 // frames just ahead of the one they show, so a loop streams in before it is needed.
 
 const MAX_SIZE = 640;
-const MAX_DECODES = 3;
+const MAX_DECODES = 2; // decodes run off the main thread, but each one still costs a resize and an upload while the game plays
 const MAX_FETCHES = 6; // a screen has hundreds of frames; fetched all at once they starve the game's own requests
-const LOOKAHEAD = 10; // frames requested ahead of the one on screen
+const LOOKAHEAD = 4; // frames requested ahead of the one on screen (a frame is on screen for 1/fps; four is a few frames of slack)
 const WARM_FRAMES = 4; // first frames of the pose on screen and of those it is likely to hand over to
 const WARM_EVERY_MS = 1000;
 
@@ -104,7 +104,7 @@ function store(url, image, size) {
   const budget = cacheBudget();
   for (const [key, hit] of bitmaps) {
     if (usedBytes <= budget) break;
-    if (key === url || heldByPlayer(hit.image)) continue;
+    if (key === url || heldByPlayer(hit.image) || keptOnScreen(key)) continue;
     bitmaps.delete(key);
     usedBytes -= hit.bytes;
     hit.image.close?.();
@@ -182,10 +182,20 @@ function posesOfGroup(group) {
 // What the cache has to hold at once: the longest loop, one frame of every pose of the busiest screen, the warm
 // window and the lookahead. It is counted in frames, so it grows with the size they are decoded at.
 const LOOP_FRAMES = Math.max(...Object.values(MEWBIT_POSES).map((entry) => framesOf(entry).length));
-const SCREEN_POSES = Math.max(...[...new Set(Object.values(MEWBIT_POSES).flatMap((entry) => [entry.group, ...(entry.also ?? [])]).filter(Boolean))].map((group) => posesOfGroup(group).length));
+const GROUPS = [...new Set(Object.values(MEWBIT_POSES).flatMap((entry) => [entry.group, ...(entry.also ?? [])]).filter(Boolean))];
+const SCREEN_POSES = Math.max(...GROUPS.map((group) => posesOfGroup(group).length));
+
+// Frames of a screen's `keep` poses, decoded whole and never evicted while a player is on that screen.
+const keptUrls = new Map(GROUPS.map((group) => [group, new Set(posesOfGroup(group).filter((entry) => entry.keep).flatMap(framesOf))]));
+const KEPT_FRAMES = Math.max(0, ...[...keptUrls.values()].map((urls) => urls.size));
+
+function keptOnScreen(url) {
+  for (const player of players) if (player.screen && keptUrls.get(player.screen)?.has(url)) return true;
+  return false;
+}
 
 function cacheBudget() {
-  return budgetBytes({ size: decodeSize, loopFrames: LOOP_FRAMES, screenPoses: SCREEN_POSES, warmFrames: WARM_FRAMES, lookahead: LOOKAHEAD });
+  return budgetBytes({ size: decodeSize, loopFrames: LOOP_FRAMES, screenPoses: SCREEN_POSES, warmFrames: WARM_FRAMES, lookahead: LOOKAHEAD, keptFrames: KEPT_FRAMES });
 }
 
 // Fetches the frames of a screen's poses, the first few of each pose first, so a pose never blinks in, and decodes
@@ -372,8 +382,8 @@ export function createPlayer(onShown) {
   }
 
   // Keeps the pose on screen and those it is likely to hand over to (calm loops join each other, loops of one
-  // `sync` swap in step) decoded a few frames deep; every other pose of the screen only has its first frame, which
-  // is all a switch waits for.
+  // `sync` swap in step) decoded a few frames deep, and the `keep` poses whole; every other pose of the screen only
+  // has its first frame, which is all a switch waits for.
   function warm(now) {
     if (now - player.lastWarm < WARM_EVERY_MS) return;
     player.lastWarm = now;
@@ -385,7 +395,8 @@ export function createPlayer(onShown) {
     if (!group) return;
     for (const pose of posesOfGroup(group)) {
       const likely = pose === current || (current && ((pose.rest && current.rest) || (pose.sync && pose.sync === current.sync)));
-      framesOf(pose).slice(0, likely ? WARM_FRAMES : 1).forEach((url) => requestFrame(url, false));
+      const frames = framesOf(pose);
+      frames.slice(0, pose.keep ? frames.length : likely ? WARM_FRAMES : 1).forEach((url) => requestFrame(url, false));
     }
   }
 
@@ -421,6 +432,30 @@ export function createPlayer(onShown) {
   }
 
   return { player, want, draw };
+}
+
+// One requestAnimationFrame loop for every Mewbit on screen: the board's, the lobby's, a spectator card's. Each
+// instance used to run its own, so a screen with several asked the browser for several callbacks a frame. The loop
+// runs only while an instance is mounted.
+const tickers = new Set();
+let loopRaf = 0;
+
+function loop() {
+  const now = performance.now();
+  for (const tick of [...tickers]) tick(now);
+  loopRaf = tickers.size ? window.requestAnimationFrame(loop) : 0;
+}
+
+function addTicker(tick) {
+  tickers.add(tick);
+  if (!loopRaf) loopRaf = window.requestAnimationFrame(loop);
+  return () => {
+    tickers.delete(tick);
+    if (!tickers.size && loopRaf) {
+      window.cancelAnimationFrame(loopRaf);
+      loopRaf = 0;
+    }
+  };
 }
 
 function wantedSize() {
@@ -480,15 +515,7 @@ function Mewbit({ pose = "neutral", effects = "full", className = "", onShow = n
     engineRef.current.want(pose, performance.now());
   }, [pose]);
 
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      engineRef.current.draw(canvasRef.current, performance.now());
-      raf = window.requestAnimationFrame(tick);
-    };
-    raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
-  }, []);
+  useEffect(() => addTicker((now) => engineRef.current.draw(canvasRef.current, now)), []);
 
   // The count-in poses name the lobby as their group but are also part of the game's: on the game screen they add
   // no second batch of fetches.

@@ -11,6 +11,18 @@ const orNull = (value) => (value === undefined ? null : value);
 const whole = (value) => (Number.isFinite(value) ? Math.round(value) : null);
 const numberOf = (value) => (value === null || value === undefined || !Number.isFinite(Number(value)) ? undefined : Number(value));
 
+function listOf(value) {
+  let list = value;
+  if (typeof list === "string") {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(list) ? list : [];
+}
+
 // A round gets the same id however often it is sent, so a resend after a lost answer cannot add it twice.
 const historyIdOf = (userId, entry) => `${userId}|${entry.at}|${entry.audioKey}|${entry.difficulty}`;
 
@@ -34,6 +46,8 @@ function historyRowOf(userId, entry) {
     mode: orNull(entry.mode),
     guild_id: orNull(entry.guildId),
     chart_version: entry.chartVersion === undefined || entry.chartVersion === null ? null : String(entry.chartVersion),
+    failed: typeof entry.failed === "boolean" ? entry.failed : null,
+    modifiers: entry.modifiers === undefined ? null : JSON.stringify(entry.modifiers),
     at: whole(entry.at),
   };
 }
@@ -64,13 +78,15 @@ function historyFromRow(row) {
   if (row.chart_version !== null && row.chart_version !== undefined) {
     entry.chartVersion = /^\d+$/.test(row.chart_version) ? Number(row.chart_version) : String(row.chart_version);
   }
+  put("failed", row.failed === null || row.failed === undefined ? undefined : row.failed === true || row.failed === "true");
+  put("modifiers", row.modifiers === null || row.modifiers === undefined ? undefined : listOf(row.modifiers));
   put("at", numberOf(row.at));
   return { userId: row.user_id, entry };
 }
 
 // The last rounds each user played, oldest first. File shape: { users: { [userId]: entry[] } }.
 // An entry is { audioKey, uri, source, title, artist, artworkUrl, durationMs, difficulty, score, accuracy,
-// grade, ranked, mode, guildId, chartVersion, at }. chartVersion is the stored chart's version (a number, or a
+// grade, ranked, mode, guildId, chartVersion, failed, modifiers, at }. chartVersion is the stored chart's version (a number, or a
 // string like "31-holds" with generator flags); rounds from before it was recorded have none.
 //
 // With `remote` (see remoteSync.js) the rounds go to AtlasHub: the store starts empty, never touches `file`,

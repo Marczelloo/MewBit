@@ -50,6 +50,7 @@ function revive(stored) {
       audioKey: map.audioKey,
       difficulty: map.difficulty,
       title: typeof map.title === "string" ? map.title : "",
+      artworkUrl: typeof map.artworkUrl === "string" ? map.artworkUrl : "",
       maxCombo: count(map.maxCombo),
       parts: count(map.parts),
       fullCombo: map.fullCombo === true,
@@ -166,8 +167,9 @@ function createStatsStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     if (fullCombo) totals.fullCombos += 1;
 
     const key = `${run.audioKey}|${run.difficulty}`;
-    const map = totals.maps[key] ?? { audioKey: run.audioKey, difficulty: run.difficulty, title: "", maxCombo: 0, parts, fullCombo: false };
+    const map = totals.maps[key] ?? { audioKey: run.audioKey, difficulty: run.difficulty, title: "", artworkUrl: "", maxCombo: 0, parts, fullCombo: false };
     map.title = run.track?.title ?? map.title;
+    if (typeof run.track?.artworkUrl === "string" && run.track.artworkUrl) map.artworkUrl = run.track.artworkUrl;
     map.parts = parts;
     map.maxCombo = Math.max(map.maxCombo, maxCombo);
     map.fullCombo = map.fullCombo || fullCombo;

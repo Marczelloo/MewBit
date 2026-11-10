@@ -62,10 +62,14 @@ const { isPrivatePlace, isValidPrivatePlace } = require("../mewbeat/places");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { chartStore } = require("../mewbeat/chartStore");
 const { audioStore } = require("../mewbeat/sharedAudio");
+const { sliceOpusOgg } = require("../mewbeat/oggClip");
+const { createArtworkProxy } = require("./artworkProxy");
 const { getClient } = require("../clientRegistry");
 const { createInvitePoster } = require("../mewbeat/invites");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
 const { createTourSongs } = require("../mewbeat/tourSongs");
+const { createRechart } = require("../mewbeat/rechart");
+const { createVoiceCharting } = require("../mewbeat/voiceCharting");
 const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore, statsStore: mewbeatStatsStore } = require("../mewbeat/stores");
 const { createRunLookup, getReporter, placeLabel, setRunLookup } = require("../mewbeat/reports");
 const { getMewbeatRecord, markTutorialSeen, updateMewbeatSettings } = require("../mewbeat/userSettings");
@@ -116,7 +120,6 @@ const ACTIVITY_STATE_KEEPALIVE_MS = process.env.ACTIVITY_STATE_KEEPALIVE_MS != n
 const POSITION_DRIFT_MS = 400;
 const MIN_LYRICS_SYNC_OFFSET_MS = -2_000;
 const MAX_LYRICS_SYNC_OFFSET_MS = 2_000;
-const ARTWORK_FAILURE_TTL_MS = 5 * 60_000;
 const ARTWORK_HOSTS = Object.freeze([
   "dzcdn.net",
   "sndcdn.com",
@@ -134,7 +137,6 @@ const ARTWORK_HOSTS = Object.freeze([
 const identityCache = new Map();
 const sockets = new Set();
 const queueUndoSnapshots = new Map();
-const artworkFailureCache = new Map();
 
 function isTrue(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -209,72 +211,42 @@ function isAllowedArtworkUrl(value) {
   }
 }
 
-async function sendArtwork(response, sourceUrl) {
+// The proxy keeps covers in memory and on disk, shares concurrent fetches and limits upstream traffic (artworkProxy.js).
+// size ("small" | "medium", optional) asks for a smaller YouTube thumbnail for lists; other hosts ignore it.
+const artworkProxy = createArtworkProxy({
+  dir: path.join(__dirname, "..", "data", "activity", "artwork"),
+  isAllowedUrl: isAllowedArtworkUrl,
+  maxImageBytes: MAX_ARTWORK_SIZE,
+  log: Log,
+});
+
+async function sendArtwork(request, response, sourceUrl, size) {
   if (!isAllowedArtworkUrl(sourceUrl)) {
     throw Object.assign(new Error("That artwork host is not allowed."), { statusCode: 400 });
   }
 
-  const cachedFailure = artworkFailureCache.get(sourceUrl);
-  if (cachedFailure && cachedFailure.expiresAt > Date.now()) {
-    response.writeHead(204, { "Cache-Control": "public, max-age=60" });
+  const result = await artworkProxy.fetchArtwork(sourceUrl, size);
+  if (!result.ok) {
+    // An unavailable provider image is a normal media fallback, not a gateway fault. Returning an empty successful
+    // response lets the client advance to its original/placeholder artwork without generating noisy 502 logs. Only a
+    // definitive answer may be cached by the browser; a timeout or a network error is tried again.
+    response.writeHead(204, { "Cache-Control": result.definitive ? "public, max-age=30" : "no-store" });
     response.end();
     return;
   }
-  artworkFailureCache.delete(sourceUrl);
 
-  let currentUrl = sourceUrl;
-  let artworkResponse = null;
-
-  try {
-    for (let redirect = 0; redirect < 4; redirect += 1) {
-      artworkResponse = await fetch(currentUrl, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
-          "User-Agent": "MewBit-Activity/1.1",
-        },
-      });
-
-      if (artworkResponse.status < 300 || artworkResponse.status >= 400) break;
-      const location = artworkResponse.headers.get("location");
-      if (!location) break;
-      currentUrl = new URL(location, currentUrl).toString();
-      if (!isAllowedArtworkUrl(currentUrl)) {
-        throw Object.assign(new Error("Artwork redirect host is not allowed."), { statusCode: 400 });
-      }
-    }
-  } catch (error) {
-    if (Number(error?.statusCode) === 400) throw error;
-    return cacheArtworkFailure(response, sourceUrl);
-  }
-
-  if (!artworkResponse?.ok) return cacheArtworkFailure(response, sourceUrl);
-
-  const contentType = String(artworkResponse.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-  const contentLength = Number(artworkResponse.headers.get("content-length") || 0);
-  if (!contentType.startsWith("image/") || contentLength > MAX_ARTWORK_SIZE) return cacheArtworkFailure(response, sourceUrl);
-
-  const body = Buffer.from(await artworkResponse.arrayBuffer());
-  if (body.length > MAX_ARTWORK_SIZE) return cacheArtworkFailure(response, sourceUrl);
-
-  response.writeHead(200, {
-    "Content-Type": contentType,
-    "Content-Length": body.length,
-    "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+  const headers = {
+    "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400",
+    ETag: result.etag,
     "X-Content-Type-Options": "nosniff",
-  });
-  response.end(body);
-}
-
-function cacheArtworkFailure(response, sourceUrl) {
-  artworkFailureCache.set(sourceUrl, { expiresAt: Date.now() + ARTWORK_FAILURE_TTL_MS });
-  while (artworkFailureCache.size > 1_000) artworkFailureCache.delete(artworkFailureCache.keys().next().value);
-  // An unavailable provider image is a normal media fallback, not a gateway
-  // fault. Returning an empty successful response lets the client advance to
-  // its original/placeholder artwork without generating noisy 502 logs.
-  response.writeHead(204, { "Cache-Control": "public, max-age=60" });
-  response.end();
+  };
+  if (request.headers["if-none-match"] === result.etag) {
+    response.writeHead(304, headers);
+    response.end();
+    return;
+  }
+  response.writeHead(200, { ...headers, "Content-Type": result.contentType, "Content-Length": result.body.length });
+  response.end(result.body);
 }
 
 function readJson(request) {
@@ -792,6 +764,10 @@ const mewbeatChannel = createMewbeatChannel({
   clearTimer: clearTimeout,
 });
 
+// Background charting (mewbeat): the play history is re-charted once per start, and a track the bot starts in voice is charted too.
+const rechart = createRechart({ historyStore: mewbeatHistoryStore, chartStore });
+const voiceCharting = createVoiceCharting({ events: activityStateEvents, readPlayback: readMewbeatPlayback, chartStore });
+
 // A map report names its run; the reporter finds it in the player's own history and the chart store.
 setRunLookup(createRunLookup({ historyStore: mewbeatHistoryStore, summaryReader: () => chartStore.summaryReader() }));
 
@@ -803,17 +779,43 @@ function mewbeatProfileOf(identity) {
   };
 }
 
-// Streams a prepared song's Ogg file, rendering it through the plugin first.
-async function sendMewbeatAudio(response, config, guildId, audioKey) {
+// The last few clips cut for song-select previews, so a song picked again is not read and cut again.
+const MEWBEAT_CLIP_CACHE_MAX = 8;
+const mewbeatClipCache = new Map(); // `${file}|${size}|${fromMs}` -> slice result, oldest first
+
+async function mewbeatClipOf(file, size, fromMs) {
+  const key = `${file}|${size}|${fromMs ?? "default"}`;
+  const cached = mewbeatClipCache.get(key);
+  if (cached !== undefined) {
+    mewbeatClipCache.delete(key);
+    mewbeatClipCache.set(key, cached);
+    return cached;
+  }
+  const sliced = sliceOpusOgg(await fs.promises.readFile(file), { fromMs });
+  mewbeatClipCache.set(key, sliced);
+  while (mewbeatClipCache.size > MEWBEAT_CLIP_CACHE_MAX) mewbeatClipCache.delete(mewbeatClipCache.keys().next().value);
+  return sliced;
+}
+
+// Streams a prepared song's Ogg file, rendering it through the plugin first. With `clip` the answer is about 30 s of the
+// song from `fromMs` on (oggClip.js), for a song-select preview; the X-Mewbeat-* headers say where the clip sits in the
+// song. A file that can't be cut, or a song too short to be worth it, is sent whole (without X-Mewbeat-Clip). The render
+// is cancelled when the client leaves before it starts (a newer pick replaced this one).
+async function sendMewbeatAudio(response, config, guildId, audioKey, { clip = false, fromMs = null } = {}) {
   const entry = soloTracks.get(audioKey);
   if (!entry) return sendJson(response, 404, { ok: false, error: "Unknown song. Prepare it again." }, config);
+
+  const gone = new AbortController();
+  const onClose = () => { if (!response.writableEnded) gone.abort(); };
+  response.on("close", onClose);
 
   let file;
   let size;
   try {
-    file = await audioStore.get(audioKey, entry.track, entry.node);
+    file = await audioStore.get(audioKey, entry.track, entry.node, { signal: gone.signal });
     size = (await fs.promises.stat(file)).size;
   } catch (error) {
+    if (gone.signal.aborted) return undefined; // nobody is listening any more
     Log.warning("mewbeat audio unavailable", error?.message, `guild=${guildId}`);
     const busy = error?.statusCode === 503;
     return sendJson(response, busy ? 503 : 502, {
@@ -822,16 +824,42 @@ async function sendMewbeatAudio(response, config, guildId, audioKey) {
     }, config);
   }
 
-  response.writeHead(200, {
+  const headers = {
     "Content-Type": "audio/ogg",
-    "Content-Length": size,
     "Cache-Control": "private, max-age=86400",
+    "Access-Control-Expose-Headers": "X-Mewbeat-Clip, X-Mewbeat-Clip-Start-Ms, X-Mewbeat-From-Ms, X-Mewbeat-Duration-Ms",
     ...corsHeaders(response, config),
-  });
+  };
+
+  if (clip) {
+    let sliced = null;
+    try {
+      sliced = await mewbeatClipOf(file, size, fromMs);
+    } catch (error) {
+      Log.warning("mewbeat clip failed, sending the whole song", error?.message, `guild=${guildId}`);
+    }
+    if (gone.signal.aborted) return undefined;
+    if (sliced?.data) {
+      response.writeHead(200, {
+        ...headers,
+        "Content-Length": sliced.data.length,
+        "X-Mewbeat-Clip": "1",
+        "X-Mewbeat-Clip-Start-Ms": String(Math.round(sliced.clipStartMs)),
+        "X-Mewbeat-From-Ms": String(Math.round(sliced.fromMs)),
+        "X-Mewbeat-Duration-Ms": String(sliced.durationMs),
+      });
+      response.end(sliced.data);
+      return undefined;
+    }
+    if (sliced?.whole) headers["X-Mewbeat-Duration-Ms"] = String(sliced.durationMs);
+  }
+
+  response.writeHead(200, { ...headers, "Content-Length": size });
   const stream = fs.createReadStream(file);
   stream.on("error", () => response.destroy());
   response.on("close", () => stream.destroy());
   stream.pipe(response);
+  return undefined;
 }
 
 function limitText(value, max = 200) {
@@ -884,11 +912,16 @@ function toSource(value) {
 // The user picks from this list, so a remix or live version stays in it,
 // ranked below the original, instead of being hidden as implicit playback does.
 function serializeActivitySearchResults(tracks, query) {
-  return rankSearchResults(filterRelevantSearchResults(tracks, query), query, { limit: 48 }).map((track) => {
+  const ranked = rankSearchResults(filterRelevantSearchResults(tracks, query), query, { limit: 48 });
+  // Each result carries its audio key and, when the song is already charted, its stars per level (song select shows them at once).
+  const chartInfo = mewbeatChannel.chartInfoOf(ranked);
+  return ranked.map((track, index) => {
     const serialized = serializeTrack(track);
     return {
       ...serialized,
       playQuery: serialized.uri || `${serialized.title} ${serialized.author}`,
+      audioKey: chartInfo[index].audioKey,
+      stars: chartInfo[index].stars,
     };
   });
 }
@@ -1664,7 +1697,7 @@ function createActivityServer(client) {
       }
 
       if (request.method === "GET" && url.pathname === "/api/activity/artwork") {
-        return await sendArtwork(response, url.searchParams.get("url") || "");
+        return await sendArtwork(request, response, url.searchParams.get("url") || "", url.searchParams.get("size") || "");
       }
 
       if (url.pathname === "/api/activity/state" && request.method === "GET") {
@@ -1678,7 +1711,12 @@ function createActivityServer(client) {
         enforceRateLimit(request, "mewbeat-audio", 60, 60_000);
         const guildId = limitText(url.searchParams.get("guildId") || config.devGuildId, 80);
         await authenticateRequest(client, request, guildId, config);
-        return await sendMewbeatAudio(response, config, guildId, limitText(url.searchParams.get("audioKey"), 300));
+        const clipFrom = url.searchParams.get("fromMs");
+        const clipFromMs = clipFrom !== null && clipFrom !== "" && Number.isFinite(Number(clipFrom)) && Number(clipFrom) >= 0 ? Number(clipFrom) : null;
+        return await sendMewbeatAudio(response, config, guildId, limitText(url.searchParams.get("audioKey"), 300), {
+          clip: url.searchParams.get("clip") === "1",
+          fromMs: clipFromMs,
+        });
       }
 
       if (url.pathname === "/api/activity/search/library" && request.method === "POST") {
@@ -1893,7 +1931,11 @@ function createActivityServer(client) {
       interval.unref?.();
       heartbeat = startHeartbeat({ sockets });
       chartStore.warmSummaries?.();
-      if (process.env.NODE_ENV !== "test") tourSongs.start();
+      if (process.env.NODE_ENV !== "test") {
+        tourSongs.start();
+        rechart.start();
+        voiceCharting.start();
+      }
       return server;
     },
     stop() {
@@ -1902,6 +1944,8 @@ function createActivityServer(client) {
       heartbeat?.stop();
       heartbeat = null;
       tourSongs.stop();
+      rechart.stop();
+      voiceCharting.stop();
       if (listeningForPlayerChanges) {
         activityStateEvents.off("change", handlePlayerStateChange);
         listeningForPlayerChanges = false;

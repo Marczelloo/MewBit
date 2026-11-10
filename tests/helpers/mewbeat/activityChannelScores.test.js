@@ -146,6 +146,8 @@ describe("mewbeat channel scores", () => {
         mode: "solo",
         guildId: "g1",
         chartVersion: VERSION,
+        failed: false,
+        modifiers: [],
         at: undefined,
       },
     );
@@ -233,7 +235,7 @@ describe("mewbeat channel scores", () => {
       assert.strictEqual(reply.result.newBest, false);
       assert.strictEqual(reply.result.best, null);
       assert.deepStrictEqual(reply.result.rank, { server: null, global: null });
-      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}|r3`, guildId: null, limit: 5 }), []);
       assert.strictEqual(historyStore.recent("ann", 5).length, history ? 1 : 0);
       if (history) assert.strictEqual(historyStore.recent("ann", 1)[0].ranked, false);
       return reply;
@@ -257,7 +259,7 @@ describe("mewbeat channel scores", () => {
       const reply = await submit(channel, submitMessage({ events }));
       assert.strictEqual(reply.status, "ok");
       assert.strictEqual(reply.result.ranked, false);
-      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}|r3`, guildId: null, limit: 5 }), []);
     });
     it("fewer than half of the notes judged", () => assertUnranked({ events: perfectEvents().slice(0, 2) }));
     it("a calibration run, which also stays out of the history", () =>
@@ -268,6 +270,109 @@ describe("mewbeat channel scores", () => {
       // Starting at note 2 (t 2000) is within 2000 ms of the first note (1000).
       const reply = await submit(channel, submitMessage({ events: perfectEvents().slice(2) }));
       assert.strictEqual(reply.result.ranked, true);
+    });
+  });
+
+  describe("failing and modifiers", () => {
+    // Thirteen taps; five perfects then seven misses take the health to 0 on the twelfth judgement.
+    const notes = Array.from({ length: 13 }, (_, i) => ({ t: 1000 + i * 500, lane: i % 4 }));
+    const chart = (difficulty) => ({ version: VERSION, audioKey: KEY, difficulty, notes });
+    const charts = { easy: chart("easy"), normal: chart("normal"), hard: chart("hard"), hell: chart("hell") };
+    const eventsOf = (judgements) => judgements.map((j, n) => ({ n, part: "head", j, t: notes[n].t, d: 0 }));
+    const losing = eventsOf([...Array(5).fill("perfect"), "miss", "miss", "miss", "miss", "miss", "miss", "miss", "perfect"]);
+    const KEY_R3 = `${KEY}|hard|${VERSION}|r3`;
+
+    it("scores a lost run, but does not rank it or send it to the board; the history keeps it", async () => {
+      const { channel, scoreStore, historyStore } = setup({ charts });
+      const reply = await submit(channel, submitMessage({ events: losing }));
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(reply.result.failed, true);
+      assert.strictEqual(reply.result.ranked, false);
+      assert.strictEqual(reply.result.newBest, false);
+      assert.strictEqual(reply.result.best, null);
+      assert.deepStrictEqual(reply.result.modifiers, []);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: KEY_R3, guildId: null, limit: 5 }), []);
+      const [round] = historyStore.recent("ann", 5);
+      assert.strictEqual(round.failed, true);
+      assert.strictEqual(round.ranked, false);
+    });
+
+    it("ignores the events after the fail", async () => {
+      const { channel } = setup({ charts });
+      const reply = await submit(channel, submitMessage({ events: losing }));
+      // The thirteenth judgement (a perfect) came after the fail.
+      assert.deepStrictEqual(reply.result.counts, { perfect: 5, great: 0, good: 0, miss: 7 });
+      assert.strictEqual(reply.result.score, 5 * 300); // the combo multiplier has not reached 2 yet
+    });
+
+    it("a clean run is not failed", async () => {
+      const { channel } = setup({ charts });
+      const reply = await submit(channel, submitMessage({ events: eventsOf(Array(13).fill("perfect")) }));
+      assert.strictEqual(reply.result.failed, false);
+      assert.strictEqual(reply.result.ranked, true);
+    });
+
+    it("keeps a No Fail run alive and ranks it, with the modifier on the board row", async () => {
+      const { channel, scoreStore } = setup({ charts });
+      const reply = await submit(channel, submitMessage({ events: losing, modifiers: ["nf"] }));
+      assert.strictEqual(reply.result.failed, false);
+      assert.strictEqual(reply.result.ranked, true);
+      assert.deepStrictEqual(reply.result.modifiers, ["nf"]);
+      assert.deepStrictEqual(reply.result.best.modifiers, ["nf"]);
+      assert.strictEqual(reply.result.counts.perfect, 6);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: KEY_R3, guildId: null, limit: 5 })[0].modifiers, ["nf"]);
+    });
+
+    it("stores the modifiers with the history and returns them in the board", async () => {
+      const { channel, historyStore } = setup();
+      const reply = await submit(channel, submitMessage({ modifiers: ["st", "gn"] }));
+      assert.deepStrictEqual(reply.result.modifiers, ["gn", "st"]);
+      // 1500 * 1.28, each judgement rounded.
+      assert.strictEqual(reply.result.score, 384 + 384 + 256 + 384 + 384 + 128);
+      assert.deepStrictEqual(historyStore.recent("ann", 1)[0].modifiers, ["gn", "st"]);
+      const board = await submit(channel, { type: "mewbeat_board", id: "b", audioKey: KEY, difficulty: "hard", scope: "server" });
+      assert.deepStrictEqual(board.entries[0].modifiers, ["gn", "st"]);
+    });
+
+    it("scores under the board key with the rules version", async () => {
+      const { channel, scoreStore } = setup();
+      await submit(channel, submitMessage());
+      assert.strictEqual(scoreStore.board({ chartKey: KEY_R3, guildId: null, limit: 5 }).length, 1);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
+    });
+
+    it("keeps a calibration run and an autoplay run from failing", async () => {
+      for (const flags of [{ calibration: true }, { autoplay: true }]) {
+        const { channel } = setup({ charts });
+        const reply = await submit(channel, submitMessage({ events: losing, flags }));
+        assert.strictEqual(reply.result.failed, false, JSON.stringify(flags));
+        assert.strictEqual(reply.result.counts.perfect, 6, JSON.stringify(flags));
+      }
+    });
+
+    it("refuses bad modifiers with the reason, and nothing is stored", async () => {
+      const { channel, scoreStore, historyStore } = setup();
+      const cases = [
+        [{ modifiers: ["zz"] }, "unknown_modifier"],
+        [{ modifiers: "nf" }, "unknown_modifier"],
+        [{ modifiers: ["nf", "ol"] }, "conflict"],
+        [{ modifiers: ["fs"], mode: "live" }, "solo_only"],
+        [{ modifiers: ["fs"], mode: "room" }, "solo_only"],
+        [{ modifiers: ["fs", "ss"] }, "conflict"],
+      ];
+      for (const [overrides, reason] of cases) {
+        const reply = await submit(channel, submitMessage(overrides));
+        assert.deepStrictEqual(reply, { type: "mewbeat_submit", id: "s1", status: "error", reason }, JSON.stringify(overrides));
+      }
+      assert.deepStrictEqual(scoreStore.board({ chartKey: KEY_R3, guildId: null, limit: 5 }), []);
+      assert.strictEqual(historyStore.recent("ann", 5).length, 0);
+    });
+
+    it("accepts a speed modifier in solo", async () => {
+      const { channel } = setup();
+      const reply = await submit(channel, submitMessage({ modifiers: ["fs"] }));
+      assert.strictEqual(reply.status, "ok");
+      assert.deepStrictEqual(reply.result.modifiers, ["fs"]);
     });
   });
 
@@ -284,7 +389,7 @@ describe("mewbeat channel scores", () => {
       const reply = await submit(channel, submitMessage({ chartVersion: VERSION - 1 }));
       assert.deepStrictEqual(reply, { type: "mewbeat_submit", id: "s1", status: "error", reason: "stale_chart" });
       assert.strictEqual(historyStore.recent("ann", 5).length, 0);
-      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}|r3`, guildId: null, limit: 5 }), []);
     });
 
     it("charts made with generator flags have their own score key, and a run on the unflagged ones goes stale", async () => {
@@ -296,9 +401,9 @@ describe("mewbeat channel scores", () => {
       const reply = await submit(channel, submitMessage({ chartVersion: flagged }));
       assert.strictEqual(reply.status, "ok");
       assert.strictEqual(reply.result.ranked, true);
-      assert.strictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${flagged}`, guildId: null, limit: 5 }).length, 1);
-      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}`, guildId: null, limit: 5 }), []);
-      assert.strictEqual(scoreStore.latestChartKey(KEY, "hard"), null);
+      assert.strictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${flagged}|r3`, guildId: null, limit: 5 }).length, 1);
+      assert.deepStrictEqual(scoreStore.board({ chartKey: `${KEY}|hard|${VERSION}|r3`, guildId: null, limit: 5 }), []);
+      assert.strictEqual(scoreStore.latestChartKey(KEY, "hard", 2), null);
       const board = await submit(channel, { type: "mewbeat_board", id: "b", audioKey: KEY, difficulty: "hard", scope: "server" });
       assert.deepStrictEqual(board.entries.map((entry) => entry.userId), ["ann"]);
     });
@@ -341,7 +446,7 @@ describe("mewbeat channel scores", () => {
       assert.strictEqual(reply.id, "b1");
       assert.deepStrictEqual(reply.entries.map((entry) => entry.userId), ["ann"]);
       assert.deepStrictEqual(Object.keys(reply.entries[0]).sort(), [
-        "accuracy", "at", "avatarUrl", "grade", "maxCombo", "score", "userId", "username",
+        "accuracy", "at", "avatarUrl", "grade", "maxCombo", "modifiers", "score", "userId", "username",
       ]);
       assert.strictEqual(reply.own.rank, 1);
       assert.strictEqual(reply.own.best.score, 1500);
@@ -367,7 +472,7 @@ describe("mewbeat channel scores", () => {
     it("reads the newest scored version when the chart is no longer known", async () => {
       const context = setup({ charts: null });
       context.scoreStore.submit({
-        chartKey: `${KEY}|hard|7`, userId: "ann", guildId: "g1", profile: ANN, score: 50, accuracy: 50, grade: "D", maxCombo: 1, difficulty: "hard",
+        chartKey: `${KEY}|hard|7|r3`, userId: "ann", guildId: "g1", profile: ANN, score: 50, accuracy: 50, grade: "D", maxCombo: 1, difficulty: "hard",
       });
       const reply = await submit(context.channel, boardMessage());
       assert.deepStrictEqual(reply.entries.map((entry) => entry.score), [50]);

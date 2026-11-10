@@ -205,6 +205,13 @@ export function createRoomLink({
     abandon();
   }
 
+  // The player lost their run: the round's audio plays on and the rest of it is only watched. Their score is
+  // already submitted, so nothing is reported to the server and the round stays engaged.
+  function spectate() {
+    if (engaged == null || state.spectating) return;
+    setState({ spectating: true });
+  }
+
   let offEnded = null;
   function start() {
     offEnded?.();
@@ -244,6 +251,7 @@ export function createRoomLink({
     setRoom,
     leaveRound,
     sitOut,
+    spectate,
     serverClock,
     state: () => state,
     onState: (fn) => {

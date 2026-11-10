@@ -77,6 +77,15 @@ function createAtlasHubClient({ url, secretKey, fetchImpl = fetch, timeoutMs = 1
 
   const dropTable = (name) => request("DELETE", `/v1/db/schema/tables/${encodeURIComponent(name)}`, { ifExists: true });
 
+  // The column names of every table: [{ tableName, columns: [{ name, ... }] }].
+  const listTables = async () => {
+    const { data } = await request("GET", "/v1/db/tables");
+    return Array.isArray(data) ? data : [];
+  };
+
+  // No IF NOT EXISTS here: the caller adds only a column listTables() did not show.
+  const addColumn = (table, column) => request("POST", `/v1/db/schema/tables/${encodeURIComponent(table)}/columns`, column);
+
   // Every row of a table, ten pages of 1000 per request, in a stable order. A page shorter than 1000 ends it.
   async function selectAll(table, { orderBy = "id" } = {}) {
     const rows = [];
@@ -118,7 +127,7 @@ function createAtlasHubClient({ url, secretKey, fetchImpl = fetch, timeoutMs = 1
     throw new AtlasHubError(`AtlasHub upsert into ${table} found the row neither to update nor to insert`, { retryable: true });
   }
 
-  return { ensureTable, ensureIndex, dropTable, selectAll, insertRows, upsertRow };
+  return { ensureTable, ensureIndex, dropTable, listTables, addColumn, selectAll, insertRows, upsertRow };
 }
 
 module.exports = { AtlasHubError, createAtlasHubClient, PAGE_SIZE, PAGES_PER_REQUEST };

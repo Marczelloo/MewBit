@@ -193,6 +193,7 @@
 
 .mb-lobby-last { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .mb-lobby-last li:not(.mb-ss-label) { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 9px; background: var(--mb-surface); font-size: 13px; }
+.mb-lobby-last-nm { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
 .mb-lobby-last b { font-weight: 800; overflow-wrap: anywhere; }
 .mb-lobby-last-pos { color: var(--mb-faint); font: 700 11px var(--mb-ss-mono); }
 .mb-lobby-last-score { font: 700 12px var(--mb-ss-mono); }

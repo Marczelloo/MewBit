@@ -108,11 +108,24 @@ test("the finished room gives Results standings with the player among them, and 
   assert.equal(room.upNextOf(finished).title, "Rude Buster");
 });
 
-test("the mock run is a finished full combo on a song the fake board knows", async () => {
+test("the mock run is a finished run with a few dips on a song the fake board knows", async () => {
   const summary = mockRoom.createMockSummary();
-  assert.equal(summary.finished && !summary.autoplay && !summary.calibration && summary.counts.miss === 0, true);
+  assert.equal(summary.finished && !summary.autoplay && !summary.calibration && !summary.failed, true);
+  assert.ok(summary.counts.miss > 0 && summary.events.length === summary.parts);
+  assert.ok(summary.feverStarts.length > 0 && summary.fevers === summary.feverStarts.length);
   assert.ok(summary.hitErrors.length >= 8);
   const request = mockRequests.createMockRequest();
   const board = await request("mewbeat_board", { audioKey: summary.audioKey, difficulty: summary.difficulty, scope: "server" });
   assert.ok(board.entries.length > 0);
+});
+
+test("the mock variants: a lost run stops where it was lost, a No Fail run plays on past empty", () => {
+  const lost = mockRoom.createMockSummary({ failed: true });
+  assert.equal(lost.failed, true);
+  assert.ok(lost.failedAt > 0 && lost.events.length < lost.parts);
+  assert.equal(lost.submit.status, "skipped");
+  const nf = mockRoom.createMockSummary({ nf: true });
+  assert.equal(nf.failed, false);
+  assert.equal(nf.depleted, true);
+  assert.equal(nf.events.length, nf.parts);
 });

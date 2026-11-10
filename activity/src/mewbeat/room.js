@@ -186,6 +186,8 @@ export function standingsOf(room, userId) {
       accuracy: row.accuracy,
       score: row.score,
       grade: row.grade,
+      failed: row.failed === true,
+      modifiers: Array.isArray(row.modifiers) ? row.modifiers : [],
       me: row.userId === userId,
       next: Boolean(member?.ready),
     };

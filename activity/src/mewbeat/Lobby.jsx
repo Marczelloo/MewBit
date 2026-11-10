@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { formatScore } from "./GameHud.jsx";
 import LevelBoard from "./LevelBoard.jsx";
 import LiveBoard from "./LiveBoard.jsx";
+import ModifierPicker, { ModifierTags } from "./ModifierPicker.jsx";
 import { Avatar } from "./PlayerPanel.jsx";
 import { DIFFICULTIES, LevelTile, resolveArtworkUrl } from "./SongSelect.jsx";
 import { keyLabel } from "./input.js";
@@ -28,12 +29,23 @@ import {
 import { sendRoomInvite } from "./roomInvite.js";
 import "./lobby.css";
 
+// A queue or hero cover. A missing or broken image falls back to the empty gradient (the -empty class of the same
+// family) instead of a broken-image icon; the sized variant keeps the proxy transfer small.
+function RoomCover({ className, url, size, box, lazy = false }) {
+  const src = resolveArtworkUrl(url, size);
+  const [failed, setFailed] = useState(null);
+  if (!src || failed === src) return <span className={`${className} ${className}-empty`} aria-hidden="true" />;
+  return <img className={className} src={src} alt="" width={box} height={box} decoding="async" loading={lazy ? "lazy" : undefined} draggable="false" onError={() => setFailed(src)} />;
+}
+
 // While idle Mewbit runs the manifest's "idle" routine (neutral for a while, then a stretch or a headphone
 // adjust); each of those poses says a fresh line from the "lobby" pool (mewbit/lines.js) when it comes on screen.
 const IDLE_POSES = new Set(["neutral", "stretch", "adjust"]);
 // The two lobby moments that are not idle keep their one line each.
 const STAGE_TEXT = { hype: "get ready~", peek: "it's almost our turn!" };
 const TOAST_MS = 4500;
+const STATS_POLL_MS = 4000; // how often the lobby asks again for the hero song's stars while its charts are pending
+const STATS_POLL_MAX = 60; // ... and how many times at most (about four minutes)
 
 // The leaderboard of the song on deck. Memoised on plain values, so a room snapshot (or the clock's tick) neither
 // re-renders it nor asks the server again; it requests when the song, the level or the scope changes.
@@ -118,7 +130,6 @@ function Timeline({ room, userId, nowPerf, mapping, busy, onRemove, onMove }) {
       {rows.map((row) => {
         const { track, index } = row;
         const live = row.current && !row.finished;
-        const cover = resolveArtworkUrl(track.artworkUrl);
         const over = drag && index != null && drag.over === index && drag.from !== index ? (drag.from > index ? " mb-tl-over-up" : " mb-tl-over-down") : "";
         const cls = `mb-tl-row${live ? " mb-tl-now" : ""}${row.finished ? " mb-tl-done" : ""}${row.mine && !row.current && !row.played ? " mb-tl-mine" : ""}${drag?.from === index && index != null ? " mb-tl-dragged" : ""}${over}`;
         const about = [track.artist, track.durationMs > 0 ? formatClock(track.durationMs) : null, row.mine ? "you" : nameOf(track.addedBy)].filter(Boolean).join(" · ");
@@ -150,7 +161,7 @@ function Timeline({ room, userId, nowPerf, mapping, busy, onRemove, onMove }) {
             <span className="mb-tl-pos">
               {index != null ? index + 1 : live ? <Play size={11} weight="fill" aria-label="Now playing" /> : <Check size={12} weight="bold" aria-label="Played" />}
             </span>
-            {cover ? <img className="mb-tl-cover" src={cover} alt="" draggable="false" loading="lazy" /> : <span className="mb-tl-cover mb-tl-cover-empty" aria-hidden="true" />}
+            <RoomCover className="mb-tl-cover" url={track.artworkUrl} size="small" box={34} lazy />
             <div className="mb-tl-txt">
               <b title={track.title}>{track.title}</b>
               <small>{live ? `now playing · ${about}` : about}</small>
@@ -185,7 +196,7 @@ function Timeline({ room, userId, nowPerf, mapping, busy, onRemove, onMove }) {
 // The room lobby: the song on deck with the round clock, the queue, the levels and their leaderboard on the left;
 // Mewbit, who is here and what each of them plays, invite, keys and my own controls on the right.
 // `view` is "lobby" (between rounds) or "watching" (a round is running without this player).
-export default function Lobby({ room, userId, view, receivedAt, serverClock, store, request, board, effects, showMewbit = true, keys, offsetMs, notice, sdk = null, standings = [], onAddSongs, onCalibrate }) {
+export default function Lobby({ room, userId, view, receivedAt, serverClock, store, request, board, effects, showMewbit = true, keys, offsetMs, notice, sdk = null, standings = [], modifiers = [], onModifiers, onModifiersOpen, onAddSongs, onCalibrate }) {
   const me = memberOf(room, userId);
   const host = isHost(room, userId);
   const active = roundActive(room);
@@ -238,14 +249,26 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   // Fetched again when the song changes and when a round ends (my best may have moved). A failed fetch
   // answers null, which leaves the tiles with dashes.
   const heroKey = heroTrack?.audioKey ?? null;
+  // While the song's charts are still being made (no stars yet) it asks again every few seconds, for a few minutes at
+  // most, and stops when the numbers arrive, the song changes or the round starts.
   useEffect(() => {
     if (!heroKey || active || !store?.songStats) return undefined;
     let cancelled = false;
-    store.songStats(heroKey).then((stats) => {
-      if (!cancelled && mounted.current) setSongStats({ key: heroKey, stats });
-    });
+    let timer = null;
+    let tries = 0;
+    const fetchStats = () => {
+      store.songStats(heroKey).then((stats) => {
+        if (cancelled || !mounted.current) return;
+        setSongStats({ key: heroKey, stats });
+        const charted = stats && Object.values(stats).some((level) => Number.isFinite(level?.stars));
+        tries += 1;
+        if (!charted && tries < STATS_POLL_MAX) timer = window.setTimeout(fetchStats, STATS_POLL_MS);
+      });
+    };
+    fetchStats();
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [heroKey, active, room.round, store]);
   const stats = songStats.key === heroKey ? songStats.stats : null;
@@ -319,9 +342,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
 
         <div className="mb-ss-panel mb-lobby-hero">
           <div className="mb-lobby-hero-top">
-            {heroTrack && resolveArtworkUrl(heroTrack.artworkUrl)
-              ? <img className="mb-lobby-cover" src={resolveArtworkUrl(heroTrack.artworkUrl)} alt="" draggable="false" />
-              : <div className="mb-lobby-cover mb-lobby-cover-empty" aria-hidden="true" />}
+            <RoomCover className="mb-lobby-cover" url={heroTrack?.artworkUrl} size="medium" box={80} />
             <div className="mb-lobby-hero-text">
               <span className="mb-ss-label">{heroTrack ? (active || watching ? `Now playing · queued by ${nameOf(heroTrack.addedBy)}` : `Next up · queued by ${nameOf(heroTrack.addedBy)}`) : "Nothing queued"}</span>
               <h2 title={heroTrack?.title}>{heroTrack?.title ?? "Pick the first song"}</h2>
@@ -376,6 +397,8 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
                 );
               })}
             </div>
+            {/* Speed is solo only, so the room bar offers the rest; the caller keeps the choice. */}
+            {picksLevel && onModifiers ? <ModifierPicker value={modifiers} onChange={onModifiers} mode="room" onOpenChange={onModifiersOpen} /> : null}
           </section>
         ) : null}
 
@@ -435,6 +458,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
                       <span>{member.username}</span>
                       {member.userId === room.hostId ? <span className="mb-lobby-owner"><Crown size={10} weight="fill" aria-hidden="true" />Owner</span> : null}
                       {isMe ? <span className="mb-lobby-you">YOU</span> : null}
+                      {member.spectator || !member.modifiers?.length ? null : <ModifierTags modifiers={member.modifiers} />}
                     </b>
                     <small className={`mb-lobby-st mb-lobby-st-${tone}`}>
                       <i className="mb-lobby-dot" aria-hidden="true" />
@@ -481,7 +505,10 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
             {standings.map((row, index) => (
               <li key={row.userId} className={row.me ? "mb-lobby-last-me" : undefined}>
                 <span className="mb-lobby-last-pos">{index + 1}</span>
-                <b>{row.username}</b>
+                <span className="mb-lobby-last-nm">
+                  <b>{row.username}</b>
+                  <ModifierTags modifiers={row.modifiers} failed={row.failed} />
+                </span>
                 <span className="mb-lobby-last-score">{formatScore(row.score)}</span>
               </li>
             ))}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { boardRows } from "./liveBoard.js";
 import { formatScore } from "./GameHud.jsx";
 import { resolveArtworkUrl } from "./SongSelect.jsx";
+import { ModifierTags } from "./ModifierPicker.jsx";
 
 function Avatar({ name, url }) {
   const src = resolveArtworkUrl(url);
@@ -28,12 +29,18 @@ export default function LiveBoard({ store, session, meId, label = "On the channe
         {rows.map(({ rank, entry, me }, index) => (
           <li
             key={entry.userId ?? rank}
-            className={`mb-lb-row${me ? " mb-lb-me" : ""}${entry.ended ? " mb-lb-done" : ""}${index === 5 ? " mb-lb-gap" : ""}`.trim()}
+            className={`mb-lb-row${me ? " mb-lb-me" : ""}${entry.ended ? " mb-lb-done" : ""}${entry.failed ? " mb-lb-lost" : ""}${index === 5 ? " mb-lb-gap" : ""}`.trim()}
           >
             <span className="mb-lb-rank">{rank}</span>
             <Avatar name={entry.username} url={entry.avatarUrl} />
-            <span className="mb-lb-name">{entry.username}</span>
-            <span className="mb-lb-score">{formatScore(entry.score ?? 0)}</span>
+            <span className="mb-lb-name">
+              <span className="mb-lb-nm">{entry.username}</span>
+              {entry.modifiers?.length ? <ModifierTags modifiers={entry.modifiers} /> : null}
+            </span>
+            <span className="mb-lb-score">
+              {entry.failed ? <b className="mb-lb-failed">FAILED</b> : null}
+              {formatScore(entry.score ?? 0)}
+            </span>
           </li>
         ))}
       </ol>

@@ -66,6 +66,7 @@ function createRooms({
         username: member.username,
         avatarUrl: member.avatarUrl,
         difficulty: member.difficulty,
+        modifiers: [...(member.modifiers ?? [])],
         ready: member.ready,
         loaded: member.loaded,
         spectator: member.spectator,
@@ -171,8 +172,8 @@ function createRooms({
     // Includes players who finished and then left.
     const finished = [...room.roundResults.values()];
     const mixed = new Set(finished.map((entry) => entry.difficulty)).size > 1;
-    // Scores aren't comparable across difficulties; accuracy is.
-    return finished.sort((a, b) => (mixed
+    // Scores aren't comparable across difficulties; accuracy is. A player who failed is below everyone who finished.
+    return finished.sort((a, b) => Number(a.failed) - Number(b.failed) || (mixed
       ? b.accuracy - a.accuracy || b.score - a.score
       : b.score - a.score || b.accuracy - a.accuracy));
   }
@@ -338,6 +339,7 @@ function createRooms({
         username: profile.username || userId,
         avatarUrl: profile.avatarUrl ?? null,
         difficulty: DEFAULT_DIFFICULTY,
+        modifiers: [],
         ready: false,
         loaded: false,
         // Someone who arrives while a song is on, or after the seats are
@@ -453,7 +455,8 @@ function createRooms({
 
   // `spectate: true` is a choice to watch (kept across rounds); `false` asks for
   // a seat, which a running round or a full room defers to the next promotion.
-  function ready(guildId, userId, { ready: isReady, difficulty, spectate } = {}) {
+  // `modifiers`: the ids the player picked (checked by the caller), shown next to them in the room.
+  function ready(guildId, userId, { ready: isReady, difficulty, spectate, modifiers } = {}) {
     const room = rooms.get(guildId);
     const member = room && findMember(room, userId);
     if (!member) return fail("not_in_room");
@@ -466,6 +469,7 @@ function createRooms({
     if (isReady === true && spectatorAfter) return fail("spectating");
 
     if (difficulty !== undefined) member.difficulty = difficulty;
+    if (Array.isArray(modifiers)) member.modifiers = [...modifiers];
     if (spectate === true) member.watching = true;
     else if (spectate === false) member.watching = false;
     member.spectator = spectatorAfter;
@@ -504,7 +508,7 @@ function createRooms({
     return ok();
   }
 
-  function submitted(guildId, userId, { score, accuracy, grade, difficulty } = {}) {
+  function submitted(guildId, userId, { score, accuracy, grade, difficulty, failed = false, modifiers = [] } = {}) {
     const room = rooms.get(guildId);
     const member = room && findMember(room, userId);
     if (!member) return fail("not_in_room");
@@ -524,6 +528,8 @@ function createRooms({
       accuracy,
       grade,
       difficulty: member.difficulty,
+      failed: failed === true,
+      modifiers,
     });
     checkFinished(room);
     push(room);

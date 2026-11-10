@@ -5,6 +5,7 @@ const path = require("node:path");
 const Log = require("../logs/log");
 const { writeJsonAtomic } = require("../data/atomicJson");
 const { audioKeyFile, audioKeyOf } = require("./audioKey");
+const { createPriorityGate } = require("./priorityGate");
 
 const ANALYZE_ROUTE = "/v4/mewbeat/analyze";
 const FAILURE_TTL_MS = 10 * 60 * 1000;
@@ -70,6 +71,9 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
   const unchartedKeys = new Map(); // key -> reason
   const blockedByKey = new Map(); // key -> { retryAfter, kind: "busy" | "failed" }
   const pendingByKey = new Map();
+  // Where analyses wait for the plugin: a play analysis goes at once (the plugin queues those itself), a background one only
+  // starts while nothing else runs, one at a time, and a play request takes over a background one that still waits.
+  const gate = createPriorityGate({ concurrency: 1, playBypass: true });
 
   // Small LRU over full feature documents; disk is the backing store.
   function readMemory(key) {
@@ -109,6 +113,8 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
   // poru's rest.post drops the HTTP status and returns the parsed body, or
   // null on a network error, so the outcome is classified by the body alone.
   async function analyse(track, key, node) {
+    // No Lavalink node (an offline pass over cached features): nothing to ask, and nothing to remember as a failure.
+    if (!node?.rest) return null;
     let body;
     try {
       body = await withTimeout(node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track }), requestTimeoutMs);
@@ -160,7 +166,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     return failFor(key, FAILURE_TTL_MS);
   }
 
-  async function resolve(track, key, node) {
+  async function resolve(track, key, node, priority) {
     try {
       const text = await fsPromises.readFile(featuresPathOf(dir, key), "utf8");
       const entry = parseCacheFile(text);
@@ -171,19 +177,24 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     } catch {
       // no file yet
     }
-    return analyse(track, key, node);
+    return gate.run(() => analyse(track, key, node), { priority, key });
   }
 
-  function getFeatures(track, node) {
+  // priority: "play" (default; a player waits) or "background" (see priorityGate.js). A play request for a song that is
+  // analysed as background takes over its place in the line.
+  function getFeatures(track, node, { priority = "play" } = {}) {
     const key = audioKeyOf(track);
     if (!key || unchartedKeys.has(key)) return Promise.resolve(null);
     const cached = readMemory(key);
     if (cached) return Promise.resolve(cached);
     if (blockOf(key)) return Promise.resolve(null);
     const pending = pendingByKey.get(key);
-    if (pending) return pending;
+    if (pending) {
+      if (priority === "play") gate.promote(key);
+      return pending;
+    }
 
-    const request = resolve(track, key, node).finally(() => pendingByKey.delete(key));
+    const request = resolve(track, key, node, priority).finally(() => pendingByKey.delete(key));
     pendingByKey.set(key, request);
     return request;
   }
@@ -202,6 +213,19 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
       return entry.features ?? null;
     } catch {
       return null;
+    }
+  }
+
+  // Whether a features document is cached for the track: in memory, or a file on disk too large to be a marker. Sync, reads
+  // nothing; the file may still turn out unusable (another features version), which getFeatures finds out.
+  function hasFeatures(track) {
+    const key = audioKeyOf(track);
+    if (!key || unchartedKeys.has(key)) return false;
+    if (featuresByKey.has(key)) return true;
+    try {
+      return fs.statSync(featuresPathOf(dir, key)).size > MARKER_MAX_BYTES;
+    } catch {
+      return false;
     }
   }
 
@@ -245,7 +269,13 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     return true;
   }
 
-  return { getFeatures, peek, statusOf, forget };
+  // A play request for a song whose analysis waits as background: it takes the place of a play analysis in the line.
+  function promote(track) {
+    const key = audioKeyOf(track);
+    return key ? gate.promote(key) : false;
+  }
+
+  return { getFeatures, peek, hasFeatures, promote, statusOf, forget };
 }
 
 module.exports = {

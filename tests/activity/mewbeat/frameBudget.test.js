@@ -22,6 +22,11 @@ test("the budget holds the longest loop, the screen's poses, the warm window and
   assert.ok(budgetBytes(args) >= frameBytes(256) * args.loopFrames, "a whole loop always fits");
 });
 
+test("the kept miss reactions come on top of everything else", () => {
+  const args = { size: 256, loopFrames: 64, screenPoses: 12, warmFrames: 16, lookahead: 8 };
+  assert.equal(budgetBytes({ ...args, keptFrames: 40 }) - budgetBytes(args), frameBytes(256) * 40);
+});
+
 test("a bigger canvas gets a bigger budget, so the loop still fits", () => {
   const base = { loopFrames: 64, screenPoses: 12, warmFrames: 16, lookahead: 8 };
   const small = budgetBytes({ ...base, size: 192 });
