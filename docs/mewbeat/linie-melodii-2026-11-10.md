@@ -94,6 +94,30 @@ Pytanie do ucha: czy serie 3–4 nut co 80–95 ms są na Normalu grywalne, czy 
   (kopia powtórki albo wyciszenie na końcu utworu). Nie sprawdziłem co.
 - Easy, Hard i Hell powstają z Normala, więc zmieniają się razem z nim. Nie stroiłem ich osobno.
 
+## Po pierwszym odsłuchu (10 listopada po południu)
+
+Zestaw 1 (`melodyKeep`, `copyMelody`, `melodyShiftPick`, `melodyLines`) zagrany w Discordzie: „o wiele lepiej”, na
+MEGALOVANII „klika się bardziej naturalnie, już podświadomie”. Rush E dalej gubi nuty, czasem daje trzy bloczki na jedną
+nutę i zostawia przerwy, mimo że nuty grają.
+
+Co zmierzyłem w Rush E na Normalu z zestawem 1:
+
+- **Zgubione nuty:** 41% nut linii melodii bez bloczka. Z `fastRuns` 24%.
+- **Przerwy:** 14 dziur na bit lub dłużej (razem 11,7 s), w których dekoder słyszy 2+ nuty i nie ma holda. Dźwięki w tych
+  dziurach były głośne, ale poniżej progu pierwszego planu (ćwierćbit dostaje niską ocenę), a limit sekcji był już
+  wydany. Żadna istniejąca flaga tego nie ruszała.
+- **Trzy bloczki na jedną nutę:** na Easy i Normalu nie ma ani jednego potrójnego akordu. Są na Hardzie (21) i Hellu (36);
+  `heardChords` zostawia na Hardzie 10. Bez poziomu i sekundy od gracza nie wiem, czy chodziło o to.
+
+Nowa flaga **`loudHoles`** (Normal, wyłączona): pusty odcinek między dwiema nutami, długi na półtora bitu i co najmniej
+500 ms, dostaje najlepszy głośny dźwięk, który w nim leży, ponad limit sekcji. Rush E: 14 dziur (11,7 s) → 8 (4,4 s),
+z `fastRuns` 4 (2,8 s); 538 → 550 chwil. Zgodność z mapami ludzi bez zmian (F1 80,7; nut o 0,4% więcej). W całym zbiorze
+bota takie dziury są rzadkie z flagą i bez (2,2 → 2,0 na piosenkę), więc to poprawka dla utworów takich jak Rush E,
+a nie ogólna.
+
+Zestaw 2 do odsłuchu: zestaw 1 + `loudHoles` + `fastRuns`. MEGALOVANIA zostaje nuta w nutę taka sama. Rush E Normal
+538 → 644 chwil, Finale 532 → 585 (Easy 291 → 347).
+
 ## Jak włączyć
 
 Jak w nocnym raporcie: dołączyć `feat/mewbeat-melody` do `feat/mewbeat`, potem dopisać nazwę flagi do
