@@ -2,7 +2,7 @@ const assert = require("node:assert");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, INTERNAL_LEVELS, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, flagsKey, normalFlags, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { FLAGS, fileKey, flagsKey, normalFlags, withFlags } = require("../../../helpers/mewbeat/charts/flags");
 const { GENERATOR_VERSION, analyse, generateAll, generateChart, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { makeLayeredFeatures } = require("./fixtures");
 
@@ -53,6 +53,19 @@ describe("mewbeat generator flags", () => {
       assert.strictEqual(flagsKey(["lead", "density", "holds"]), "density-holds-lead");
       assert.strictEqual(flagsKey({ holds: true, density: true }), flagsKey(["density", "holds"]));
       assert.strictEqual(flagsKey(["nope"]), "");
+    });
+
+    it("puts a short key in a file name as it is and a long one as its hash", () => {
+      assert.strictEqual(fileKey(""), "");
+      assert.strictEqual(fileKey("density-holds-lead"), "density-holds-lead");
+      const short = "a".repeat(140);
+      assert.strictEqual(fileKey(short), short);
+      const long = `${short}-b`;
+      assert.match(fileKey(long), /^flags-[0-9a-f]{16}$/);
+      assert.strictEqual(fileKey(long), fileKey(long));
+      assert.notStrictEqual(fileKey(long), fileKey(`${short}-c`));
+      // every flag on at once still makes a name the store can write under its temporary suffix
+      assert.ok(fileKey(flagsKey(Object.keys(FLAGS))).length <= 140);
     });
   });
 

@@ -3,6 +3,8 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
+const crypto = require("node:crypto");
+
 const {
   COPY_MELODY,
   EASY_SAME_CUTS,
@@ -95,6 +97,12 @@ const namesOf = (flags) => Object.keys(normalFlags(flags)).sort();
 // The enabled names, sorted and joined with "-"; "" when none are on.
 const flagsKey = (flags) => namesOf(flags).join("-");
 
+// A flags key as the name of a chart file holds it (chartStore.js): the key itself, or past MAX_FILE_KEY characters "flags-"
+// and the first 16 hex digits of its SHA-1. The store writes a file under a temporary name some 60 characters longer, and
+// no file name passes 255 characters: with fourteen flags on, the charts were made and never kept.
+const MAX_FILE_KEY = 140;
+const fileKey = (key) => (key.length > MAX_FILE_KEY ? `flags-${crypto.createHash("sha1").update(key).digest("hex").slice(0, 16)}` : key);
+
 // diff itself when no enabled flag overrides this level, else a copy with the overrides applied in sorted flag order.
 function withFlags(diff, levelName, flags) {
   let result = diff;
@@ -105,4 +113,4 @@ function withFlags(diff, levelName, flags) {
   return result;
 }
 
-module.exports = { FLAGS, FLAGS_FILE_NAME, flagsKey, normalFlags, withFlags };
+module.exports = { FLAGS, FLAGS_FILE_NAME, fileKey, flagsKey, normalFlags, withFlags };

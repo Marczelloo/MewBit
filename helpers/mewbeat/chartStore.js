@@ -9,7 +9,7 @@ const { analysisClient } = require("./analysisClient");
 const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
 const { summarizeCharts } = require("./chartSummary");
 const { GENERATOR_VERSION } = require("./charts/generate");
-const { FLAGS_FILE_NAME, flagsKey, normalFlags } = require("./charts/flags");
+const { FLAGS_FILE_NAME, fileKey, flagsKey, normalFlags } = require("./charts/flags");
 const { withMelodyFile } = require("./charts/melodyFile");
 const { createChartRunner } = require("./chartRunner");
 const { createMelodyDecoder } = require("./melodyDecoder");
@@ -31,15 +31,18 @@ const FLAGS_TTL_MS = 2000;
 // The generator version is part of the file name, so a version bump simply
 // stops finding the old files and regenerates from the cached features.
 // Generator flags (charts/flags.js) add their names after it, so each
-// combination of flags has its own file and no flags is the plain name.
+// combination of flags has its own file and no flags is the plain name; a long
+// list of flags goes in as its hash (flags.js fileKey).
 //
 // The chart file is the source of truth for an audioKey + version: scores
 // refer to it. Features are not bit-reproducible across machines (decoder
 // length drift, JVM math), so wiping only the features cache must not
 // regenerate a chart that already exists, and a deliberate regeneration needs
 // a GENERATOR_VERSION bump.
+const chartSuffix = (flagged = "") => `.v${GENERATOR_VERSION}${flagged && `-${fileKey(flagged)}`}.json`;
+
 function chartsPathOf(dir, key, flagged = "") {
-  return path.join(dir, "charts", `${audioKeyFile(key)}.v${GENERATOR_VERSION}${flagged && `-${flagged}`}.json`);
+  return path.join(dir, "charts", `${audioKeyFile(key)}${chartSuffix(flagged)}`);
 }
 
 function isChartSet(value, key) {
@@ -483,7 +486,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   function warmSummaries() {
     warming ??= (async () => {
       const flagged = currentFlags().key;
-      const suffix = `.v${GENERATOR_VERSION}${flagged && `-${flagged}`}.json`;
+      const suffix = chartSuffix(flagged);
       const chartsDir = path.join(dir, "charts");
       let names;
       try {
