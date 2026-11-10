@@ -265,6 +265,10 @@ function plusNotes(ctx, diff) {
   const occupied = [...moments];
   const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const scoredTimes = scored.map((m) => m.t);
+  // diff.plusMelody (a flag): an extra on a note of the decoded melody scores more, on the line Normal reads; the chord keys
+  // of diff.plusDense go by the sound alone
+  const melody = diff.plusMelody ? decodedMelodyOf(ctx, diffOf(ctx, "normal")) : null;
+  const wanted = melody ? withMelody(scored, melody, diff.plusMelody) : scored;
   // diff.keepNormalHolds (flag normalHolds): no extra under a long hold of Normal or just after it, where it would cut it
   const held = diff.keepNormalHolds ? longHolds(normal, diff.keepNormalHolds.minBeats, ctx.timing) : [];
   const after = Math.max(diff.minNoteGapMs ?? 0, diff.minLaneGapMs ?? 0);
@@ -288,7 +292,7 @@ function plusNotes(ctx, diff) {
     const w = dense ? Math.min(1, Math.max(0, (rate - dense.fromNps) / (dense.toNps - dense.fromNps))) : 0;
     const most = dense ? Math.round(mine * (dense.sparseShare + w * (dense.denseShare - dense.sparseShare))) : Infinity;
     const copy = copiedRepeat(ctx, extras, i, diff);
-    const heard = scored.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter(free);
+    const heard = wanted.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter(free);
     const candidates = copy ? copy.notes.filter(free).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
     const take = Math.min(room, most);
     const chosen = take === 0 ? [] : diff.plusFigures ? plusFigures(candidates, occupied, take, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, take, diff, ctx.timing);

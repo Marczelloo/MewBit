@@ -1,9 +1,10 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, INTERNAL_LEVELS, MELODY_SHIFT_PICK } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, INTERNAL_LEVELS, MELODY_SHIFT_PICK, PLUS_MELODY } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
-const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
+const { snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
@@ -31,5 +32,41 @@ describe("the melody's shift picked against the song's sounds (flag melodyShiftP
     assert.notDeepEqual(notesOf(late).normal, placed.normal);
     const picked = notesOf(late, ["melodyShiftPick"]);
     for (const level of LEVELS) assert.deepEqual(picked[level], placed[level], level);
+  });
+});
+
+describe("extras on the melody for the levels built on Normal (flag plusMelody)", () => {
+  const moments = (notes) => new Set(notes.map((n) => n.t));
+  // A melody too busy for Normal: a note on every sound of the second half of each bar.
+  const busy = (features) => {
+    const line = snappedMoments(analyse(features), "hard").filter((m) => m.t % 2000 >= 1000).map((m) => ({ t: m.raw ?? m.t, pitch: 60 }));
+    return { ...features, decodedMelody: line, decodedMelodyTuned: line };
+  };
+  const played = (notes, features) => features.decodedMelody.filter((n) => moments(notes).has(n.t)).length;
+
+  it("is a flag of Hard and Hell, and no level has it without the flag", () => {
+    assert.deepEqual(FLAGS.plusMelody.levels, { hard: { plusMelody: PLUS_MELODY }, hell: { plusMelody: PLUS_MELODY } });
+    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.plusMelody, undefined);
+  });
+
+  it("changes nothing in a song with no decoded melody", () => {
+    const features = makeLayeredFeatures();
+    assert.deepEqual(notesOf(features, ["plusMelody"]), notesOf(features));
+  });
+
+  it("gives Hard and Hell more of the melody's notes, Easy and Normal stay", () => {
+    const features = busy(makeLayeredFeatures());
+    const plain = notesOf(features), flagged = notesOf(features, ["plusMelody"]);
+    assert.deepEqual(flagged.easy, plain.easy);
+    assert.deepEqual(flagged.normal, plain.normal);
+    for (const level of ["hard", "hell"]) assert.ok(played(flagged[level], features) > played(plain[level], features), level);
+  });
+
+  it("still keeps every moment of the level it is built on", () => {
+    const flagged = notesOf(busy(makeLayeredFeatures()), ["plusMelody"]);
+    for (const [lower, upper] of [["normal", "hard"], ["hard", "hell"]]) {
+      const kept = moments(flagged[upper]);
+      for (const t of moments(flagged[lower])) assert.ok(kept.has(t), `${upper} lost ${t} of ${lower}`);
+    }
   });
 });

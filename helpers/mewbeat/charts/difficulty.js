@@ -72,6 +72,11 @@ const MELODY_PICK = { bonus: 1.25, minStrength: 0 };
 // Normal scores, looked for within reachMs of the file's times in steps of stepMs; a note meets a sound within matchMs. The
 // shift of the melody file stays unless another one matches `margin` more of the notes.
 const MELODY_SHIFT_PICK = { reachMs: 60, stepMs: 2, matchMs: 25, margin: 0.03 };
+// generate.js plusNotes (flag plusMelody): Hard and Hell, built on Normal, choose their extras by the sound alone; with this
+// an extra where the decoded melody begins a note scores `bonus` more, as a moment of Normal does (MELODY_PICK). On the 80
+// corpus songs Hard's moments on the melody, over a shifted control, went 6.5 -> 10.4 points with 7.7% of its moments moved and
+// F1 against people .813 -> .812; at bonus 2 F1 fell to .810.
+const PLUS_MELODY = { bonus: 1.25, minStrength: 0 };
 // chords.js loudnessScale: Normal's chord rate scales with how loud the music is ([energy, factor] steps); bars were
 // ranked against the song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 /
 // -0.45 / -0.6 / louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, this 8 / 8 / 15 / 21 / 29%. F1
@@ -542,6 +547,7 @@ module.exports = {
   MINI_RESTS,
   NORMAL_HOLDS,
   PLUS_FIGURES,
+  PLUS_MELODY,
   QUIET_LONE,
   SLOW_DYNAMICS,
   SOLO_LEAD,
