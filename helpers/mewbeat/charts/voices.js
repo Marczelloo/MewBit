@@ -1,8 +1,7 @@
 // The voices of a song, read from every note the second detector hears (features.decodedNotes) against the line it drew
 // through them (the decoded melody): the notes that repeat the line's tone and the line left out (generator flag lineRepeats),
-// and the sounds that play under the line, an accompaniment (generator flag leadVoice). Both asked for by ear on Rush E: "it
-// picked the lower, more bass line, not the high leading one".
-const { beatMsOf } = require("./holds");
+// and the sounds that play under the line, an accompaniment (generator flag leadVoiceBoth). Both asked for by ear on Rush E:
+// "it picked the lower, more bass line, not the high leading one".
 const { ONSET_MS, ranks } = require("./melodyPick");
 const { lowerBound } = require("./util");
 
@@ -35,17 +34,16 @@ function withLineRepeats(line, notes, rule) {
   return out;
 }
 
-// underLine(scored, line, notes, phrases, timing, rule) -> scored with rule.penalty taken from the score of a moment that
-// plays under the melody, marked `under: true`. `scored` is selection.js snappedMoments (raw: where the sound was), `line` the
-// decoded melody and `notes` every decoded note, both at the shift the level reads them. A moment is under the melody when
-// pitches begin on it (within rule.nearMs), none of them a note of the line (ONSET_MS), the highest rule.below semitones or
-// more under the line's nearest note, and the line plays there: its note before still rings, or it has a note within
-// rule.reachBeats on either side. With rule.clashMs the line plays there only when a note of it begins within that long of
-// the moment, before or after: the moment would take that note's place, and anywhere else both hands play (flag
-// leadVoiceBoth). Only in a song a pitched line carries: rule.song of its phrases or more are led by one (a
-// pitch begins on rule.pitched of a phrase's loud moments, those of rank rule.minLoud or more, rule.minMoments of them at
-// least). Where drums carry the song the bass under a melody is the beat people play, and nothing is taken.
-function underLine(scored, line, notes, phrases, timing, rule) {
+// underLine(scored, line, notes, phrases, rule) -> scored with rule.penalty taken from the score of a moment that plays under
+// the melody, marked `under: true`. `scored` is selection.js snappedMoments (raw: where the sound was), `line` the decoded
+// melody and `notes` every decoded note, both at the shift the level reads them. A moment is under the melody when pitches
+// begin on it (within rule.nearMs), none of them a note of the line (ONSET_MS), the highest rule.below semitones or more
+// under the line's nearest note, and a note of the line begins within rule.clashMs of the moment, before or after: the moment
+// would take that note's place, and anywhere else both hands play (flag leadVoiceBoth). Only in a song a pitched line
+// carries: rule.song of its phrases or more are led by one (a pitch begins on rule.pitched of a phrase's loud moments, those
+// of rank rule.minLoud or more, rule.minMoments of them at least). Where drums carry the song the bass under a melody is the
+// beat people play, and nothing is taken.
+function underLine(scored, line, notes, phrases, rule) {
   if (!rule || !Array.isArray(notes) || notes.length === 0 || !Array.isArray(line) || line.length === 0) return scored;
   const sorted = notes.filter((n) => Number.isFinite(n.t)).sort(byTime);
   const starts = sorted.map((n) => n.t);
@@ -78,13 +76,9 @@ function underLine(scored, line, notes, phrases, timing, rule) {
     const before = lead[i - 1];
     const after = lead[i];
     if ((before && t - before.t <= ONSET_MS) || (after && after.t - t <= ONSET_MS)) return m;
-    const reach = rule.reachBeats * beatMsOf(timing, m.t);
-    const plays =
-      rule.clashMs !== undefined
-        ? (before && t - before.t <= rule.clashMs) || (after && after.t - t <= rule.clashMs)
-        : before && (before.t + (before.len ?? 0) >= t || (after && t - before.t <= reach && after.t - t <= reach));
+    const plays = (before && t - before.t <= rule.clashMs) || (after && after.t - t <= rule.clashMs);
     if (!plays) return m;
-    const nearest = !after || t - before.t <= after.t - t ? before : after;
+    const nearest = before && (!after || t - before.t <= after.t - t) ? before : after;
     return nearest.pitch - top[k] >= rule.below ? { ...m, score: m.score - rule.penalty, under: true } : m;
   });
 }

@@ -153,26 +153,19 @@ const PACE_HOLES = { beats: 1, times: 2, gaps: 2, room: 0.25 };
 // 674 -> 691 moments, MEGALOVANIA 707 -> 708. Corpus F1 against people .793 -> .791 on Normal (precision .733 -> .729),
 // .728 -> .729 on Easy, .809 on Hard; moments +0.5%.
 const LINE_REPEATS = { reachMs: 400, minVel: 0.35 };
-// voices.js underLine (generator flag leadVoice, Normal): in a song a pitched line carries (`song` of its phrases have a
-// pitch begin on `pitched` of their loud moments, rank `minLoud` or more, `minMoments` at least) a moment whose pitches
-// (within `nearMs`) all lie `below` semitones or more under the melody, where the melody plays (its note rings, or it has
-// one within `reachBeats` on either side), scores `penalty` less: it is Normal's only where nothing else is. Asked for
-// by ear (Rush E: "it picked the lower, more bass line"). The gate holds for 4 of the bot's 74 songs (Finale, Bad Piggies
-// Theme, Rush E, BlackBerry) and 4 of the 80 corpus songs. Rush E 691 -> 656 moments, Finale 625 -> 570 with 52 -> 88 holds
-// (the melody's long notes are held where the left hand played); melody over the control 31.7 -> 32.9 and 10.3 -> 15.2.
-// Hard and Hell are built on Normal without the flag (generate.js builtOnWhole) and stay note for note; Easy, cut from
-// Normal, follows it. Against people it is worse where there is a human chart: Flower Dance Normal F1 .774 -> .741 (recall
-// .743 -> .694), Yoru ni Kakeru Easy .702 -> .651: people play the left hand of a piano piece. A flag for the ear alone.
-const LEAD_VOICE = { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75, below: 7, reachBeats: 2, penalty: 2.5 };
-// The same with both hands (generator flag leadVoiceBoth, Normal): what plays under the melody gives way only where a note of
-// the line begins within `clashMs` of it, the place it would take from that note; the rest of the left hand stays, as people
-// chart a piano piece. Asked for after leadVoice ("join them, or pick from both at once"). Rush E 691 -> 674 moments (leadVoice
-// 656), Finale 625 -> 612 with 52 -> 59 holds (570, 88). Against people nearly what no flag gives: Flower Dance Normal F1
-// .774 -> .770 (leadVoice .741), Yoru ni Kakeru Easy .702 -> .666 (.651). At 200 ms it is leadVoice again on a fast piece
-// (Finale 570 moments, 85 holds; Flower Dance .760). `nested`: Hard and Hell are built on this Normal (generate.js
-// builtOnWhole) and hold every moment of it, for 1-2% of their own (Rush E Hard 846 -> 828, Finale 734 -> 717, Yoru ni
-// Kakeru 1541 -> 1505 at the same F1 .835); under leadVoice that cost 4-9% and Normal kept 6-20 moments Hard lacked.
-const LEAD_VOICE_BOTH = { ...LEAD_VOICE, clashMs: 120, nested: true };
+// voices.js underLine (generator flag leadVoiceBoth, Normal and the levels built on it): in a song a pitched line carries
+// (`song` of its phrases have a pitch begin on `pitched` of their loud moments, rank `minLoud` or more, `minMoments` at
+// least) a moment whose pitches (within `nearMs`) all lie `below` semitones or more under the melody, where a note of the
+// melody begins within `clashMs` of it, scores `penalty` less: it would take that note's place, and is Normal's only where
+// nothing else is. The rest of what plays under the melody stays, both hands, as people chart a piano piece. Asked for by
+// ear (Rush E: "it picked the lower, more bass line"). The gate holds for 4 of the bot's 74 songs (Finale, Bad Piggies
+// Theme, Rush E, BlackBerry) and 4 of the 80 corpus songs. Rush E 691 -> 674 moments, Finale 625 -> 612 with 52 -> 59 holds
+// (the melody's long notes are held where the left hand played). Against people nearly what no flag gives: Flower Dance
+// Normal F1 .774 -> .770, Yoru ni Kakeru Easy .702 -> .666. At 200 ms it is the version where the bass gave way wherever the
+// line played, on a fast piece (Finale 570 moments, 85 holds; Flower Dance .760); that version (Rush E 656 moments, Finale 570)
+// lost by ear and was dropped. Hard and Hell are built on this Normal and hold every moment of it, for 1-2% of their own
+// (Rush E Hard 846 -> 828, Finale 734 -> 717, Yoru ni Kakeru 1541 -> 1505 at the same F1 .835).
+const LEAD_VOICE_BOTH = { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75, below: 7, clashMs: 120, penalty: 2.5 };
 // freeTime.js freePhrases (generator flag freeTime, every level): a phrase has no tempo the grid could fit when the beats the
 // tracker gave (not the fitted grid) are spread wider than `spread` of their median interval (`minBeats` or more of them),
 // the sounds sit under `onGrid` on the grid's quarter lines (1 all on a line, 0 anywhere) and `minLead` or more notes of
@@ -684,7 +677,6 @@ module.exports = {
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,
-  LEAD_VOICE,
   LEAD_VOICE_BOTH,
   LINE_REPEATS,
   LOUD_HOLES,

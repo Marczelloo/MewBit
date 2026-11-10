@@ -14,7 +14,6 @@ const {
   FREE_TIME,
   HARD_HOLDS,
   HEARD_CHORDS,
-  LEAD_VOICE,
   LEAD_VOICE_BOTH,
   LINE_REPEATS,
   LOUD_HOLES,
@@ -38,7 +37,9 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // dipSilence in v42 (difficulty.js DRUMLESS, MELODY_ONLY, DIP_SILENCE, FELT_TEMPO), chordSlow, holdSlow, slowDynamics and
 // flatLoud in v43 (difficulty.js CHORD_SLOW, HOLD_SLOW, SLOW_DYNAMICS, FLAT_LOUD).
 // figuresQuarter was dropped (0% of its notes hit on the test songs), musicFirst (no gain by ear), tempoBudget (it thinned
-// fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear) and runLanes (after fastRuns it moved 3% of Normal's notes and nothing one could hear). hardPlus, plusFigures, easyFromNormal,
+// fast songs, test F1 .8310 -> .8278, where flatLoud made them denser by ear), runLanes (after fastRuns it moved 3% of Normal's notes and nothing one could hear) and
+// leadVoice (the bass gave way to the melody everywhere the line played; heard against leadVoiceBoth it lost, Rush E Normal 656
+// moments against 673 and Finale 570 against 612 with the left hand gone, and it broke nesting: Normal kept 6-20 moments Hard lacked). hardPlus, plusFigures, easyFromNormal,
 // easyFigures, normalHolds and hellPlus became part of Easy, Hard and Hell in v44 (difficulty.js EASY_FROM_NORMAL,
 // EASY_FIGURES, HARD_PLUS, PLUS_FIGURES, NORMAL_HOLDS, HELL_PLUS).
 const FLAGS = {
@@ -58,10 +59,8 @@ const FLAGS = {
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
-  // Normal: in a song a piano or another pitched line carries, what plays under the melody gives way to it (voices.js underLine).
-  leadVoice: { label: "Normal: w utworze na pianino itp. bloczki idą za wysoką linią, bas pod nią ustępuje", levels: { normal: { leadVoice: LEAD_VOICE } } },
-  // Normal: leadVoice with both hands: the bass gives way only where it would take a melody note's place (voices.js underLine,
-  // rule.clashMs), and Hard and Hell are built on this Normal. Sorted after leadVoice, it is the one that holds with both on.
+  // Normal: in a song a piano or another pitched line carries, both hands play: the bass gives way only where it would take a
+  // melody note's place (voices.js underLine, rule.clashMs), and Hard and Hell are built on this Normal.
   leadVoiceBoth: { label: "Normal: w utworze na pianino itp. grają obie ręce, bas ustępuje tylko tam, gdzie zabrałby miejsce nucie melodii", levels: { normal: { leadVoice: LEAD_VOICE_BOTH } } },
   // Normal: the melody's line takes the notes that repeat its tone, which the decoder left out (voices.js withLineRepeats).
   lineRepeats: { label: "Normal: powtarzana nuta melodii liczy się cała, nie co druga", levels: { normal: { lineRepeats: LINE_REPEATS } } },

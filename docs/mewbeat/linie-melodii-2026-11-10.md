@@ -296,6 +296,19 @@ zostało 120 ms. Flaga czeka na odsłuch jako zamiana za `leadVoice` (zestaw 8);
 
 Zestaw 7 w bocie: zestaw 6 + `heardChords`, `pitchLanes`.
 
+### Odsłuch zestawów 7, 8 i 9 (10 listopada wieczorem)
+
+- **Zestaw 7 zaliczony.** „Mapy zrobiły się trochę bardziej puste, na intensywnych patternach jest mniej bloczków, ale
+  poziom dalej zachowuje się jak Normal, a mapping jest dobry." To `heardChords`. `heardChords` i `pitchLanes` zostają.
+- **Zestaw 8 zaliczony:** zestaw 7 z `leadVoiceBoth` zamiast `leadVoice`. „Rush E jest teraz mega i ogólnie gra się
+  mega dobrze." Wobec zestawu 7 zmieniały się cztery utwory bota: Rush E Normal 656 → 673 (Hard 846 → 827), Finale
+  570 → 612 z holdami 89 → 61 (Hard 732 → 716), Bad Piggies Theme 804 → 837 z holdami 72 → 44, BlackBerry 152 → 152.
+  `leadVoice` przegrała i jest usunięta z kodu; mapy z `leadVoiceBoth` i bez flag zostały co do nuty.
+- **Zestaw 9 w bocie:** zestaw 8 z `melodyLinesFirst` zamiast `melodyLines`. Normal wobec zestawu 8: Rush E
+  673 → 658 (+37/−52 momenty, najwięcej 0:40–0:50 i 1:50–2:00), MEGALOVANIA 709 → 691 (+7/−25; 0:30, 0:50, 1:10),
+  Camellia Remix 2355 → 2340 (+53/−68, z czego +26/−25 w 4:20–4:30), Finale 612 → 621 z holdami 61 → 68 (+15/−2 w
+  pierwszych 20 s). To ostatni zestaw flag melodii; po nim złożenie zaliczonych flag i poziomy.
+
 ### Na czym leżą dodatki w ludzkich mapach
 
 74 utwory korpusu z ludzkim Normalem i Hardem. Ludzki Hard zawiera 98,8% momentów Normala (Normal 97,7% Easy), czyli

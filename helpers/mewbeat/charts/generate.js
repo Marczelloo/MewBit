@@ -42,7 +42,6 @@ const PLAYS_ON_ENERGY = 0.35; // a phrase at least this loud plays on, for a lev
 const MAX_CROWDING_ROUNDS = 4; // withoutCrowding: tries at keeping every moment the level is built on
 const SAME_MOMENT_MS = 3; // a note this close to a time in the source is the one copied from there
 const PACE_MOMENTS = 3; // the moments before a phrase whose pace diff.paceHoles reads
-const WHOLE = "normalWhole"; // Normal without leadVoice, an internal level (flagged)
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
@@ -234,14 +233,13 @@ function scoredFor(ctx, diff) {
   ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
   const byScored = ctx.melodyScored.get(melody);
   // diff.melodyRuns (a flag): the moments where the melody runs fast are marked, for finish to add
-  // diff.leadVoice (a flag): what plays under the melody in a song a pitched line carries scores less (voices.js underLine)
+  // diff.leadVoice (flag leadVoiceBoth): what plays under the melody in a song a pitched line carries scores less (voices.js underLine)
   const key = (diff.melodyRuns ? "runs" : "plain") + (diff.leadVoice ? ":voice" : "");
   byScored.has(scored) || byScored.set(scored, {});
   const cached = byScored.get(scored);
   if (!cached[key]) {
     const picked = withMelody(scored, melody, diff.melodyPick);
-    const voiced = diff.leadVoice ? underLine(picked, melody, decodedNotesAt(ctx, melodyShiftOf(ctx, diff, drawnMelodyOf(ctx, diff))), ctx.phrases, ctx.timing, diff.leadVoice) : picked;
-    if (diff.leadVoice && voiced.some((m) => m.under)) ctx.underLine = true; // builtOnWhole
+    const voiced = diff.leadVoice ? underLine(picked, melody, decodedNotesAt(ctx, melodyShiftOf(ctx, diff, drawnMelodyOf(ctx, diff))), ctx.phrases, diff.leadVoice) : picked;
     cached[key] = diff.melodyRuns ? withMelodyRuns(voiced, melody, diff.melodyRuns) : voiced;
   }
   return cached[key];
@@ -648,23 +646,11 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
 }
 
 // Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
-// A level's settings with the song's flags. normalWhole is Normal without leadVoice: what the levels above are built on
-// where that flag took moments from Normal (builtOnWhole).
-const flagged = (ctx, difficulty) => (difficulty === WHOLE ? { ...withFlags(levelOf("normal"), "normal", ctx.flags), leadVoice: null } : withFlags(levelOf(difficulty), difficulty, ctx.flags));
+const flagged = (ctx, difficulty) => withFlags(levelOf(difficulty), difficulty, ctx.flags);
 const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(flagged(ctx, difficulty), ctx.busy), ctx.timing), ctx.timing);
 
-// diff, built on normalWhole instead of Normal where leadVoice (a flag of Normal) took moments from Normal in this song: what
-// plays under the melody stays with the levels above, which are then as they are without the flag. Not under a rule that
-// is `nested` (flag leadVoiceBoth): the levels above are built on Normal as it is, and hold every moment of it.
-function builtOnWhole(ctx, diff) {
-  const rule = diffOf(ctx, "normal").leadVoice;
-  if (diff.buildOn !== "normal" || !rule || rule.nested) return diff;
-  finalNotes(ctx, "normal");
-  return ctx.underLine ? { ...diff, buildOn: WHOLE } : diff;
-}
-
 const notesFor = (ctx, difficulty, trace = null) => {
-  const diff = builtOnWhole(ctx, diffOf(ctx, difficulty));
+  const diff = diffOf(ctx, difficulty);
   const charted = chartNotes(ctx, diff, trace);
   if (!charted.protect) return finish(ctx, charted, diff, trace);
   const settled = withoutCrowding(ctx, charted, diff);
