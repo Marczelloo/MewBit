@@ -118,6 +118,21 @@ a nie ogólna.
 Zestaw 2 do odsłuchu: zestaw 1 + `loudHoles` + `fastRuns`. MEGALOVANIA zostaje nuta w nutę taka sama. Rush E Normal
 538 → 644 chwil, Finale 532 → 585 (Easy 291 → 347).
 
+### Trzy bloczki na jedną nutę: `fillFloor`
+
+Gracz doprecyzował: to nie akord, tylko początek Rush E, jeden klawisz pianina i trzy bloczki na trzech torach. Miejsce:
+0:04,1. Jedno E trwa 1,27 s. Normal dawał bloczek na uderzeniu i dwa „dopełnienia” 0,2 i 0,4 s później, na ledwo
+słyszalnych dźwiękach (siła 0,16 i 0,17 przy 1,00 dla samego uderzenia), czyli w ogonie tej samej nuty. Easy miał tam
+3 bloczki, Hard 4, Hell 5. To samo E w 0:00 i 0:05 dostawało jeden hold i tak ma być.
+
+Flaga **`fillFloor`** (Normal, wyłączona): dopełnienia pustych odcinków i pauz pomijają dźwięk o sile poniżej 0,25.
+W 0:04 jest teraz jeden hold na każdym poziomie. Takich dopełnień w całym zbiorze bota było 57 na 75 piosenek, zostaje 0.
+Zgodność z mapami ludzi bez zmian (F1 80,7). Próg 0,5 wypada w liczbach lepiej (F1 81,0), ale zabiera 11 nut na
+piosenkę, na które nikt się nie skarżył, więc zostaje 0,25.
+
+Zestaw 3 w bocie: zestaw 2 + `fillFloor`. Poza Rush E (644 → 639 chwil na Normalu) trzy pozostałe piosenki testowe
+są nuta w nutę takie same jak w zestawie 2.
+
 ## Jak włączyć
 
 Jak w nocnym raporcie: dołączyć `feat/mewbeat-melody` do `feat/mewbeat`, potem dopisać nazwę flagi do
