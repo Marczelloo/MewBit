@@ -33,6 +33,7 @@ const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
 const { lowerBound, nearestIndex } = require("./util");
+const { underLine, withLineRepeats } = require("./voices");
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
@@ -40,6 +41,8 @@ const MIN_COPY_SHARE = 0.5; // a repeat keeping less of its source than this is 
 const PLAYS_ON_ENERGY = 0.35; // a phrase at least this loud plays on, for a level cut from a harder one
 const MAX_CROWDING_ROUNDS = 4; // withoutCrowding: tries at keeping every moment the level is built on
 const SAME_MOMENT_MS = 3; // a note this close to a time in the source is the one copied from there
+const PACE_MOMENTS = 3; // the moments before a phrase whose pace diff.paceHoles reads
+const WHOLE = "normalWhole"; // Normal without leadVoice, an internal level (flagged)
 
 // --- shared analysis (the same for every difficulty) ---------------------------------
 
@@ -135,16 +138,43 @@ function leadersOf(ctx, diff) {
 // Whether the music plays at t: not in the lead-in, not in the silence.
 const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENERGY;
 
-// The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one.
+// The line the second detector drew, as its file holds it: the tuned one with diff.melodyTuned, where there is one.
+function drawnMelodyOf(ctx, diff) {
+  const { decodedMelody, decodedMelodyTuned } = ctx.features;
+  return diff.melodyTuned && Array.isArray(decodedMelodyTuned) ? decodedMelodyTuned : Array.isArray(decodedMelody) ? decodedMelody : null;
+}
+
+// The shift a level reads that line at (decodedMelodyOf), and every decoded note with it.
+function melodyShiftOf(ctx, diff, drawn) {
+  const { decodedMelodyShift } = ctx.features;
+  const applied = diff.melodyOnsetShift && Number.isFinite(decodedMelodyShift) ? decodedMelodyShift : 0;
+  return diff.melodyShiftPick ? pickedMelodyShift(ctx, drawn, diff, applied) : applied;
+}
+
+// diff.lineRepeats (a flag): the drawn line with the decoded notes that repeat its tone (voices.js withLineRepeats). Kept on the ctx.
+function repeatedLine(ctx, drawn, rule) {
+  ctx.repeatedLines ??= new Map();
+  if (!ctx.repeatedLines.has(drawn)) ctx.repeatedLines.set(drawn, withLineRepeats(drawn, ctx.features.decodedNotes, rule));
+  return ctx.repeatedLines.get(drawn);
+}
+
+// Every note the second detector heard, at the shift a level reads its line at; [] where none was decoded. Kept on the ctx.
+function decodedNotesAt(ctx, shift) {
+  ctx.shiftedNotes ??= new Map();
+  if (!ctx.shiftedNotes.has(shift)) ctx.shiftedNotes.set(shift, (ctx.features.decodedNotes ?? []).map((n) => ({ ...n, t: n.t + shift })));
+  return ctx.shiftedNotes.get(shift);
+}
+
+// The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one,
+// and with diff.lineRepeats (a flag) the notes that repeat the line's tone.
 // With diff.melodyOnsetShift it is moved by features.decodedMelodyShift (chartStore.js: the export's shift to the onsets of
 // all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once. With diff.melodyShiftPick (a
 // flag) the shift is found here instead, against the sounds the level scores (pickedMelodyShift).
 function decodedMelodyOf(ctx, diff) {
-  const { decodedMelody, decodedMelodyTuned, decodedMelodyShift } = ctx.features;
-  const line = diff.melodyTuned && Array.isArray(decodedMelodyTuned) ? decodedMelodyTuned : Array.isArray(decodedMelody) ? decodedMelody : null;
-  if (!line) return line;
-  const applied = diff.melodyOnsetShift && Number.isFinite(decodedMelodyShift) ? decodedMelodyShift : 0;
-  const shift = diff.melodyShiftPick ? pickedMelodyShift(ctx, line, diff, applied) : applied;
+  const drawn = drawnMelodyOf(ctx, diff);
+  if (!drawn) return drawn;
+  const shift = melodyShiftOf(ctx, diff, drawn);
+  const line = diff.lineRepeats ? repeatedLine(ctx, drawn, diff.lineRepeats) : drawn;
   if (shift === 0) return line;
   ctx.shiftedMelody ??= new Map();
   ctx.shiftedMelody.has(line) || ctx.shiftedMelody.set(line, new Map());
@@ -204,12 +234,15 @@ function scoredFor(ctx, diff) {
   ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
   const byScored = ctx.melodyScored.get(melody);
   // diff.melodyRuns (a flag): the moments where the melody runs fast are marked, for finish to add
-  const key = diff.melodyRuns ? "runs" : "plain";
+  // diff.leadVoice (a flag): what plays under the melody in a song a pitched line carries scores less (voices.js underLine)
+  const key = (diff.melodyRuns ? "runs" : "plain") + (diff.leadVoice ? ":voice" : "");
   byScored.has(scored) || byScored.set(scored, {});
   const cached = byScored.get(scored);
   if (!cached[key]) {
     const picked = withMelody(scored, melody, diff.melodyPick);
-    cached[key] = diff.melodyRuns ? withMelodyRuns(picked, melody, diff.melodyRuns) : picked;
+    const voiced = diff.leadVoice ? underLine(picked, melody, decodedNotesAt(ctx, melodyShiftOf(ctx, diff, drawnMelodyOf(ctx, diff))), ctx.phrases, ctx.timing, diff.leadVoice) : picked;
+    if (diff.leadVoice && voiced.some((m) => m.under)) ctx.underLine = true; // builtOnWhole
+    cached[key] = diff.melodyRuns ? withMelodyRuns(voiced, melody, diff.melodyRuns) : voiced;
   }
   return cached[key];
 }
@@ -313,8 +346,8 @@ function placed(chosen, trace) {
 }
 
 // Phrase i of a level that picks its notes from the music (diff.selector "music"): the moments selection.js chooses.
-// `before` is the time of the last note of the phrases before.
-function musicNotes(ctx, i, diff, trace, before = null) {
+// `before` is the time of the last note of the phrases before, `earlier` the times of their last few moments (diff.paceHoles).
+function musicNotes(ctx, i, diff, trace, before = null, earlier = null) {
   const phrase = ctx.phrases[i];
   const { heard, carry } = momentsAround(ctx, i, diff, before);
   const budget = budgetOf(ctx, phrase, diff);
@@ -325,7 +358,7 @@ function musicNotes(ctx, i, diff, trace, before = null) {
   const lineRoom = lines ? Math.round(diff.melodyLines.room * budget) : 0;
   const loud = loudMoments(ctx, diff);
   const holeRoom = loud ? Math.ceil(diff.loudHoles.room * budget) : 0;
-  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom, loud, holeRoom, free: ctx.free.includes(phrase) });
+  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, earlier, carry, figures, figureRoom, lines, lineRoom, loud, holeRoom, free: ctx.free.includes(phrase) });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 
@@ -481,7 +514,9 @@ function chartNotes(ctx, diff, trace = null) {
 
     if (diff.selector === "music") {
       trace?.enter(i, { ...info, charted: "music" });
-      const charted = musicNotes(ctx, i, diff, trace, i > 0 && before > -Infinity ? before : null);
+      // diff.paceHoles (a flag) reads the pace of the notes before the phrase too: their last moments
+      const earlier = diff.paceHoles && i > 0 && before > -Infinity ? [...new Set(all.filter((n) => n.t < phrase.startMs).map((n) => n.t))].sort((a, b) => a - b).slice(-PACE_MOMENTS) : null;
+      const charted = musicNotes(ctx, i, diff, trace, i > 0 && before > -Infinity ? before : null, earlier);
       // A sound the phrase takes from the end of the one before stays where it is (gap holds start with the phrase).
       all.push(...charted.filter((n) => n.t < phrase.startMs), ...withGapHolds(followed(charted.filter((n) => n.t >= phrase.startMs), phrase), tail, phrase, i === phrases.length - 1 ? durationMs : phrase.endMs));
       i++;
@@ -613,10 +648,21 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
 }
 
 // Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
-const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(withFlags(levelOf(difficulty), difficulty, ctx.flags), ctx.busy), ctx.timing), ctx.timing);
+// A level's settings with the song's flags. normalWhole is Normal without leadVoice: what the levels above are built on
+// where that flag took moments from Normal (builtOnWhole).
+const flagged = (ctx, difficulty) => (difficulty === WHOLE ? { ...withFlags(levelOf("normal"), "normal", ctx.flags), leadVoice: null } : withFlags(levelOf(difficulty), difficulty, ctx.flags));
+const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(flagged(ctx, difficulty), ctx.busy), ctx.timing), ctx.timing);
+
+// diff, built on normalWhole instead of Normal where leadVoice (a flag of Normal) took moments from Normal in this song: what
+// plays under the melody stays with the levels above, which are then as they are without the flag.
+function builtOnWhole(ctx, diff) {
+  if (diff.buildOn !== "normal" || !diffOf(ctx, "normal").leadVoice) return diff;
+  finalNotes(ctx, "normal");
+  return ctx.underLine ? { ...diff, buildOn: WHOLE } : diff;
+}
 
 const notesFor = (ctx, difficulty, trace = null) => {
-  const diff = diffOf(ctx, difficulty);
+  const diff = builtOnWhole(ctx, diffOf(ctx, difficulty));
   const charted = chartNotes(ctx, diff, trace);
   if (!charted.protect) return finish(ctx, charted, diff, trace);
   const settled = withoutCrowding(ctx, charted, diff);

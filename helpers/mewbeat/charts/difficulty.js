@@ -137,6 +137,33 @@ const FILL_FLOOR = { minS: 0.25 };
 // give the same within .001. Before the first note and after the last nothing is filled: a first version did, and put a
 // lone note nine seconds into the Camellia remix's fade-out.
 const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
+// selection.js selectMoments (generator flag paceHoles, Normal and the levels built on it): a stretch of `beats` or more
+// between two notes that is `times` the pace of the notes round it or longer (the median of the gaps next to it, `gaps` on
+// either side) takes the best moment of the foreground in it, on top of the budget, up to `room` of it (rounded up).
+// Asked for by ear (MEGALOVANIA about 2:12: "a gap of two to four blocks although the music plays on"): at 2:07.4 and
+// 2:15.4 Normal ran in half beats and left one out, a moment of the foreground the phrase's budget had no place for.
+// MEGALOVANIA 684 -> 707 moments. Holes of a beat or more with 2+ decoded notes inside, over the bot's 74 songs: 5.4 -> 4.6
+// a song (a chart moved two beats: 8.7 -> 7.8). The 80 corpus songs: F1 against people .791 -> .793 on Normal (recall
+// .873 -> .880, precision .734 -> .733), .727 -> .728 on Easy, .809 on Hard; moments +1.0% (bot +1.7%).
+const PACE_HOLES = { beats: 1, times: 2, gaps: 2, room: 0.25 };
+// voices.js withLineRepeats (generator flag lineRepeats, Normal and the levels that read its melody): the melody's line takes
+// the decoded notes at the pitch of its note before or after, within `reachMs` of it and at least as loud as `minVel`.
+// Rush E 0:33-0:36: the E struck every 165 ms, of which the line holds every other one (the decoder draws its line away from
+// a pitch it has just played) and Normal played every other one; with the flag each strike is a note of the line. Rush E
+// 674 -> 691 moments, MEGALOVANIA 707 -> 708. Corpus F1 against people .793 -> .791 on Normal (precision .733 -> .729),
+// .728 -> .729 on Easy, .809 on Hard; moments +0.5%.
+const LINE_REPEATS = { reachMs: 400, minVel: 0.35 };
+// voices.js underLine (generator flag leadVoice, Normal): in a song a pitched line carries (`song` of its phrases have a
+// pitch begin on `pitched` of their loud moments, rank `minLoud` or more, `minMoments` at least) a moment whose pitches
+// (within `nearMs`) all lie `below` semitones or more under the melody, where the melody plays (its note rings, or it has
+// one within `reachBeats` on either side), scores `penalty` less: it is Normal's only where nothing else is. Asked for
+// by ear (Rush E: "it picked the lower, more bass line"). The gate holds for 4 of the bot's 74 songs (Finale, Bad Piggies
+// Theme, Rush E, BlackBerry) and 4 of the 80 corpus songs. Rush E 691 -> 656 moments, Finale 625 -> 570 with 52 -> 88 holds
+// (the melody's long notes are held where the left hand played); melody over the control 31.7 -> 32.9 and 10.3 -> 15.2.
+// Hard and Hell are built on Normal without the flag (generate.js builtOnWhole) and stay note for note; Easy, cut from
+// Normal, follows it. Against people it is worse where there is a human chart: Flower Dance Normal F1 .774 -> .741 (recall
+// .743 -> .694), Yoru ni Kakeru Easy .702 -> .651: people play the left hand of a piano piece. A flag for the ear alone.
+const LEAD_VOICE = { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75, below: 7, reachBeats: 2, penalty: 2.5 };
 // freeTime.js freePhrases (generator flag freeTime, every level): a phrase has no tempo the grid could fit when the beats the
 // tracker gave (not the fitted grid) are spread wider than `spread` of their median interval (`minBeats` or more of them),
 // the sounds sit under `onGrid` on the grid's quarter lines (1 all on a line, 0 anywhere) and `minLead` or more notes of
@@ -656,6 +683,8 @@ module.exports = {
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,
+  LEAD_VOICE,
+  LINE_REPEATS,
   LOUD_HOLES,
   MELODY_KEEP,
   MELODY_LINES,
@@ -665,6 +694,7 @@ module.exports = {
   MELODY_RUNS,
   MELODY_SHIFT_PICK,
   MINI_RESTS,
+  PACE_HOLES,
   NORMAL_HOLDS,
   PITCH_LANES,
   PLUS_FIGURES,

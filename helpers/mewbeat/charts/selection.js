@@ -7,7 +7,7 @@ const { inFree } = require("./freeTime");
 const { beatMsOf } = require("./holds");
 const { BUDGET, CLUSTER_MS, DOWNBEAT_MS, K, K_COLUMNS, METER_TOLERANCE, REPEAT } = require("./momentWeights");
 const { hasSteadyPulse } = require("./phrases");
-const { lowerBound, nearestIndex } = require("./util");
+const { lowerBound, median, nearestIndex } = require("./util");
 
 const HOLE_BEATS = 2;
 const GRID_DIVISION = 4; // the notes of Normal sit on quarter beats, as v26's did (Hard's grid, cut to its quarter beats)
@@ -427,6 +427,32 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
       }
       if (!best) break;
       add(best, "dziura");
+    }
+  }
+
+  // A stretch between two notes longer than the notes round it run (diff.paceHoles, a flag), with a moment of the foreground
+  // in it that the budget left out: its best one (a beat before the rest), on top of everything, one at a time. The pace is the median of the gaps
+  // next to the stretch, two on either side, the notes before the phrase (`edges.earlier`, in time) among them.
+  if (diff.paceHoles) {
+    const rule = diff.paceHoles;
+    const most = chosen.length + Math.ceil(rule.room * budget);
+    const earlier = (edges.earlier ?? (lastBefore === null ? [] : [lastBefore])).filter((t) => lastBefore !== null && t <= lastBefore);
+    while (chosen.length < most) {
+      let best = null;
+      const marks = [...earlier, ...chosen.map((n) => n.t)];
+      for (let i = Math.max(1, earlier.length); i < marks.length; i++) {
+        const from = marks[i - 1];
+        const to = marks[i];
+        if (to - from < rule.beats * beatAt(from) - 1) continue;
+        const around = [];
+        for (let k = Math.max(1, i - rule.gaps); k <= Math.min(marks.length - 1, i + rule.gaps); k++) if (k !== i) around.push(marks[k] - marks[k - 1]);
+        if (around.length < rule.gaps + 1 || rule.times * median(around) > to - from + 1) continue;
+        for (const c of pool) {
+          if (c.t > from && c.t < to && c.score >= diff.foreground && fits(c.t) && (!best || c.metric < best.metric || (c.metric === best.metric && c.score > best.score))) best = c;
+        }
+      }
+      if (!best) break;
+      add(best, "tempo");
     }
   }
 

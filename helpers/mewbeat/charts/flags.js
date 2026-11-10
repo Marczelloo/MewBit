@@ -12,8 +12,11 @@ const {
   FREE_TIME,
   HARD_HOLDS,
   HEARD_CHORDS,
+  LEAD_VOICE,
+  LINE_REPEATS,
   LOUD_HOLES,
   MELODY_KEEP,
+  PACE_HOLES,
   MELODY_LINES,
   MELODY_LINES_FIRST,
   MELODY_SHIFT_PICK,
@@ -53,8 +56,14 @@ const FLAGS = {
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
+  // Normal: in a song a piano or another pitched line carries, what plays under the melody gives way to it (voices.js underLine).
+  leadVoice: { label: "Normal: w utworze na pianino itp. bloczki idą za wysoką linią, bas pod nią ustępuje", levels: { normal: { leadVoice: LEAD_VOICE } } },
+  // Normal: the melody's line takes the notes that repeat its tone, which the decoder left out (voices.js withLineRepeats).
+  lineRepeats: { label: "Normal: powtarzana nuta melodii liczy się cała, nie co druga", levels: { normal: { lineRepeats: LINE_REPEATS } } },
   // Normal: a stretch a phrase left empty takes a loud sound in it, on top of its budget (selection.js selectMoments).
   loudHoles: { label: "Normal: dziura z głośnym dźwiękiem w środku dostaje nutę (ponad limit sekcji)", levels: { normal: { loudHoles: LOUD_HOLES } } },
+  // Normal: a stretch longer than the notes round it run takes a moment of the foreground the budget left out (selection.js selectMoments).
+  paceHoles: { label: "Normal: przerwa dłuższa niż tempo nut wokół niej dostaje nutę, jeśli gra tam coś wyraźnego", levels: { normal: { paceHoles: PACE_HOLES } } },
   // Normal: thinning a slower stretch, an energy dip or the fade-out leaves the notes of the decoded melody (generate.js melodyMoments).
   melodyKeep: { label: "Normal: przerzedzanie oszczędza nuty melodii", levels: { normal: { melodyKeep: MELODY_KEEP } } },
   // Normal: the decoder's good, loud lines of melody, thinned to the level's step, are played on top of what a phrase chose (melodyLines.js, selection.js).

@@ -208,6 +208,58 @@ i leżą w spadkach energii albo na granicy budżetu.
 
 Zestaw 5 w bocie: zestaw 4 + `fadeFalls`.
 
+### Przerwa dłuższa niż tempo nut wokół: `paceHoles`
+
+Po odsłuchu zestawu 5: „w MEGALOVANII dalej jest przerwa ok. 2:12, na 2–4 bloczki, a muzyka gra dalej".
+
+W 2:07,4 i 2:15,4 Normal szedł co pół uderzenia i jedną nutę opuszczał: dźwięk był na pierwszym planie, ale limit
+sekcji był już wydany. `loudHoles` łata dopiero dziury od 1,5 uderzenia, a ta miała dokładnie jedno.
+
+Flaga `paceHoles`: przerwa między dwiema nutami, która ma co najmniej jedno uderzenie i jest co najmniej dwa razy
+dłuższa niż tempo nut wokół niej (mediana odstępów, po dwa z każdej strony), dostaje najlepszy dźwięk pierwszego planu,
+który w niej leży, ponad limit sekcji (do 25% limitu). Dźwięk na uderzeniu ma pierwszeństwo przed dźwiękiem między
+uderzeniami.
+
+| | bez flagi | z flagą |
+|---|---|---|
+| MEGALOVANIA Normal, momenty | 684 | 707 |
+| MEGALOVANIA 2:07,4–2:07,9 | pusto | nuta w 2:07,6 |
+| MEGALOVANIA 2:15,4–2:15,9 | pusto | nuta w 2:15,6 |
+| dziury ≥ 1 uderzenie, 74 piosenki bota (na piosenkę) | 5,4 | 4,6 |
+| korpus, F1 Normal / Easy / Hard | 79,1 / 72,7 / 80,9 | 79,3 / 72,8 / 80,9 |
+| korpus, momenty Normala | | +1,0% |
+
+Trzy dziury, które zostają w MEGALOVANII (0:47,9, 1:03,9, 1:04,4), leżą w krótkich spadkach energii (`dipThin`).
+
+### Powtarzana nuta melodii: `lineRepeats`
+
+„Wybrało niższą, bardziej basową linię zamiast wysokiej prowadzącej" (Rush E, 0:30–0:41). Linia dekodera jest tam
+wysoka, ale z E uderzanego co 165 ms (0:33–0:36) trzyma co drugie uderzenie: dekoder odsuwa linię od dźwięku, który
+właśnie grał. Normal grał więc co drugie E, w tempie lewej ręki.
+
+Flaga `lineRepeats`: do linii melodii dochodzą zdekodowane nuty o wysokości sąsiedniej nuty linii, do 400 ms od niej.
+Rush E 0:33–0:36: bloczek na każdym E. Rush E 674 → 691 momentów, MEGALOVANIA 707 → 708. Korpus: F1 Normal
+79,3 → 79,1 (precyzja 73,3 → 72,9), Easy 72,8 → 72,9, Hard bez zmian.
+
+### Bas pod melodią ustępuje: `leadVoice`
+
+Flaga `leadVoice`, tylko w utworze, który niesie pianino albo inna linia z wysokością dźwięku (w 75% fragmentów
+na co najmniej 80% głośnych momentów zaczyna się zdekodowana nuta): moment, na którym grają tylko dźwięki o kwintę
+lub więcej pod melodią, tam gdzie melodia gra, dostaje niższą ocenę. Normal bierze go dopiero, gdy nic innego nie ma.
+
+- Bramkę przechodzą 4 z 74 piosenek bota: Finale, Bad Piggies Theme, Rush E, BlackBerry. Reszta nuta w nutę bez zmian.
+- Rush E Normal 691 → 656 momentów, Finale 625 → 570, holdy w Finale 52 → 88 (długa nuta melodii jest trzymana tam,
+  gdzie wcześniej grała lewa ręka). Melodia ponad kontrolę: Rush E 31,7 → 32,9, Finale 10,3 → 15,2.
+- Hard i Hell są budowane na Normalu bez tej flagi i nie zmieniają się ani o nutę: bas zostaje u nich. Normal ma przez
+  to 6–9 momentów, których Hard nie ma (Rush E 9 z 656).
+- Easy jest cięty z Normala, więc idzie za nim: Rush E 300 → 295, Finale 338 → 331.
+- Względem ludzi jest gorzej tam, gdzie jest ludzka mapa: Flower Dance Normal F1 77,4 → 74,1, Yoru ni Kakeru Easy
+  70,2 → 65,1. Ludzie grają lewą rękę w utworach na pianino. To flaga wyłącznie pod ucho.
+- Dziury Normala (≥ 1 uderzenie, 2+ dźwięki w środku): Rush E 3 → 6, Finale 4 → 4. Nowe mają 1,1–1,4 uderzenia;
+  od 1,5 uderzenia łata je `loudHoles`.
+
+Zestaw 6 w bocie: zestaw 5 + `paceHoles`, `lineRepeats`, `leadVoice`.
+
 ## Jak włączyć
 
 Jak w nocnym raporcie: dołączyć `feat/mewbeat-melody` do `feat/mewbeat`, potem dopisać nazwę flagi do
