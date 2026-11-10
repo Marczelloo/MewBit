@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, INTERNAL_LEVELS, LEAD_VOICE, LINE_REPEATS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, INTERNAL_LEVELS, LEAD_VOICE, LEAD_VOICE_BOTH, LINE_REPEATS } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
@@ -122,6 +122,38 @@ describe("what plays under the melody (flag leadVoice)", () => {
     for (const t of [5000, 8000, 7000, 7500, 3500]) assert.equal(at(out, t), at(moments, t), String(t));
   });
 
+  describe("with both hands (flag leadVoiceBoth)", () => {
+    // the line of the cases above with one more note, 100 ms after the low moment at 6000
+    const close = [...line, { t: 6100, pitch: 72, len: 100 }];
+
+    it("is leadVoice with a clash window, nested, as a flag of Normal", () => {
+      assert.deepEqual(LEAD_VOICE_BOTH, { ...LEAD_VOICE, clashMs: 120, nested: true });
+      assert.deepEqual(FLAGS.leadVoiceBoth.levels, { normal: { leadVoice: LEAD_VOICE_BOTH } });
+    });
+
+    it("takes the penalty only from a low moment a line note begins next to", () => {
+      const out = underLine(moments, close, notes, [phrase], timing, LEAD_VOICE_BOTH);
+      assert.deepEqual(at(out, 6000), { ...at(moments, 6000), score: 3 - rule.penalty, under: true });
+      for (const m of moments.filter((m) => m.t !== 6000)) assert.equal(at(out, m.t), m, String(m.t));
+    });
+
+    it("leaves a low moment under a note that rings, and one between two notes of the line, where leadVoice takes them", () => {
+      const both = underLine(moments, close, notes, [phrase], timing, LEAD_VOICE_BOTH);
+      const lead = underLine(moments, close, notes, [phrase], timing, rule);
+      for (const t of [1500, 6500]) {
+        assert.equal(at(both, t), at(moments, t), String(t));
+        assert.equal(at(lead, t).under, true, String(t));
+      }
+    });
+
+    it("reads the window on either side of the moment", () => {
+      const after = [...line, { t: 5880, pitch: 72, len: 100 }];
+      assert.equal(at(underLine(moments, after, notes, [phrase], timing, LEAD_VOICE_BOTH), 6000).under, true);
+      const far = [...line, { t: 6121, pitch: 72, len: 100 }];
+      assert.equal(at(underLine(moments, far, notes, [phrase], timing, LEAD_VOICE_BOTH), 6000), at(moments, 6000));
+    });
+  });
+
   it("reads the line's reach in beats of the timing", () => {
     // the line note before 6000 is 1250 ms away: within two beats of 750 ms, not within two of 500 ms
     const sparse = line.filter((n) => n.t < 5000 || n.t > 6000);
@@ -196,6 +228,36 @@ describe("what plays under the melody (flag leadVoice)", () => {
       const plain = notesOfLevels(features, []);
       const voiced = notesOfLevels(features, ["leadVoice"]);
       for (const level of LEVELS) assert.deepEqual(voiced[level], plain[level], level);
+    });
+
+    // carried(), with a note of the line 100 ms before every sound far under it: each of those would take that note's place
+    const clashing = () => {
+      const features = carried();
+      const early = features.decodedNotes.filter((n) => n.pitch === 45).map((n) => ({ t: n.t - 100, pitch: 72, conf: 0.9, len: 80 }));
+      const line = [...features.decodedMelody, ...early].sort((a, b) => a.t - b.t);
+      return { ...features, decodedMelody: line, decodedMelodyTuned: line };
+    };
+
+    it("with both hands leaves Normal as without a flag where no line note begins next to the low sounds", () => {
+      const features = carried();
+      assert.deepEqual(notesOfLevels(features, ["leadVoiceBoth"]).normal, notesOfLevels(features, []).normal);
+      assert.notDeepEqual(notesOfLevels(features, ["leadVoice"]).normal, notesOfLevels(features, []).normal);
+    });
+
+    it("with both hands takes the low sounds next to a line note from Normal, and Hard and Hell hold every moment of Normal", () => {
+      const features = clashing();
+      const plain = notesOfLevels(features, []);
+      const both = notesOfLevels(features, ["leadVoiceBoth"]);
+      assert.notDeepEqual(both.normal, plain.normal);
+      for (const level of ["hard", "hell"]) {
+        const held = new Set(times(both[level]));
+        assert.deepEqual(times(both.normal).filter((t) => !held.has(t)), [], level);
+      }
+    });
+
+    it("with leadVoice and leadVoiceBoth on, charts as leadVoiceBoth alone", () => {
+      const features = clashing();
+      assert.deepEqual(notesOfLevels(features, ["leadVoice", "leadVoiceBoth"]), notesOfLevels(features, ["leadVoiceBoth"]));
     });
 
     it("charts a whole song with both flags on, every level", () => {

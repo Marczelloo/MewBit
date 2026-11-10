@@ -654,9 +654,11 @@ const flagged = (ctx, difficulty) => (difficulty === WHOLE ? { ...withFlags(leve
 const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(flagged(ctx, difficulty), ctx.busy), ctx.timing), ctx.timing);
 
 // diff, built on normalWhole instead of Normal where leadVoice (a flag of Normal) took moments from Normal in this song: what
-// plays under the melody stays with the levels above, which are then as they are without the flag.
+// plays under the melody stays with the levels above, which are then as they are without the flag. Not under a rule that
+// is `nested` (flag leadVoiceBoth): the levels above are built on Normal as it is, and hold every moment of it.
 function builtOnWhole(ctx, diff) {
-  if (diff.buildOn !== "normal" || !diffOf(ctx, "normal").leadVoice) return diff;
+  const rule = diffOf(ctx, "normal").leadVoice;
+  if (diff.buildOn !== "normal" || !rule || rule.nested) return diff;
   finalNotes(ctx, "normal");
   return ctx.underLine ? { ...diff, buildOn: WHOLE } : diff;
 }

@@ -260,6 +260,63 @@ lub więcej pod melodią, tam gdzie melodia gra, dostaje niższą ocenę. Normal
 
 Zestaw 6 w bocie: zestaw 5 + `paceHoles`, `lineRepeats`, `leadVoice`.
 
+### Obie ręce naraz: `leadVoiceBoth`
+
+Po zestawie 6: „może po prostu jakoś je łączyć czy dobierać z obydwu naraz". Flaga `leadVoiceBoth` to `leadVoice`
+z jedną zmianą: bas pod melodią ustępuje tylko tam, gdzie nuta melodii zaczyna się do 120 ms od niego, czyli tam,
+gdzie zabrałby jej miejsce. Reszta lewej ręki zostaje. Hard i Hell są budowane na tym Normalu, więc zawierają każdy
+jego moment.
+
+| | bez flagi | `leadVoice` | `leadVoiceBoth` |
+|---|---|---|---|
+| Rush E, momenty Normal | 691 | 656 | 674 |
+| Finale, momenty Normal / holdy | 625 / 52 | 570 / 88 | 612 / 59 |
+| Rush E, Hard | 846 | 846 | 828 |
+| Finale, Hard | 734 | 734 | 717 |
+| Momenty Normala, których nie ma Hard (Rush E / Finale) | 0 / 0 | 9 / 6 | 0 / 0 |
+| Flower Dance, Normal F1 względem ludzi | 77,4 | 74,1 | 77,0 |
+| Yoru ni Kakeru, Easy F1 | 70,2 | 65,1 | 66,6 |
+
+Okno 200 ms daje na szybkim utworze znowu `leadVoice` (Finale 570 momentów, 85 holdów; Flower Dance 76,0), więc
+zostało 120 ms. Flaga czeka na odsłuch jako zamiana za `leadVoice` (zestaw 8); obie włączone naraz dają
+`leadVoiceBoth`.
+
+### Pozostałe flagi na zestawie 6
+
+- `heardChords`: akordy Normala na 80 utworach bota 17 339 → 16 545 (−4,6%), MEGALOVANIA 145 → 119, Finale
+  134 → 100, Rush E 60 → 55; F1 bez zmian (79,1). Zestaw 7.
+- `pitchLanes`: 20% nut Normala zmienia tor (Rush E 47%, Finale 36%, MEGALOVANIA 31%), momenty i akordy bez zmian.
+  Zestaw 7.
+- `runLanes`: po `fastRuns` rusza 3% nut Normala, schodki 55% → 56%, powtórek na tym samym torze o 17 więcej na
+  80 utworach. Bez słyszalnego efektu, do usunięcia.
+- `melodyLinesFirst` zamiast `melodyLines`: melodia zagrana 82,8% → 84,3%, ponad kontrolę 15,3 → 18,3 p.p.,
+  momenty Normala −1,3%, F1 Normal 79,1 → 78,1, Easy 72,8 → 71,8. Więcej melodii za mniej zgodności z ludźmi: do
+  odsłuchu jako osobna zamiana.
+- `plusMelody`: razem z poziomami, na końcu.
+
+Zestaw 7 w bocie: zestaw 6 + `heardChords`, `pitchLanes`.
+
+### Na czym leżą dodatki w ludzkich mapach
+
+74 utwory korpusu z ludzkim Normalem i Hardem. Ludzki Hard zawiera 98,8% momentów Normala (Normal 97,7% Easy), czyli
+zasada „niższy poziom zawarty w wyższym" jest tym, co robią ludzie. Dodatki Harda na utwór: ludzie 245, my 149.
+
+| dodatek leży na | ludzie | my (zestaw 6) | my z `plusMelody` |
+|---|---|---|---|
+| nucie melodii, której Normal nie gra | 22% | 9% | 17% |
+| innym dźwięku z wysokością, przy linii albo nad nią | 5% | | |
+| dźwięku z wysokością pod linią | 21% | 21% | |
+| stopie | 14% | 24% | 21% |
+| werblu | 17% | 15% | |
+| innej perkusji | 10% | 12% | |
+| samym uderzeniu bez wysokości i bez bębna | 9% | 12% | |
+| niczym | 2% | | |
+
+Z tego, co jest do wzięcia, ludzie biorą najchętniej werbel (40%), dźwięk nad linią (39%), nutę melodii (36%)
+i dźwięk pod linią (34%); stopę 21%, samo uderzenie 13%. Tylko 14% ludzkich dodatków jest też naszymi. Wniosek na
+etap poziomów: dodatki wybierać po tym, na czym leżą (melodia, której Normal nie zagrał, druga linia, werbel przed
+stopą), a nie po samej głośności. Poziomy zostają na koniec, po odsłuchu wszystkich flag.
+
 ## Jak włączyć
 
 Jak w nocnym raporcie: dołączyć `feat/mewbeat-melody` do `feat/mewbeat`, potem dopisać nazwę flagi do

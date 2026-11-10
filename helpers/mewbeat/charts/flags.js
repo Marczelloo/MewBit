@@ -15,6 +15,7 @@ const {
   HARD_HOLDS,
   HEARD_CHORDS,
   LEAD_VOICE,
+  LEAD_VOICE_BOTH,
   LINE_REPEATS,
   LOUD_HOLES,
   MELODY_KEEP,
@@ -60,6 +61,9 @@ const FLAGS = {
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
   // Normal: in a song a piano or another pitched line carries, what plays under the melody gives way to it (voices.js underLine).
   leadVoice: { label: "Normal: w utworze na pianino itp. bloczki idą za wysoką linią, bas pod nią ustępuje", levels: { normal: { leadVoice: LEAD_VOICE } } },
+  // Normal: leadVoice with both hands: the bass gives way only where it would take a melody note's place (voices.js underLine,
+  // rule.clashMs), and Hard and Hell are built on this Normal. Sorted after leadVoice, it is the one that holds with both on.
+  leadVoiceBoth: { label: "Normal: w utworze na pianino itp. grają obie ręce, bas ustępuje tylko tam, gdzie zabrałby miejsce nucie melodii", levels: { normal: { leadVoice: LEAD_VOICE_BOTH } } },
   // Normal: the melody's line takes the notes that repeat its tone, which the decoder left out (voices.js withLineRepeats).
   lineRepeats: { label: "Normal: powtarzana nuta melodii liczy się cała, nie co druga", levels: { normal: { lineRepeats: LINE_REPEATS } } },
   // Normal: a stretch a phrase left empty takes a loud sound in it, on top of its budget (selection.js selectMoments).

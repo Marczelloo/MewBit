@@ -164,6 +164,15 @@ const LINE_REPEATS = { reachMs: 400, minVel: 0.35 };
 // Normal, follows it. Against people it is worse where there is a human chart: Flower Dance Normal F1 .774 -> .741 (recall
 // .743 -> .694), Yoru ni Kakeru Easy .702 -> .651: people play the left hand of a piano piece. A flag for the ear alone.
 const LEAD_VOICE = { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75, below: 7, reachBeats: 2, penalty: 2.5 };
+// The same with both hands (generator flag leadVoiceBoth, Normal): what plays under the melody gives way only where a note of
+// the line begins within `clashMs` of it, the place it would take from that note; the rest of the left hand stays, as people
+// chart a piano piece. Asked for after leadVoice ("join them, or pick from both at once"). Rush E 691 -> 674 moments (leadVoice
+// 656), Finale 625 -> 612 with 52 -> 59 holds (570, 88). Against people nearly what no flag gives: Flower Dance Normal F1
+// .774 -> .770 (leadVoice .741), Yoru ni Kakeru Easy .702 -> .666 (.651). At 200 ms it is leadVoice again on a fast piece
+// (Finale 570 moments, 85 holds; Flower Dance .760). `nested`: Hard and Hell are built on this Normal (generate.js
+// builtOnWhole) and hold every moment of it, for 1-2% of their own (Rush E Hard 846 -> 828, Finale 734 -> 717, Yoru ni
+// Kakeru 1541 -> 1505 at the same F1 .835); under leadVoice that cost 4-9% and Normal kept 6-20 moments Hard lacked.
+const LEAD_VOICE_BOTH = { ...LEAD_VOICE, clashMs: 120, nested: true };
 // freeTime.js freePhrases (generator flag freeTime, every level): a phrase has no tempo the grid could fit when the beats the
 // tracker gave (not the fitted grid) are spread wider than `spread` of their median interval (`minBeats` or more of them),
 // the sounds sit under `onGrid` on the grid's quarter lines (1 all on a line, 0 anywhere) and `minLead` or more notes of
@@ -684,6 +693,7 @@ module.exports = {
   HELL_PLUS,
   HOLD_SLOW,
   LEAD_VOICE,
+  LEAD_VOICE_BOTH,
   LINE_REPEATS,
   LOUD_HOLES,
   MELODY_KEEP,

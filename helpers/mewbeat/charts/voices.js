@@ -40,7 +40,9 @@ function withLineRepeats(line, notes, rule) {
 // decoded melody and `notes` every decoded note, both at the shift the level reads them. A moment is under the melody when
 // pitches begin on it (within rule.nearMs), none of them a note of the line (ONSET_MS), the highest rule.below semitones or
 // more under the line's nearest note, and the line plays there: its note before still rings, or it has a note within
-// rule.reachBeats on either side. Only in a song a pitched line carries: rule.song of its phrases or more are led by one (a
+// rule.reachBeats on either side. With rule.clashMs the line plays there only when a note of it begins within that long of
+// the moment, before or after: the moment would take that note's place, and anywhere else both hands play (flag
+// leadVoiceBoth). Only in a song a pitched line carries: rule.song of its phrases or more are led by one (a
 // pitch begins on rule.pitched of a phrase's loud moments, those of rank rule.minLoud or more, rule.minMoments of them at
 // least). Where drums carry the song the bass under a melody is the beat people play, and nothing is taken.
 function underLine(scored, line, notes, phrases, timing, rule) {
@@ -77,7 +79,10 @@ function underLine(scored, line, notes, phrases, timing, rule) {
     const after = lead[i];
     if ((before && t - before.t <= ONSET_MS) || (after && after.t - t <= ONSET_MS)) return m;
     const reach = rule.reachBeats * beatMsOf(timing, m.t);
-    const plays = before && (before.t + (before.len ?? 0) >= t || (after && t - before.t <= reach && after.t - t <= reach));
+    const plays =
+      rule.clashMs !== undefined
+        ? (before && t - before.t <= rule.clashMs) || (after && after.t - t <= rule.clashMs)
+        : before && (before.t + (before.len ?? 0) >= t || (after && t - before.t <= reach && after.t - t <= reach));
     if (!plays) return m;
     const nearest = !after || t - before.t <= after.t - t ? before : after;
     return nearest.pitch - top[k] >= rule.below ? { ...m, score: m.score - rule.penalty, under: true } : m;
