@@ -30,7 +30,7 @@ const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, p
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
-const { lowerBound } = require("./util");
+const { lowerBound, nearestIndex } = require("./util");
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
@@ -80,10 +80,23 @@ function phraseEventTimes(ctx, phrase) {
   return eventTimes.slice(lowerBound(eventTimes, phrase.startMs), lowerBound(eventTimes, phrase.endMs));
 }
 
+// diff.copyMelody (a flag): whether a copy plays less of its phrase's melody than its source plays of its own. The share of
+// the melody's moments (melodyTimes) between `from` and `to` that `notes` play within rule.nearMs, or null with under
+// rule.min of them there.
+function melodyShare(ctx, diff, notes, from, to) {
+  const rule = diff.copyMelody;
+  const on = melodyTimes(ctx, diff) ?? [];
+  const within = on.slice(lowerBound(on, from), lowerBound(on, to));
+  if (within.length < rule.min) return null;
+  const played = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
+  return within.filter((t) => played.length > 0 && Math.abs(played[nearestIndex(played, t)] - t) <= rule.nearMs).length / within.length;
+}
+
 // The notes of repeat phrase i copied from its source in `all` (the notes so far) as { notes, extra }, `extra` being the
 // moments a louder repeat of Normal takes on top (repeatPlan); or null when phrase i is no repeat, the plan has it charted
 // fresh (a sparse source on a loud section) or the copy lost most of its source (the music differs, or the source overlaps
-// this phrase): then it is charted fresh.
+// this phrase): then it is charted fresh. With diff.copyMelody (a flag) also when the melody is not where it was: the copy
+// plays under rule.share of the melody's share its source plays.
 function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
   const phrase = phrases[i];
@@ -99,6 +112,10 @@ function copiedRepeat(ctx, all, i, diff) {
     .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
   const upper = upperRhythm(ctx, diff);
   const copied = upper ? nested(fitted, upper) : fitted;
+  if (diff.copyMelody) {
+    const here = melodyShare(ctx, diff, copied, phrase.startMs, phrase.endMs);
+    if (here !== null && here < diff.copyMelody.share * (melodyShare(ctx, diff, sourceNotes, from, to) ?? 1)) return null;
+  }
   return copied.length > 0 && copied.length >= sourceNotes.length * MIN_COPY_SHARE ? { notes: copied, extra: plan.extra } : null;
 }
 
@@ -213,14 +230,24 @@ function budgetOf(ctx, phrase, diff) {
   return Math.max(own, below);
 }
 
-// diff.melodyKeep (a flag): the moments on a note of the decoded melody, as the level scores them, which the stages that thin
-// a slower stretch, an energy dip or the fade-out take last or leave; null without the flag or a melody.
+// The times of the moments on a note of the decoded melody, as the level scores them, in order; null without a melody.
+function melodyTimes(ctx, diff) {
+  ctx.melodyTimes ??= new Map();
+  if (!ctx.melodyTimes.has(diff)) {
+    const on = scoredFor(ctx, diff).filter((m) => m.melody).map((m) => m.t).sort((a, b) => a - b);
+    ctx.melodyTimes.set(diff, on.length > 0 ? on : null);
+  }
+  return ctx.melodyTimes.get(diff);
+}
+
+// diff.melodyKeep (a flag): those moments as a set, which the stages that thin a slower stretch, an energy dip or the fade-out
+// take last or leave; null without the flag or a melody.
 function melodyMoments(ctx, diff) {
   if (!diff.melodyKeep) return null;
   ctx.melodyMoments ??= new Map();
   if (!ctx.melodyMoments.has(diff)) {
-    const on = scoredFor(ctx, diff).filter((m) => m.melody).map((m) => m.t);
-    ctx.melodyMoments.set(diff, on.length > 0 ? new Set(on) : null);
+    const on = melodyTimes(ctx, diff);
+    ctx.melodyMoments.set(diff, on ? new Set(on) : null);
   }
   return ctx.melodyMoments.get(diff);
 }

@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, HEARD_CHORDS, INTERNAL_LEVELS, MELODY_KEEP, MELODY_SHIFT_PICK, PLUS_MELODY } = require("../../../helpers/mewbeat/charts/difficulty");
+const { COPY_MELODY, DIFFICULTIES, HEARD_CHORDS, INTERNAL_LEVELS, MELODY_KEEP, MELODY_SHIFT_PICK, PLUS_MELODY } = require("../../../helpers/mewbeat/charts/difficulty");
 const { thinDips } = require("../../../helpers/mewbeat/charts/dips");
 const { fadeOutOf, thinFadeOut } = require("../../../helpers/mewbeat/charts/fades");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
@@ -111,6 +111,41 @@ describe("chords only where several pitches begin (flag heardChords)", () => {
 
   it("chords stay where several pitches begin, and where the pitched line does not carry the phrase", () => {
     for (const features of [heard(2), heard(3), heard(1, (m) => m.t % 1000 < 500)]) assert.deepEqual(notesOf(features, ["heardChords"]), notesOf(features));
+  });
+});
+
+describe("a repeat whose copy would miss the melody is charted fresh (flag copyMelody)", () => {
+  const PHRASE = 8000; // the fixture's phrases: the third repeats the first
+  const moments = (notes, fromMs = 0, toMs = Infinity) => [...new Set(notes.filter((n) => n.t >= fromMs && n.t < toMs).map((n) => n.t))];
+  // A melody on the moments Normal plays, but in the third phrase on the ones it leaves out.
+  const moved = (features) => {
+    const played = new Set(moments(notesOf(features).normal));
+    const there = (t) => t >= 2 * PHRASE && t < 3 * PHRASE;
+    const line = snappedMoments(analyse(features), "hard").filter((m) => played.has(m.t) !== there(m.t)).map((m) => ({ t: m.raw ?? m.t, pitch: 60 }));
+    return { ...features, decodedMelody: line, decodedMelodyTuned: line };
+  };
+
+  it("is a flag of Normal, and no level has it without the flag", () => {
+    assert.deepEqual(FLAGS.copyMelody.levels, { normal: { copyMelody: COPY_MELODY } });
+    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.copyMelody, undefined);
+  });
+
+  it("changes nothing in a song with no decoded melody, or with one that repeats with its phrases", () => {
+    const features = makeLayeredFeatures();
+    assert.deepEqual(notesOf(features, ["copyMelody"]), notesOf(features));
+    assert.deepEqual(notesOf(withMelody(features), ["copyMelody"]), notesOf(withMelody(features)));
+  });
+
+  it("a repeat with the melody on other moments than its source plays more of it, the other phrases keep their moments", () => {
+    const features = moved(makeLayeredFeatures());
+    const plain = notesOf(features).normal, flagged = notesOf(features, ["copyMelody"]).normal;
+    const onMelody = (notes) => {
+      const at = new Set(moments(notes, 2 * PHRASE, 3 * PHRASE));
+      return features.decodedMelody.filter((n) => at.has(n.t)).length;
+    };
+    assert.ok(onMelody(flagged) > 1.5 * onMelody(plain), `${onMelody(plain)} -> ${onMelody(flagged)}`);
+    assert.deepEqual(moments(flagged, 0, 2 * PHRASE), moments(plain, 0, 2 * PHRASE));
+    assert.deepEqual(moments(flagged, 3 * PHRASE), moments(plain, 3 * PHRASE));
   });
 });
 

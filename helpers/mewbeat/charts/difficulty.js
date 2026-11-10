@@ -83,6 +83,12 @@ const MELODY_SHIFT_PICK = { reachMs: 60, stepMs: 2, matchMs: 25, margin: 0.03 };
 // corpus songs Hard's moments on the melody, over a shifted control, went 6.5 -> 10.4 points with 7.7% of its moments moved and
 // F1 against people .813 -> .812; at bonus 2 F1 fell to .810.
 const PLUS_MELODY = { bonus: 1.25, minStrength: 0 };
+// generate.js copiedRepeat (flag copyMelody): a repeat with at least `min` moments on the decoded melody is charted fresh
+// when its copy plays (within `nearMs`) under `share` of the melody's share its source plays: the phrase repeats, the
+// melody over it does not. The bot's songs: the melody's notes lost to a copy 6.2 -> 3.7% at share .75, Normal 12.8 -> 13.9
+// points over the same melody moved in time at .9 (13.6 at .75, 14.0 at 1) with as many moments; the 80 corpus songs: F1
+// against people .805 -> .806 on Normal, .736 -> .735 on Easy at each of the three. At 1 a third more moments change for .1.
+const COPY_MELODY = { min: 4, share: 0.9, nearMs: 30 };
 // chords.js heardPitches (flag heardChords): in a phrase where at least `pitched` of the moments (and `minMoments` of them) have
 // a decoded pitch begin within `nearMs`, a moment plays no more notes than pitches begin on it. The decoder's notes are read at
 // the shift generate.js pickedMelodyShift finds with `shift`. Chords on a moment with one pitch: Finale Normal 20.8 -> 2.0%,
@@ -539,6 +545,7 @@ module.exports = {
   CHORD_LOUDNESS,
   CHORD_SLOW,
   COPY_FROM,
+  COPY_MELODY,
   DIP_SILENCE,
   DIP_THIN,
   DRUMLESS,
