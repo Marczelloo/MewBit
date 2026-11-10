@@ -24,6 +24,12 @@ const NEVER_SEEN = 1e-4; // the odds below which a figure costs no more
 const FAST_BEATS = 0.62; // a gap up to here is a fast one, as people's maps are measured
 const ONE_HAND = [0b0011, 0b1100]; // the two chords one hand plays
 
+// What lanes.js makes of a mask, once per mask: the search asks for it for every mask of every hypothesis. Only read from here
+// (applyStep keeps its own lonelyLanes, which it takes lanes out of).
+const LANES_OF = Array.from({ length: 16 }, (_, mask) => lanesOf(mask));
+const LONELY_COUNT = Array.from({ length: 16 }, (_, mask) => lonelyLanes(mask).length);
+const MASK_AT = Array.from({ length: 16 }, (_, mask) => (MASKS[LANES_OF[mask].length] ?? []).indexOf(mask)); // its place among the masks of its size
+
 const hashMix = (a, b) => {
   let x = Math.imul(a ^ b, 0x5bd1e995);
   x ^= x >>> 15;
@@ -74,7 +80,13 @@ function searchLanes(notes, ctx, diff, upper = null) {
     left: 0, total: 0, decayT: null, trill: 1, active: [], placed: [], tail: [], echo: null,
   }];
   let phraseAt = 0;
-  const oddsMemo = new Map(); // grammarOdds is pure on (table, gap, size, history) and the table is fixed for this call
+  // grammarOdds is pure on (table, gap, size, history): here its cost per mask, kept on the ctx per table, so the searches of
+  // all the levels of a song (they ask for the same figures) share it.
+  const memos = ctx.oddsMemo ?? new Map();
+  if (!memos.has(table)) memos.set(table, new Map());
+  const oddsMemo = memos.get(table);
+  const noise = new Float64Array(256); // the Gumbel noise of this moment's (mask, last mask), shared by the hypotheses that agree on both
+  const noiseAt = new Int32Array(256).fill(-1);
 
   // Everything before `limit` is settled on the path of the cheapest hypothesis, so a repeat can read its source.
   const commitBefore = (limit) => {
@@ -193,10 +205,11 @@ function searchLanes(notes, ctx, diff, upper = null) {
         return underHoldFlagged(x.t, len, under, (at) => beatMsOf(timing, at)).length === 0;
       };
       const legal = (mask, holds) => {
-        const lanes = lanesOf(mask);
-        if (holds > 0 && (lonelyLanes(mask).length < holds || (diff.holdOtherHand === "blocked" && lanes.length > 1))) return false;
+        const lanes = LANES_OF[mask];
+        if (holds > 0 && (LONELY_COUNT[mask] < holds || (diff.holdOtherHand === "blocked" && lanes.length > 1))) return false;
         const playable = lanes.every((l) => {
           if (t - laneFree[l] < laneGap || (h.lastT !== null && h.jackRun[l] >= maxJack)) return false;
+          if (active.length === 0) return true;
           const note = { t, lane: l };
           const others = [...placed, ...lanes.filter((x) => x !== l).map((lane) => ({ t, lane }))];
           return active.every((x) => letsGoFor(x, l) || (!holdBlocks(x, note, diff) && !spacedBlocked(x, note, others, diff, beat / 2)));
@@ -239,10 +252,10 @@ function searchLanes(notes, ctx, diff, upper = null) {
       const gap = h.lastT === null ? GAP_LIMITS_MS.length : gapClass(t - h.lastT);
       // The odds hang on the gap class, the size and the last masks only, and many hypotheses of a moment share them.
       const oddsKey = (((gap * 8 + size) * 4 + (h.m3 > 0) + (h.m2 > 0) + (h.m1 > 0)) << 12) | ((h.m3 > 0 ? h.m3 : 0) << 8) | ((h.m2 > 0 ? h.m2 : 0) << 4) | (h.m1 > 0 ? h.m1 : 0);
-      let odds = oddsMemo.get(oddsKey);
-      if (odds === undefined) {
-        odds = grammarOdds(table, gap, size, [h.m3, h.m2, h.m1].filter((x) => x > 0));
-        oddsMemo.set(oddsKey, odds);
+      let oddsCost = oddsMemo.get(oddsKey);
+      if (oddsCost === undefined) {
+        oddsCost = grammarOdds(table, gap, size, [h.m3, h.m2, h.m1].filter((x) => x > 0)).map((p) => Math.log(Math.max(p, NEVER_SEEN)));
+        oddsMemo.set(oddsKey, oddsCost);
       }
       const decay = h.decayT === null ? 1 : Math.exp(-(t - h.decayT) / ((BALANCE_BEATS / 2) * beat));
       const dLeft = h.left * decay;
@@ -256,24 +269,32 @@ function searchLanes(notes, ctx, diff, upper = null) {
       else if (h.echo === "mirror" && sourceMask) wanted = mirrorMask(sourceMask);
 
       for (const mask of options) {
-        let cost = h.cost + lostCost - Math.log(Math.max(odds[MASKS[size].indexOf(mask)], NEVER_SEEN));
+        let cost = h.cost + lostCost - oddsCost[MASK_AT[mask]];
         const copying = wanted !== 0 && mask === wanted;
         if (wanted !== 0 && !copying) cost += o.echoBeta;
         if (h.echo === "none" && sourceMask !== 0) cost += o.echoNone;
-        if (!copying && o.tau > 0) cost -= o.tau * gumbel(hashMix(hashMix(seed, Math.round(t) * 7 + mask), h.m1));
+        if (!copying && o.tau > 0) {
+          const slot = (mask << 4) | h.m1;
+          if (noiseAt[slot] !== m) {
+            noise[slot] = o.tau * gumbel(hashMix(hashMix(seed, Math.round(t) * 7 + mask), h.m1));
+            noiseAt[slot] = m;
+          }
+          cost -= noise[slot];
+        }
         cost += o.handPull * Math.abs((dLeft + leftOf(mask) + 2) / (dTotal + size + 4) - 0.5);
-        for (const l of lanesOf(mask)) cost += o.lanePull * Math.max(0, (dLanes[l] + 1) / (dTotal + 4) - 1 / LANES);
+        const maskLanes = LANES_OF[mask];
+        for (const l of maskLanes) cost += o.lanePull * Math.max(0, (dLanes[l] + 1) / (dTotal + 4) - 1 / LANES);
         let run = 1;
         if (isSingle(mask) && h.m1 !== 0 && isSingle(h.m1) && mask !== h.m1) run = h.m2 === mask && t - h.lastT <= beat ? h.trill + 1 : 2;
         if (run > TRILL_MAX) cost += TRILL_OVER;
         else if (run > TRILL_FREE && !alternates?.[m]) cost += (run - TRILL_FREE) * Math.LN2;
-        if (direction !== null) cost -= o.melody * Math.log(melodyPull(direction, lanesOf(mask)[0], prevLane, beforeLane, t - h.lastT, beat));
-        if (stairs?.[m] && size === 1) cost -= diff.stairs.weight * Math.log(melodyPull(stairs[m], lanesOf(mask)[0], prevLane, beforeLane, t - h.lastT, beat));
+        if (direction !== null) cost -= o.melody * Math.log(melodyPull(direction, maskLanes[0], prevLane, beforeLane, t - h.lastT, beat));
+        if (stairs?.[m] && size === 1) cost -= diff.stairs.weight * Math.log(melodyPull(stairs[m], maskLanes[0], prevLane, beforeLane, t - h.lastT, beat));
         // An alternation goes back to the lane two notes before (melodyPull's fast repeat: no gap, so never a jack).
-        if (alternates?.[m] && size === 1) cost -= diff.twoKeyTrill.weight * Math.log(melodyPull(0, lanesOf(mask)[0], prevLane, beforeLane, 0, beat));
+        if (alternates?.[m] && size === 1) cost -= diff.twoKeyTrill.weight * Math.log(melodyPull(0, maskLanes[0], prevLane, beforeLane, 0, beat));
         if (size === 1 && h.lastT !== null && t - h.lastT <= FAST_BEATS * beat && (mask & h.m1) !== 0) cost += isSingle(h.m1) ? o.restrike : o.overChord;
         if (mask === ONE_HAND[0] || mask === ONE_HAND[1]) cost -= o.oneHand;
-        if (inUpper.length > 0) cost -= Math.log(1 + (AGREE * lanesOf(mask).filter((l) => inUpper.includes(l)).length) / size);
+        if (inUpper.length > 0) cost -= Math.log(1 + (AGREE * maskLanes.filter((l) => inUpper.includes(l)).length) / size);
         candidates.push({ h, mask, kept, active, laneFree, broke, cost, run });
       }
     }

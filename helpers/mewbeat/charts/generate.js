@@ -69,6 +69,7 @@ function analyse(raw, flags) {
     localKeep: null, // the share of moments each second keeps (keptShare)
     calm: undefined, // t -> how calm the music is, null with nothing to tell it from (calmOf)
     rhythms: {}, // difficulty -> the moments the level below it is cut from (upperRhythm)
+    oddsMemo: new Map(), // lane grammar table -> the cost of each mask by (gap, size, last masks) (laneSearch.js)
   };
 }
 
