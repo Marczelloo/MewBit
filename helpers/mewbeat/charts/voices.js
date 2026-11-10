@@ -45,10 +45,31 @@ function withLineRepeats(line, notes, rule) {
 // beat people play, and nothing is taken.
 function underLine(scored, line, notes, phrases, rule) {
   if (!rule || !Array.isArray(notes) || notes.length === 0 || !Array.isArray(line) || line.length === 0) return scored;
-  const sorted = notes.filter((n) => Number.isFinite(n.t)).sort(byTime);
-  const starts = sorted.map((n) => n.t);
   const lead = line.filter((n) => Number.isFinite(n.t)).sort(byTime);
   const leadTimes = lead.map((n) => n.t);
+  const { heard, top, led } = pitchedMoments(scored, notes, phrases, rule);
+  if (!led) return scored;
+  return scored.map((m, k) => {
+    if (top[k] === null) return m;
+    const t = heard[k];
+    const i = lowerBound(leadTimes, t);
+    const before = lead[i - 1];
+    const after = lead[i];
+    if ((before && t - before.t <= ONSET_MS) || (after && after.t - t <= ONSET_MS)) return m;
+    const plays = (before && t - before.t <= rule.clashMs) || (after && after.t - t <= rule.clashMs);
+    if (!plays) return m;
+    const nearest = before && (!after || t - before.t <= after.t - t) ? before : after;
+    return nearest.pitch - top[k] >= rule.below ? { ...m, score: m.score - rule.penalty, under: true } : m;
+  });
+}
+
+// The moments of a song against every decoded note: `heard` where each sound was, `top` the highest pitch that begins on it
+// (within rule.nearMs), null where none does, `times` the moments' times and `led` the phrases a pitched line leads (a pitch
+// begins on rule.pitched of a phrase's loud moments, those of rank rule.minLoud or more, rule.minMoments of them at least),
+// null in a song no pitched line carries: fewer than rule.song of its phrases are led.
+function pitchedMoments(scored, notes, phrases, rule) {
+  const sorted = notes.filter((n) => Number.isFinite(n.t)).sort(byTime);
+  const starts = sorted.map((n) => n.t);
   const heard = scored.map((m) => m.raw ?? m.t);
   // the highest pitch that begins on each moment, null where none does
   const top = heard.map((t) => {
@@ -68,19 +89,26 @@ function underLine(scored, line, notes, phrases, rule) {
     }
     return moments >= rule.minMoments && pitched >= rule.pitched * moments;
   });
-  if (led.length < rule.song * spans.length) return scored;
-  return scored.map((m, k) => {
-    if (top[k] === null) return m;
-    const t = heard[k];
-    const i = lowerBound(leadTimes, t);
-    const before = lead[i - 1];
-    const after = lead[i];
-    if ((before && t - before.t <= ONSET_MS) || (after && after.t - t <= ONSET_MS)) return m;
-    const plays = (before && t - before.t <= rule.clashMs) || (after && after.t - t <= rule.clashMs);
-    if (!plays) return m;
-    const nearest = before && (!after || t - before.t <= after.t - t) ? before : after;
-    return nearest.pitch - top[k] >= rule.below ? { ...m, score: m.score - rule.penalty, under: true } : m;
-  });
+  return { heard, top, times, led: led.length < rule.song * spans.length ? null : led };
 }
 
-module.exports = { underLine, withLineRepeats };
+// offPitch(scored, notes, drums, phrases, rule) -> the times of the moments no pitch begins on (within rule.nearMs) and no
+// drum but a kick plays on (features.drums of strength rule.minDrum or more, within rule.drumMs), in the phrases a pitched
+// line leads of a song one carries (underLine's gate: rule.pitched, minLoud, minMoments, song). In a piano piece such a moment
+// is a sound the first detector heard and no key was struck on, and a low key reads as a kick: an extra there plays off the
+// notes (generator flag plusHeard). A snare or another drum is a beat people play. An empty set without the rule or the
+// notes, and where drums carry the song or the phrase.
+function offPitch(scored, notes, drums, phrases, rule) {
+  const off = new Set();
+  if (!rule || !Array.isArray(notes) || notes.length === 0) return off;
+  const { heard, top, times, led } = pitchedMoments(scored, notes, phrases, rule);
+  const beats = (drums ?? []).filter((d) => d.kind !== "kick" && d.s >= rule.minDrum).map((d) => d.t).sort((a, b) => a - b);
+  const drummed = (t) => {
+    const i = lowerBound(beats, t - rule.drumMs);
+    return i < beats.length && beats[i] <= t + rule.drumMs;
+  };
+  for (const span of led ?? []) for (let k = lowerBound(times, span.startMs); k < scored.length && times[k] < span.endMs; k++) if (top[k] === null && !drummed(heard[k])) off.add(times[k]);
+  return off;
+}
+
+module.exports = { offPitch, underLine, withLineRepeats };

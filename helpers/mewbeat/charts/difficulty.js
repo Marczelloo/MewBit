@@ -83,6 +83,17 @@ const MELODY_SHIFT_PICK = { reachMs: 60, stepMs: 2, matchMs: 25, margin: 0.03 };
 // corpus songs Hard's moments on the melody, over a shifted control, went 6.5 -> 10.4 points with 7.7% of its moments moved and
 // F1 against people .813 -> .812; at bonus 2 F1 fell to .810.
 const PLUS_MELODY = { bonus: 1.25, minStrength: 0 };
+// generate.js plusNotes (flag plusHeard): Hard and Hell take no extra where no pitch begins (within `nearMs`) and no drum but
+// a kick plays (strength `minDrum` or more, within `drumMs`), in the phrases a pitched line leads of a song one carries
+// (voices.js offPitch, the gate of LEAD_VOICE_BOTH: `pitched`, `minLoud`, `minMoments`, `song`). Asked for by ear on Rush E's
+// Hard: "a few blocks not on the notes at all". In a piano piece a low key reads as a kick, and of what is there to take
+// people's Hard takes a kick or a bare onset least (21% and 13%, a snare 40%, a melody note 36%). The gate holds for 4 of the
+// bot's 80 songs and 4 of the 80 corpus songs. Rush E Hard 825 -> 819 moments with the sounds of its extras on a pitch 90% of
+// the time (the rest in two phrases the gate leaves), Hell 1073 -> 1018; Finale Hard 715 -> 705, Hell 911 -> 878. The three
+// corpus songs with a human Hard: F1 .839 -> .841 (Yoru ni Kakeru .836 -> .837, Uncharted Sky .819 -> .820, FLOP ERA .861
+// -> .865). Hell loses 6% of its moments on the eight songs (Flower Dance 14%), with no human Hell to read it against.
+// Without the drums' leave Hell lost 10% and Hard's F1 fell .1; over every phrase of such a song, Hell lost 7% for the same F1.
+const PLUS_HEARD = { nearMs: 60, drumMs: 40, minDrum: 0.3, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75 };
 // generate.js copiedRepeat (flag copyMelody): a repeat with at least `min` moments on the decoded melody is charted fresh
 // when its copy plays (within `nearMs`) under `share` of the melody's share its source plays: the phrase repeats, the
 // melody over it does not. The bot's songs: the melody's notes lost to a copy 6.2 -> 3.7% at share .75, Normal 12.8 -> 13.9
@@ -692,6 +703,7 @@ module.exports = {
   NORMAL_HOLDS,
   PITCH_LANES,
   PLUS_FIGURES,
+  PLUS_HEARD,
   PLUS_MELODY,
   QUIET_LONE,
   SLOW_DYNAMICS,

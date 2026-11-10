@@ -332,6 +332,34 @@ momentu Harda (bez flagi 0). Skład dodatków przesuwa się w stronę ludzi, ale
 rośnie: to dopiero pierwszy krok, następny to ranking dodatków według tego, na czym leżą (werbel przed stopą, inne
 linie).
 
+### Poziomy, drugi zestaw: `plusHeard` (Hard, Hell)
+
+Odsłuch `plusMelody`: trudno ocenić, bo Hard i Hell są za trudne do przejścia; „w Rush E na Hardzie było parę momentów
+z bloczkami w ogóle nie w nuty", na innych utworach w porządku. Rush E ma jedną warstwę, więc gęstość może tam brać się
+tylko z akordów i z nut, które naprawdę grają.
+
+**Co mierzyłem.** W Rush E 49 ze 152 dodatków Harda leżało poza dźwiękiem z dekodera: 31 na „stopie" (w utworze na samo
+pianino to niski klawisz albo szum odczytany jako stopa), 12 na gołym onsecie. Ludzie w utworach, gdzie prawie każdy
+moment ma dźwięk (10 utworów korpusu): 66% dodatków Harda leży na dźwięku (melodia 35%), akord rośnie na 31% momentów
+Normala i w 68% przypadków tam, gdzie zaczynają się co najmniej dwa dźwięki; momentów mają 1,56× Normala (my 1,21×).
+
+**Flaga.** W utworze, który niesie linia z wysokością (ta sama bramka co `leadVoiceBoth`, 4 z 80 utworów bota), i w
+frazie, którą taka linia prowadzi, Hard i Hell nie biorą dodatku tam, gdzie nie zaczyna się żaden dźwięk, chyba że gra
+tam werbel albo inny bęben poza stopą.
+
+| | bez flagi | `plusHeard` |
+|---|---|---|
+| Rush E Hard / Hell | 825 / 1073 | 819 / 1018 |
+| Finale Hard / Hell | 715 / 911 | 705 / 878 |
+| Rush E Hard, dodatki na stopie lub onsecie bez dźwięku | 29% | 20% |
+| F1 Harda wobec ludzi, 3 utwory korpusu z ludzkim Hardem | 83,9 | 84,1 |
+
+Wg odczytu samej flagi (czas dźwięku, 60 ms) 90% dodatków Harda w Rush E leży teraz na dźwięku; reszta to dwie frazy,
+których bramka nie obejmuje (1:22 i sam koniec, 2:17). Hell traci 6% momentów na ośmiu utworach (Flower Dance 14%),
+bez ludzkiego Hella do porównania. Easy i Normal bez zmian, zagnieżdżenie trzyma (1 moment na 160 utworów).
+Sprawdzone warianty: bez wyjątku dla bębnów Hell tracił 10%, a F1 Harda spadało o 0,1; na wszystkich frazach utworu
+Hell tracił 7% przy tym samym F1.
+
 ### Na czym leżą dodatki w ludzkich mapach
 
 74 utwory korpusu z ludzkim Normalem i Hardem. Ludzki Hard zawiera 98,8% momentów Normala (Normal 97,7% Easy), czyli

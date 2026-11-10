@@ -1,11 +1,11 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, INTERNAL_LEVELS, LEAD_VOICE_BOTH, LINE_REPEATS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, INTERNAL_LEVELS, LEAD_VOICE_BOTH, LINE_REPEATS, PLUS_HEARD } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
-const { underLine, withLineRepeats } = require("../../../helpers/mewbeat/charts/voices");
+const { offPitch, underLine, withLineRepeats } = require("../../../helpers/mewbeat/charts/voices");
 const { makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
@@ -235,6 +235,131 @@ describe("what plays under the melody (flag leadVoiceBoth)", () => {
     it("charts a whole song with lineRepeats and leadVoiceBoth on, every level", () => {
       const flagged = generateAll(clashing(), "voice-test", ["lineRepeats", "leadVoiceBoth"]);
       for (const level of LEVELS) assert.ok(flagged[level].notes.length > 0, level);
+    });
+  });
+});
+
+describe("no extra off the notes (flag plusHeard)", () => {
+  const rule = PLUS_HEARD;
+  // Phrase p: 16 moments, one every 500 ms from 500 to 8000 after its start, each stronger than the one before.
+  const SPAN = 10000;
+  const phraseAt = (p) => ({ startMs: p * SPAN, endMs: p * SPAN + 8250 });
+  const momentsOf = (p) => Array.from({ length: 16 }, (_, k) => ({ t: p * SPAN + 500 * (k + 1), s: 0.5 + 0.03 * k, score: 3, metric: 0 }));
+  // a pitch begins on every moment of the phrase but those `bare` ms after its start
+  const notesIn = (p, bare) => momentsOf(p).filter((m) => !bare.includes(m.t - p * SPAN)).map((m) => ({ t: m.t, pitch: 72, len: 100, vel: 0.8 }));
+  const moments = momentsOf(0);
+  const phrase = phraseAt(0);
+  const notes = notesIn(0, [3500, 6000]);
+
+  it("is a flag of Hard and Hell, and no level has it without a flag", () => {
+    assert.deepEqual(PLUS_HEARD, { nearMs: 60, drumMs: 40, minDrum: 0.3, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75 });
+    assert.deepEqual(FLAGS.plusHeard.levels, { hard: { plusHeard: PLUS_HEARD }, hell: { plusHeard: PLUS_HEARD } });
+    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.plusHeard, undefined);
+  });
+
+  it("names the moments no pitch begins on", () => {
+    assert.deepEqual([...offPitch(moments, notes, [], [phrase], rule)], [3500, 6000]);
+    assert.deepEqual([...offPitch(moments, notes, undefined, [phrase], rule)], [3500, 6000]);
+  });
+
+  it("reads a pitch to rule.nearMs of the moment, on either side", () => {
+    const withNote = (t) => [...offPitch(moments, [...notes, { t, pitch: 60, len: 100, vel: 0.8 }], [], [phrase], rule)];
+    assert.deepEqual(withNote(6000 + rule.nearMs), [3500]);
+    assert.deepEqual(withNote(6000 - rule.nearMs), [3500]);
+    assert.deepEqual(withNote(6000 + rule.nearMs + 1), [3500, 6000]);
+    assert.deepEqual(withNote(6000 - rule.nearMs - 1), [3500, 6000]);
+  });
+
+  it("leaves a moment a snare or another drum plays on, not one with a kick alone or a weak drum", () => {
+    const withDrum = (drum) => [...offPitch(moments, notes, [drum], [phrase], rule)];
+    assert.deepEqual(withDrum({ t: 6000 + rule.drumMs, kind: "snare", s: rule.minDrum }), [3500]);
+    assert.deepEqual(withDrum({ t: 6000 - rule.drumMs, kind: "hat", s: 0.9 }), [3500]);
+    assert.deepEqual(withDrum({ t: 6000, kind: "kick", s: 0.9 }), [3500, 6000]);
+    assert.deepEqual(withDrum({ t: 6000, kind: "snare", s: rule.minDrum - 0.01 }), [3500, 6000]);
+    assert.deepEqual(withDrum({ t: 6000 + rule.drumMs + 1, kind: "snare", s: 0.9 }), [3500, 6000]);
+  });
+
+  it("reads a moment where it was heard, and names it by where it plays", () => {
+    const moved = moments.map((m) => (m.t === 6000 ? { ...m, t: 6030, raw: 6000 } : m.t === 3500 ? { ...m, raw: 3440 } : m));
+    // 6030 was heard at 6000, where no pitch begins; 3500 was heard at 3440, within rule.nearMs of the pitch at 3400
+    assert.deepEqual([...offPitch(moved, [...notes, { t: 3400, pitch: 60, len: 100, vel: 0.8 }], [], [phrase], rule)], [6030]);
+  });
+
+  it("names nothing in a song no pitched line carries", () => {
+    // half of the moments have a pitch
+    const half = notes.filter((n) => (n.t / 500) % 2 === 0);
+    assert.equal(offPitch(moments, half, [], [phrase], rule).size, 0);
+    // one led phrase of two is under rule.song of the song
+    const two = [...moments, ...momentsOf(1)];
+    assert.equal(offPitch(two, notes, [], [phraseAt(0), phraseAt(1)], rule).size, 0);
+  });
+
+  it("names nothing in a phrase no pitched line leads, in a song one carries", () => {
+    const all = [0, 1, 2, 3].flatMap(momentsOf);
+    const spans = [0, 1, 2, 3].map(phraseAt);
+    // three led phrases with one bare moment each, and a fourth with a pitch on four of its sixteen moments
+    const heard = [...notesIn(0, [6000]), ...notesIn(1, [6000]), ...notesIn(2, [6000]), ...notesIn(3, [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000])];
+    assert.deepEqual([...offPitch(all, heard, [], spans, rule)], [6000, 16000, 26000]);
+  });
+
+  it("reads the whole song as one phrase where there are none, and names nothing without a rule or notes", () => {
+    assert.deepEqual([...offPitch(moments, notes, [], [], rule)], [3500, 6000]);
+    assert.equal(offPitch(moments, notes, [], [phrase], null).size, 0);
+    assert.equal(offPitch(moments, [], [], [phrase], rule).size, 0);
+    assert.equal(offPitch(moments, undefined, [], [phrase], rule).size, 0);
+  });
+
+  describe("through a whole song", () => {
+    const chartsOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "heard-test", flags)).map(([level, chart]) => [level, chart.notes]));
+    // A piano piece: the fixture without its drums, its lead on every beat the line, and a pitch the second detector heard on
+    // every sound but those 2250 and 2750 ms into each four seconds, where Hell and Hard take an extra without the flag.
+    const BARE = [2250, 2750];
+    const piano = () => {
+      const features = { ...makeLayeredFeatures(), drums: [] };
+      const line = features.lead.map((n) => ({ t: n.t, pitch: 72, conf: 0.9, len: 200 }));
+      const heard = snappedMoments(analyse(features, []), "hard").map((m) => m.raw ?? m.t);
+      const decodedNotes = heard.filter((t) => !BARE.includes(t % 4000)).map((t) => ({ t, pitch: 72, vel: 0.8, len: 100 }));
+      return { ...features, decodedMelody: line, decodedMelodyTuned: line, decodedNotes };
+    };
+    // the moments of a level the level under it lacks that no pitch begins on and no drum but a kick plays on
+    const offNotes = (features, charts, level, under) => {
+      const starts = features.decodedNotes.map((n) => n.t);
+      const beats = (features.drums ?? []).filter((d) => d.kind !== "kick" && d.s >= rule.minDrum).map((d) => d.t);
+      const has = new Set(times(charts[under]));
+      return [...new Set(times(charts[level]))].filter((t) => !has.has(t) && !starts.some((s) => Math.abs(s - t) <= rule.nearMs) && !beats.some((b) => Math.abs(b - t) <= rule.drumMs));
+    };
+
+    it("leaves Easy and Normal as without the flag", () => {
+      const features = piano();
+      const plain = chartsOf(features, []);
+      const heard = chartsOf(features, ["plusHeard"]);
+      for (const level of ["easy", "normal"]) assert.deepEqual(heard[level], plain[level], level);
+    });
+
+    it("takes the extras off the notes from Hard and Hell", () => {
+      const features = piano();
+      const plain = chartsOf(features, []);
+      const heard = chartsOf(features, ["plusHeard"]);
+      // without the flag the levels do take such extras: the probe finds them
+      assert.ok(offNotes(features, plain, "hard", "normal").length > 0);
+      assert.ok(offNotes(features, plain, "hell", "hard").length > 0);
+      assert.deepEqual(offNotes(features, heard, "hard", "normal"), []);
+      assert.deepEqual(offNotes(features, heard, "hell", "hard"), []);
+    });
+
+    it("keeps every moment of Normal in Hard and of Hard in Hell", () => {
+      const heard = chartsOf(piano(), ["plusHeard"]);
+      for (const [under, level] of [["normal", "hard"], ["hard", "hell"]]) {
+        const held = new Set(times(heard[level]));
+        assert.deepEqual(times(heard[under]).filter((t) => !held.has(t)), [], level);
+      }
+    });
+
+    it("charts every level as without the flag when no notes were decoded", () => {
+      const features = { ...piano(), decodedNotes: undefined };
+      const plain = chartsOf(features, []);
+      const heard = chartsOf(features, ["plusHeard"]);
+      for (const level of LEVELS) assert.deepEqual(heard[level], plain[level], level);
     });
   });
 });

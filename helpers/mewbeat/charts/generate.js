@@ -33,7 +33,7 @@ const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
 const { lowerBound, nearestIndex } = require("./util");
-const { underLine, withLineRepeats } = require("./voices");
+const { offPitch, underLine, withLineRepeats } = require("./voices");
 
 const byTime = (a, b) => a.t - b.t || a.lane - b.lane;
 const inWindow = (notes, fromMs, toMs) => notes.filter((n) => n.t >= fromMs && n.t < toMs);
@@ -388,7 +388,12 @@ function plusNotes(ctx, diff) {
   // diff.keepNormalHolds (flag normalHolds): no extra under a long hold of Normal or just after it, where it would cut it
   const held = diff.keepNormalHolds ? longHolds(normal, diff.keepNormalHolds.minBeats, ctx.timing) : [];
   const after = Math.max(diff.minNoteGapMs ?? 0, diff.minLaneGapMs ?? 0);
-  const free = (m) => playable(ctx, m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
+  // diff.plusHeard (a flag): in a song a pitched line carries, no extra where no pitch begins (voices.js offPitch), the decoder's
+  // notes read at the shift Normal reads them
+  const base = diffOf(ctx, "normal");
+  const drawn = diff.plusHeard ? drawnMelodyOf(ctx, base) : null;
+  const silent = drawn ? offPitch(scored, decodedNotesAt(ctx, melodyShiftOf(ctx, base, drawn)), ctx.features.drums, phrases, diff.plusHeard) : new Set();
+  const free = (m) => playable(ctx, m.t) && !silent.has(m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
   // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left
   const heldShare = (phrase) => held.reduce((sum, h) => sum + Math.max(0, Math.min(h.t + h.len, phrase.endMs) - Math.max(h.t, phrase.startMs)), 0) / Math.max(1, phrase.endMs - phrase.startMs);
   const extras = [];
