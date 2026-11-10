@@ -11,6 +11,8 @@
   z 61,9% do 68,7%, a zgodność z mapami ludzi się nie pogarsza (F1 80,5 → 80,7).
 - **Czego to nie naprawia:** riffu w Remiksie (dekoder słyszy go tylko we fragmentach, szczegóły niżej) i połowy
   nut Rush E na Normalu (gubią je reguły odstępów i siatka, nie wybór melodii). Biegi w Rush E też zostają otwarte.
+- **Ciąg dalszy (ten sam dzień):** linie melodii i biegi w szybkich utworach mają trzy kolejne flagi
+  (`melodyLines`, `melodyLinesFirst`, `fastRuns`), opisane w `linie-melodii-2026-11-10.md`.
 
 O tym, czy flagi są dobre, decyduje Twoje ucho. Liczby mówią tylko, gdzie warto posłuchać.
 
