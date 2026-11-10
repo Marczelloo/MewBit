@@ -97,3 +97,33 @@ test("answers the map report with a list of recent runs, newest first, each one 
   assert.deepEqual(reply.runs.map((run) => run.at), reply.runs.map((run) => run.at).sort((a, b) => b - a));
   assert.equal(new Set(reply.runs.map((run) => `${run.audioKey}|${run.difficulty}|${run.at}`)).size, reply.runs.length);
 });
+
+test("charts the uncharted song on request: queued first, ready with stars after the delay, then stays ready", async (t) => {
+  mock.resetMockCharting();
+  let clock = 1_000_000;
+  t.mock.method(Date, "now", () => clock);
+  const played = await request("mewbeat_played", { scope: "server" });
+  const song = played.tracks.find((track) => track.stars === null);
+  const ask = () => request("mewbeat_chart_map", { audioKey: song.audioKey, uri: song.uri });
+
+  const first = await ask();
+  assert.deepEqual([first.status, first.state, first.audioKey], ["ok", "queued", song.audioKey]);
+  clock += 4000;
+  assert.equal((await ask()).state, "queued");
+  clock += 6000;
+  const ready = await ask();
+  assert.equal(ready.state, "ready");
+  assert.ok(["easy", "normal", "hard", "hell"].every((level) => Number.isFinite(ready.stats[level].stars)));
+  assert.equal((await ask()).state, "ready");
+  mock.resetMockCharting();
+});
+
+test("answers ready at once for a charted song and not_found for an unknown one", async () => {
+  mock.resetMockCharting();
+  const played = await request("mewbeat_played", { scope: "server" });
+  const charted = played.tracks.find((track) => track.stars);
+  const reply = await request("mewbeat_chart_map", { audioKey: charted.audioKey, uri: charted.uri });
+  assert.equal(reply.state, "ready");
+  const missing = await request("mewbeat_chart_map", { audioKey: "youtube:nope:1", uri: "https://nowhere.invalid/x" });
+  assert.deepEqual([missing.status, missing.reason], ["error", "not_found"]);
+});

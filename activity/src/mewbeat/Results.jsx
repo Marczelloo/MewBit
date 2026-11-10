@@ -6,6 +6,10 @@ import { BoardHeading, BoardRow, BoardRows, useLevelBoard } from "./LevelBoard.j
 import { resultBoardTarget } from "./resultBoard.js";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
+import { ModifierTags } from "./ModifierPicker.jsx";
+import RunGraph from "./RunGraph.jsx";
+import { formatClock, runGraphOf } from "./runGraph.js";
+import { NO_FAIL_PENALTY } from "./scoring.js";
 import LineText from "./mewbit/LineText.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { pickLine } from "./mewbit/lines.js";
@@ -40,6 +44,20 @@ const MIN_HITS = 8;
 const HIST_BINS = 25;
 const HIST_BIN_MS = 10;
 const HIST_HALF_MS = (HIST_BINS * HIST_BIN_MS) / 2;
+
+// The burst for an S or a full combo: twelve flecks thrown from the grade, laid out once (no Math.random, so a re-render
+// never rearranges them). Reach stays inside the column's padding, which clips what leaves it.
+const BURST_COLORS = ["var(--mb-gold)", "var(--mb-cyan)", "var(--mb-pink)", "var(--mb-violet)"];
+const BURST = Array.from({ length: 12 }, (_, index) => {
+  const angle = (index / 12) * Math.PI * 2 + (index % 2 ? 0.2 : -0.1);
+  const reach = 56 + (index % 3) * 10;
+  return {
+    x: Math.round(Math.cos(angle) * reach),
+    y: Math.round(Math.sin(angle) * reach * 0.8 - 10),
+    rot: (index % 2 ? 1 : -1) * (120 + index * 17),
+    color: BURST_COLORS[index % BURST_COLORS.length],
+  };
+});
 
 function capitalize(text) {
   return text ? `${text[0].toUpperCase()}${text.slice(1)}` : "";
@@ -290,23 +308,34 @@ export default function Results({
   const board = useLevelBoard({ request, audioKey: boardTarget?.audioKey, difficulty: boardTarget?.difficulty, userId, limit: TOP_ROWS, enabled: Boolean(boardTarget?.ready) });
   const showSide = Boolean(standings?.length) || Boolean(boardTarget);
   const grade = gradeKey(summary.grade);
-  const fullCombo = isFullCombo(summary);
-  // Mewbit's line: a new best first, then a full combo, else the grade's. Picked once per moment, so a re-render (the
-  // score reply replacing the summary, the clock) keeps the same words.
-  const bubbleMoment = newBest ? "newBest" : fullCombo ? "fullCombo" : `grade${grade}`;
+  // A lost run has no grade to celebrate, no best to beat and no full combo to count.
+  const lost = Boolean(summary.failed) && !summary.calibration;
+  const fullCombo = !lost && isFullCombo(summary);
+  // Mewbit's line: a lost run first, then a new best, then a full combo, else the grade's. Picked once per moment, so a
+  // re-render (the score reply replacing the summary, the clock) keeps the same words.
+  const bubbleMoment = lost ? "failed" : newBest ? "newBest" : fullCombo ? "fullCombo" : `grade${grade}`;
   const bubbleLine = useMemo(() => pickLine(bubbleMoment), [bubbleMoment]);
   // Keyed on the numbers: the score reply replaces the summary object, and new events would re-run the sounds.
   const { score, accuracy, maxCombo, fevers } = summary;
-  const soundEvents = useMemo(() => resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo }), [grade, score, accuracy, maxCombo, fevers, fullCombo]);
+  const soundEvents = useMemo(() => resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo, failed: lost }), [grade, score, accuracy, maxCombo, fevers, fullCombo, lost]);
   useResultSounds({ play: summary.calibration ? null : onSound, openedAt, events: soundEvents, animate });
+  // The run's story under the cards; a calibration run has no health to tell, and an old summary no events.
+  const graph = useMemo(
+    () => (summary.calibration || !summary.events?.length ? null : runGraphOf({ events: summary.events, feverStarts: summary.feverStarts, parts: summary.parts, modifiers: summary.modifiers, noFail: summary.noFail, durationMs: summary.durationMs })),
+    [summary.calibration, summary.events, summary.feverStarts, summary.parts, summary.modifiers, summary.noFail, summary.durationMs],
+  );
+  const modMult = Number.isFinite(summary.modMult) && Math.abs(summary.modMult - 1) > 1e-9 ? summary.modMult : null;
+  const celebrate = !lost && !summary.calibration && (grade === "S" || fullCombo) && animate && effects === "full" && shown("grade");
   // Only Live follows what the bot plays; Solo and rooms move on by themselves.
   const note = mode === "live" ? PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null) : null;
   const cover = resolveArtworkUrl(summary.artworkUrl);
 
-  // Primary action: what Enter does. A room's next round, else leaving for the next thing to play.
-  const primary = onNext ? "next" : mode === "solo" ? "songs" : "back";
+  // Primary action: what Enter does. A room's next round, else leaving for the next thing to play. A lost solo run
+  // offers the same song again first.
+  const primary = onNext ? "next" : mode === "solo" ? (lost && onRestart ? "restart" : "songs") : "back";
   const runPrimary = () => {
     if (primary === "next") onNext();
+    else if (primary === "restart") onRestart();
     else if (primary === "songs") onSongSelect?.();
     else onBack?.();
   };
@@ -331,14 +360,18 @@ export default function Results({
   const adjusted = shownTiming?.target === savedOffset;
 
   return (
-    <section className={`mb-res${showSide ? " mb-res-has-side" : ""}`} aria-label="Run results" onClick={verdict ? undefined : () => setSkipped(true)}>
+    <section className={`mb-res${showSide ? " mb-res-has-side" : ""}${lost ? " mb-res-failed" : ""}`} aria-label="Run results" onClick={verdict ? undefined : () => setSkipped(true)}>
       {/* The cover, blurred far behind everything; the shade keeps the text readable. */}
       {cover ? <div className="mb-res-backdrop" aria-hidden="true"><img src={cover} alt="" draggable="false" /></div> : null}
       <div className="mb-res-main">
         <div className="mb-res-head mb-res-in">
           {cover ? <img className="mb-res-cover" src={cover} alt="" draggable="false" /> : <div className="mb-res-cover mb-res-cover-empty" aria-hidden="true" />}
           <div className="mb-res-title">
-            <span className="mb-res-label">{`${summary.calibration ? "Calibration" : "Run complete"}${summary.difficulty ? ` · ${capitalize(summary.difficulty)}` : ""}`}</span>
+            <div className="mb-res-labelrow">
+              <span className="mb-res-label">{`${summary.calibration ? "Calibration" : lost ? "Failed" : "Run complete"}${summary.difficulty ? ` · ${capitalize(summary.difficulty)}` : ""}`}</span>
+              <ModifierTags modifiers={summary.modifiers} />
+              {modMult ? <span className={`mb-res-mult ${modMult > 1 ? "is-up" : "is-down"}`} title="Modifier score multiplier">{`×${modMult.toFixed(2)}`}</span> : null}
+            </div>
             <h2>{summary.title ?? "Run complete"}</h2>
             {summary.artist ? <small>{summary.artist}</small> : null}
           </div>
@@ -348,15 +381,31 @@ export default function Results({
         <div className="mb-res-body">
           <div className="mb-res-cards">
             <div className="mb-res-card mb-res-mine mb-res-in" style={{ "--d": "80ms" }}>
-              <div className={`mb-grade mb-grade-${grade} mb-res-grade${shown("grade") ? "" : " mb-res-wait"}`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
+              {lost ? (
+                <div className={`mb-res-stamp${shown("grade") ? "" : " mb-res-wait"}`} role="img" aria-label="Failed">FAILED</div>
+              ) : (
+                <div className={`mb-grade mb-grade-${grade} mb-res-grade${shown("grade") ? "" : " mb-res-wait"}`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
+              )}
+              {celebrate ? (
+                <div className="mb-res-burst" aria-hidden="true">
+                  {BURST.map((fleck, index) => (
+                    <i key={index} style={{ "--x": `${fleck.x}px`, "--y": `${fleck.y}px`, "--rot": `${fleck.rot}deg`, "--c": fleck.color, "--i": index }} />
+                  ))}
+                </div>
+              ) : null}
               <div className="mb-res-numbers">
                 <div className="mb-res-scoreline">
                   <b aria-label={`${formatScore(summary.score)} points`}>
                     <CountUp value={summary.score} {...countOf("score")} format={(value) => formatScore(Math.round(value))} />
                   </b>
-                  {newBest && verdict ? <span className="mb-res-newbest">NEW BEST</span> : null}
+                  {newBest && verdict && !lost ? <span className="mb-res-newbest">NEW BEST</span> : null}
                   {previous && shown("accuracy") ? <span className="mb-res-label mb-res-in">Best {formatScore(previous.score)}</span> : null}
                 </div>
+                {summary.depleted && !lost ? (
+                  <p className={`mb-res-nf ${shown("accuracy") ? "mb-res-in" : "mb-res-wait"}`}>
+                    NF ×{NO_FAIL_PENALTY}{graph?.depletedAt != null ? ` after ${formatClock(graph.depletedAt)}` : ""}
+                  </p>
+                ) : null}
                 <dl className="mb-res-stats">
                   <div><dt className="mb-res-label">Accuracy</dt><dd aria-label={formatAccuracy(summary.accuracy)}><CountUp value={summary.accuracy} {...countOf("accuracy")} format={formatAccuracy} /></dd></div>
                   <div><dt className="mb-res-label">Max combo</dt><dd aria-label={String(summary.maxCombo)}><CountUp value={summary.maxCombo} {...countOf("combo")} /></dd></div>
@@ -400,6 +449,8 @@ export default function Results({
               </div>
             </div>
 
+            {graph ? <RunGraph graph={graph} failed={lost} reveal={shown("graph") ? "mb-res-in" : "mb-res-wait"} /> : null}
+
             {summary.calibration && shown("timing") ? <CalibrationResult timing={timing} savedOffset={savedOffset} onApplyOffset={onApplyOffset} /> : null}
           </div>
 
@@ -407,7 +458,8 @@ export default function Results({
             <div className="mb-res-spot" aria-hidden="true" />
             <div className="mb-res-mew">
               {/* Mewbit waits with everyone else and reacts only once the grade is out. */}
-              <Mewbit pose={verdict ? resultPose(summary.grade, newBest) : "hype"} effects={effects} />
+              {/* The crushed pose has a bubble of its own; the failed line is shown in the results' one. */}
+              <Mewbit pose={verdict ? (lost ? "crushed" : resultPose(summary.grade, newBest)) : "hype"} effects={effects} silent={lost} />
               {verdict ? (
                 <div className="mb-res-bubble" aria-hidden="true">
                   <div className="mb-tag">
@@ -426,8 +478,8 @@ export default function Results({
           ) : null}
           <div className="mb-res-actions">
             {onRestart ? (
-              <button type="button" className="mb-btn" onClick={onRestart}>
-                <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" />Restart <kbd className="mb-kbd">Hold R</kbd>
+              <button type="button" className={`mb-btn${primary === "restart" ? " mb-btn-primary" : ""}`} onClick={onRestart}>
+                <ArrowCounterClockwise size={16} weight="bold" aria-hidden="true" />Restart <kbd className="mb-kbd">{primary === "restart" ? "Enter" : "Hold R"}</kbd>
               </button>
             ) : null}
             {mode === "solo" ? null : (

@@ -157,6 +157,17 @@ export const LINES = {
     "let's call that a [warm-up]",
     "it's fine. everyone respawns",
   ],
+  // A run that ran out of health. Kind first: the cat is sorry before it is funny.
+  failed: [
+    "oh no… the bar ran dry",
+    "that one got away from us",
+    "it happens. the cat is [here]",
+    "health: gone. dignity: {intact}",
+    "shake it off. again?",
+    "the song bit back, nya",
+    "we go again, together",
+    "respawn is free. i checked",
+  ],
   // A full combo that is not also a new best.
   fullCombo: [
     "not one miss?! suspicious",

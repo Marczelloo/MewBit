@@ -92,21 +92,43 @@ export function sendActivityAction({ guildId, accessToken, action, payload }) {
 
 // The song for mewbeat solo play (Ogg Opus), as bytes for decodeAudioData. Goes through the same gateway base
 // (and so the Discord proxy path) as the JSON requests; the response is not JSON, so it skips request().
-export async function fetchMewbeatAudio({ guildId, accessToken, audioKey, signal, timeoutMs = 90_000 }) {
+//
+// With clip the server answers with about 30 s of the song around fromMs (a smaller Ogg Opus file) and says where that
+// cut sits in the song; the result is then { data, clipped, clipStartMs, fromMs, durationMs }. A server that can't cut
+// answers with the whole song (clipped false). Without clip the result is the ArrayBuffer of the whole song.
+export function clipInfoOf(headers) {
+  const number = (name) => {
+    const value = headers.get(name);
+    if (value === null || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return {
+    clipped: headers.get("X-Mewbeat-Clip") === "1",
+    clipStartMs: number("X-Mewbeat-Clip-Start-Ms") ?? 0,
+    fromMs: number("X-Mewbeat-From-Ms"),
+    durationMs: number("X-Mewbeat-Duration-Ms"),
+  };
+}
+
+export async function fetchMewbeatAudio({ guildId, accessToken, audioKey, signal, timeoutMs = 90_000, clip = false, fromMs = null }) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(new Error("The song took too long to download.")), timeoutMs);
   const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
   signal?.addEventListener("abort", abort, { once: true });
   try {
+    const clipQuery = clip ? `&clip=1${Number.isFinite(fromMs) && fromMs >= 0 ? `&fromMs=${Math.round(fromMs)}` : ""}` : "";
     const response = await fetch(
-      apiUrl(`/api/activity/mewbeat/audio?guildId=${encodeURIComponent(guildId)}&audioKey=${encodeURIComponent(audioKey)}`),
+      apiUrl(`/api/activity/mewbeat/audio?guildId=${encodeURIComponent(guildId)}&audioKey=${encodeURIComponent(audioKey)}${clipQuery}`),
       { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, signal: controller.signal }
     );
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       throw new Error(payload.error || `Song download failed (${response.status}).`);
     }
-    return await response.arrayBuffer();
+    const data = await response.arrayBuffer();
+    return clip ? { data, ...clipInfoOf(response.headers) } : data;
   } finally {
     window.clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);

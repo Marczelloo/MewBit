@@ -2,7 +2,7 @@
 // canvas, plus spotlights. Each song gets its own scene, and always the same one. Pure decoration,
 // so everything is aria-hidden and ignores the pointer. The look follows the `vibe` prop (--mb-vibe, set here
 // on .mb-backdrop only) and the data-pulse flip on .mb-stage, which only runs opacity animations; see mewbeat.css.
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { pickScene } from "./scenes.js";
 
 // URLs only, so a scene's images are fetched when it first shows. New art only needs a new folder.
@@ -37,29 +37,37 @@ const Scene = memo(function Scene({ scene, leaving = false }) {
 });
 
 // `vibe` (0..1.4) comes with every judgement; the scenes and the track stay put, so only the backdrop's variable changes.
-function Stage({ track = null, vibe = 0 }) {
+// `hold` is true while notes of a run are falling: a new scene is then not started (five 2560x1440 images to decode)
+// until the run pauses, ends or moves to the next song, so the swap happens before a run or between songs. A decode
+// that has started is never cancelled by a run starting under it (Live starts the next song's run while it loads).
+function Stage({ track = null, vibe = 0, hold = false }) {
   const wanted = sceneFor(track);
   const [shown, setShown] = useState(() => wanted ?? SCENES[0]);
   const [leaving, setLeaving] = useState(null);
+  const loading = useRef(null); // the scene being decoded, if any: { scene }
 
-  // The next scene waits until its images can paint, then the old one fades away on top of it.
+  // The next scene waits until its images can paint, then the old one fades away on top of it. Only the old scene
+  // stays mounted for the fade (FADE_MS), after which a single scene is left.
   useEffect(() => {
-    if (!wanted || wanted === shown) return undefined;
-    let stale = false;
+    if (!wanted || wanted === shown) {
+      loading.current = null;
+      return;
+    }
+    if (loading.current?.scene === wanted || hold) return;
+    const job = { scene: wanted };
+    loading.current = job;
     const ready = ["base", "fever", "lit", "glow", "neon"].map((layer) => {
       const image = new Image();
       image.src = url(wanted, layer);
       return image.decode().catch(() => {});
     });
     Promise.all(ready).then(() => {
-      if (stale) return;
+      if (loading.current !== job) return;
+      loading.current = null;
       setLeaving(shown);
       setShown(wanted);
     });
-    return () => {
-      stale = true;
-    };
-  }, [wanted, shown]);
+  }, [wanted, shown, hold]);
 
   useEffect(() => {
     if (!leaving) return undefined;

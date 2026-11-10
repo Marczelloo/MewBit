@@ -108,6 +108,16 @@ describe("mewbeat results timeline", () => {
     }
   });
 
+  it("gives a lost run the flattest impact and no fanfare, whatever its score grades", () => {
+    const events = resultSoundEvents({ ...RUN, grade: "S", fullCombo: true, failed: true });
+    assert.deepEqual(events.at(-1), { at: REVEAL.grade + IMPACT_DELAY_MS, name: "rank-impact-fail-d", level: 1, rate: 1 });
+    assert.ok(!events.some(({ name }) => name === "full-combo"));
+  });
+
+  it("reveals the graph between the timing card and the grade", () => {
+    assert.ok(REVEAL.graph > REVEAL.timing && REVEAL.graph < REVEAL.grade);
+  });
+
   it("keeps the impact and the fanfare for a skip, and the impact alone without a full combo", () => {
     const impactAt = REVEAL.grade + IMPACT_DELAY_MS;
     assert.deepEqual(skipEvents(resultSoundEvents({ ...RUN, fullCombo: true })).map(({ name }) => name), ["rank-impact-pass", "full-combo"]);

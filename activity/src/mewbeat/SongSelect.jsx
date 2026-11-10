@@ -1,7 +1,8 @@
-import { MagnifyingGlass, Play, Plus, SpeakerHigh } from "@phosphor-icons/react";
+import { MagnifyingGlass, Play, Plus, Sparkle, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
 import LevelBoard from "./LevelBoard.jsx";
+import ModifierPicker from "./ModifierPicker.jsx";
 import PlayerPanel from "./PlayerPanel.jsx";
 import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { arrangeRows } from "./songList.js";
@@ -64,6 +65,45 @@ export function describePrepareError(error) {
   return PREPARE_ERRORS[reason] ?? (reason || "That song can't be played here.");
 }
 
+// "Chart this map": asked again every few seconds, for a few minutes at most.
+export const CHART_POLL_MS = 4000;
+export const CHART_POLL_MAX_MS = 5 * 60_000;
+
+// Server reasons from mewbeat_chart_map (the prepare reasons above apply too).
+const CHART_ERRORS = {
+  too_many: "You already have 3 songs being charted. Wait for one to finish.",
+  busy: "The charting queue is full right now. Try again in a minute.",
+  uncharted: "This song can't be charted (there is no music to follow in it).",
+  failed: "Charting this song failed.",
+  timeout: "Charting is taking longer than expected. Try again later.",
+};
+
+export function describeChartError(reason) {
+  return CHART_ERRORS[reason] ?? PREPARE_ERRORS[reason] ?? (typeof reason === "string" && reason ? reason : CHART_ERRORS.failed);
+}
+
+// What a finished "chart this map" adds to a row: its audio key, the stars per level and the player's bests.
+export function chartedFields(reply) {
+  const stats = reply?.stats;
+  if (!stats) return null;
+  const stars = {};
+  const bests = {};
+  for (const { id } of DIFFICULTIES) {
+    stars[id] = Number.isFinite(stats[id]?.stars) ? stats[id].stars : null;
+    if (stats[id]?.best) bests[id] = stats[id].best;
+  }
+  if (Object.values(stars).every((value) => value === null)) return null;
+  return { ...(reply.audioKey ? { audioKey: reply.audioKey } : null), stars, bests };
+}
+
+// What the song-select shows for the preview of a song, from what onPreview resolved: true (it plays), { error } (it
+// could not, the reason goes in the chip's tooltip) or anything else (it was replaced or stopped: nothing to show).
+export function previewState(key, result) {
+  if (result === true) return { key, playing: true };
+  if (result && typeof result === "object" && "error" in result) return { key, playing: false, error: String(result.error || "The preview could not be played.") };
+  return null;
+}
+
 export function formatLength(ms) {
   if (!Number.isFinite(ms) || ms <= 0) return "";
   const total = Math.round(ms / 1000);
@@ -97,12 +137,13 @@ export function LevelTile({ as: Tag = "div", id, label, stars = null, best = nul
 }
 
 // Artwork goes through the gateway's artwork proxy like the music panel's (Discord's CSP blocks other origins).
-export function resolveArtworkUrl(artworkUrl) {
+// size ("small" for list rows, "medium" for a detail cover) asks the proxy for a smaller image where the host has one.
+export function resolveArtworkUrl(artworkUrl, size = "") {
   if (!artworkUrl) return null;
   try {
     const parsed = new URL(artworkUrl, window.location.origin);
     if (["data:", "blob:"].includes(parsed.protocol) || parsed.origin === window.location.origin) return parsed.toString();
-    return `/api/activity/artwork?url=${encodeURIComponent(parsed.toString())}`;
+    return `/api/activity/artwork?url=${encodeURIComponent(parsed.toString())}${size === "small" || size === "medium" ? `&size=${size}` : ""}`;
   } catch {
     return null;
   }
@@ -114,11 +155,13 @@ export function hueOf(text) {
   return hash;
 }
 
-export function Cover({ row, className }) {
-  const src = resolveArtworkUrl(row.artworkUrl);
+// size asks the artwork proxy for a smaller image; box (px) is the cover's displayed size, so the page does not
+// reflow when it arrives.
+export function Cover({ row, className, size = "", box }) {
+  const src = resolveArtworkUrl(row.artworkUrl, size);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  if (src && !failed) return <img className={className} src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} />;
+  if (src && !failed) return <img className={className} src={src} alt="" width={box} height={box} loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />;
   const hue = hueOf(row.title);
   return <span className={className} style={{ background: `linear-gradient(135deg, hsl(${hue} 80% 55%), hsl(${(hue + 60) % 360} 70% 22%))` }} aria-hidden="true" />;
 }
@@ -146,7 +189,7 @@ function playedRow(track) {
 function searchRow(track) {
   return {
     key: track.uri,
-    audioKey: null, // a search result has no chart yet, so no leaderboard
+    audioKey: track.audioKey ?? null, // the bot knows it for every playable result; the leaderboard asks for it
     uri: track.uri,
     source: track.source,
     title: track.title ?? "Unknown title",
@@ -156,7 +199,7 @@ function searchRow(track) {
     bpm: null,
     plays: null,
     playsBy: {},
-    stars: null,
+    stars: track.stars ?? null, // set when the song already has charts
     bests: {},
     highlightMs: null,
   };
@@ -195,7 +238,7 @@ const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary })
       onClick={() => onPick(row)}
       onDoubleClick={() => { onPick(row); onPrimary(); }}
     >
-      <Cover row={row} className="mb-ss-art" />
+      <Cover row={row} className="mb-ss-art" size="small" box={44} />
       <span className="mb-ss-info">
         <b>{row.title}</b>
         <small>{row.artist}</small>
@@ -216,7 +259,9 @@ const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary })
 // With player ({ userId }, only the Solo picker passes it) the left side is the player's Profile and Stats until
 // a song is picked, and a picked song shows its leaderboard; without it (the room's add-songs window) the left
 // side is the song's details alone.
-export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose, onSelected, startSelectedKey = null }) {
+// onUnlockAudio(), when given, runs synchronously inside the click or key press that picks a row: the browser only lets
+// audio start from a gesture, and the preview itself comes a moment later, from a timer.
+export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onUnlockAudio, onClose, onSelected, startSelectedKey = null, modifiers = [], onModifiers, onModifiersOpen }) {
   const isPrivate = usePrivatePlace();
   const [scope, setScope] = useState(isPrivate ? "global" : "server");
   const [query, setQuery] = useState("");
@@ -228,7 +273,11 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   const [preparing, setPreparing] = useState(null); // the row key being prepared
   const [playError, setPlayError] = useState(null);
   const [addedNote, setAddedNote] = useState(null); // confirmation after a song went into the room queue
-  const [previewing, setPreviewing] = useState(null); // { key, playing } of the song being previewed
+  const [previewing, setPreviewing] = useState(null); // { key, playing, error? } of the song being previewed
+  // "Chart this map": { id, row: { key, audioKey, uri, source }, status: "running" | "error", error?, startedAt, retry }
+  // for the song being charted, and what finished jobs added to rows (key -> { audioKey, stars, bests }).
+  const [chartJob, setChartJob] = useState(null);
+  const [charted, setCharted] = useState({});
   const [sort, setSort] = useState("recent");
   const [direction, setDirection] = useState("desc");
   const [filter, setFilter] = useState("all");
@@ -299,13 +348,57 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, searching, context?.guildId, context?.accessToken]);
 
-  const arranged = useMemo(() => arrangeRows(played.rows, { sort, level, direction, filter }), [played.rows, sort, level, direction, filter]);
+  // Rows whose charts were made here get their stars, bests and audio key (other rows keep their identity).
+  const withCharts = useCallback((list) => (Object.keys(charted).length ? list.map((row) => (charted[row.key] ? { ...row, ...charted[row.key] } : row)) : list), [charted]);
+  const playedRows = useMemo(() => withCharts(played.rows), [withCharts, played.rows]);
+  const foundRows = useMemo(() => withCharts(found.rows), [withCharts, found.rows]);
+  const arranged = useMemo(() => arrangeRows(playedRows, { sort, level, direction, filter }), [playedRows, sort, level, direction, filter]);
   const list = searching ? found : played;
   // A search keeps the order it came in; the tools only arrange the played list.
-  const rows = searching ? found.rows : arranged;
+  const rows = searching ? foundRows : arranged;
   // No list picks a song by itself: the details, the preview and Play wait for the player's pick. It is looked up in
   // every row, so a level or filter that hides the song from the list does not drop it.
-  const selected = useMemo(() => (searching ? found.rows : played.rows).find((row) => row.key === selectedKey) ?? null, [searching, found.rows, played.rows, selectedKey]);
+  const selected = useMemo(() => (searching ? foundRows : playedRows).find((row) => row.key === selectedKey) ?? null, [searching, foundRows, playedRows, selectedKey]);
+
+  // The charting of the picked song: asks the bot now and then (the request answers "queued" until the stars are
+  // there). It stops when the player picks another song, after a few minutes, and on the first error.
+  const activeKey = selected?.key ?? null;
+  useEffect(() => {
+    if (!chartJob || chartJob.status !== "running" || chartJob.row.key !== activeKey) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const fail = (error) => setChartJob((job) => (job?.id === chartJob.id ? { ...job, status: "error", error } : job));
+    const ask = async (retry) => {
+      let reply;
+      try {
+        const { audioKey, uri, source } = chartJob.row;
+        reply = await request("mewbeat_chart_map", { uri, source, ...(audioKey ? { audioKey } : null), ...(retry ? { retry: true } : null) });
+      } catch (error) {
+        reply = { status: "error", reason: error?.message };
+      }
+      if (cancelled) return;
+      if (reply?.status === "ok" && reply.state === "ready") {
+        const fields = chartedFields(reply);
+        if (!fields) return fail(describeChartError("failed"));
+        setCharted((current) => ({ ...current, [chartJob.row.key]: fields }));
+        setChartJob((job) => (job?.id === chartJob.id ? null : job));
+      } else if (reply?.status === "ok") {
+        if (Date.now() - chartJob.startedAt > CHART_POLL_MAX_MS) fail(describeChartError("timeout"));
+        else timer = window.setTimeout(() => ask(false), CHART_POLL_MS);
+      } else {
+        fail(describeChartError(reply?.reason));
+      }
+    };
+    ask(chartJob.retry);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [chartJob, activeKey, request]);
+
+  const startChart = useCallback((row, retry = false) => {
+    setChartJob({ id: Date.now(), row: { key: row.key, audioKey: row.audioKey, uri: row.uri, source: row.source }, status: "running", startedAt: Date.now(), retry });
+  }, []);
   // The minimized window shows the selected song.
   useEffect(() => {
     onSelected?.(selected ? { title: selected.title, artist: selected.artist, artworkUrl: selected.artworkUrl } : null);
@@ -327,8 +420,8 @@ export default function SongSelect({ context, request, player, defaultDifficulty
       setPreviewing({ key: previewKey, playing: false });
       Promise.resolve()
         .then(() => onPreview(previewRowRef.current))
-        .then((playing) => { if (!cancelled) setPreviewing(playing ? { key: previewKey, playing: true } : null); })
-        .catch(() => { if (!cancelled) setPreviewing(null); });
+        .then((result) => { if (!cancelled) setPreviewing(previewState(previewKey, result)); })
+        .catch((error) => { if (!cancelled) setPreviewing(previewState(previewKey, { error: error?.message })); });
     }, PREVIEW_DEBOUNCE_MS);
     return () => {
       cancelled = true;
@@ -338,7 +431,10 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     };
   }, [previewKey, onPreview]);
 
+  const unlockRef = useRef(onUnlockAudio);
+  unlockRef.current = onUnlockAudio;
   const select = useCallback((row) => {
+    try { unlockRef.current?.(); } catch { /* a blocked context shows up as a failed preview */ }
     setSelectedKey(row.key);
     setPlayError(null);
     setAddedNote(null);
@@ -439,6 +535,10 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   };
 
   const selectedStars = starsOf(selected, difficulty);
+  const uncharted = Boolean(selected) && DIFFICULTIES.every(({ id }) => starsOf(selected, id) === null);
+  const ownJob = chartJob && chartJob.row.key === selected?.key ? chartJob : null;
+  const chartRunning = ownJob?.status === "running";
+  const chartError = ownJob?.status === "error" ? ownJob.error : null;
   const selectedBest = selected?.bests?.[difficulty] ?? null;
   const busy = preparing !== null;
   const Tile = onPlay ? "button" : "div";
@@ -461,7 +561,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
               </div>
             ) : null}
             <div className="mb-ss-hero" data-tour="track">
-              <Cover row={selected} className="mb-ss-cover" />
+              <Cover row={selected} className="mb-ss-cover" size="medium" />
               <div className="mb-ss-hero-text">
                 <span className="mb-ss-label">{selected.plays ? `played ${selected.plays}×` : searching ? "search result" : "song"}</span>
                 <h2>{selected.title}</h2>
@@ -471,10 +571,17 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                   {player && selected.bpm ? <span className="mb-ss-chip">{Math.round(selected.bpm)} BPM</span> : null}
                   {selected.source ? <span className="mb-ss-chip">{selected.source}</span> : null}
                   {previewing?.key === selected.key ? (
-                    <span className={`mb-ss-chip mb-ss-chip-preview${previewing.playing ? " mb-ss-chip-preview-on" : ""}`} role="status">
-                      <SpeakerHigh size={12} weight="fill" aria-hidden="true" />
-                      {previewing.playing ? "Preview" : "Loading preview…"}
-                    </span>
+                    previewing.error ? (
+                      <span className="mb-ss-chip mb-ss-chip-unavailable" role="status" title={previewing.error}>
+                        <SpeakerSlash size={12} weight="fill" aria-hidden="true" />
+                        Preview unavailable
+                      </span>
+                    ) : (
+                      <span className={`mb-ss-chip mb-ss-chip-preview${previewing.playing ? " mb-ss-chip-preview-on" : ""}`} role="status">
+                        <SpeakerHigh size={12} weight="fill" aria-hidden="true" />
+                        {previewing.playing ? "Preview" : "Loading preview…"}
+                      </span>
+                    )
                   ) : null}
                 </div>
               </div>
@@ -495,18 +602,33 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                 );
               })}
             </div>
-            {/* With the leaderboard below, the note only has the uncharted case left to say. */}
-            {player && selectedStars !== null ? null : (
+            {/* A song with no stars gets the chart button; with the leaderboard below, the note has nothing else to say. */}
+            {uncharted && request ? (
+              <div className="mb-ss-chart" data-tour="chart">
+                <button
+                  type="button"
+                  className="mb-btn mb-ss-chart-btn"
+                  disabled={chartRunning}
+                  aria-busy={chartRunning || undefined}
+                  onClick={() => startChart(selected, Boolean(chartError))}
+                >
+                  {chartRunning ? <><span className="mb-ss-spin" aria-hidden="true" />Charting…</> : <><Sparkle size={14} weight="fill" aria-hidden="true" />{chartError ? "Try again" : "Chart this map"}</>}
+                </button>
+                {chartError ? (
+                  <p className="mb-ss-error" role="alert">{chartError}</p>
+                ) : (
+                  <p className="mb-ss-note" role="status">{chartRunning ? "Charting this map. It takes about half a minute; the stars appear here when it is done." : "Not charted yet. Charting takes about half a minute."}</p>
+                )}
+              </div>
+            ) : player && selectedStars !== null ? null : (
               <p className="mb-ss-note">
                 {!onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
               </p>
             )}
             {player ? (
               <>
-                <div className="mb-ss-panel mb-ss-mods" role="group" aria-label="Modifiers">
-                  <span className="mb-ss-label">Modifiers</span>
-                  {[0, 1, 2, 3].map((slot) => <span key={slot} className="mb-ss-slot">soon</span>)}
-                </div>
+                {/* The picker only shows where the caller keeps the choice. */}
+                {onModifiers ? <ModifierPicker value={modifiers} onChange={onModifiers} mode="solo" onOpenChange={onModifiersOpen} /> : null}
                 <LevelBoard request={request} audioKey={selected.audioKey} difficulty={difficulty} userId={player.userId} onOpenPlayer={openPlayer} tour="board" />
               </>
             ) : null}

@@ -158,6 +158,17 @@ test("standingsOf: only for a finished round, with avatars from members and the 
   assert.equal(rows[1].next, true);
 });
 
+test("standingsOf: carries failed and the modifiers, with old rows reading as clean", () => {
+  const results = [
+    { userId: "u1", username: "u1", score: 900, accuracy: 0.95, grade: "S", difficulty: "hard", failed: false, modifiers: ["gn", "st"] },
+    { userId: "h", username: "h", score: 300, accuracy: 0.5, grade: "D", difficulty: "normal", failed: true, modifiers: ["ol"] },
+    { userId: "old", username: "old", score: 100, accuracy: 0.4, grade: "D", difficulty: "easy" },
+  ];
+  const rows = standingsOf(room({ endedAt: 5, results, members: [member("h"), member("u1"), member("old")] }), "u1");
+  assert.deepEqual(rows.map((row) => row.failed), [false, true, false]);
+  assert.deepEqual(rows.map((row) => row.modifiers), [["gn", "st"], ["ol"], []]);
+});
+
 test("upNextOf and loadedCount", () => {
   assert.equal(upNextOf(room()), null);
   assert.deepEqual(upNextOf(room({ queue: [track("a", "u1")] })), { title: "a", ready: true });

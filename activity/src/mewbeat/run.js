@@ -1,4 +1,4 @@
-import { approachMsFor } from "./highway.js";
+import { MAX_APPROACH_MS } from "./highway.js";
 import { createJudge } from "./judge.js";
 import {
   WINDOWS,
@@ -7,6 +7,7 @@ import {
   canFever,
   createScore,
   gradeOf,
+  isFailed,
   multiplierFor,
   startFever,
   vibeAt,
@@ -15,20 +16,30 @@ import {
 const START_LEAD_MS = 1000;
 const JUMP_LEAD_MS = 300;
 // A swapped-in chart keeps this much of the old one ahead of the song unless the caller says what the
-// renderer's approach window is right now (the slowest scroll speed, so nothing visible is ever cut).
-const DEFAULT_SWAP_APPROACH_MS = approachMsFor(1);
+// renderer's approach window is right now (the longest it can be: slowest speed on the tallest highway, so nothing visible is ever cut).
+const DEFAULT_SWAP_APPROACH_MS = MAX_APPROACH_MS;
+
+const LAST_LANE = 3;
+// Strict Timing: every judging window is this share of its normal size.
+const STRICT_WINDOW_SCALE = 0.75;
 
 // One game run. Every method takes song time; the user offset is applied here,
 // so judge, sweep and fever all work in heard time (songMs - offsetMs).
-export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }) {
-  const notes = chart.notes.slice(); // the judge edits this list when the chart is swapped
+// modifiers: ids from modifiers.js (Mirror and Strict Timing live here, the rest is scoring's). noFail: a run that
+// can never be lost (calibration, tutorial, autoplay, a spectator).
+export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false, modifiers = [], noFail = false }) {
+  // Mirror flips the lanes of this run's copy only: note indexes stay, so the server never needs to know.
+  const mirror = modifiers.includes("mr");
+  const mirrored = (note) => ({ ...note, lane: LAST_LANE - note.lane });
+  const notes = mirror ? chart.notes.map(mirrored) : chart.notes.slice(); // the judge edits this list when the chart is swapped
   let offset = offsetMs;
   const heard = (songMs) => songMs - offset;
 
-  const judge = createJudge(notes, { fromMs: heard(startSongMs) + START_LEAD_MS });
-  let score = createScore();
+  const judge = createJudge(notes, { fromMs: heard(startSongMs) + START_LEAD_MS, windowScale: modifiers.includes("st") ? STRICT_WINDOW_SCALE : 1 });
   // Every hold is two judgements (head and tail); a tap is one.
   const lenOf = (note) => (note.len > 0 ? note.len : 0);
+  const scoreParts = notes.reduce((total, note) => total + (lenOf(note) > 0 ? 2 : 1), 0);
+  let score = createScore({ parts: scoreParts, modifiers, noFail });
   let holdCount = 0;
   let maxLen = 0;
   let endAfterMs = -Infinity;
@@ -60,13 +71,14 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   let autoCursor = 0;
   let feverEndAt = null;
   let ended = false;
+  let failReported = false; // the fail event goes out once, from the first tick after the run was lost
   let lastSongMs = startSongMs;
 
   // Head and tail judgements both go through applyJudgement, at the moment they are judged.
   // Only head hits are recorded in snapshot().hits (timing data); tails are in the counts.
   function applyOutcome(result, heardMs) {
     const lane = notes[result.index].lane;
-    score = applyJudgement(score, result.judgement, heardMs);
+    score = applyJudgement(score, result.judgement, heardMs, result.part);
     eventLog.push({ n: result.index, part: result.part, j: result.judgement, t: heardMs, d: result.errorMs ?? null });
     if (result.judgement === "miss") {
       // tailMissed: the press settled the hold's tail as a miss too (the event log needs both).
@@ -78,7 +90,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
 
   function press(lane, songMs) {
     lastSongMs = songMs;
-    if (ended) return null;
+    if (ended || isFailed(score)) return null;
     const heardMs = heard(songMs);
     const result = judge.press(lane, heardMs);
     presses += 1;
@@ -88,8 +100,8 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     }
     const outcome = applyOutcome(result, heardMs);
     // An early miss on a hold settles its tail too, which counts as a second miss (logged after its head).
-    if (result.tailMissed) {
-      score = applyJudgement(score, "miss", heardMs);
+    if (result.tailMissed && !isFailed(score)) {
+      score = applyJudgement(score, "miss", heardMs, "tail");
       eventLog.push({ n: result.index, part: "tail", j: "miss", t: heardMs, d: null });
     }
     return outcome;
@@ -97,7 +109,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
 
   function release(lane, songMs) {
     lastSongMs = songMs;
-    if (ended) return [];
+    if (ended || isFailed(score)) return [];
     const heardMs = heard(songMs);
     return judge.release(lane, heardMs).map((result) => applyOutcome(result, heardMs));
   }
@@ -107,7 +119,8 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
     const heardMs = heard(songMs);
     const events = [];
 
-    if (!ended) {
+    // A lost run judges nothing more; whatever the judge has pending is left as it is.
+    if (!ended && !isFailed(score)) {
       if (autoplay) {
         while (autoCursor < notes.length && notes[autoCursor].t <= heardMs) {
           const note = notes[autoCursor];
@@ -115,6 +128,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
             const result = judge.press(note.lane, note.t);
             if (result) {
               events.push(applyOutcome(result, heardMs));
+              if (isFailed(score)) break;
               if (lenOf(note) > 0) autoReleases.push({ index: autoCursor, lane: note.lane, end: note.t + lenOf(note) });
             }
           }
@@ -130,10 +144,20 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
           // A jump or offset change may have settled this tail already; releasing the lane now
           // would drop whatever hold the player (or autoplay) holds there at present.
           if (judge.tailOutcomeOf(hold.index) !== "pending") continue;
-          for (const result of judge.release(hold.lane, hold.end)) events.push(applyOutcome(result, heardMs));
+          for (const result of judge.release(hold.lane, hold.end)) {
+            if (isFailed(score)) break;
+            events.push(applyOutcome(result, heardMs));
+          }
         }
       }
-      for (const result of judge.sweep(heardMs)) events.push(applyOutcome(result, heardMs));
+      for (const result of judge.sweep(heardMs)) {
+        if (isFailed(score)) break;
+        events.push(applyOutcome(result, heardMs));
+      }
+    }
+    if (isFailed(score) && !failReported) {
+      failReported = true;
+      events.push({ kind: "fail" });
     }
 
     // A FEVER still running when the chart ends gets its closing event.
@@ -142,7 +166,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       events.push({ kind: "feverEnd" });
     }
 
-    if (!ended && judge.remaining() === 0 && heardMs > endAfterMs) {
+    if (!ended && !isFailed(score) && judge.remaining() === 0 && heardMs > endAfterMs) {
       ended = true;
       events.push({ kind: "end" });
     }
@@ -150,7 +174,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   }
 
   function fever(songMs) {
-    if (ended) return null;
+    if (ended || isFailed(score)) return null;
     const heardMs = heard(songMs);
     if (!canFever(score, heardMs)) return null;
     score = startFever(score, heardMs);
@@ -196,7 +220,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       }
       keep = lo;
     }
-    const incoming = nextChart.notes.filter((note) => note.t > cutMs);
+    const incoming = nextChart.notes.filter((note) => note.t > cutMs).map((note) => (mirror ? mirrored(note) : note));
     judge.replaceFrom(keep, incoming);
     autoCursor = Math.min(autoCursor, keep);
     measureChart();
@@ -208,7 +232,7 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
   // What the server needs to recompute this run: judgements as they were applied (jump/offset-skipped
   // parts never appear, they were never judged), the heard times FEVER started at and the key press counts.
   function log() {
-    return { events: eventLog.map((event) => ({ ...event })), fevers: feverStarts.slice(), presses, emptyPresses };
+    return { events: eventLog.map((event) => ({ ...event })), fevers: feverStarts.slice(), presses, emptyPresses, modifiers: modifiers.slice(), parts: scoreParts };
   }
 
   // `withHits` false leaves the hit list out: the HUD flush runs on every judgement and never reads it.
@@ -229,6 +253,13 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false }
       grade: gradeOf(accuracy),
       counts: { ...score.counts },
       fevers: score.fevers,
+      health: score.health,
+      lives: score.lives,
+      failed: isFailed(score),
+      failedAt: score.failedAt,
+      depleted: score.depletedAt !== null,
+      modifiers,
+      modMult: score.modMult,
       judged: perfect + great + good + miss,
       total: notes.length + holdCount - skipped,
       skipped: skipped - openingSkips,

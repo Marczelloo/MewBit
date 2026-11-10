@@ -35,10 +35,13 @@ function judgeablePartsOf(chart) {
 // which is what scoring and FEVER expiry run on), d is the timing error and unused here.
 // fevers: heard times at which the player started FEVER; one counts only when the replayed state allows it.
 // A FEVER starting at the same instant as a judgement is applied first.
-async function recomputeRun({ chart, events, fevers = [], loadScoring = loadClientScoring }) {
+// modifiers: ids the caller has already checked (normalizeModifiers); noFail: a run that can't be lost (calibration, autoplay).
+// A run that was lost stops there: scoring ignores every later judgement and FEVER, so `judged` is what counted.
+async function recomputeRun({ chart, events, fevers = [], modifiers = [], noFail = false, loadScoring = loadClientScoring }) {
   const notes = chart?.notes;
   if (!Array.isArray(notes)) throw fail("bad_event", "Chart has no notes.");
   if (!Array.isArray(events) || !Array.isArray(fevers)) throw fail("bad_event", "Events must be lists.");
+  if (!Array.isArray(modifiers)) throw fail("bad_event", "Modifiers must be a list.");
   if (events.length > judgeablePartsOf(chart)) throw fail("too_many_events", "More judgements than the chart has.");
 
   const feverTimes = [];
@@ -71,19 +74,19 @@ async function recomputeRun({ chart, events, fevers = [], loadScoring = loadClie
     .map((event) => {
       const note = notes[event.n];
       const end = event.part === "tail" ? note.t + note.len : note.t;
-      return { j: event.j, t: Math.min(Math.max(event.t, note.t - EARLY_SLACK_MS), end + LATE_SLACK_MS) };
+      return { j: event.j, part: event.part, t: Math.min(Math.max(event.t, note.t - EARLY_SLACK_MS), end + LATE_SLACK_MS) };
     })
     .sort((a, b) => a.t - b.t);
 
-  const { createScore, applyJudgement, startFever, accuracyOf, gradeOf } = await loadScoring();
-  let state = createScore();
+  const { createScore, applyJudgement, startFever, accuracyOf, gradeOf, isFailed } = await loadScoring();
+  let state = createScore({ parts: judgeablePartsOf(chart), modifiers, noFail });
   let nextFever = 0;
   for (const event of replay) {
     while (nextFever < feverTimes.length && feverTimes[nextFever] <= event.t) {
       state = startFever(state, feverTimes[nextFever]);
       nextFever += 1;
     }
-    state = applyJudgement(state, event.j, event.t);
+    state = applyJudgement(state, event.j, event.t, event.part);
   }
   while (nextFever < feverTimes.length) {
     state = startFever(state, feverTimes[nextFever]);
@@ -97,8 +100,12 @@ async function recomputeRun({ chart, events, fevers = [], loadScoring = loadClie
     grade: gradeOf(accuracy),
     maxCombo: state.maxCombo,
     counts: { ...state.counts },
-    judged: events.length,
+    judged: state.counts.perfect + state.counts.great + state.counts.good + state.counts.miss,
     fevers: state.fevers,
+    failed: isFailed(state),
+    failedAt: state.failedAt,
+    depleted: state.depletedAt !== null,
+    modifiers: [...modifiers],
   };
 }
 

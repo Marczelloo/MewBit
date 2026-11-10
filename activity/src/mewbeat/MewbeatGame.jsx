@@ -7,7 +7,7 @@ import { TrackCard } from "./GameHud.jsx";
 import CalibrationPanel from "./CalibrationPanel.jsx";
 import ReportPanel from "./ReportPanel.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { Aura, FeverBanner, FeverTime, MissFlash, Readout, StageBackdrop, StageHost, StagedFeverBar, StagedGameHud, UnrankedChip } from "./StageLeaves.jsx";
+import { Aura, FailedBanner, FeverBanner, FeverTime, HealthBar, MissFlash, Readout, StageBackdrop, StageHost, StagedFeverBar, StagedGameHud, UnrankedChip } from "./StageLeaves.jsx";
 import { MIN_TAPS } from "./calibration.js";
 import { createServerClock, createSongClock } from "./clock.js";
 import { fpsFlagOn, startFrameMonitor } from "./frameMonitor.js";
@@ -23,6 +23,7 @@ import { createMewbeatRequests } from "./requests.js";
 import { PrivatePlace } from "./placeContext.js";
 import { createRoomLink } from "./roomLink.js";
 import { createRoomStore } from "./roomStore.js";
+import { roomModifiersToSend } from "./modifierPick.js";
 import { createSoloAudio, musicGain } from "./soloAudio.js";
 import { createSoloLink } from "./soloLink.js";
 import { presenceOf } from "./presence.js";
@@ -33,6 +34,7 @@ import { isFullCombo } from "./resultTimeline.js";
 import SongSelect, { DIFFICULTIES } from "./SongSelect.jsx";
 import SpectateCard from "./SpectateCard.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
+import { useHud } from "./useHud.js";
 import { countdownSounds, loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf } from "./room.js";
 import { useCountdownSounds } from "./useCountdownSounds.js";
 import { useMewbeatGame } from "./useMewbeatGame.js";
@@ -73,10 +75,12 @@ const MODES = [
 ];
 
 const RESULTS_HOLD_MS = 5000;
+const FAILED_HOLD_MS = 1500; // a lost run keeps the stage for the FAILED banner, shorter than a song's end: the song did not finish
 const PRESENCE_MS = 5000;
 const RESTART_HOLD_MS = 600;
 const NOOP = () => {};
 const NOOP_ASYNC = () => Promise.resolve();
+const NO_MODIFIERS = [];
 const TOUR_ROOM_CLOCK_MS = 45 * 60_000; // the tour's sample room runs its clock this far, so the round never starts under it
 
 const PHASE_COPY = {
@@ -139,6 +143,15 @@ function useRoomStore(store) {
   }, [store]);
   return view;
 }
+
+const poseOf = (pose) => pose;
+
+// The Mewbit on the board. His pose comes from the run's pose store, so a pose change renders this and not the session;
+// `override` (the solo count-in) wins while there is one.
+const BoardMewbit = memo(function BoardMewbit({ poseStore, override, effects }) {
+  const pose = useHud(poseStore, poseOf);
+  return <Mewbit pose={override ?? pose} effects={effects} />;
+});
 
 // One full screen (results, lobby, song select) in the second grid row. While it fades out it stays mounted but
 // takes no input: inert for focus and keys, and `dead` props (Results' active={false}) for what listens on window.
@@ -228,6 +241,7 @@ function GameMenu({ quiet, title, note, error, focusButton, level, onLevel, onRe
 // The song select in the game's frame, answered by fake replies. Nothing plays and no preview is asked for.
 function MockSongSelect() {
   const [mock, setMock] = useState(null);
+  const [modifiers, setModifiers] = useState([]);
   useEffect(() => {
     let cancelled = false;
     import("./mockRequests.js").then(({ createMockRequest, MOCK_USER_ID }) => {
@@ -243,7 +257,7 @@ function MockSongSelect() {
         <div className="mb-header-brand"><span className="mb-wordmark">mewbeat</span></div>
       </header>
       <div className="mb-screen">
-        <SongSelect request={mock.request} player={mock.player} onPlay={onPlay} />
+        <SongSelect request={mock.request} player={mock.player} onPlay={onPlay} modifiers={modifiers} onModifiers={setModifiers} />
       </div>
     </div>
   );
@@ -278,8 +292,11 @@ function MewbeatRoot(props) {
   // One audio engine (and AudioContext) for the screen's life, shared by every solo link.
   // The song bytes from the bot, for the game's audio engine and for the tour's trap.
   const [fetchAudio] = useState(() => (audioKey, signal) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey, signal }));
+  // About 30 s of a song around its highlight, for song select's preview (the bot cuts it out of the rendered file).
+  const [fetchClip] = useState(() => (audioKey, fromMs, signal) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey, signal, clip: true, fromMs, timeoutMs: 45_000 }));
   const [audio] = useState(() => createSoloAudio({
     fetchAudio,
+    fetchClip,
     aligner: createAlignClient({ makeWorker: makeAlignWorker }),
   }));
   const musicVolume = Number.isFinite(settings?.musicVolume) ? settings.musicVolume : DEFAULT_MUSIC_VOLUME;
@@ -567,16 +584,43 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     return liveBoard.subscribe(setBoardEntries);
   }, [spectating, liveBoard]);
   const targetEntry = boardEntries?.find((entry) => entry.userId === target?.userId) ?? null;
+  // The modifiers picked on song select or in the lobby: shown and played at once, saved with the other settings
+  // (the server's echo then takes over from the local copy).
+  const [pickedModifiers, setPickedModifiers] = useState(null);
+  const [modifiersOpen, setModifiersOpen] = useState(false);
+  useEffect(() => setPickedModifiers(null), [settings?.modifiers]);
+  const playerModifiers = pickedModifiers ?? settings?.modifiers ?? NO_MODIFIERS;
+  const saveModifiers = useCallback((ids) => {
+    setPickedModifiers(ids);
+    onAction?.("mewbeat_settings", { settings: { modifiers: ids } });
+  }, [onAction]);
+  // Tell the room what this player picked so the others see the badges. The key is the list the member still lacks
+  // (null = in sync); the ref keeps one send per list while it is in flight, and a rejoin (the server resets to none)
+  // makes the key differ again, so it goes out once more. A refused send is not retried until the key changes.
+  const sentModifiersRef = useRef(null);
+  const toSend = roomMode && me && !me.spectator ? roomModifiersToSend(playerModifiers, me.modifiers) : null;
+  const sendKey = toSend ? toSend.join(",") : null;
+  useEffect(() => {
+    if (!store) return;
+    if (sendKey === null) {
+      sentModifiersRef.current = null;
+      return;
+    }
+    if (sentModifiersRef.current === sendKey) return;
+    sentModifiersRef.current = sendKey;
+    store.ready({ modifiers: sendKey ? sendKey.split(",") : [] });
+  }, [store, sendKey]);
   const gameSettings = useMemo(
     () => ({
       ...settings,
+      modifiers: playerModifiers,
       offsetMs: savedOffset,
       ...(pickedLevel ? { liveDifficulty: pickedLevel } : null),
       ...(sceneSong ? { liveDifficulty: sceneSong.level } : null), // the tour never saves a level: only the game's copy
       ...(roomMode && me?.difficulty ? { liveDifficulty: me.difficulty } : null),
       ...(spectating ? { spectating: true, ...(targetDifficulty ? { liveDifficulty: targetDifficulty } : null) } : null),
     }),
-    [roomMode, settings, savedOffset, pickedLevel, sceneSong, me?.difficulty, spectating, targetDifficulty]
+    [roomMode, settings, playerModifiers, savedOffset, pickedLevel, sceneSong, me?.difficulty, spectating, targetDifficulty]
   );
   const roomRound = roomLinkState?.playedRound ?? room?.round ?? null;
   const submitExtra = useMemo(() => (roomMode ? { round: roomRound } : null), [roomMode, roomRound]);
@@ -600,11 +644,12 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     trackInfo,
     inputPaused: touring || settingsOpen || reportOpen || pauseOpen || menuOpen || pickerOpen || addOpen || Boolean(leaveConfirm) || lobbyScreen,
     minimized,
+    touring,
     liveSession: liveSessionOf,
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
+  const { phase, failed, failedHold, autoplay, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
 
   // The trap, one phase at a time. The notes run on the still link (an autoplay: nothing is scored, sent or left in a
   // summary) and the sound on the trap's own player, from the same moment. Heavy: the chart plays for HEAVY_MS and the
@@ -797,10 +842,21 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       return false;
     }
     if (audio.playing()) return false; // a room round is on: its music stays alone
-    const reply = await requests.request("mewbeat_solo_prepare", { uri: row.uri, source: row.source, preview: true }, PREVIEW_PREPARE_TIMEOUT_MS);
-    if (token !== previewTokenRef.current || reply?.status !== "ok") return false;
+    // A song already decoded or downloaded needs no round trip to the bot.
+    if (row.audioKey && audio.hasPreview(row.audioKey, row.highlightMs)) return audio.preview(row.audioKey, { fromMs: row.highlightMs });
+    let reply;
+    try {
+      // With the song's audioKey the bot skips resolving it again. A failure is returned, so song select can say so.
+      reply = await requests.request("mewbeat_solo_prepare", { uri: row.uri, source: row.source, audioKey: row.audioKey ?? undefined, preview: true }, PREVIEW_PREPARE_TIMEOUT_MS);
+    } catch (error) {
+      return token === previewTokenRef.current ? { error: error?.message || "The bot did not answer." } : false;
+    }
+    if (token !== previewTokenRef.current) return false;
+    if (reply?.status !== "ok") return { error: reply?.reason || reply?.error || "The bot could not prepare this song." };
     return audio.preview(reply.audioKey, { fromMs: reply.highlightMs ?? row.highlightMs });
   }, [audio, requests]);
+  // Called inside the click that picks a song row, so the browser lets the preview start later from a timer.
+  const unlockPreview = useCallback(() => { audio.unlock(); }, [audio]);
   const backToGame = () => window.requestAnimationFrame(() => dialogRef.current?.focus());
   const startNext = async () => {
     if (endSummary) setDismissedId(endSummary.id);
@@ -875,7 +931,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // The game's keys are paused on song select and the room's own screens, Esc among them, so it opens the menu from here.
   const ownScreen = lobbyScreen || pickerOpen;
   useEffect(() => {
-    if (!ownScreen || touring || menuShown || settingsOpen || reportOpen || addOpen || leaveConfirm) return undefined;
+    if (!ownScreen || touring || menuShown || settingsOpen || reportOpen || addOpen || leaveConfirm || modifiersOpen) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || event.repeat) return;
       event.preventDefault();
@@ -884,7 +940,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [ownScreen, touring, menuShown, settingsOpen, reportOpen, addOpen, leaveConfirm]);
+  }, [ownScreen, touring, menuShown, settingsOpen, reportOpen, addOpen, leaveConfirm, modifiersOpen]);
   // Esc closes the "add songs" window wherever the focus is. The settings panel, when open, takes Esc first.
   useEffect(() => {
     if (!addOpen || settingsOpen || touring) return undefined;
@@ -989,24 +1045,33 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const cardPlace = roomMode ? view === "playing" || view === "lobby" : !solo || soloStage === "playing" || soloStage === "ended";
   // A song played to its end stays on stage for a moment before its results. Live has the next track to get to.
   const [heldId, setHeldId] = useState(null); // the summary whose moment is over
-  const holdingCard = Boolean(endSummary?.finished) && (solo || roomMode) && !endSummary.calibration && heldId !== endSummary.id;
+  // A lost run is held too, for less: the FAILED banner, then the results (Live keeps them back until the song is over).
+  const lost = Boolean(endSummary?.failed) && !endSummary.calibration;
+  const holdingCard = (Boolean(endSummary?.finished) || lost) && (solo || roomMode) && !endSummary.calibration && heldId !== endSummary.id;
   const heldSummaryId = holdingCard ? endSummary.id : null;
+  const heldMs = lost ? FAILED_HOLD_MS : RESULTS_HOLD_MS;
   useEffect(() => {
     if (heldSummaryId == null) return undefined;
-    const id = window.setTimeout(() => setHeldId(heldSummaryId), RESULTS_HOLD_MS);
+    const id = window.setTimeout(() => setHeldId(heldSummaryId), heldMs);
     return () => window.clearTimeout(id);
-  }, [heldSummaryId]);
-  const endBanner = holdingCard ? (isFullCombo(endSummary) ? "FULL COMBO!" : "SONG COMPLETE") : null;
+  }, [heldSummaryId, heldMs]);
+  const endBanner = holdingCard && !lost ? (isFullCombo(endSummary) ? "FULL COMBO!" : "SONG COMPLETE") : null;
+  // FAILED: over a lost run's hold, and for as long as Live keeps its results back.
+  const failedBanner = (holdingCard && lost) || (mode === "live" && failed);
   const ownBotClicks = Boolean(endSummary?.calibration) && botClicksMineRef.current;
   useEffect(() => {
     if (!ownBotClicks) return;
     botClicksMineRef.current = false;
     setDismissedId(endSummary.id);
   }, [ownBotClicks, endSummary]);
-  const showCard = Boolean(endSummary) && !holdingCard && !ownBotClicks && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
+  // A player who lost the round watches the rest of it before their results; Live waits for its song to end.
+  const showCard = Boolean(endSummary) && !holdingCard && !failedHold && !(lost && watchingLive) && !ownBotClicks && dismissedId !== endSummary.id && !pickerOpen && cardPlace;
   // The hook keeps a finished run's numbers for its end card. Past that, the stage shows an empty run: the next song
   // spends a while loading and charting before its own run exists.
-  const stagedShown = running || holdingCard || showCard;
+  // A run lost in Live keeps its numbers up beside the FAILED banner until the song (and its results) is over.
+  const stagedShown = running || holdingCard || showCard || failedHold;
+  // The health bar belongs to a run the player plays and can lose.
+  const showHealth = stagedShown && !watchingLive && !spectating && !touring && !calibrating && !autoplay;
   // A spectator's stage follows the watched player, not the autoplay that draws their notes (the leaves read the HUD
   // themselves; this only says whom to follow).
   const watchVibe = watchingLive && typeof targetEntry?.vibe === "number" ? targetEntry.vibe : null;
@@ -1103,7 +1168,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   }, [soloWent]);
   // Mewbit on the board counts a solo run in, bumping and sending a ring out on every step, as in the room.
   const boardTick = soloCount ?? (soloWent ? 0 : null);
-  const boardPose = soloCount >= 1 && soloCount <= 3 ? `count${soloCount}` : soloCount != null ? "hype" : soloWent ? "go" : mewbitPose;
+  const boardPose = soloCount >= 1 && soloCount <= 3 ? `count${soloCount}` : soloCount != null ? "hype" : soloWent ? "go" : null; // null: Mewbit follows the run's pose store
   // The results play the song's highlight, once the song itself is over. In Live the bot plays the music.
   // Keyed on the run, not the summary object: the score reply replaces that object and must not restart the music.
   const clipSummary = showCard && (solo || roomMode) && !endSummary.calibration ? endSummary : null;
@@ -1122,7 +1187,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     link.sitOut?.();
   };
   let stateCopy;
-  if (roomMode) {
+  if (failed && phase === "ended") stateCopy = null; // the banner says it
+  else if (roomMode) {
     if (showCard || holdingCard) stateCopy = null;
     else if (view === "loading") {
       const { loaded, total } = loadedCount(room);
@@ -1180,6 +1246,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       request={requests.request}
       board={liveBoard}
       standings={standingsOf(room, userId)}
+      modifiers={playerModifiers}
+      onModifiers={saveModifiers}
+      onModifiersOpen={setModifiersOpen}
       effects={effectsLevel}
       showMewbit={settings?.showMewbit !== false}
       keys={keys}
@@ -1261,7 +1330,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       startSelectedKey={touring ? tourKit.selectedKey : null}
       onPlay={touring ? NOOP_ASYNC : pickSong}
       onPreview={touring ? undefined : previewSong}
+      onUnlockAudio={touring ? undefined : unlockPreview}
       onSelected={setPickedSong}
+      modifiers={playerModifiers}
+      onModifiers={touring ? undefined : saveModifiers}
+      onModifiersOpen={setModifiersOpen}
     />
   ) : null;
   const pickerFade = useScreenExit(pickerEl, screenOutMs);
@@ -1359,10 +1432,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       </header>
 
       <StageHost {...follow} effects={effectsLevel} under={stageUnder}>
-        {minimized ? null : <StageBackdrop {...follow} track={track} />}
+        {minimized ? null : <StageBackdrop {...follow} track={track} hold={phase === "playing"} />}
         {minimized ? null : <FeverBanner {...follow} />}
         {endBanner ? <div className="mb-feverbanner mb-endbanner" role="status">{endBanner}</div> : null}
-        {minimized ? null : <MissFlash store={hudStore} watching={watchingLive} effects={effectsLevel} crushed={mewbitPose === "crushed"} />}
+        <FailedBanner show={failedBanner} />
+        {minimized ? null : <MissFlash store={hudStore} watching={watchingLive} effects={effectsLevel} poseStore={poseStore} />}
         <div className="mb-scene">
           <div className="mb-char">
             {settings?.showMewbit === false || minimized ? null : (
@@ -1370,15 +1444,16 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
                 <Aura {...follow} />
                 <div className={`mb-lobby-mewbox${boardTick != null ? ` mb-lobby-beat-${boardTick % 2 ? "a" : "b"}` : ""}`}>
                   {boardTick != null ? <span key={boardTick} className="mb-lobby-ring mb-lobby-ring-final" aria-hidden="true" /> : null}
-                  <Mewbit pose={boardPose} effects={effectsLevel} />
+                  <BoardMewbit poseStore={poseStore} override={boardPose} effects={effectsLevel} />
                 </div>
               </div>
             )}
           </div>
 
           <div className="mb-highway-slot">
-            <div className="mb-highway">
-              <canvas className="mb-canvas" ref={canvasRef} aria-hidden="true" />
+            <HealthBar store={hudStore} shown={stagedShown} show={showHealth} effects={effectsLevel} />
+            <div className={`mb-highway${mode === "live" && failed ? " mb-highway-lost" : ""}`}>
+              <canvas className={`mb-canvas${failed && !spectating ? " mb-canvas-failed" : ""}`} ref={canvasRef} aria-hidden="true" />
               <div className="mb-keys" aria-hidden="true" data-tour="keys">
                 {keys.map((code) => (
                   <kbd key={code} className="mb-kbd mb-lanekey">{keyLabel(code)}</kbd>
@@ -1414,7 +1489,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
             <div className={`mb-board mb-lv-${difficulty}`}>
               <TrackCard track={track} difficulty={difficulty} progressRef={progressRef} progressTimeRef={progressTimeRef} disabled={!running || calibrating} swap={swap} onDifficulty={mode === "live" ? changeDifficulty : undefined} />
               {watchingLive ? <SpectateCard target={target} players={watchable} entry={targetEntry} onStep={stepWatched} /> : <StagedGameHud store={hudStore} shown={stagedShown} />}
-              {(mode === "live" || roomMode) && running ? <LiveBoard store={liveBoard} session={watchingLive ? "room" : runSession} meId={context?.user?.id ?? null} /> : null}
+              {(mode === "live" || roomMode) && (running || failedHold) ? <LiveBoard store={liveBoard} session={watchingLive ? "room" : runSession} meId={context?.user?.id ?? null} /> : null}
             </div>
           </aside>
         </div>
@@ -1437,6 +1512,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               request={requests.request}
               onAddToRoom={addToRoom}
               onPreview={previewSong}
+              onUnlockAudio={unlockPreview}
               onClose={() => { setAddOpen(false); backToGame(); }}
             />
           </div>

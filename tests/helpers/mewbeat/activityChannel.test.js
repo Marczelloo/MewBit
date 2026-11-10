@@ -225,6 +225,81 @@ describe("mewbeat activity channel", () => {
     });
 
 
+    it("a known audioKey is used as it is, without resolving again", async () => {
+      const { channel, resolveCalls, chartCalls } = soloSetup();
+      await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "https://open.spotify.com/track/xyz", source: "spotify", preview: true });
+      assert.strictEqual(resolveCalls.length, 1);
+      // Even a uri the bot never saw works once the key is known: the key decides.
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p2", audioKey: SOLO_KEY, uri: "other", source: "spotify", preview: true });
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(reply.audioKey, SOLO_KEY);
+      assert.strictEqual(reply.track.title, "Song");
+      assert.strictEqual(resolveCalls.length, 1);
+      assert.deepStrictEqual(chartCalls, []);
+
+      const play = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p3", audioKey: SOLO_KEY, uri: "other", source: "spotify" });
+      assert.strictEqual(play.status, "ok");
+      assert.strictEqual(resolveCalls.length, 1);
+      assert.deepStrictEqual(chartCalls, [{ track: soloTrack, node: "node-2" }]);
+    });
+
+    it("an unknown audioKey falls back to the uri", async () => {
+      const { channel, resolveCalls } = soloSetup();
+      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", audioKey: "spotify:never:1", uri: "https://open.spotify.com/track/xyz", source: "spotify", preview: true });
+      assert.strictEqual(reply.audioKey, SOLO_KEY);
+      assert.strictEqual(resolveCalls.length, 1);
+    });
+
+    it("remembers a resolved uri for a while and shares a resolve in flight", async () => {
+      let clock = 1_000_000;
+      const soloTracks = createSoloTracks({ now: () => clock });
+      const resolveCalls = [];
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      const channel = createMewbeatChannel({
+        readPlayback: () => null,
+        chartStore: { getCharts: async () => ({ status: "ready", charts: {} }) },
+        resolveTrack: async (guildId, query) => { resolveCalls.push(query); await gate; return { track: soloTrack, node: "n" }; },
+        soloTracks,
+        now: () => clock,
+        log: { warning() {} },
+      });
+      const message = { type: "mewbeat_solo_prepare", id: "p", uri: "https://open.spotify.com/track/xyz", source: "spotify", preview: true };
+      const first = channel.handle("g", "u", message);
+      const second = channel.handle("g", "u", { ...message, id: "q" });
+      release();
+      await Promise.all([first, second]);
+      assert.strictEqual(resolveCalls.length, 1, "the two concurrent picks asked once");
+
+      clock += 9 * 60_000;
+      // Another channel-level path: a prepare without the audioKey still hits the uri cache.
+      await channel.handle("g", "u", { ...message, id: "r" });
+      assert.strictEqual(resolveCalls.length, 1);
+
+      clock += 2 * 60_000;
+      await channel.handle("g", "u", { ...message, id: "s" });
+      assert.strictEqual(resolveCalls.length, 2, "after the ttl it asks again");
+    });
+
+    it("does not remember a failed or empty resolve", async () => {
+      let answer = null;
+      const resolveCalls = [];
+      const channel = createMewbeatChannel({
+        readPlayback: () => null,
+        chartStore: { getCharts: async () => ({ status: "ready", charts: {} }) },
+        resolveTrack: async (guildId, query) => { resolveCalls.push(query); if (answer === "throw") throw new Error("down"); return answer; },
+        soloTracks: createSoloTracks(),
+        log: { warning() {} },
+      });
+      const message = { type: "mewbeat_solo_prepare", id: "p", uri: "u", source: "spotify", preview: true };
+      assert.strictEqual((await channel.handle("g", "u", message)).reason, "not_found");
+      answer = "throw";
+      assert.strictEqual((await channel.handle("g", "u", message)).reason, "resolve_failed");
+      answer = { track: soloTrack, node: "n" };
+      assert.strictEqual((await channel.handle("g", "u", message)).status, "ok");
+      assert.strictEqual(resolveCalls.length, 3);
+    });
+
     it("answers an error when nothing resolves", async () => {
       const { channel, soloTracks } = soloSetup({ resolved: null });
       const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "nothing", source: "youtube" });

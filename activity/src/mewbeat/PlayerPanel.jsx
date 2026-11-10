@@ -257,7 +257,7 @@ function Stats({ reply }) {
         <Block title="Max combo by map" empty={stats.maps.length ? null : "No maps played yet."}>
           {stats.maps.map((map) => (
             <div key={`${map.audioKey}|${map.difficulty}`} className="mb-ss-line">
-              <Cover row={{ title: map.title }} className="mb-ss-cv" />
+              <Cover row={{ title: map.title, artworkUrl: map.artworkUrl }} className="mb-ss-cv" size="small" box={44} />
               <span className="mb-ss-tt">
                 <b>{map.title}</b>
                 <small className={`mb-ss-d-${map.difficulty}`}><span className="mb-ss-dl">{difficultyLabel(map.difficulty)}</span></small>

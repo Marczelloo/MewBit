@@ -1,0 +1,159 @@
+/* mewbeat modifier picker: the bar under the level tiles, its panel (a centred modal, like the settings window) and the
+   short tags that board rows carry. Colour tokens (--mb-*) come from .mb-game in mewbeat.css; the panel is rendered
+   into .mb-game, outside the song select and the lobby, so nothing here depends on their scoped rules. */
+
+/* bar: one row on the surface of the level tiles. Label, the chips by group, then the multiplier and Details; it wraps
+   on a narrow screen, the end part going to a line of its own. */
+.mb-modbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: var(--mb-surface);
+  outline: 1px solid var(--mb-line);
+}
+.mb-modbar-label { color: var(--mb-faint); font: 700 10.5px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.14em; text-transform: uppercase; }
+.mb-modbar-chips { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px 0; min-width: 0; }
+.mb-modbar-group { display: flex; align-items: center; gap: 4px; }
+/* a thin separator in front of every group but the first */
+.mb-modbar-group + .mb-modbar-group { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--mb-line); }
+.mb-modbar-chip {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--mb-line);
+  border-radius: 8px;
+  background: var(--mb-bg);
+  color: var(--mb-muted);
+  font: 700 12px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+.mb-modbar-chip:hover { border-color: rgb(255 255 255 / 0.22); background: var(--mb-raised); color: var(--mb-text); }
+.mb-modbar-chip:active { transform: scale(0.95); }
+.mb-modbar-chip.is-on { border-color: var(--mb-cyan); background: var(--mb-cyan); color: var(--mb-bg); }
+.mb-modbar-chip.is-on:hover { background: var(--mb-cyan); color: var(--mb-bg); filter: brightness(1.08); }
+.mb-modbar :focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+.mb-modbar-end { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.mb-modbar-mult { color: var(--mb-faint); font: 700 14px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-modbar-mult.is-up { color: var(--mb-gold); }
+.mb-modbar-mult.is-down { color: var(--mb-danger); }
+.mb-modbar-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--mb-muted);
+  font: 700 12px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+.mb-modbar-more:hover, .mb-modbar-more[aria-expanded="true"] { background: var(--mb-raised); color: var(--mb-text); }
+
+/* panel */
+.mb-mod-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(5 6 8 / 0.7);
+  animation: mb-fade-in 140ms ease-out both;
+}
+.mb-mod {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100%);
+  max-height: 100%;
+  border-radius: 18px;
+  outline: 1px solid rgb(255 255 255 / 0.1);
+  background: var(--mb-bg);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.6);
+  overflow: hidden;
+}
+.mb-mod :focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 2px; }
+
+.mb-mod-head { display: flex; flex: none; align-items: center; gap: 12px; padding: 13px 14px 11px 20px; border-bottom: 1px solid var(--mb-line); }
+.mb-mod-title { margin: 0; margin-right: auto; font-size: 18px; font-weight: 900; letter-spacing: -0.02em; }
+.mb-mod-total { display: flex; align-items: baseline; gap: 6px; }
+.mb-mod-total small { color: var(--mb-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.mb-mod-total b { color: var(--mb-gold); font: 700 18px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-mod .mb-mod-done { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 8px 0 12px; font-size: 13px; }
+
+.mb-mod-body { display: flex; flex-direction: column; gap: 16px; padding: 16px 20px 20px; overflow-y: auto; }
+.mb-mod-group { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; }
+.mb-mod-group h3 { margin: 0; }
+.mb-mod-note { margin: 0; color: var(--mb-muted); font-size: 12px; font-weight: 600; line-height: 1.4; }
+.mb-mod-opts { display: flex; flex-direction: column; gap: 6px; }
+
+/* a toggle: dot, name with its one-line description, bonus */
+.mb-mod .mb-mod-opt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--mb-line);
+  border-radius: 12px;
+  background: var(--mb-surface);
+  color: var(--mb-text);
+  font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out;
+}
+.mb-mod .mb-mod-opt:hover:not(:disabled) { background: var(--mb-raised); border-color: rgb(255 255 255 / 0.22); }
+.mb-mod .mb-mod-opt:active:not(:disabled) { transform: scale(0.985); }
+.mb-mod .mb-mod-opt.is-on { border-color: rgb(103 227 244 / 0.55); background: rgb(103 227 244 / 0.09); }
+.mb-mod .mb-mod-opt:disabled { opacity: 0.45; cursor: not-allowed; }
+.mb-mod-dot { width: 14px; height: 14px; border: 2px solid var(--mb-faint); border-radius: 50%; transition: background-color 120ms ease-out, border-color 120ms ease-out; }
+.mb-mod-opt.is-on .mb-mod-dot { border-color: var(--mb-cyan); background: var(--mb-cyan); box-shadow: inset 0 0 0 2px var(--mb-bg); }
+.mb-mod-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mb-mod-text b { font-size: 14px; font-weight: 800; line-height: 1.1; }
+.mb-mod-text span { color: var(--mb-muted); font-size: 12px; font-weight: 600; line-height: 1.3; }
+.mb-mod-bonus { color: var(--mb-faint); font: 700 12px/1 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mb-mod-bonus.is-up { color: var(--mb-gold); }
+.mb-mod-bonus.is-down { color: var(--mb-danger); }
+
+/* tags on a board row or a result line */
+.mb-mod-tags { display: inline-flex; flex: none; align-items: center; gap: 3px; }
+.mb-mod-tag {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.08);
+  color: var(--mb-muted);
+  font: 700 9.5px/1 "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+.mb-mod-tag-failed { background: rgb(255 128 152 / 0.16); color: var(--mb-danger); }
+
+/* the lobby's compact layout (800x480) and the narrow one: tighter bar, the label gives its line to the chips */
+@media (max-width: 1000px), (max-height: 560px) {
+  .mb-modbar { gap: 4px 8px; padding: 4px 8px; border-radius: 10px; }
+  .mb-modbar-chip { min-width: 30px; height: 24px; padding: 0 6px; font-size: 11px; }
+  .mb-modbar-group + .mb-modbar-group { margin-left: 6px; padding-left: 6px; }
+  .mb-modbar-more { height: 24px; padding: 0 6px; }
+}
+
+@media (max-width: 560px) {
+  .mb-modbar-label { flex: 1 0 100%; }
+  .mb-mod-scrim { padding: 12px; }
+  .mb-mod-head { padding-left: 16px; }
+  .mb-mod-body { padding: 14px 16px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-mod-scrim { animation: none; }
+  .mb-mod .mb-mod-opt, .mb-mod-dot, .mb-modbar-chip, .mb-modbar-more { transition: none; }
+}

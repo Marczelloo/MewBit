@@ -65,6 +65,27 @@ describe("mewbeat stores on AtlasHub", () => {
     assert.strictEqual(app.sync.status().ready, true);
   });
 
+  it("adds a column that a table made before it lacks, once, and the rows that name it go through", async () => {
+    // The tables as an older bot made them: no modifiers on scores, no failed or modifiers on history.
+    const older = (table, without) => ({ name: table.name, columns: table.columns.filter((column) => !without.includes(column.name)) });
+    for (const [table, without] of [[TABLES.scores, ["modifiers"]], [TABLES.history, ["failed", "modifiers"]]]) {
+      const { name, columns } = older(table, without);
+      hub.tables.set(name, { columns: new Map(columns.map((column) => [column.name, column.type])), key: table.key, rows: new Map() });
+    }
+    const app = boot();
+    assert.strictEqual(await app.sync.start(), true);
+    assert.strictEqual(hub.count("POST", "/columns"), 3);
+    play(app, { at: 111, modifiers: ["nf"] });
+    app.history.add("u1", { audioKey: "youtube:abc", difficulty: "hard", title: "A", score: 1000, at: 111, failed: true, modifiers: ["nf"] });
+    await app.outbox.flush(2000);
+    assert.strictEqual(hub.rows("mewbeat_scores").length, 1);
+    assert.strictEqual(hub.rows("mewbeat_history").length, 1);
+
+    // A second boot finds the columns there and adds nothing.
+    await boot().sync.start();
+    assert.strictEqual(hub.count("POST", "/columns"), 3);
+  });
+
   it("writes scores, history and stats to the hub through the journal", async () => {
     const app = boot();
     await app.sync.start();

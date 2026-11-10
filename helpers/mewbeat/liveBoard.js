@@ -13,6 +13,14 @@ const LIVE_PREFIX = "live:";
 const ok = () => ({ ok: true });
 const fail = (reason) => ({ ok: false, reason });
 
+// The modifier ids a player shows on the board, shape only: the board is for show, a run's list is checked at submit.
+const MODIFIER_ID = /^[a-z]{2}$/;
+const MAX_MODIFIERS = 9;
+function modifierTagsOf(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((id) => typeof id === "string" && MODIFIER_ID.test(id)))].slice(0, MAX_MODIFIERS);
+}
+
 // The live standings of the people playing the same thing right now. A session
 // is "room" (the server's room) or "live:<audioKey>" (everyone playing along
 // with the bot). It keeps one entry per user per session, in memory: an entry
@@ -67,8 +75,8 @@ function createLiveBoard({
     entries.sort((a, b) => (mixed
       ? accuracyOf(b) - accuracyOf(a) || b.score - a.score
       : b.score - a.score || accuracyOf(b) - accuracyOf(a)) || (a.userId < b.userId ? -1 : 1));
-    return entries.map(({ userId, username, avatarUrl, difficulty, score, combo, accuracy, vibe, fever, ended }) => ({
-      userId, username, avatarUrl, difficulty, score, combo, accuracy, vibe, fever, ended,
+    return entries.map(({ userId, username, avatarUrl, difficulty, score, combo, accuracy, vibe, fever, failed, modifiers, ended }) => ({
+      userId, username, avatarUrl, difficulty, score, combo, accuracy, vibe, fever, failed, modifiers, ended,
     }));
   }
 
@@ -177,6 +185,8 @@ function createLiveBoard({
       accuracy,
       vibe,
       fever: Boolean(message.fever),
+      failed: Boolean(message.failed), // lost the run: the board shows FAILED instead of the combo
+      modifiers: modifierTagsOf(message.modifiers),
       ended: Boolean(ended),
       expireTimer: undefined,
     };

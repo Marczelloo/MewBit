@@ -38,6 +38,10 @@ const TEMPO_SCROLL = [
   { value: true, label: "By tempo" },
   { value: false, label: "Fixed" },
 ];
+const FEVER_MODE = [
+  { value: "manual", label: "Manual" },
+  { value: "auto", label: "Auto" },
+];
 const SHOW_MEWBIT = [
   { value: true, label: "Show" },
   { value: false, label: "Hide" },
@@ -414,6 +418,13 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                     </button>
                   ))}
                 </div>
+              </section>
+              <section className="mb-row">
+                <div className="mb-row-text">
+                  <span className="mb-row-label">FEVER</span>
+                  <p className="mb-row-help">Manual: press Space when the bar is full. Auto: it starts by itself.</p>
+                </div>
+                <Segmented label="FEVER mode" options={FEVER_MODE} value={valueOf("feverMode") === "auto" ? "auto" : "manual"} onChange={(value) => send({ feverMode: value })} />
               </section>
               <section className="mb-row mb-row-stack">
                 <label className="mb-row-label" htmlFor="mb-speed">Scroll speed</label>

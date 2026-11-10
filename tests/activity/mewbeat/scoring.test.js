@@ -37,6 +37,13 @@ test("a fresh score is all zeros", () => {
     feverUntil: null,
     fevers: 0,
     counts: { perfect: 0, great: 0, good: 0, miss: 0 },
+    health: 0.5,
+    lives: null,
+    failedAt: null,
+    depletedAt: null,
+    feverN: 30,
+    modMult: 1,
+    rules: { oneLife: false, fourLives: false, unlosable: false, penalty: false },
   });
 });
 
@@ -56,7 +63,7 @@ test("ten PERFECTs score 3000 and the 11th is worth 600", () => {
   assert.equal(state.combo, 11);
 });
 
-test("a MISS breaks the combo, costs vibe and keeps maxCombo", () => {
+test("a MISS breaks the combo, takes 0.05 off the vibe and keeps maxCombo", () => {
   let state = hits(s.createScore(), "perfect", 25);
   const vibeBefore = state.vibe;
   const scoreBefore = state.score;
@@ -65,7 +72,7 @@ test("a MISS breaks the combo, costs vibe and keeps maxCombo", () => {
   assert.equal(state.maxCombo, 25);
   assert.equal(state.score, scoreBefore);
   assert.equal(state.counts.miss, 1);
-  assert.ok(Math.abs(state.vibe - (vibeBefore - 0.06)) < 1e-9);
+  assert.ok(Math.abs(state.vibe - (vibeBefore - 0.05)) < 1e-9);
 });
 
 test("vibe clamps to 0..1", () => {
@@ -90,8 +97,8 @@ test("FEVER doubles points for 8 seconds and drains vibe linearly", () => {
   const after = s.applyJudgement(during, "perfect", 18000);
   assert.equal(after.score, 600 + 300);
   assert.equal(after.feverUntil, null);
-  assert.equal(after.vibe, 0.03);
-  assert.equal(s.vibeAt(after, 18000), 0.03);
+  assert.ok(Math.abs(after.vibe - 1 / 30) < 1e-9);
+  assert.ok(Math.abs(s.vibeAt(after, 18000) - 1 / 30) < 1e-9);
 });
 
 test("a hit exactly when FEVER ends gets no doubling", () => {

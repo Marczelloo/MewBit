@@ -93,6 +93,9 @@ const BOARD_PEOPLE = {
 const PINNED_GLOBAL_RANK = 12;
 const GRADE_BY_PLACE = ["S", "A", "A", "B", "B", "C", "C"];
 
+// A few board rows were played with modifiers, so the tags can be checked.
+const MODIFIERS_BY_PLACE = [["gn", "st"], [], ["nf"], ["fs"], [], ["mr", "st"]];
+
 function scoreRow(userId, place, top) {
   return {
     userId,
@@ -102,6 +105,7 @@ function scoreRow(userId, place, top) {
     accuracy: Math.round((98.4 - place * 2.2) * 100) / 100,
     grade: GRADE_BY_PLACE[place] ?? "D",
     maxCombo: 812 - place * 60,
+    modifiers: MODIFIERS_BY_PLACE[place] ?? [],
     at: NOW,
   };
 }
@@ -275,7 +279,30 @@ function reportRuns() {
   return { status: "ok", runs };
 }
 
+// "Chart this map" on the uncharted song: the first ask queues it, and it is ready CHART_MS later (so a few polls see
+// "queued"). The charted stars are the ones the mock hands out for it from then on; reset it with resetMockCharting().
+const CHART_MS = 9000;
+const CHARTED_STARS = [1.4, 2.6, 3.8, 5.0];
+const chartingSince = new Map(); // audioKey -> when the first ask came
+
+export function resetMockCharting() {
+  chartingSince.clear();
+}
+
+function chartMap({ audioKey, uri }) {
+  const song = SONGS.find((candidate) => audioKeyOf(candidate) === audioKey || `https://mock.invalid/watch?v=${slug(candidate.title)}` === uri);
+  if (!song) return { status: "error", reason: "not_found" };
+  const key = audioKeyOf(song);
+  if (song.stars) return { status: "ok", state: "ready", audioKey: key, stats: songStats({ audioKey: key }).stats };
+  const since = chartingSince.get(key) ?? Date.now();
+  chartingSince.set(key, since);
+  if (Date.now() - since < CHART_MS) return { status: "ok", state: "queued", audioKey: key };
+  const stats = Object.fromEntries(LEVELS.map((level, i) => [level, { stars: CHARTED_STARS[i], notes: NOTES[level], best: null }]));
+  return { status: "ok", state: "ready", audioKey: key, stats };
+}
+
 const ANSWERS = {
+  mewbeat_chart_map: chartMap,
   mewbeat_song_stats: songStats,
   mewbeat_played: played,
   mewbeat_board: board,

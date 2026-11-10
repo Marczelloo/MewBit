@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { gradeLadder } from "./scoring.js";
 import { DIFFICULTIES, gradeClass, resolveArtworkUrl } from "./SongSelect.jsx";
 
@@ -13,21 +13,31 @@ export function formatAccuracy(accuracy) {
   return accuracy === null || accuracy === undefined ? "--" : `${accuracy.toFixed(2)}%`;
 }
 
-// Seconds of FEVER left, counted down locally from the snapshot so the HUD only re-renders on run events.
-function useFeverSeconds(active, leftMs) {
-  const [left, setLeft] = useState(leftMs);
+// Seconds of FEVER left, counted down locally from the snapshot and written straight into the text node: ten ticks a
+// second never render React, only a changed tenth touches the DOM.
+function FeverCountdown({ active, leftMs }) {
+  const ref = useRef(null);
   useEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
     if (!active) {
-      setLeft(0);
+      node.textContent = "";
       return undefined;
     }
     const endsAt = performance.now() + leftMs;
-    const tick = () => setLeft(Math.max(0, endsAt - performance.now()));
+    let shown = "";
+    const tick = () => {
+      const text = `${(Math.max(0, endsAt - performance.now()) / 1000).toFixed(1)}s`;
+      if (text !== shown) {
+        shown = text;
+        node.textContent = text;
+      }
+    };
     tick();
     const timer = window.setInterval(tick, 100);
     return () => window.clearInterval(timer);
   }, [active, leftMs]);
-  return left / 1000;
+  return <span ref={ref} />;
 }
 
 // Combo, multiplier ring and the last judgement, drawn over the highway.
@@ -127,14 +137,13 @@ export const TrackCard = memo(function TrackCard({ track, difficulty, progressRe
 // Its slot is the highway's, so it sits in the gap next to the canvas without taking any of its width.
 export function FeverBar({ hud }) {
   const ready = hud.vibe >= 1 && !hud.feverActive;
-  const seconds = useFeverSeconds(hud.feverActive, hud.feverLeftMs);
   // During FEVER the vibe drains over the time it has left; a linear transition draws that without per-frame state.
   const fillStyle = hud.feverActive
     ? { transform: "scaleY(0)", transition: `transform ${Math.max(0, hud.feverLeftMs)}ms linear` }
     : { transform: `scaleY(${hud.vibe})`, transition: "transform 200ms ease-out" };
   return (
     <div className={`mb-fever-meter${ready ? " mb-fever-ready" : ""}${hud.feverActive ? " mb-fever-on" : ""}`}>
-      <span className="mb-fever-top" aria-hidden="true">{hud.feverActive ? `${seconds.toFixed(1)}s` : ready ? "SPACE" : ""}</span>
+      <span className="mb-fever-top" aria-hidden="true">{hud.feverActive ? <FeverCountdown active leftMs={hud.feverLeftMs} /> : ready ? "SPACE" : ""}</span>
       <div className="mb-fever-bar">
         <div
           className="mb-fever-track"
@@ -143,7 +152,7 @@ export function FeverBar({ hud }) {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(hud.vibe * 100)}
-          aria-valuetext={hud.feverActive ? `FEVER, ${seconds.toFixed(1)} seconds left` : ready ? "Ready, press Space" : undefined}
+          aria-valuetext={hud.feverActive ? "FEVER" : ready ? "Ready, press Space" : undefined}
         >
           <i style={fillStyle} />
         </div>

@@ -121,4 +121,79 @@ describe("mewbeat audio store", () => {
     assert.strictEqual(fs.readFileSync(file, "utf8"), "ok");
     assert.strictEqual(calls, 2);
   });
+
+  describe("cancellation", () => {
+    // A is rendering (held at its gate) so that B queues behind it.
+    function busyStore() {
+      const gates = { a: deferred(), b: deferred() };
+      const started = [];
+      const store = createAudioStore({
+        dir,
+        log: silentLog,
+        fetchAudio: async (track) => { started.push(track); await gates[track].promise; return Buffer.from(track); },
+      });
+      return { gates, started, store };
+    }
+
+    it("drops a queued job when its only waiter leaves, and a later request renders it", async () => {
+      const { gates, started, store } = busyStore();
+      const first = store.get("ka", "a", "n");
+      await waitFor(() => started.length === 1);
+      const controller = new AbortController();
+      const queued = store.get("kb", "b", "n", { signal: controller.signal });
+      const queuedOutcome = assert.rejects(queued, /gone/);
+      controller.abort(new Error("gone"));
+      await queuedOutcome;
+
+      gates.a.resolve();
+      await first;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.deepStrictEqual(started, ["a"], "the cancelled job never reached the plugin");
+
+      gates.b.resolve();
+      const file = await store.get("kb", "b", "n");
+      assert.strictEqual(fs.readFileSync(file, "utf8"), "b");
+      assert.deepStrictEqual(started, ["a", "b"]);
+    });
+
+    it("keeps a queued job another caller still waits for", async () => {
+      const { gates, started, store } = busyStore();
+      const first = store.get("ka", "a", "n");
+      await waitFor(() => started.length === 1);
+      const controller = new AbortController();
+      const leaving = store.get("kb", "b", "n", { signal: controller.signal });
+      const staying = store.get("kb", "b", "n");
+      const leavingOutcome = assert.rejects(leaving);
+      controller.abort(new Error("gone"));
+      await leavingOutcome;
+
+      gates.a.resolve();
+      gates.b.resolve();
+      await first;
+      const file = await staying;
+      assert.strictEqual(fs.readFileSync(file, "utf8"), "b");
+    });
+
+    it("lets a job that is already rendering finish when its waiter leaves", async () => {
+      const { gates, started, store } = busyStore();
+      const controller = new AbortController();
+      const waiting = store.get("ka", "a", "n", { signal: controller.signal });
+      const outcome = assert.rejects(waiting);
+      await waitFor(() => started.length === 1);
+      controller.abort(new Error("gone"));
+      await outcome;
+      gates.a.resolve();
+      await waitFor(() => fs.readdirSync(dir).some((name) => name.endsWith(".ogg")));
+      const file = await store.get("ka", "a", "n");
+      assert.strictEqual(fs.readFileSync(file, "utf8"), "a");
+      assert.deepStrictEqual(started, ["a"], "the finished render is served, not started again");
+    });
+
+    it("rejects at once for a signal that is already aborted", async () => {
+      const { store } = busyStore();
+      const controller = new AbortController();
+      controller.abort(new Error("already"));
+      await assert.rejects(store.get("ka", "a", "n", { signal: controller.signal }), /already/);
+    });
+  });
 });

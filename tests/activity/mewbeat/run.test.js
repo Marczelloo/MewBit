@@ -96,7 +96,7 @@ test("autoplay judges every note perfect and ends exactly once", () => {
 });
 
 test("no presses gives every note a miss", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   const events = tickAll(run, 0, 15000);
   const misses = events.filter((e) => e.kind === "miss");
   assert.equal(misses.length, 40);
@@ -117,7 +117,7 @@ test("pressing after end returns null", () => {
 });
 
 test("jump skips the next 300 ms of notes and they never show as misses", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   tickAll(run, 0, 8800);
   const before = run.snapshot(8800);
   run.jump(9000);
@@ -173,7 +173,7 @@ test("visibleNotes returns the inclusive window with outcomes", () => {
 });
 
 test("setOffset mid-run moves later presses' errorMs by the offset", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   tickAll(run, 0, 4992);
   run.setOffset(100);
   assert.equal(run.heardTime(5250), 5150);
@@ -214,7 +214,7 @@ test("setOffset shifts the FEVER end so it ends at the same song moment", () => 
 });
 
 test("a -200 ms shift skips the notes it jumped over instead of missing them", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   tickAll(run, 0, 4992);
   const before = run.snapshot(4992);
   run.setOffset(-200);
@@ -258,7 +258,7 @@ test("hold: head PERFECT then release at the end is a PERFECT tail", () => {
   assert.equal(snap.accuracy, 100);
 });
 
-test("hold: an early release drops it - tail miss, combo 0, vibe -0.06", () => {
+test("hold: an early release drops it - tail miss, combo 0, vibe -0.05", () => {
   const run = createRun({ chart: holdChart(), startSongMs: 0 });
   run.press(0, 2000);
   run.press(1, 2500);
@@ -268,7 +268,7 @@ test("hold: an early release drops it - tail miss, combo 0, vibe -0.06", () => {
   assert.deepEqual(events, [{ kind: "miss", lane: 0, index: 0, part: "tail" }]);
   const snap = run.snapshot(2700);
   assert.equal(snap.combo, 0);
-  assert.equal(Math.round((before.vibe - snap.vibe) * 1e6) / 1e6, 0.06);
+  assert.equal(Math.round((before.vibe - snap.vibe) * 1e6) / 1e6, 0.05);
   assert.equal(snap.counts.miss, 1);
 });
 
@@ -347,7 +347,7 @@ test("hold: autoplay presses the head and releases at the end", () => {
 });
 
 test("tap-only chart: same events and score as before", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   run.press(0, 2000);
   run.press(1, 2280);
   const events = tickAll(run, 0, 15000);
@@ -472,7 +472,7 @@ test("hold: a hit head with a tail skipped by jump reads as done, not as a fresh
 });
 
 test("mashing every lane non-stop misses most notes instead of clearing the chart", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   for (let ms = 0; ms <= 12_000; ms += 30) {
     for (let lane = 0; lane < 4; lane += 1) run.press(lane, ms);
     run.tick(ms);
@@ -502,6 +502,8 @@ test("log: taps are logged in the order they are judged, with heard time and err
     fevers: [],
     presses: 2,
     emptyPresses: 0,
+    modifiers: [],
+    parts: 40,
   });
 });
 
@@ -529,7 +531,7 @@ test("log: the returned lists are copies", () => {
   copy.events[0].j = "miss";
   copy.events.push({});
   copy.fevers.push(1);
-  assert.deepEqual(run.log(), { events: [{ n: 0, part: "head", j: "perfect", t: 2000, d: 0 }], fevers: [], presses: 1, emptyPresses: 0 });
+  assert.deepEqual(run.log(), { events: [{ n: 0, part: "head", j: "perfect", t: 2000, d: 0 }], fevers: [], presses: 1, emptyPresses: 0, modifiers: [], parts: 40 });
 });
 
 test("log: a hold logs its head and its tail", () => {
@@ -698,7 +700,7 @@ test("swapChart keeps an active hold and its tail judgement", () => {
 });
 
 test("swapChart keeps judged and skipped counts consistent and the run ends on the new chart", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   run.jump(3000);
   const skippedBefore = run.snapshot(3000).skipped;
   assert.ok(skippedBefore > 0);
@@ -714,17 +716,17 @@ test("swapChart keeps judged and skipped counts consistent and the run ends on t
 });
 
 test("swapChart after the run ended does nothing", () => {
-  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
   tickAll(run, 0, 20000);
   assert.equal(run.swapChart(denseChart(), 20000, 1000), false);
   assert.equal(run.flags.difficultyChanged, false);
 });
 
-test("swapChart's default window is the slowest scroll speed's, so nothing on screen is cut", () => {
+test("swapChart's default window is the longest approach there can be (slowest speed, tallest highway), so nothing on screen is cut", () => {
   const run = createRun({ chart: chart(), startSongMs: 0 });
   run.swapChart({ notes: [] }, 2000);
-  // 2000 + 2200 = 4200: old notes up to there stay (2000..4000 is 9).
-  assert.equal(run.noteList().length, 9);
+  // 2000 + 6600 = 8600: old notes up to there stay (2000..8500 is 27).
+  assert.equal(run.noteList().length, 27);
 });
 test("visibleNotes with reuse gives the same notes as without, window after window", () => {
   const holds = { notes: Array.from({ length: 40 }, (_, i) => ({ t: 2000 + i * 250, lane: i % 4, ...(i % 7 === 0 ? { len: 600 } : {}) })) };
@@ -756,4 +758,60 @@ test("snapshot without hits leaves the hit list out and everything else the same
   assert.ok(Array.isArray(full.hits) && full.hits.length > 0);
   assert.equal(lean.hits, null);
   assert.deepEqual({ ...lean, hits: full.hits }, full);
+});
+
+test("a run that runs out of health reports the fail once, then judges nothing more and never ends", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0 });
+  const events = tickAll(run, 0, 13000);
+  assert.equal(events.filter((event) => event.kind === "fail").length, 1);
+  assert.equal(events.some((event) => event.kind === "end"), false);
+  const snap = run.snapshot(13000);
+  assert.equal(snap.failed, true);
+  assert.equal(snap.health, 0);
+  assert.equal(snap.counts.miss, 7); // the seventh miss takes the last of the bar (0.5 - 7 x 0.08)
+  assert.ok(snap.failedAt > 2000);
+  assert.equal(run.press(0, 2000), null);
+  assert.deepEqual(run.tick(14000), []);
+});
+
+test("a fail by a press is reported by the next tick", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0, modifiers: ["ol"] });
+  tickAll(run, 0, 1900);
+  run.press(0, 1500); // too early for any note: not a judgement
+  assert.equal(run.snapshot(1900).failed, false);
+  const events = tickAll(run, 1900, 2300);
+  assert.equal(events.filter((event) => event.kind === "fail").length, 1); // One Life: the first miss is the end
+  assert.equal(run.snapshot(2300).failed, true);
+});
+
+test("No Fail (and the implicit noFail of autoplay-like runs) never fails and never ends early", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0, noFail: true });
+  const events = tickAll(run, 0, 13000);
+  assert.equal(events.some((event) => event.kind === "fail"), false);
+  assert.equal(events.filter((event) => event.kind === "end").length, 1);
+  assert.equal(run.snapshot(13000).failed, false);
+});
+
+test("Mirror flips the lanes the run asks for", () => {
+  const plain = createRun({ chart: { notes: [{ t: 2000, lane: 0 }, { t: 3000, lane: 1 }] }, startSongMs: 0 });
+  const mirror = createRun({ chart: { notes: [{ t: 2000, lane: 0 }, { t: 3000, lane: 1 }] }, startSongMs: 0, modifiers: ["mr"] });
+  assert.equal(plain.press(3, 2000)?.judgement ?? null, null);
+  assert.equal(mirror.press(3, 2000).judgement, "perfect");
+  assert.equal(mirror.press(2, 3000).judgement, "perfect");
+});
+
+test("Strict Timing narrows the windows to three quarters", () => {
+  const notes = [{ t: 2000, lane: 0 }];
+  assert.equal(createRun({ chart: { notes }, startSongMs: 0 }).press(0, 2100).judgement, "good");
+  const strict = createRun({ chart: { notes }, startSongMs: 0, modifiers: ["st"] }).press(0, 2100);
+  assert.notEqual(strict?.judgement ?? null, "good");
+});
+
+test("the snapshot carries the life fields and the log carries the modifiers", () => {
+  const run = createRun({ chart: chart(), startSongMs: 0, modifiers: ["fl"] });
+  const snap = run.snapshot(0);
+  assert.deepEqual([snap.failed, snap.failedAt, snap.depleted, snap.lives, snap.health], [false, null, false, 4, 0.5]);
+  assert.deepEqual(snap.modifiers, ["fl"]);
+  assert.equal(typeof snap.modMult, "number");
+  assert.deepEqual(run.log().modifiers, ["fl"]);
 });

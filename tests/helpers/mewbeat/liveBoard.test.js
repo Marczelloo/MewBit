@@ -70,7 +70,7 @@ describe("mewbeat live board", () => {
       type: "mewbeat_live_board",
       session: LIVE,
       entries: [{
-        userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal", score: 250, combo: 4, accuracy: 88.5, vibe: null, fever: false, ended: true,
+        userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal", score: 250, combo: 4, accuracy: 88.5, vibe: null, fever: false, failed: false, modifiers: [], ended: true,
       }],
     });
   });
@@ -79,6 +79,16 @@ describe("mewbeat live board", () => {
     ctx.post("ann", { vibe: 0.75, fever: true });
     const [entry] = ctx.pushes[0].payload.entries;
     assert.deepStrictEqual([entry.vibe, entry.fever], [0.75, true]);
+  });
+
+  it("passes on the player's modifiers, well-formed ids only", () => {
+    ctx.post("ann", { modifiers: ["nf", "gn", "nf", "NoFail", 7] });
+    assert.deepStrictEqual(ctx.pushes[0].payload.entries[0].modifiers, ["nf", "gn"]);
+  });
+
+  it("passes on that the player lost the run", () => {
+    ctx.post("ann", { failed: true });
+    assert.strictEqual(ctx.pushes[0].payload.entries[0].failed, true);
   });
 
   it("takes an update without vibe and FEVER, as an older client sends it", () => {

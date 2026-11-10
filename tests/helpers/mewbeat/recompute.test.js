@@ -24,9 +24,10 @@ function makeChart() {
 // What the client has to send, built the way the Activity can build it from run.js: every result that
 // press / release / tick return becomes one event with t = run.heardTime(songMs). A press that misses a hold's
 // head settles its tail as a second miss that the result does not carry, so it is added here.
+// The script misses on purpose, more than health survives, so both sides play it with noFail.
 async function playScripted(chart) {
   const { createRun } = await importClient("run.js");
-  const run = createRun({ chart, startSongMs: 0 });
+  const run = createRun({ chart, startSongMs: 0, noFail: true });
   const events = [];
   const fevers = [];
 
@@ -85,7 +86,7 @@ describe("recomputeRun", () => {
     assert.ok(snapshot.counts.miss > 0 && snapshot.counts.good > 0 && snapshot.counts.great > 0);
     assert.strictEqual(events.length, judgeablePartsOf(chart));
 
-    const result = await recomputeRun({ chart, events, fevers });
+    const result = await recomputeRun({ chart, events, fevers, noFail: true });
     assert.strictEqual(result.score, snapshot.score);
     assert.strictEqual(result.accuracy, snapshot.accuracy);
     assert.strictEqual(result.grade, snapshot.grade);
@@ -94,7 +95,7 @@ describe("recomputeRun", () => {
     assert.strictEqual(result.judged, snapshot.judged);
     assert.strictEqual(result.fevers, snapshot.fevers);
 
-    const withoutFever = await recomputeRun({ chart, events, fevers: [] });
+    const withoutFever = await recomputeRun({ chart, events, fevers: [], noFail: true });
     assert.ok(withoutFever.score < snapshot.score, "the fever starts are what the bonus score rests on");
   });
 
@@ -108,7 +109,7 @@ describe("recomputeRun", () => {
     assert.deepStrictEqual(withoutD(log.events), withoutD(events));
     assert.deepStrictEqual(log.fevers, fevers);
 
-    const result = await recomputeRun({ chart, events: log.events, fevers: log.fevers });
+    const result = await recomputeRun({ chart, events: log.events, fevers: log.fevers, noFail: true });
     assert.strictEqual(result.score, snapshot.score);
     assert.strictEqual(result.accuracy, snapshot.accuracy);
     assert.strictEqual(result.grade, snapshot.grade);
@@ -120,8 +121,8 @@ describe("recomputeRun", () => {
   it("ignores a fever start the replayed state does not allow", async () => {
     const chart = makeChart();
     const { events } = await playScripted(chart);
-    const result = await recomputeRun({ chart, events, fevers: [0, 100] });
-    const plain = await recomputeRun({ chart, events, fevers: [] });
+    const result = await recomputeRun({ chart, events, fevers: [0, 100], noFail: true });
+    const plain = await recomputeRun({ chart, events, fevers: [], noFail: true });
     assert.strictEqual(result.fevers, 0);
     assert.strictEqual(result.score, plain.score);
   });
@@ -136,6 +137,63 @@ describe("recomputeRun", () => {
     const cheated = await recomputeRun({ chart, events: moved, fevers: [feverAt] });
     // At most the note or two the timing slack lets slip into the window's edges.
     assert.ok(cheated.score - score <= score * 0.01, `${cheated.score} vs ${score}`);
+  });
+
+  describe("health, lives and modifiers", () => {
+    const chart = { notes: Array.from({ length: 40 }, (_, i) => ({ t: 1000 + i * 500, lane: i % 4 })) };
+    const eventsOf = (judgements) => judgements.map((j, n) => ({ n, part: "head", j, t: chart.notes[n].t }));
+    const miss7 = Array(7).fill("miss"); // 0.5 health is gone after seven head misses
+
+    it("stops a run that lost all its health and ignores what came after", async () => {
+      const events = eventsOf([...miss7, ...Array(10).fill("perfect")]);
+      const result = await recomputeRun({ chart, events });
+      assert.strictEqual(result.failed, true);
+      assert.strictEqual(result.failedAt, chart.notes[6].t);
+      assert.strictEqual(result.judged, 7);
+      assert.strictEqual(result.score, 0);
+      assert.deepStrictEqual(result.counts, { perfect: 0, great: 0, good: 0, miss: 7 });
+      assert.deepStrictEqual(result.modifiers, []);
+    });
+
+    it("does not fail a run that keeps its health", async () => {
+      const result = await recomputeRun({ chart, events: eventsOf([...Array(6).fill("miss"), ...Array(10).fill("perfect")]) });
+      assert.strictEqual(result.failed, false);
+      assert.strictEqual(result.failedAt, null);
+      assert.strictEqual(result.judged, 16);
+    });
+
+    it("fails One Life on the first miss and Four Lives on the fourth", async () => {
+      const events = eventsOf(["perfect", "perfect", "miss", "perfect", "miss", "miss", "perfect", "miss", "perfect"]);
+      const oneLife = await recomputeRun({ chart, events, modifiers: ["ol"] });
+      assert.strictEqual(oneLife.failed, true);
+      assert.strictEqual(oneLife.judged, 3);
+      const fourLives = await recomputeRun({ chart, events, modifiers: ["fl"] });
+      assert.strictEqual(fourLives.failed, true);
+      assert.strictEqual(fourLives.judged, 8);
+      assert.deepStrictEqual(fourLives.modifiers, ["fl"]);
+    });
+
+    it("never fails No Fail, but reports that the health ran out, and a noFail run neither", async () => {
+      const events = eventsOf([...miss7, ...Array(10).fill("perfect")]);
+      const noFailMod = await recomputeRun({ chart, events, modifiers: ["nf"] });
+      assert.strictEqual(noFailMod.failed, false);
+      assert.strictEqual(noFailMod.depleted, true);
+      assert.strictEqual(noFailMod.judged, 17);
+      const plain = await recomputeRun({ chart, events, noFail: true });
+      assert.strictEqual(plain.failed, false);
+      assert.strictEqual(plain.depleted, false);
+      assert.ok(plain.score > noFailMod.score, "No Fail pays half after the health is gone");
+    });
+
+    it("scales the score by the modifiers", async () => {
+      const events = eventsOf(["perfect"]);
+      assert.strictEqual((await recomputeRun({ chart, events, modifiers: ["gn"] })).score, 348);
+      assert.strictEqual((await recomputeRun({ chart, events })).score, 300);
+    });
+
+    it("refuses modifiers that are not a list", async () => {
+      await assert.rejects(recomputeRun({ chart, events: eventsOf(["perfect"]), modifiers: "nf" }), { code: "bad_event" });
+    });
   });
 
   it("rejects more events than the chart has judgements", async () => {

@@ -15,7 +15,7 @@ test.before(async () => {
 
 // A fake AudioContext driven by a manual perf clock: currentTime advances with perf time, no output latency
 // unless asked for, and getOutputTimestamp pairs the context time with the matching perf time.
-function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio, aligner } = {}) {
+function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio, fetchClip, aligner, decode } = {}) {
   const env = { perf: 1000, sources: [], gains: [], resumeCalls: 0, fetches: [] };
   const ctx = {
     state,
@@ -53,19 +53,28 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
         buffer: null,
         started: null,
         stopped: false,
+        stoppedAt: null,
+        playbackRate: {
+          value: 1,
+          ramps: [],
+          cancelScheduledValues() {},
+          setValueAtTime(value, at) { this.ramps.push({ value, at }); },
+          linearRampToValueAtTime(value, at) { this.ramps.push({ value, at }); },
+        },
         connect() {},
         disconnect() {},
         start(when, offset, length) {
           node.started = { when, offset, length };
         },
-        stop() {
+        stop(at) {
           node.stopped = true;
+          node.stoppedAt = at ?? null;
         },
       };
       env.sources.push(node);
       return node;
     },
-    decodeAudioData: async () => ({
+    decodeAudioData: async (data) => (decode ? decode(data) : {
       duration: durationSec,
       sampleRate: 100,
       length: durationSec * 100,
@@ -86,6 +95,7 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
       env.fetches.push(key);
       return new ArrayBuffer(8);
     }),
+    fetchClip,
     createContext: () => ctx,
     now: () => env.perf,
     aligner,
@@ -137,6 +147,88 @@ test("pause holds the position and resume continues from it", async () => {
   assert.ok(Math.abs(audio.songTimeAt(env.perf) - 3900) < 1e-6);
   env.perf += 1000;
   assert.ok(Math.abs(audio.songTimeAt(env.perf) - 4900) < 1e-6);
+});
+
+test("a faster song plays with a higher rate and song time runs at that rate", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  audio.setRate(1.5);
+  await audio.play(30_000);
+  const node = env.sources.at(-1);
+  assert.equal(node.playbackRate.value, 1.5);
+  assert.equal(node.started.offset, 30, "the buffer offset stays in song seconds");
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - (30_000 - 75)) < 1e-6, "the 50 ms lead is 75 ms of song");
+  env.perf += 2000;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - (30_000 - 75 + 3000)) < 1e-6);
+});
+
+test("a rate leaves the normal start alone, and the silence before the song is shorter in real time", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  await audio.play(0);
+  assert.equal(env.sources.at(-1).playbackRate.value, 1, "no rate set for 1x");
+  audio.setRate(1.2);
+  await audio.play(-2400);
+  const node = env.sources.at(-1);
+  assert.equal(node.started.offset, 0);
+  assert.ok(Math.abs(node.started.when - (0.05 + 2)) < 1e-6, "2400 ms of song is 2 s at 1.2x");
+  env.perf += 2050;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf)) < 1e-6);
+});
+
+test("pause and resume keep the song position at a rate; a rate set meanwhile applies to the next start only", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  audio.setRate(0.85);
+  await audio.play(10_000);
+  env.perf += 1000;
+  const paused = audio.pause();
+  assert.ok(Math.abs(paused - (10_000 - 50 * 0.85 + 850)) < 1e-6);
+  audio.setRate(1);
+  await audio.resume();
+  assert.equal(env.sources.at(-1).playbackRate.value, 1);
+  env.perf += 1000;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - (paused - 50 + 1000)) < 1e-6);
+  assert.equal(audio.rate(), 1);
+  audio.setRate(Number.NaN);
+  assert.equal(audio.rate(), 1);
+});
+
+test("a lost run's music slows to a stop and the clock follows it down and then holds", async () => {
+  const { env, audio } = harness();
+  await audio.load("k1");
+  await audio.play(0);
+  env.perf += 1050; // song time 1000
+  let ended = 0;
+  audio.onEnded(() => { ended += 1; });
+  audio.slowToStop(1);
+  const node = env.sources.at(-1);
+  assert.deepEqual(node.playbackRate.ramps.map((r) => r.value), [1, 0]);
+  assert.ok(Math.abs(node.stoppedAt - (env.perf - 1000 + 1000) / 1000) < 1e-6, "stops when the ramp ends");
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - 1000) < 1e-6);
+  env.perf += 500; // area under the ramp: 0.5 - 0.125 s of song
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - 1375) < 1e-6);
+  env.perf += 5000;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - 1500) < 1e-6, "it stops half a second further on");
+  node.onended?.();
+  assert.equal(ended, 0, "the run is over, nothing hears an end");
+  // A new play brings the clock back to the normal rate.
+  await audio.play(0);
+  env.perf += 1000;
+  assert.ok(Math.abs(audio.songTimeAt(env.perf) - 950) < 1e-6);
+});
+
+test("slowToStop does nothing when nothing plays, and a pause during it holds the position", async () => {
+  const { env, audio } = harness();
+  audio.slowToStop(1);
+  await audio.load("k1");
+  audio.slowToStop(1);
+  assert.equal(env.sources.length, 0);
+  await audio.play(0);
+  env.perf += 1050;
+  audio.slowToStop(1);
+  env.perf += 500;
+  assert.ok(Math.abs(audio.pause() - 1375) < 1e-6);
 });
 
 test("play(fromMs) starts at that offset", async () => {
@@ -313,7 +405,7 @@ test("close() and a newer load abort the download in flight", async () => {
 
 const turn = () => new Promise((resolve) => { setImmediate(resolve); });
 
-test("a preview plays to the song's end beside the game and leaves its song and clock alone", async () => {
+test("a preview plays a 30 s window from the highlight beside the game and leaves its song and clock alone", async () => {
   const { env, audio } = harness();
   assert.equal(await audio.preview("k1", { fromMs: 50_000 }), true);
   assert.equal(audio.loadedKey(), null);
@@ -322,9 +414,9 @@ test("a preview plays to the song's end beside the game and leaves its song and 
   const node = env.sources.at(-1);
   // It runs on from the highlight, and it fades in from silence.
   assert.equal(node.started.offset, 50);
-  assert.equal(node.started.length, 150);
+  assert.equal(node.started.length, 30);
   assert.equal(env.gains.at(-1).ramps[0].value, 0);
-  // At the end of the song it stops rather than going round again.
+  // At the end of the window it stops rather than going round again.
   const played = env.sources.length;
   node.onended();
   assert.equal(env.sources.length, played);
@@ -336,40 +428,134 @@ test("a preview with no known highlight starts 40% into the song", async () => {
   assert.equal(env.sources.at(-1).started.offset, 80);
 });
 
-test("a newer preview replaces an older one still downloading, and only one download runs at a time", async () => {
+test("a newer pick aborts the older preview's download and starts its own at once", async () => {
   const releases = {};
+  const signals = {};
   const asked = [];
   const { env, audio } = harness({
-    fetchAudio: (key) => {
+    fetchAudio: (key, signal) => {
       asked.push(key);
+      signals[key] = signal;
       return new Promise((resolve) => { releases[key] = () => resolve(new ArrayBuffer(8)); });
     },
   });
   const first = audio.preview("a");
+  await turn();
   const second = audio.preview("b");
   await turn();
-  assert.deepEqual(asked, ["a"]);
+  assert.deepEqual(asked, ["a", "b"], "b does not wait for a");
+  assert.equal(signals.a.aborted, true);
+  assert.equal(signals.b.aborted, false);
   releases.a();
   assert.equal(await first, false);
-  await turn();
-  assert.deepEqual(asked, ["a", "b"]);
   releases.b();
   assert.equal(await second, true);
   assert.equal(env.sources.length, 1);
 });
 
-test("a stopped preview never starts, and a failed one resolves false", async () => {
+test("asking for the same song again joins the download in flight", async () => {
+  let calls = 0;
   let release;
-  const held = harness({ fetchAudio: () => new Promise((resolve) => { release = () => resolve(new ArrayBuffer(8)); }) });
+  const { audio } = harness({
+    fetchAudio: () => { calls += 1; return new Promise((resolve) => { release = () => resolve(new ArrayBuffer(8)); }); },
+  });
+  const first = audio.preview("a");
+  await turn();
+  const second = audio.preview("a");
+  await turn();
+  release();
+  assert.equal(await first, false, "the older call is superseded");
+  assert.equal(await second, true);
+  assert.equal(calls, 1);
+});
+
+test("a stopped preview never starts and aborts its download, and a failed one reports why", async () => {
+  let release;
+  let signal;
+  const held = harness({ fetchAudio: (key, s) => { signal = s; return new Promise((resolve) => { release = () => resolve(new ArrayBuffer(8)); }); } });
   const pending = held.audio.preview("a");
   await turn();
   held.audio.stopClip();
+  assert.equal(signal.aborted, true);
   release();
   assert.equal(await pending, false);
   assert.equal(held.env.sources.length, 0);
 
   const failing = harness({ fetchAudio: async () => { throw new Error("nope"); } });
-  assert.equal(await failing.audio.preview("a"), false);
+  assert.deepEqual(await failing.audio.preview("a"), { error: "nope" });
+  assert.deepEqual(failing.audio.previewError(), { key: "a", message: "nope" });
+  assert.equal(failing.env.sources.length, 0);
+});
+
+test("with fetchClip a preview downloads the cut and plays from the highlight inside it", async () => {
+  const asked = [];
+  const { env, audio } = harness({
+    durationSec: 35,
+    fetchAudio: async () => { throw new Error("the whole song is not wanted"); },
+    fetchClip: async (key, fromMs) => {
+      asked.push([key, fromMs]);
+      // The server cut starts 2.5 s before the highlight.
+      return { data: new ArrayBuffer(8), clipped: true, clipStartMs: 97_500, fromMs: 100_000 };
+    },
+  });
+  assert.equal(await audio.preview("k1", { fromMs: 100_000 }), true);
+  assert.deepEqual(asked, [["k1", 100_000]]);
+  const node = env.sources.at(-1);
+  assert.equal(node.started.offset, 2.5);
+  assert.equal(node.started.length, 30);
+});
+
+test("picking the previewed song again plays at once from the decoded cut", async () => {
+  let fetches = 0;
+  const { env, audio } = harness({
+    durationSec: 35,
+    fetchClip: async () => { fetches += 1; return { data: new ArrayBuffer(8), clipped: true, clipStartMs: 97_500, fromMs: 100_000 }; },
+  });
+  await audio.preview("k1", { fromMs: 100_000 });
+  await audio.preview("k2", { fromMs: 10_000 });
+  await audio.preview("k1", { fromMs: 100_000 });
+  assert.equal(fetches, 3, "only the last one is kept");
+  await audio.preview("k1", { fromMs: 100_000 });
+  assert.equal(fetches, 3, "re-picking the last one fetches nothing");
+  assert.equal(env.sources.at(-1).started.offset, 2.5);
+  // Another stretch of the same song is another cut.
+  await audio.preview("k1", { fromMs: 40_000 });
+  assert.equal(fetches, 4);
+});
+
+test("a server that answers with the whole song is used whole, and kept for Play", async () => {
+  const { env, audio } = harness({
+    fetchClip: async () => ({ data: new ArrayBuffer(8), clipped: false }),
+  });
+  assert.equal(await audio.preview("k1", { fromMs: 50_000 }), true);
+  assert.equal(env.sources.at(-1).started.offset, 50);
+  await audio.load("k1");
+  assert.deepEqual(env.fetches, [], "Play needs no second download");
+});
+
+test("a cut that will not decode falls back to the whole song", async () => {
+  const calls = [];
+  const { env, audio } = harness({
+    durationSec: 200,
+    fetchAudio: async (key) => { calls.push("whole"); return new ArrayBuffer(16); },
+    fetchClip: async () => { calls.push("clip"); return { data: new ArrayBuffer(8), clipped: true, clipStartMs: 0, fromMs: 60_000 }; },
+    decode: async (data) => {
+      if (data.byteLength === 8) throw new Error("Unable to decode audio data");
+      return { duration: 200, sampleRate: 100, length: 20_000, numberOfChannels: 2, getChannelData: () => new Float32Array(1) };
+    },
+  });
+  assert.equal(await audio.preview("k1", { fromMs: 60_000 }), true);
+  assert.deepEqual(calls, ["clip", "whole"]);
+  assert.equal(env.sources.at(-1).started.offset, 60);
+});
+
+test("a preview of the song the game has loaded plays from its buffer, without a download", async () => {
+  const { env, audio } = harness({
+    fetchClip: async () => { throw new Error("no download expected"); },
+  });
+  await audio.load("k1");
+  assert.equal(await audio.preview("k1", { fromMs: 20_000 }), true);
+  assert.equal(env.sources.at(-1).started.offset, 20);
 });
 
 test("a previewed song isn't fetched again by Play or a second preview", async () => {

@@ -1,14 +1,18 @@
 import { EARLY_MISS_MS, HOLD_WINDOW_SCALE, WINDOWS, judgementFor } from "./scoring.js";
 
 const LANES = 4;
-const TAIL_GOOD_MS = WINDOWS.good * HOLD_WINDOW_SCALE;
 const NO_RESULTS = Object.freeze([]);
 
 // Notes are sorted by t within each lane. `outcome[i]` is undefined while
 // pending, otherwise a judgement or "skipped". A hold (note with `len`) has a
 // second outcome, `tail[i]`, judged on release. Every lane keeps forward-only
 // cursors for press, sweep and skipBefore, so a frame never rescans the chart.
-export function createJudge(notes, { fromMs = 0 } = {}) {
+// windowScale narrows (or widens) every window at once: the early miss band, the tap windows and the hold tails.
+export function createJudge(notes, { fromMs = 0, windowScale = 1 } = {}) {
+  const earlyMissMs = EARLY_MISS_MS * windowScale;
+  const goodMs = WINDOWS.good * windowScale;
+  const tailScale = HOLD_WINDOW_SCALE * windowScale;
+  const tailGoodMs = WINDOWS.good * tailScale;
   const outcome = new Array(notes.length);
   const tail = new Array(notes.length);
   const endOf = notes.map((note) => note.t + (note.len > 0 ? note.len : 0));
@@ -32,10 +36,10 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
       const index = indexes[i];
       if (outcome[index] !== undefined) continue;
       const errorMs = songMs - notes[index].t;
-      if (errorMs < -EARLY_MISS_MS) return null;
-      if (errorMs > WINDOWS.good) continue;
+      if (errorMs < -earlyMissMs) return null;
+      if (errorMs > goodMs) continue;
       // Inside the early miss band the note is taken as a miss; a hold loses its tail with it.
-      const judgement = judgementFor(Math.abs(errorMs)) ?? "miss";
+      const judgement = judgementFor(Math.abs(errorMs), windowScale) ?? "miss";
       outcome[index] = judgement;
       pending -= 1;
       if (!isHold[index]) return { index, judgement, errorMs, part: "head" };
@@ -62,12 +66,12 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
     const index = list[0];
     const end = endOf[index];
     list.shift();
-    if (songMs < end - TAIL_GOOD_MS) {
+    if (songMs < end - tailGoodMs) {
       settleTail(index, "miss");
       return [{ index, judgement: "miss", errorMs: null, part: "tail" }];
     }
     const errorMs = songMs - end;
-    const judgement = judgementFor(Math.abs(errorMs), HOLD_WINDOW_SCALE) ?? "good";
+    const judgement = judgementFor(Math.abs(errorMs), tailScale) ?? "good";
     settleTail(index, judgement);
     return [{ index, judgement, errorMs, part: "tail" }];
   }
@@ -103,7 +107,7 @@ export function createJudge(notes, { fromMs = 0 } = {}) {
   // Most frames judge nothing: those allocate nothing and answer with the shared empty list.
   const swept = [];
   let sweepNow = 0;
-  const sweepExpired = (t) => t + WINDOWS.good < sweepNow;
+  const sweepExpired = (t) => t + goodMs < sweepNow;
 
   function sweep(songMs) {
     sweepNow = songMs;

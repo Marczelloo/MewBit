@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Lobby, { LeaveConfirm } from "./Lobby.jsx";
 import Results from "./Results.jsx";
 import { createMockRequest, MOCK_USER_ID } from "./mockRequests.js";
-import { addNextSong, applyReady, createMockFinishedRoom, createMockRoom, createMockSummary, moveInQueue, removeFromQueue, restartClock, ROUND_CLOCK_MS } from "./mockRoom.js";
+import { addNextSong, applyReady, createMockFinishedRoom, createMockRoom, createMockSummary, mockTrack, moveInQueue, removeFromQueue, restartClock, ROUND_CLOCK_MS } from "./mockRoom.js";
+import Stage from "./Stage.jsx";
 import { standingsOf, upNextOf } from "./room.js";
 
 // The room lobby (?mock=1&lobby=1) and the end-of-run Results with room standings (&results=1) on fake data, in the
@@ -24,7 +25,8 @@ const KEYS = ["KeyD", "KeyF", "KeyJ", "KeyK"];
 const MODES = [{ id: "live", label: "Live" }, { id: "solo", label: "Solo" }, { id: "room", label: "Room" }];
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function Frame({ children, onLeave }) {
+// stage: a track whose painted scene sits behind the screen, as the game's stage does (results show it through).
+function Frame({ children, onLeave, stage = null }) {
   return (
     <div className="mb-game mb-fx-full" role="dialog" aria-modal="true" aria-label="mewbeat">
       <header className="mb-header">
@@ -46,6 +48,7 @@ function Frame({ children, onLeave }) {
         </div>
       </header>
       <div className="mb-screen">{children}</div>
+      {stage ? <div className="mb-stage"><Stage track={stage} vibe={0} /></div> : null}
     </div>
   );
 }
@@ -57,6 +60,8 @@ function MockLobbyScreen({ options }) {
     receivedAt: performance.now(),
   }));
   const [leaveOpen, setLeaveOpen] = useState(false);
+  // The picker's choice lives here; it also goes to the mock room so the player's own badges show, like the real send.
+  const [modifiers, setModifiers] = useState([]);
   const roomRef = useRef(snap.room);
 
   const store = useMemo(() => {
@@ -112,6 +117,11 @@ function MockLobbyScreen({ options }) {
         request={request}
         board={null}
         standings={standingsOf(snap.room, MOCK_USER_ID)}
+        modifiers={modifiers}
+        onModifiers={(ids) => {
+          setModifiers(ids);
+          store.ready({ modifiers: ids });
+        }}
         effects="full"
         showMewbit
         keys={KEYS}
@@ -128,10 +138,11 @@ function MockLobbyScreen({ options }) {
 function MockResultsScreen({ options }) {
   const [request] = useState(createMockRequest);
   const room = useMemo(() => createMockFinishedRoom(options), [options]);
-  const summary = useMemo(createMockSummary, []);
+  const summary = useMemo(() => createMockSummary({ failed: options.failed, nf: options.nf }), [options.failed, options.nf]);
   const standings = useMemo(() => standingsOf(room, MOCK_USER_ID), [room]);
+  const stage = useMemo(() => mockTrack(summary.title, MOCK_USER_ID), [summary.title]);
   return (
-    <Frame onLeave={() => {}}>
+    <Frame onLeave={() => {}} stage={stage}>
       <Results
         summary={summary}
         mode="room"
@@ -141,6 +152,7 @@ function MockResultsScreen({ options }) {
         upNext={upNextOf(room)}
         request={request}
         userId={MOCK_USER_ID}
+        onRestart={() => {}}
         onNext={room.hostId === MOCK_USER_ID ? () => {} : undefined}
         nextLabel="Start next round"
         savedOffset={12}
@@ -157,6 +169,9 @@ export default function MockLobby({ search }) {
   const hostId = params.get("host") === "kuba" ? "kuba" : MOCK_USER_ID;
   const clockMs = Number.isFinite(clock) && clock > 0 ? clock * 1000 : ROUND_CLOCK_MS;
   const last = params.has("last");
-  const options = useMemo(() => ({ hostId, clockMs, last }), [hostId, clockMs, last]);
+  // &failed=1: the results of a lost run; &nf=1: a No Fail run whose health ran out.
+  const failed = params.has("failed");
+  const nf = params.has("nf");
+  const options = useMemo(() => ({ hostId, clockMs, last, failed, nf }), [hostId, clockMs, last, failed, nf]);
   return params.has("results") ? <MockResultsScreen options={options} /> : <MockLobbyScreen options={options} />;
 }

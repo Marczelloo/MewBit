@@ -68,7 +68,9 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
     }
   }
 
-  async function load(audioKey, track, node) {
+  // `state` is the pending entry: a job still waiting in the queue is dropped when every waiter has left (state.cancelled),
+  // one that is already rendering runs on and its file stays for the next request.
+  async function load(audioKey, track, node, state) {
     const file = fileOf(audioKey);
     try {
       const now = new Date();
@@ -79,6 +81,7 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
     }
 
     const job = queue.then(async () => {
+      if (state.cancelled) throw Object.assign(new Error("The audio request was cancelled."), { cancelled: true });
       // A job queued behind another one for the same key may find it written.
       try {
         await fsPromises.access(file);
@@ -86,6 +89,7 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
       } catch {
         // still missing
       }
+      state.started = true;
       await fetchAndStore(audioKey, track, node, file);
     });
     queue = job.catch(() => {});
@@ -93,12 +97,49 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
     return file;
   }
 
-  function get(audioKey, track, node) {
-    const pending = pendingByKey.get(audioKey);
-    if (pending) return pending;
-    const request = load(audioKey, track, node).finally(() => pendingByKey.delete(audioKey));
-    pendingByKey.set(audioKey, request);
-    return request;
+  // get(audioKey, track, node, { signal }): the file of the song's rendition, rendering it when it is missing. Callers
+  // share one job per key. A caller whose signal aborts stops waiting (the promise rejects with the signal's reason); when
+  // none is left waiting and the job has not started, the job is cancelled. A caller without a signal never leaves
+  // (warm-ups), so its job always runs.
+  function get(audioKey, track, node, { signal } = {}) {
+    let entry = pendingByKey.get(audioKey);
+    if (entry?.cancelled) {
+      pendingByKey.delete(audioKey);
+      entry = null;
+    }
+    if (!entry) {
+      entry = { waiters: 0, started: false, cancelled: false, promise: null };
+      const created = entry;
+      created.promise = load(audioKey, track, node, created).finally(() => {
+        if (pendingByKey.get(audioKey) === created) pendingByKey.delete(audioKey);
+      });
+      created.promise.catch(() => {}); // a cancelled job has no one left to hear its rejection
+      pendingByKey.set(audioKey, created);
+    }
+    const joined = entry;
+    joined.waiters += 1;
+    if (!signal) return joined.promise;
+
+    return new Promise((resolve, reject) => {
+      let left = false;
+      const leave = () => {
+        if (left) return;
+        left = true;
+        signal.removeEventListener("abort", onAbort);
+        joined.waiters -= 1;
+        if (joined.waiters <= 0 && !joined.started) joined.cancelled = true;
+      };
+      const onAbort = () => {
+        leave();
+        reject(signal.reason ?? Object.assign(new Error("The audio request was cancelled."), { cancelled: true }));
+      };
+      if (signal.aborted) return onAbort();
+      signal.addEventListener("abort", onAbort, { once: true });
+      joined.promise.then(
+        (file) => { if (!left) { left = true; signal.removeEventListener("abort", onAbort); resolve(file); } },
+        (error) => { if (!left) { left = true; signal.removeEventListener("abort", onAbort); reject(error); } },
+      );
+    });
   }
 
   return { get };

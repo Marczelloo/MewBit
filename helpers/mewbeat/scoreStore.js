@@ -7,6 +7,13 @@ const DEFAULT_FILE = path.join(__dirname, "..", "data", "mewbeat", "scores.json"
 
 const VERSION_SUFFIX = /^(.*)\|(\d+)$/;
 const CHART_KEY = /^(.*)\|([^|]*)\|([^|]*)$/; // audioKey|difficulty|chartVersion
+const RULES_SUFFIX = /^(.*)\|r(\d+)$/; // |r<scoring rules version> after the chart version; keys from before it have none
+
+// A key apart: what is left of the rules suffix, and the rules version (1 for a key without one).
+function splitRules(chartKey) {
+  const match = RULES_SUFFIX.exec(chartKey);
+  return match ? { base: match[1], rules: Number(match[2]) } : { base: chartKey, rules: 1 };
+}
 
 const TABLE = TABLES.scores;
 
@@ -31,7 +38,7 @@ function listOf(value) {
 // update leaves the columns it does not name alone. The guilds go in as a JSON string: a JS array would reach
 // Postgres as an array literal, which jsonb refuses.
 function scoreRowOf(chartKey, entry) {
-  const parts = CHART_KEY.exec(chartKey);
+  const parts = CHART_KEY.exec(splitRules(chartKey).base);
   return {
     id: `${chartKey}|${entry.userId}`,
     chart_key: chartKey,
@@ -50,6 +57,7 @@ function scoreRowOf(chartKey, entry) {
     artist: orNull(entry.artist),
     artwork_url: orNull(entry.artworkUrl),
     guild_ids: JSON.stringify(entry.guildIds ?? []),
+    modifiers: JSON.stringify(entry.modifiers ?? []),
     at: whole(entry.at),
   };
 }
@@ -77,11 +85,12 @@ function scoreFromRow(row) {
       username: row.username ?? "Unknown",
       avatarUrl: row.avatar_url ?? null,
       guildIds: listOf(row.guild_ids),
+      modifiers: listOf(row.modifiers),
     },
   };
 }
 
-// Best score per user per chart (`audioKey|difficulty|chartVersion`), with the
+// Best score per user per chart (`audioKey|difficulty|chartVersion|r<rules>`), with the
 // guilds the user scored it in: the server board is the users who scored the
 // chart in that guild, the global board is everyone.
 //
@@ -97,14 +106,16 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
   const disk = remote ? null : createDebouncedJson({ file, debounceMs });
   const loaded = disk ? disk.load() : null;
   const charts = new Map(); // chartKey -> Map(userId -> entry)
-  const latest = new Map(); // `audioKey|difficulty` -> { version, chartKey }
+  const latest = new Map(); // `audioKey|difficulty|r<rules>` -> { version, chartKey }
 
   function indexChart(chartKey) {
-    const match = VERSION_SUFFIX.exec(chartKey);
+    const { base, rules } = splitRules(chartKey);
+    const match = VERSION_SUFFIX.exec(base);
     if (!match) return;
     const version = Number(match[2]);
-    const known = latest.get(match[1]);
-    if (!known || version > known.version) latest.set(match[1], { version, chartKey });
+    const slot = `${match[1]}|r${rules}`;
+    const known = latest.get(slot);
+    if (!known || version > known.version) latest.set(slot, { version, chartKey });
   }
 
   for (const [chartKey, users] of Object.entries(loaded?.charts ?? {})) {
@@ -143,6 +154,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
       accuracy: entry.accuracy,
       grade: entry.grade,
       maxCombo: entry.maxCombo,
+      modifiers: entry.modifiers ?? [],
       at: entry.at,
     };
   }
@@ -152,7 +164,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
       remote.defer("scores", "submit", [{ ...run, at: run.at ?? now() }]);
       return { newBest: false, best: null };
     }
-    const { chartKey, userId, guildId, profile, score, accuracy, grade, maxCombo, difficulty, track, completion, at = now() } = run;
+    const { chartKey, userId, guildId, profile, score, accuracy, grade, maxCombo, difficulty, track, completion, modifiers = [], at = now() } = run;
     let users = charts.get(chartKey);
     if (!users) {
       users = new Map();
@@ -169,7 +181,7 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     // The completion (the share of the chart judged, 0 to 1) sits there too, for the rating.
     const base = newBest
       ? {
-        score, accuracy, grade, maxCombo, difficulty, at, completion,
+        score, accuracy, grade, maxCombo, difficulty, at, completion, modifiers,
         title: track?.title ?? previous?.title,
         artist: track?.artist ?? previous?.artist,
         artworkUrl: track ? track.artworkUrl ?? null : previous?.artworkUrl,
@@ -210,10 +222,10 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     return entry ? publicEntry(entry) : null;
   }
 
-  // The chartKey with the highest chart version anyone has scored for this
-  // song and difficulty; null when there is none.
-  function latestChartKey(audioKey, difficulty) {
-    return latest.get(`${audioKey}|${difficulty}`)?.chartKey ?? null;
+  // The chartKey with the highest chart version anyone has scored for this song and difficulty under this
+  // scoring rules version (a key from before the rules version counts as 1); null when there is none.
+  function latestChartKey(audioKey, difficulty, rules = 1) {
+    return latest.get(`${audioKey}|${difficulty}|r${rules}`)?.chartKey ?? null;
   }
 
   // Visits every stored entry of every chart, guilds and track included. The ranking walks it.

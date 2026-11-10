@@ -46,7 +46,7 @@ describe("mewbeat score store", () => {
     const better = store.submit(run({ score: 1200, grade: "S", at: 300 }));
     assert.strictEqual(better.newBest, true);
     assert.deepStrictEqual(store.bestOf(KEY, "u1"), {
-      userId: "u1", username: "Ann", avatarUrl: "https://a/1.png", score: 1200, accuracy: 90, grade: "S", maxCombo: 20, at: 300,
+      userId: "u1", username: "Ann", avatarUrl: "https://a/1.png", score: 1200, accuracy: 90, grade: "S", maxCombo: 20, modifiers: [], at: 300,
     });
     assert.strictEqual(store.bestOf(KEY, "nobody"), null);
   });
@@ -99,6 +99,36 @@ describe("mewbeat score store", () => {
     assert.strictEqual(reopened.latestChartKey("s:a:1", "hard"), "s:a:1|hard|10");
     reopened.submit(run({ chartKey: "s:a:1|hard|11" }));
     assert.strictEqual(reopened.latestChartKey("s:a:1", "hard"), "s:a:1|hard|11");
+  });
+
+  it("keeps the modifiers of the best run and returns them in board rows, [] for an old row", async () => {
+    const store = open();
+    store.submit(run({ modifiers: ["gn", "nf"] }));
+    store.submit(run({ score: 400, at: 150, modifiers: [] })); // worse: the best keeps its modifiers
+    assert.deepStrictEqual(store.bestOf(KEY, "u1").modifiers, ["gn", "nf"]);
+    assert.deepStrictEqual(store.board({ chartKey: KEY, limit: 5 })[0].modifiers, ["gn", "nf"]);
+    store.submit(run({ userId: "u2", profile: { id: "u2", username: "Bo" } })); // no modifiers sent
+    assert.deepStrictEqual(store.bestOf(KEY, "u2").modifiers, []);
+    await store.flush();
+    assert.deepStrictEqual(open().bestOf(KEY, "u1").modifiers, ["gn", "nf"]);
+    // A row stored before modifiers existed has no field at all.
+    fs.writeFileSync(path.join(dir, "scores.json"), JSON.stringify({ charts: { [KEY]: { u9: { userId: "u9", username: "Old", score: 5, at: 1 } } } }));
+    assert.deepStrictEqual(open().board({ chartKey: KEY, limit: 5 })[0].modifiers, []);
+  });
+
+  it("indexes the newest chart version per scoring rules version, a key without a suffix being rules 1", () => {
+    const store = open();
+    store.submit(run({ chartKey: "s:a:1|hard|10" }));
+    store.submit(run({ chartKey: "s:a:1|hard|3|r2" }));
+    assert.strictEqual(store.latestChartKey("s:a:1", "hard"), "s:a:1|hard|10");
+    assert.strictEqual(store.latestChartKey("s:a:1", "hard", 1), "s:a:1|hard|10");
+    assert.strictEqual(store.latestChartKey("s:a:1", "hard", 2), "s:a:1|hard|3|r2");
+    store.submit(run({ chartKey: "s:a:1|hard|4|r2" }));
+    assert.strictEqual(store.latestChartKey("s:a:1", "hard", 2), "s:a:1|hard|4|r2");
+    assert.strictEqual(store.latestChartKey("s:a:1", "hard", 3), null);
+    // The two boards never mix.
+    assert.strictEqual(store.rankOf({ chartKey: "s:a:1|hard|4|r2", userId: "u1", guildId: null }), 1);
+    assert.deepStrictEqual(store.board({ chartKey: "s:a:1|hard|4", limit: 5 }), []);
   });
 
   it("survives a restart after flush", async () => {

@@ -40,9 +40,9 @@ describe("mewbeat rows of the AtlasHub tables", () => {
   describe("scores", () => {
     const track = { title: "Song", artist: "Band", artworkUrl: "https://a/1.png" };
     const runs = [
-      { chartKey: "youtube:abc:200000|hard|4", userId: "u1", guildId: "g1", profile: { username: "Ann", avatarUrl: "https://a/1.png" }, score: 1000, accuracy: 90.5, grade: "A", maxCombo: 20, difficulty: "hard", at: 100, completion: 0.97, track },
+      { chartKey: "youtube:abc:200000|hard|4", userId: "u1", guildId: "g1", profile: { username: "Ann", avatarUrl: "https://a/1.png" }, score: 1000, accuracy: 90.5, grade: "A", maxCombo: 20, difficulty: "hard", at: 100, completion: 0.97, modifiers: ["gn", "st"], track },
       { chartKey: "youtube:abc:200000|hard|4", userId: "u2", profile: { username: "Bo" }, score: 500, accuracy: 70, grade: "C", maxCombo: 9, difficulty: "hard", at: 200 },
-      { chartKey: "local:x|y|z:1|easy|31-holds", userId: "u1", guildId: "g2", score: 77, accuracy: 55.25, grade: "D", maxCombo: 3, difficulty: "easy", at: 300, completion: 1, track: { title: "Other", artist: "", artworkUrl: null } },
+      { chartKey: "local:x|y|z:1|easy|31-holds|r2", userId: "u1", guildId: "g2", score: 77, accuracy: 55.25, grade: "D", maxCombo: 3, difficulty: "easy", at: 300, completion: 1, track: { title: "Other", artist: "", artworkUrl: null } },
     ];
 
     for (const options of [{}, { bigintAsString: true }, { parseJsonb: false }]) {
@@ -92,7 +92,7 @@ describe("mewbeat rows of the AtlasHub tables", () => {
   describe("history", () => {
     const rounds = [
       { audioKey: "youtube:a", uri: "https://y/a", source: "youtube", title: "A", artist: "Band", artworkUrl: "https://a/a.png", durationMs: 200000, difficulty: "hard", score: 1234, accuracy: 91.25, grade: "S", ranked: true, mode: "live", guildId: "g1", chartVersion: 31, at: 1000 },
-      { audioKey: "youtube:a", uri: null, source: "", title: "A", artist: "", artworkUrl: null, durationMs: 0, difficulty: "easy", score: 0, accuracy: 0, grade: "F", ranked: false, mode: "solo", guildId: null, chartVersion: "31-holds", at: 2000 },
+      { audioKey: "youtube:a", uri: null, source: "", title: "A", artist: "", artworkUrl: null, durationMs: 0, difficulty: "easy", score: 0, accuracy: 0, grade: "F", ranked: false, mode: "solo", guildId: null, chartVersion: "31-holds", failed: true, modifiers: ["ol"], at: 2000 },
       { audioKey: "local:b", uri: null, source: "local", title: "B", artist: "", artworkUrl: null, durationMs: 90000, difficulty: "normal", score: 5, accuracy: 10, grade: "D", ranked: true, mode: "live", guildId: "g1", at: 3000 }, // from before chartVersion
     ];
 

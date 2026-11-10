@@ -46,6 +46,18 @@ function createFakeAtlasHub({ secretKey = "test-key", bigintAsString = false } =
     const parts = path.split("/").filter(Boolean); // v1 db ...
     if (parts[0] !== "v1" || parts[1] !== "db") return fail(404, "no such route");
 
+    if (method === "GET" && parts[2] === "tables") {
+      const data = [...tables.entries()].map(([name, table]) => ({ tableName: name, columns: [...table.columns.entries()].map(([column, type]) => ({ name: column, type })) }));
+      return json(200, { data });
+    }
+    if (method === "POST" && parts[2] === "schema" && parts[3] === "tables" && parts[5] === "columns") {
+      const table = tables.get(decodeURIComponent(parts[4]));
+      if (!table) return fail(404, `table ${parts[4]} does not exist`);
+      // Postgres has no ADD COLUMN IF NOT EXISTS behind this route: a second add fails (the gateway hides it as a 500).
+      if (table.columns.has(body.name)) return fail(500, "Internal server error");
+      table.columns.set(body.name, body.type);
+      return json(201, { data: { success: true } });
+    }
     if (method === "POST" && parts[2] === "schema" && parts[3] === "tables") {
       if (tables.has(body.name)) return body.ifNotExists ? json(200, { ok: true }) : fail(409, `relation "${body.name}" already exists`);
       const columns = new Map(body.columns.map((column) => [column.name, column.type]));

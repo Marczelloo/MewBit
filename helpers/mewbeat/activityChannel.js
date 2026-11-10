@@ -6,6 +6,7 @@ const { createLiveBoard } = require("./liveBoard");
 const { isPrivatePlace } = require("./places");
 const { createRanking } = require("./ranking");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
+const { RULES_VERSION, boardKeyOf, loadClientModifiers } = require("./rules");
 const { DIFFICULTIES: ROOM_DIFFICULTIES, MAX_PLAYERS, createRooms } = require("./rooms");
 const { deriveRunStats } = require("./runStats");
 const { createSoloTracks } = require("./soloTracks");
@@ -14,6 +15,12 @@ const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const MAX_ID_LENGTH = 40;
 const MAX_URI_LENGTH = 1000;
 const MAX_SOURCE_LENGTH = 40;
+// A resolved search result is reused this long (and at most this many are kept).
+const RESOLVE_CACHE_MS = 10 * 60_000;
+// "Chart this map": songs one player may have queued at once, and how long the answer for a map that failed is kept.
+const CHART_MAP_PER_PLAYER = 3;
+const CHART_MAP_MEMORY_MS = 10 * 60_000;
+const RESOLVE_CACHE_MAX = 200;
 const MODES = ["live", "solo", "room"];
 const MAX_EVENTS = 20000;
 const MAX_FEVERS = 200;
@@ -140,17 +147,52 @@ function createMewbeatChannel({
     };
   }
 
+  // Resolving a search result asks Lavalink, which can take seconds. The answer is kept for a while and shared by
+  // concurrent callers, so picking the same result again (or the preview and then Play) asks only once. A failure or
+  // an empty answer is not kept.
+  const resolvedByUri = new Map(); // key -> { value, expiresAt }, oldest first
+  const resolvingByUri = new Map(); // key -> promise
+  function resolveCached(guildId, query) {
+    const key = `${guildId}\n${query.source}\n${query.uri}`;
+    const hit = resolvedByUri.get(key);
+    if (hit && hit.expiresAt > now()) return Promise.resolve(hit.value);
+    resolvedByUri.delete(key);
+    const flying = resolvingByUri.get(key);
+    if (flying) return flying;
+    const request = Promise.resolve(resolveTrack(guildId, query))
+      .then((value) => {
+        if (value?.track) {
+          resolvedByUri.set(key, { value, expiresAt: now() + RESOLVE_CACHE_MS });
+          while (resolvedByUri.size > RESOLVE_CACHE_MAX) resolvedByUri.delete(resolvedByUri.keys().next().value);
+        }
+        return value;
+      })
+      .finally(() => resolvingByUri.delete(key));
+    resolvingByUri.set(key, request);
+    return request;
+  }
+
   // Resolves a song, registers it by audioKey and starts its charts (unless
-  // only a preview was asked for). Throws an error with `reason` when the song
-  // can't be used.
-  async function prepareSong(guildId, { uri, source }, { chart = true } = {}) {
+  // only a preview was asked for). A song the bot already knows by audioKey
+  // (soloTracks) is used as it is, without asking Lavalink again. Throws an
+  // error with `reason` when the song can't be used.
+  async function prepareSong(guildId, { uri, source, audioKey: knownKey }, { chart = true } = {}) {
     const refuse = (reason) => Object.assign(new Error(reason), { reason });
+    const known = typeof knownKey === "string" && knownKey && knownKey.length <= MAX_URI_LENGTH ? soloTracks.get(knownKey) : null;
+    if (known?.track) {
+      if (chart) {
+        Promise.resolve(chartStore.getCharts(known.track, known.node))
+          .catch((error) => log.warning("mewbeat solo chart failed", error?.message));
+      }
+      return { audioKey: knownKey, track: known.info ?? trackInfoOf(known.track) };
+    }
+
     if (typeof uri !== "string" || !uri.trim() || uri.length > MAX_URI_LENGTH) throw refuse("bad_uri");
     if (source != null && (typeof source !== "string" || source.length > MAX_SOURCE_LENGTH)) throw refuse("bad_source");
 
     let resolved;
     try {
-      resolved = await resolveTrack(guildId, { uri: uri.trim(), source: source || "" });
+      resolved = await resolveCached(guildId, { uri: uri.trim(), source: source || "" });
     } catch (error) {
       log.warning("mewbeat solo resolve failed", error?.message);
       throw refuse("resolve_failed");
@@ -178,7 +220,7 @@ function createMewbeatChannel({
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat prepare.");
 
     try {
-      const { audioKey, track } = await prepareSong(guildId, { uri, source }, { chart: !preview });
+      const { audioKey, track } = await prepareSong(guildId, { uri, source, audioKey: message.audioKey }, { chart: !preview });
       // The song's highlight, when its charts already exist (song select previews start there).
       const highlightMs = highlightOf(peekSummaryOf(soloTracks.get(audioKey)?.track));
       return { type: "mewbeat_solo_prepare", id, status: "ok", audioKey, track, highlightMs };
@@ -350,7 +392,15 @@ function createMewbeatChannel({
         if (ready !== undefined && typeof ready !== "boolean") return reply({ ok: false, reason: "bad_request" });
         if (spectate !== undefined && typeof spectate !== "boolean") return reply({ ok: false, reason: "bad_request" });
         if (difficulty !== undefined && !ROOM_DIFFICULTIES.includes(difficulty)) return reply({ ok: false, reason: "bad_difficulty" });
-        return reply(rooms.ready(guildId, userId, { ready, difficulty, spectate }));
+        // The modifiers a player will play the round with, shown to the room; the run's own list is checked again at submit.
+        let modifiers;
+        if (message.modifiers !== undefined) {
+          const { normalizeModifiers } = await loadClientModifiers();
+          const checked = normalizeModifiers(message.modifiers, { mode: "room" });
+          if (!checked.ok) return reply({ ok: false, reason: checked.reason });
+          modifiers = checked.modifiers;
+        }
+        return reply(rooms.ready(guildId, userId, { ready, difficulty, spectate, modifiers }));
       }
       case "mewbeat_room_start": return reply(rooms.start(guildId, userId));
       case "mewbeat_room_loaded":
@@ -401,13 +451,13 @@ function createMewbeatChannel({
   // a string like "30-holds" while generator flags are on), else the newest
   // version anyone has a score for.
   function chartKeyFor(audioKey, difficulty, read = peekSummaryOf) {
-    return currentChartKeyOf(audioKey, difficulty, read) ?? scoreStore.latestChartKey(audioKey, difficulty);
+    return currentChartKeyOf(audioKey, difficulty, read) ?? scoreStore.latestChartKey(audioKey, difficulty, RULES_VERSION);
   }
 
   // The scores key of the chart in use now; null while the song has no stored chart of that level.
   function currentChartKeyOf(audioKey, difficulty, read = peekSummaryOf) {
     const stored = read(trackFromAudioKey(audioKey))?.[difficulty];
-    if (stored && (Number.isFinite(stored.version) || (typeof stored.version === "string" && stored.version))) return `${audioKey}|${difficulty}|${stored.version}`;
+    if (stored && (Number.isFinite(stored.version) || (typeof stored.version === "string" && stored.version))) return boardKeyOf(audioKey, difficulty, stored.version);
     return null;
   }
 
@@ -489,6 +539,11 @@ function createMewbeatChannel({
     if (!Array.isArray(events) || events.length === 0) return fail("no_events");
     if (events.length > MAX_EVENTS) return fail("too_many_events");
     if (fevers != null && (!Array.isArray(fevers) || fevers.length > MAX_FEVERS)) return fail("bad_event");
+    // The same list the Activity offers; a speed modifier only counts in solo.
+    const { normalizeModifiers } = await loadClientModifiers();
+    const checked = normalizeModifiers(message.modifiers, { mode: MODES.includes(mode) ? mode : "live" });
+    if (!checked.ok) return fail(checked.reason);
+    const { modifiers } = checked;
 
     // The song fell out of the registry (6 h, or pushed out by newer ones).
     const source = trackFor(guildId, audioKey);
@@ -500,19 +555,24 @@ function createMewbeatChannel({
     // (it was regenerated since); the events can't be judged against these notes.
     if (chartVersion !== stored.version) return fail("stale_chart");
 
+    // A calibration or an autoplay run can't be lost: nobody is playing it for a score.
+    const calibration = Boolean(flags?.calibration) || stored.calibration === true;
     let run;
     try {
-      run = await recomputeRun({ chart: stored, events, fevers: fevers ?? [], loadScoring });
+      run = await recomputeRun({
+        chart: stored, events, fevers: fevers ?? [], modifiers, noFail: calibration || Boolean(flags?.autoplay), loadScoring,
+      });
     } catch (error) {
       if (!error.code) throw error;
       return fail(error.code);
     }
 
-    const calibration = Boolean(flags?.calibration) || stored.calibration === true;
     const firstNoteMs = stored.notes.reduce((first, note) => Math.min(first, note.t), Infinity);
     // The earliest judged note by the chart's own time, not the client's `t`.
     const firstJudgedMs = events.reduce((first, event) => Math.min(first, stored.notes[event.n].t), Infinity);
+    // A failed run is not ranked: it ends where the player lost it.
     const ranked = !calibration
+      && !run.failed
       && !flags?.autoplay
       && !flags?.difficultyChanged
       && firstJudgedMs <= firstNoteMs + LATE_JOIN_MS
@@ -520,7 +580,7 @@ function createMewbeatChannel({
 
     const parts = judgeablePartsOf(stored);
     const completion = parts > 0 ? Math.min(1, Math.round((run.judged / parts) * 10000) / 10000) : 1;
-    const chartKey = `${audioKey}|${difficulty}|${stored.version}`;
+    const chartKey = boardKeyOf(audioKey, difficulty, stored.version);
     let newBest = false;
     if (ranked) {
       newBest = scoreStore.submit({
@@ -535,6 +595,7 @@ function createMewbeatChannel({
         difficulty,
         track: { title: source.info.title, artist: source.info.artist ?? "", artworkUrl: source.info.artworkUrl ?? null },
         completion,
+        modifiers,
       }).newBest;
       if (newBest) ranking.invalidate();
     }
@@ -544,7 +605,9 @@ function createMewbeatChannel({
     if (mode === "room" && !flags?.autoplay) {
       const snapshot = rooms.snapshot(room);
       if (snapshot && snapshot.phase === "playing" && snapshot.current?.audioKey === audioKey && Number.isInteger(round) && round === snapshot.round) {
-        rooms.submitted(room, userId, { score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty });
+        rooms.submitted(room, userId, {
+          score: run.score, accuracy: run.accuracy, grade: run.grade, difficulty, failed: run.failed, modifiers,
+        });
       }
     }
     if (!calibration) {
@@ -564,6 +627,8 @@ function createMewbeatChannel({
         mode: MODES.includes(mode) ? mode : "live",
         guildId: place,
         chartVersion: stored.version,
+        failed: run.failed,
+        modifiers,
       });
     }
     // The player's totals take every real run that got at least half through, ranked or not; a calibration or an
@@ -599,6 +664,8 @@ function createMewbeatChannel({
         maxCombo: run.maxCombo,
         counts: run.counts,
         ranked,
+        failed: run.failed,
+        modifiers,
         newBest,
         best: scoreStore.bestOf(chartKey, userId),
         rank: {
@@ -798,21 +865,15 @@ function createMewbeatChannel({
     };
   }
 
-  // Per difficulty: stars, note count and the player's best. `null` stats means
-  // no charts are known yet (a chart that is missing has null stars and notes).
-  function songStats(guildId, userId, message) {
-    const { id, audioKey } = message;
-    const fail = (reason) => ({ type: "mewbeat_song_stats", id, status: "error", reason });
-    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat song stats.");
-    if (!scoreStore) return fail("unavailable");
-    if (typeof audioKey !== "string" || audioKey.length > MAX_URI_LENGTH) return fail("bad_request");
-
+  // Per difficulty: stars, note count and the player's best; null while no charts are known (a chart that is missing has
+  // null stars and notes).
+  function statsOfSong(audioKey, userId) {
     const read = summaryReader();
     const charts = read(trackFromAudioKey(audioKey));
-    if (!charts) return { type: "mewbeat_song_stats", id, status: "ok", stats: null };
+    if (!charts) return null;
     const stats = {};
     for (const difficulty of DIFFICULTIES) {
-      const chartKey = chartKeyFor(audioKey, difficulty, read);
+      const chartKey = scoreStore ? chartKeyFor(audioKey, difficulty, read) : null;
       const best = chartKey ? scoreStore.bestOf(chartKey, userId) : null;
       stats[difficulty] = {
         stars: charts[difficulty]?.stars ?? null,
@@ -820,7 +881,91 @@ function createMewbeatChannel({
         best: best ? { score: best.score, grade: best.grade } : null,
       };
     }
-    return { type: "mewbeat_song_stats", id, status: "ok", stats };
+    return stats;
+  }
+
+  // `null` stats means no charts are known yet.
+  function songStats(guildId, userId, message) {
+    const { id, audioKey } = message;
+    const fail = (reason) => ({ type: "mewbeat_song_stats", id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat song stats.");
+    if (!scoreStore) return fail("unavailable");
+    if (typeof audioKey !== "string" || audioKey.length > MAX_URI_LENGTH) return fail("bad_request");
+    return { type: "mewbeat_song_stats", id, status: "ok", stats: statsOfSong(audioKey, userId) };
+  }
+
+  // Search results: each track's audio key and, when that song already has charts, its stars per level (else null). The
+  // charts are only looked up, never made, so a search starts no work.
+  function chartInfoOf(tracks) {
+    const read = summaryReader();
+    return tracks.map((track) => {
+      const audioKey = audioKeyOf(track);
+      const charts = audioKey ? read(track) : null;
+      const stars = charts ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, charts[difficulty]?.stars ?? null])) : null;
+      return { audioKey, stars };
+    });
+  }
+
+  // "Chart this map": a song with no charts is charted as background work (it queues behind everything a player waits for).
+  // The request is idempotent and doubles as the status poll: it answers state "queued" (still going; ask again in a few
+  // seconds) or "ready" (with the stats of the song), or an error with a reason. `retry: true` after a failure tries again.
+  // A player may have CHART_MAP_PER_PLAYER maps queued at once; a map somebody else already queued is shared.
+  const chartingMaps = new Map(); // audioKey -> { users: Set, outcome: null | { status, reason }, at }
+  async function chartMap(guildId, userId, message) {
+    const { id, uri, source } = message;
+    const fail = (reason) => ({ type: "mewbeat_chart_map", id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat chart map.");
+
+    let prepared;
+    try {
+      prepared = await prepareSong(guildId, { uri, source, audioKey: message.audioKey }, { chart: false });
+    } catch (error) {
+      if (!error.reason) throw error;
+      return fail(error.reason);
+    }
+    const { audioKey } = prepared;
+    const entry = soloTracks.get(audioKey);
+    if (!entry?.track) return fail("not_found");
+
+    const known = chartStore.peekCharts?.(entry.track);
+    if (known?.status === "ready") {
+      chartingMaps.delete(audioKey);
+      return { type: "mewbeat_chart_map", id, status: "ok", state: "ready", audioKey, stats: statsOfSong(audioKey, userId) };
+    }
+    if (known?.status === "uncharted") return fail("uncharted");
+
+    for (const [key, other] of chartingMaps) if (other.outcome && now() - other.at > CHART_MAP_MEMORY_MS) chartingMaps.delete(key);
+    const retry = message.retry === true;
+    const current = chartingMaps.get(audioKey);
+    if (current?.outcome?.status === "failed" && !retry) return fail(current.outcome.reason);
+    if (current && !current.outcome) {
+      current.users.add(userId);
+      return { type: "mewbeat_chart_map", id, status: "ok", state: "queued", audioKey };
+    }
+
+    const queued = [...chartingMaps.values()].filter((other) => !other.outcome && other.users.has(userId)).length;
+    if (queued >= CHART_MAP_PER_PLAYER) return fail("too_many");
+    const record = { users: new Set([userId]), outcome: null, at: now() };
+    chartingMaps.set(audioKey, record);
+    Promise.resolve()
+      .then(() => chartStore.getCharts(entry.track, entry.node, { priority: "background", retry }))
+      .then((result) => {
+        if (result?.status === "ready") {
+          chartingMaps.delete(audioKey);
+          return;
+        }
+        // A pending result (the analysis was busy) is asked again by the next poll; the rest is a failure.
+        if (result?.status === "pending") record.outcome = { status: "pending" };
+        else record.outcome = { status: "failed", reason: result?.status === "full" ? "busy" : result?.status === "uncharted" ? "uncharted" : "failed" };
+      })
+      .catch((error) => {
+        log.warning("mewbeat chart map failed", error?.message);
+        record.outcome = { status: "failed", reason: "failed" };
+      })
+      .finally(() => {
+        record.at = now();
+      });
+    return { type: "mewbeat_chart_map", id, status: "ok", state: "queued", audioKey };
   }
 
   return {
@@ -837,6 +982,7 @@ function createMewbeatChannel({
         case "mewbeat_submit": return submit(guildId, userId, message, profile, room);
         case "mewbeat_board": return board(boards, userId, message);
         case "mewbeat_song_stats": return songStats(guildId, userId, message);
+        case "mewbeat_chart_map": return chartMap(guildId, userId, message);
         case "mewbeat_played": return played(boards, userId, message);
         case "mewbeat_profile": return playerProfile(boards, userId, message, profile);
         case "mewbeat_stats": return playerStats(guildId, userId, message, profile);
@@ -852,6 +998,8 @@ function createMewbeatChannel({
         }
       }
     },
+    // { audioKey, stars } of each raw track of a search (see chartInfoOf).
+    chartInfoOf,
     // Called once the user's last socket in the guild is gone.
     disconnect(guildId, userId) {
       rooms.leave(guildId, userId);

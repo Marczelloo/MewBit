@@ -2,7 +2,7 @@
 // a sound falls on the frame it belongs to: a tick on a step of a count, a dink on the moment a stat lands.
 
 // ms after the screen opens. Every stat lands before the next starts, and the screen ends on the grade.
-export const REVEAL = { score: 300, accuracy: 1900, combo: 2500, fevers: 3100, offset: 3500, judges: 3800, timing: 5000, side: 5300, grade: 5700, verdict: 6200 };
+export const REVEAL = { score: 300, accuracy: 1900, combo: 2500, fevers: 3100, offset: 3500, judges: 3800, timing: 5000, side: 5300, graph: 5350, grade: 5700, verdict: 6200 };
 export const COUNT_MS = { score: 1500, accuracy: 500, combo: 500, fevers: 300 }; // the score's is the swoosh's length
 export const JUDGE_COUNT_MS = 420;
 export const JUDGE_STEP_MS = 180; // as .mb-res-judges li in mewbeat.css
@@ -48,7 +48,7 @@ export function skipEvents(events) {
 
 // Everything the screen sounds, in order, with the grade's impact last, or the full combo's fanfare when the run has one. rate climbs with the run's accuracy on the
 // score's ticks, as in osu!, and a little with every stat on the dinks.
-export function resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo = false }) {
+export function resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo = false, failed = false }) {
   const events = [{ at: REVEAL.score, name: "swoosh", level: SWOOSH_LEVEL, rate: 1 }];
   let dinks = 0;
   const dink = (at, name = "dink", level = 1) => {
@@ -76,7 +76,8 @@ export function resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fu
 
   events.sort((a, b) => a.at - b.at);
   const impactAt = REVEAL.grade + IMPACT_DELAY_MS;
-  events.push({ at: impactAt, name: IMPACTS[grade] ?? IMPACTS.D, level: 1, rate: 1 });
-  if (fullCombo) events.push({ at: impactAt + FULL_COMBO_DELAY_MS, name: "full-combo", level: 1, rate: 1 });
+  // A lost run gets the flattest impact there is, whatever its score would have graded, and no fanfare.
+  events.push({ at: impactAt, name: failed ? IMPACTS.D : IMPACTS[grade] ?? IMPACTS.D, level: 1, rate: 1 });
+  if (fullCombo && !failed) events.push({ at: impactAt + FULL_COMBO_DELAY_MS, name: "full-combo", level: 1, rate: 1 });
   return events;
 }

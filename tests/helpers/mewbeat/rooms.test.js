@@ -67,7 +67,7 @@ describe("mewbeat rooms membership", () => {
     assert.strictEqual(room.hostId, "ann");
     assert.strictEqual(room.phase, "lobby");
     assert.deepStrictEqual(room.members, [{
-      userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal",
+      userId: "ann", username: "ANN", avatarUrl: "https://a/ann.png", difficulty: "normal", modifiers: [],
       ready: false, loaded: false, spectator: false, watching: false, submitted: false,
     }]);
     assert.deepStrictEqual(room.queue, []);
@@ -496,6 +496,20 @@ describe("mewbeat rooms rounds", () => {
     rooms.submitted(G, "ann", result(1000, 0.9, "hard"));
     rooms.submitted(G, "bo", result(1500, 0.8, "hard"));
     assert.deepStrictEqual(rooms.snapshot(G).results.map((entry) => entry.userId), ["bo", "ann"]);
+  });
+
+  it("puts a player who failed below everyone who finished, and keeps the modifiers in the result", () => {
+    const { rooms, clock } = ctx;
+    rooms.ready(G, "ann", { difficulty: "hard" });
+    rooms.ready(G, "bo", { difficulty: "hard" });
+    rooms.start(G, "ann");
+    rooms.loaded(G, "ann", KEY_A);
+    rooms.loaded(G, "bo", KEY_A);
+    clock.advance(3000);
+    rooms.submitted(G, "ann", { ...result(9000, 0.99, "hard"), failed: true, modifiers: ["ol"] });
+    rooms.submitted(G, "bo", { ...result(100, 0.2, "hard"), modifiers: ["gn"] });
+    const { results } = rooms.snapshot(G);
+    assert.deepStrictEqual(results.map((entry) => [entry.userId, entry.failed, entry.modifiers]), [["bo", false, ["gn"]], ["ann", true, ["ol"]]]);
   });
 
   it("ranks by accuracy when difficulties are mixed", () => {

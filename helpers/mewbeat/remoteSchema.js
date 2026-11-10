@@ -24,6 +24,7 @@ const TABLES = {
       text("artist"),
       text("artwork_url"),
       { name: "guild_ids", type: "jsonb" },
+      { name: "modifiers", type: "jsonb" }, // ids from modifiers.js; [] for a plain run
       { name: "at", type: "bigint" },
     ],
     indexes: [
@@ -52,6 +53,8 @@ const TABLES = {
       text("mode"),
       text("guild_id"),
       text("chart_version"),
+      { name: "failed", type: "boolean" },
+      { name: "modifiers", type: "jsonb" },
       { name: "at", type: "bigint" },
     ],
     indexes: [{ name: "mewbeat_history_user_id", columns: ["user_id"] }],

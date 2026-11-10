@@ -28,8 +28,12 @@ const CLIP_DEFAULT_SHARE = 0.4;
 // Downloaded songs kept as bytes, so going back to a song or pressing Play after its preview doesn't fetch it again.
 const BYTES_CACHE_SIZE = 4;
 
+// fetchAudio(audioKey, signal) -> ArrayBuffer of the whole song.
+// fetchClip(audioKey, fromMs, signal) -> { data, clipped, clipStartMs, fromMs }: about CLIP_WINDOW_S of the song from
+// fromMs on (the server cuts it), or the whole song with clipped false. Without it a preview downloads the whole song.
 export function createSoloAudio({
   fetchAudio,
+  fetchClip = null,
   createContext = () => new (globalThis.AudioContext ?? globalThis.webkitAudioContext)(),
   now = () => performance.now(),
   aligner = null, // alignClient.js: scans the song off the main thread; without it align runs inline
@@ -55,13 +59,20 @@ export function createSoloAudio({
   let startOffsetMs = 0;
   let pausedAtMs = null; // position while paused, null while playing or stopped
   let started = false; // a play() succeeded since the last stop()
+  // Tempo of the next play(): 1 unless a solo speed modifier is on. The source keeps the rate it started with.
+  let rate = 1;
+  let sourceRate = 1;
+  let slowing = null; // { atCtx, seconds, fromMs, rate } while a failed run's music winds down
   let playSeq = 0; // bumps on every play/pause/stop, so a play() that awaited resume() can tell it was overridden
   const endedListeners = new Set();
   // Clips play beside the game's source and never touch the song clock or the ended listeners.
   let clip = null; // { node, gain } while a clip plays
   let clipSeq = 0; // bumps on every clip request or stop, so an older preview still loading drops out
   const bytes = new Map(); // audioKey -> ArrayBuffer, oldest first
-  let previewFetch = null; // { key, promise, controller }
+  let previewFetch = null; // { key, wanted, full, promise, controller }: at most one, a newer pick aborts it
+  // The last decoded preview (one song), so picking it again is instant. A cut keeps where it starts in the song.
+  let previewBuffer = null; // { key, wanted, clipped, clipStartMs, startMs, buffer }
+  let previewError = null; // { key, message } of the last preview that failed, for debugging
 
   function context() {
     if (ctx) return ctx;
@@ -96,7 +107,8 @@ export function createSoloAudio({
 
   async function songBytes(audioKey, signal) {
     if (bytes.has(audioKey)) return bytes.get(audioKey);
-    if (previewFetch?.key === audioKey) {
+    // Only a preview that downloads the whole song is joined; a cut is no use to the game.
+    if (previewFetch?.key === audioKey && previewFetch.full) {
       try {
         return await previewFetch.promise;
       } catch {
@@ -124,6 +136,8 @@ export function createSoloAudio({
       stopClip({ fadeMs: 0 });
       buffer = decoded;
       loadedKey = audioKey;
+      // A whole decoded preview would be a second copy of a big buffer; a small cut stays.
+      if (previewBuffer && !previewBuffer.clipped) previewBuffer = null;
       rise = null;
       lagMs = 0;
       alignSeq += 1;
@@ -240,6 +254,8 @@ export function createSoloAudio({
     }
     const node = c.createBufferSource();
     node.buffer = buffer;
+    // The pitch follows the rate (a plain playbackRate, no time-stretching), like the speed mods in other rhythm games.
+    if (rate !== 1) node.playbackRate.value = rate;
     node.connect(songBus);
     // Scheduled starts keep their context time; an immediate start gets a small lead (START_LEAD_S), so the
     // context time the clock assumes is the one the audio thread really starts at.
@@ -252,18 +268,29 @@ export function createSoloAudio({
     };
     // Song time stays the chart's, only the buffer moves by the lag. Sounds that come early wait a moment at the start.
     const position = from + lagMs;
-    node.start(startCtx + Math.max(0, -position) / 1000, Math.max(0, position) / 1000);
+    // The wait is song time, so it takes 1/rate of that on the context clock; the buffer offset is already the song's.
+    node.start(startCtx + Math.max(0, -position) / 1000 / rate, Math.max(0, position) / 1000);
     source = node;
     sourceStartCtx = startCtx;
+    sourceRate = rate;
+    slowing = null;
     startOffsetMs = from;
     pausedAtMs = null;
     started = true;
   }
 
+  // The song position a wind-down has reached after elapsedS: the rate falls linearly to 0, so the position is the
+  // area under that ramp.
+  function slowedMs(wind, elapsedS) {
+    const t = Math.min(Math.max(elapsedS, 0), wind.seconds);
+    return wind.fromMs + wind.rate * 1000 * (t - (t * t) / (2 * wind.seconds));
+  }
+
   function songTimeAt(perfMs) {
     if (!started) return null;
     if (pausedAtMs !== null) return pausedAtMs;
-    const ms = (ctxTimeAt(perfMs) - sourceStartCtx) * 1000 + startOffsetMs;
+    if (slowing) return Math.min(slowedMs(slowing, ctxTimeAt(perfMs) - slowing.atCtx), durationMs());
+    const ms = (ctxTimeAt(perfMs) - sourceStartCtx) * 1000 * sourceRate + startOffsetMs;
     return Math.min(ms, durationMs());
   }
 
@@ -276,9 +303,33 @@ export function createSoloAudio({
     if (!started) return 0;
     if (pausedAtMs === null) {
       pausedAtMs = Math.min(positionMs(), durationMs());
+      slowing = null;
       dropSource();
     }
     return pausedAtMs;
+  }
+
+  // The tempo of the next play() (1, or a solo speed modifier's); a song already playing keeps its own.
+  function setRate(next) {
+    rate = Number.isFinite(next) && next > 0 ? next : 1;
+  }
+
+  // A lost run's music slows to a stop over `seconds`, the pitch sinking with it. The clock follows the slowing
+  // song and then holds where it stopped; the ended listeners hear nothing, since the run is over anyway.
+  function slowToStop(seconds = 1) {
+    if (!started || pausedAtMs !== null || !source || slowing) return;
+    const c = ctx;
+    const atCtx = ctxTimeAt(now());
+    const wind = { atCtx, seconds, fromMs: positionMs(), rate: sourceRate };
+    const node = source;
+    node.onended = null;
+    const param = node.playbackRate;
+    const at = c.currentTime;
+    param.cancelScheduledValues(at);
+    param.setValueAtTime(sourceRate, at);
+    param.linearRampToValueAtTime(0, at + seconds);
+    try { node.stop(at + seconds); } catch { /* already over */ }
+    slowing = wind;
   }
 
   function resume() {
@@ -289,6 +340,7 @@ export function createSoloAudio({
   function stop() {
     playSeq += 1;
     dropSource();
+    slowing = null;
     started = false;
     pausedAtMs = null;
     startOffsetMs = 0;
@@ -320,11 +372,11 @@ export function createSoloAudio({
     }
   }
 
-  // Plays clipBuffer from fromS to the end of the song with fades, once.
-  function startClip(clipBuffer, fromS, level) {
+  // Plays clipBuffer from fromS to the end of it (or for maxS at most) with fades, once.
+  function startClip(clipBuffer, fromS, level, maxS = Infinity) {
     dropClip(CLIP_SWAP_FADE_S);
     const c = ctx;
-    const lengthS = clipBuffer.duration - fromS;
+    const lengthS = Math.min(clipBuffer.duration - fromS, maxS);
     if (!(lengthS > 0)) return;
     const clipGain = c.createGain();
     clipGain.connect(gain);
@@ -355,49 +407,104 @@ export function createSoloAudio({
     return Math.max(0, Math.min(wanted, durationS - CLIP_WINDOW_S));
   }
 
-  // Previews wait in line: a job the server started can't be recalled, and a burst of them would leave no room in
-  // its queue for the song the player then picks. A finished download stays cached, so going back to it is instant.
-  async function previewBytes(audioKey, seq) {
-    for (;;) {
-      if (seq !== clipSeq) return null;
-      if (bytes.has(audioKey)) return bytes.get(audioKey);
-      if (!previewFetch) {
-        const controller = new AbortController();
-        const entry = { key: audioKey, controller };
-        entry.promise = Promise.resolve()
-          .then(() => fetchAudio(audioKey, controller.signal))
-          .then((data) => rememberBytes(audioKey, data))
-          .finally(() => { if (previewFetch === entry) previewFetch = null; });
-        previewFetch = entry;
-      }
-      const waitingFor = previewFetch;
-      try {
-        await waitingFor.promise;
-      } catch (error) {
-        if (waitingFor.key === audioKey) throw error;
-      }
-    }
+  // The download behind a preview: one at a time. A pick of another song (or another stretch) aborts the one in flight,
+  // so the newest pick is never held up by an older one; asking for the same thing again joins it. With fetchClip the
+  // server sends about CLIP_WINDOW_S around the highlight; `whole` asks for the whole song (a cut that would not decode).
+  function previewDownload(audioKey, wanted, whole = false) {
+    const full = whole || !fetchClip;
+    const marker = full ? "full" : wanted;
+    if (previewFetch && previewFetch.key === audioKey && previewFetch.wanted === marker) return previewFetch.promise;
+    previewFetch?.controller.abort();
+    const controller = new AbortController();
+    const entry = { key: audioKey, wanted: marker, full, controller };
+    entry.promise = Promise.resolve()
+      .then(async () => {
+        if (full) return { data: await fetchAudio(audioKey, controller.signal), clipped: false, clipStartMs: 0, fromMs: null };
+        const result = await fetchClip(audioKey, wanted, controller.signal);
+        return { clipStartMs: 0, fromMs: null, ...result, clipped: Boolean(result.clipped) };
+      })
+      .then((result) => {
+        if (!result.clipped) rememberBytes(audioKey, result.data);
+        return result;
+      })
+      .finally(() => { if (previewFetch === entry) previewFetch = null; });
+    entry.promise.catch(() => {});
+    previewFetch = entry;
+    return entry.promise;
   }
 
-  // Previews a song without loading it for play: the game's buffer stays as it is, and the decoded preview goes when
-  // its clip does. Resolves true once it plays, false when it was replaced, stopped or failed (a preview never reports).
+  const wantedOf = (fromMs) => (Number.isFinite(fromMs) && fromMs >= 0 ? Math.round(fromMs) : null);
+
+  // Where in a decoded preview the stretch to hear starts, in seconds.
+  function previewStartS(entry, wanted) {
+    if (entry.clipped) return Math.max(0, Math.min((entry.startMs - entry.clipStartMs) / 1000, entry.buffer.duration - 1));
+    return clipStartS(wanted, entry.buffer.duration);
+  }
+
+  function reusablePreview(audioKey, wanted) {
+    if (buffer && loadedKey === audioKey) return { key: audioKey, clipped: false, buffer };
+    if (previewBuffer && previewBuffer.key === audioKey && (!previewBuffer.clipped || previewBuffer.wanted === wanted)) return previewBuffer;
+    return null;
+  }
+
+  async function decodePreview(c, audioKey, wanted, seq) {
+    let fetched;
+    if (bytes.has(audioKey)) fetched = { data: bytes.get(audioKey), clipped: false, clipStartMs: 0, fromMs: null };
+    else fetched = await previewDownload(audioKey, wanted);
+    if (seq !== clipSeq) return null;
+    let decoded;
+    try {
+      decoded = await c.decodeAudioData(fetched.data.slice(0));
+    } catch (error) {
+      if (!fetched.clipped) throw error;
+      // A cut that will not decode: the whole song still can.
+      if (seq !== clipSeq) return null;
+      fetched = await previewDownload(audioKey, wanted, true);
+      if (seq !== clipSeq) return null;
+      decoded = await c.decodeAudioData(fetched.data.slice(0));
+    }
+    if (seq !== clipSeq) return null;
+    const entry = {
+      key: audioKey,
+      wanted,
+      clipped: fetched.clipped,
+      clipStartMs: fetched.clipStartMs,
+      startMs: fetched.fromMs ?? wanted ?? 0,
+      buffer: decoded,
+    };
+    previewBuffer = entry;
+    return entry;
+  }
+
+  // Previews a song without loading it for play: the game's buffer stays as it is, and the clip plays CLIP_WINDOW_S
+  // from the highlight. Resolves true once it plays, false when it was replaced or stopped, and { error } when it
+  // failed (the reason is also kept for previewError()).
   async function preview(audioKey, { fromMs = null, level = PREVIEW_LEVEL } = {}) {
     const seq = ++clipSeq;
     if (ctx) dropClip(CLIP_SWAP_FADE_S);
+    // The newest pick owns the download; one for another song (or stretch) is of no use any more.
+    const wanted = wantedOf(fromMs);
+    if (previewFetch && (previewFetch.key !== audioKey || (!previewFetch.full && previewFetch.wanted !== wanted))) {
+      previewFetch.controller.abort();
+      previewFetch = null;
+    }
     try {
-      const data = await previewBytes(audioKey, seq);
-      if (seq !== clipSeq) return false;
       const c = context();
-      const decoded = await c.decodeAudioData(data.slice(0));
-      if (seq !== clipSeq) return false;
+      const entry = reusablePreview(audioKey, wanted) ?? (await decodePreview(c, audioKey, wanted, seq));
+      if (!entry || seq !== clipSeq) return false;
       if (c.state !== "running") {
         await c.resume();
         if (seq !== clipSeq || c.state !== "running") return false;
       }
-      startClip(decoded, clipStartS(fromMs, decoded.duration), level);
+      previewError = null;
+      startClip(entry.buffer, previewStartS(entry, wanted), level, CLIP_WINDOW_S);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (seq !== clipSeq) return false;
+      const message = String(error?.message || error || "Preview failed.");
+      previewError = { key: audioKey, message };
+      globalThis.console?.debug?.("[mewbeat] preview failed", audioKey, message);
+      return { error: message };
     }
   }
 
@@ -426,6 +533,8 @@ export function createSoloAudio({
 
   function stopClip({ fadeMs = 400 } = {}) {
     clipSeq += 1;
+    previewFetch?.controller.abort();
+    previewFetch = null;
     dropClip(fadeMs / 1000);
   }
 
@@ -435,6 +544,7 @@ export function createSoloAudio({
     stopClip({ fadeMs: 0 });
     previewFetch?.controller.abort();
     previewFetch = null;
+    previewBuffer = null;
     bytes.clear();
     endedListeners.clear();
     buffer = null;
@@ -468,10 +578,16 @@ export function createSoloAudio({
     pause,
     resume,
     stop,
+    setRate,
+    slowToStop,
+    rate: () => rate,
     unlock,
     close,
     setVolume,
     preview,
+    previewError: () => previewError,
+    // Whether preview() would start without downloading anything (a decoded cut, the game's song or kept bytes).
+    hasPreview: (audioKey, fromMs = null) => Boolean(reusablePreview(audioKey, wantedOf(fromMs)) || bytes.has(audioKey)),
     highlight,
     stopClip,
     playSampleAt,
