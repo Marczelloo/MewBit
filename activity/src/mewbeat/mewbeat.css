@@ -1155,9 +1155,6 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-res-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 18px 16px; overflow-y: auto; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
 .mb-res-side ol { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .mb-res-pos { color: var(--mb-faint); font: 700 11.5px "JetBrains Mono", ui-monospace, monospace; text-align: right; }
-/* Whichever lists the panel holds, a short one sits in the middle of the free height (auto margins, so a long one still scrolls). */
-.mb-res-side > :first-child { margin-top: auto; }
-.mb-res-side > :last-child { margin-bottom: auto; }
 .mb-res-empty { margin: 0; padding: 18px 10px; border: 1px dashed var(--mb-line); border-radius: 12px; color: var(--mb-muted); font-size: 13px; line-height: 1.4; text-align: center; }
 .mb-res-standings h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 10px; font-size: 15px; font-weight: 900; }
 .mb-res-standings h3 small { color: var(--mb-faint); font: 500 11px "JetBrains Mono", ui-monospace, monospace; }

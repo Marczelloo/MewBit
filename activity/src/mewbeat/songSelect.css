@@ -63,7 +63,7 @@
 .mb-ss .mb-ss-viewing .mb-ss-back { margin-left: 0; }
 
 /* avatars: a picture, or a letter on a coloured circle */
-:is(.mb-ss, .mb-lobby) .mb-ss-av {
+:is(.mb-ss, .mb-lobby, .mb-res-lb) .mb-ss-av {
   display: grid;
   flex: none;
   place-items: center;
