@@ -117,6 +117,14 @@ const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
 // A sound of the melody dropped for being 35-60 ms off the grid was tried too (melodySnap) and removed: it changed 0.2-0.4%
 // of the moments and no measure.
 const FAST_RUNS = { minGapMs: 70 };
+// selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
+// sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
+// 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
+// is 1.00. With the floor the key gets one hold, as its neighbours at 0:00 and 0:05 do, on every level (Easy had three
+// blocks there, Hard four, Hell five). Fills on a sound under .25 with no decoded note starting there: 57 over the bot's
+// 75 songs -> 0; corpus F1 .807 -> .807, moments -0.1 a song. A floor of .5 reads better against people (F1 .810,
+// precision .765 -> .773, moments -1.8%) but takes eleven notes a song that nobody has complained of.
+const FILL_FLOOR = { minS: 0.25 };
 // selection.js selectMoments (generator flag loudHoles, Normal only): a stretch of `beats` (and `minMs`) or more between two
 // notes that a phrase left empty takes the best moment in it whose strength is of rank `minLoud` or more in the song, on top
 // of the budget, up to `room` of it (rounded up). Asked for by ear (Rush E with the melody flags: "gaps although notes are
@@ -617,6 +625,7 @@ module.exports = {
   FAST_RUNS,
   FELT_TEMPO,
   FIGURES,
+  FILL_FLOOR,
   FLAT_LOUD,
   HARD_HOLDS,
   HEARD_CHORDS,

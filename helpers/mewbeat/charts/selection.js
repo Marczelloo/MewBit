@@ -341,7 +341,9 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     if (fits(c.t)) add(c, "ocena");
   }
 
-  // A long stretch with a sound in it, between two notes and at the phrase's edges.
+  // A long stretch with a sound in it, between two notes and at the phrase's edges. With diff.fillFloor a sound under its
+  // strength fills nothing, here or in the rests below: the tail of one long note is no second note.
+  const audible = (c) => !diff.fillFloor || (c.s ?? 1) >= diff.fillFloor.minS;
   const pool = edges.carry?.length > 0 ? [...edges.carry, ...scored] : scored;
   for (let rounds = 0; rounds < pool.length; rounds++) {
     let best = null;
@@ -351,7 +353,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
       const to = marks[i];
       if (to - from <= SILENT_GAP_BEATS * beatAt(from)) continue;
       for (const c of pool) {
-        if (c.t > from && c.t < to && fits(c.t) && (!best || c.score > best.c.score)) best = { c, from, to };
+        if (c.t > from && c.t < to && audible(c) && fits(c.t) && (!best || c.score > best.c.score)) best = { c, from, to };
       }
     }
     if (!best) break;
@@ -378,7 +380,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
 
   // What is missing: beats and half beats with a sound, in the rests.
   while (chosen.length < budget) {
-    const c = scored.filter((s) => (!snapped || s.metric <= 1) && fits(s.t, FILL_REST_BEATS)).sort((a, b) => b.score - a.score || a.t - b.t)[0];
+    const c = scored.filter((s) => (!snapped || s.metric <= 1) && audible(s) && fits(s.t, FILL_REST_BEATS)).sort((a, b) => b.score - a.score || a.t - b.t)[0];
     if (!c) break;
     add(c, "dopełnienie");
   }
