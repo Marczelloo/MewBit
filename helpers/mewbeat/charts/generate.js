@@ -546,6 +546,8 @@ const notesFor = (ctx, difficulty, trace = null) => {
   const charted = chartNotes(ctx, diff, trace);
   if (!charted.protect) return finish(ctx, charted, diff, trace);
   const settled = withoutCrowding(ctx, charted, diff);
+  // The round that lost no moment ran finish on exactly these notes and this diff: untraced, its notes are the real run's.
+  if (!trace && settled.done) return settled.done;
   return finish(ctx, { ...charted, notes: settled.notes }, settled.diff, trace);
 };
 
@@ -559,11 +561,15 @@ function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
   let kept = notes;
   let used = diff;
   const sized = new Set();
+  let settledRun = null; // finish's notes of the round that lost no moment
   for (let round = 0; round < MAX_CROWDING_ROUNDS; round++) {
     const done = finish(ctx, { notes: kept.map((n) => ({ ...n })), sustained, protect }, used);
     const have = new Set(done.map((n) => n.t));
     const lost = [...protect].filter((t) => !have.has(t));
-    if (lost.length === 0) break;
+    if (lost.length === 0) {
+      settledRun = done;
+      break;
+    }
     // ...and with diff.plusHolds a hold running over such a moment (or ending too near it for its lane) plays as a tap
     const over = new Set(!diff.plusHolds ? [] : done.filter((h) => h.len > 0 && lost.some((t) => t > h.t && t < h.t + h.len + reach)).map((h) => h.t));
     const next = kept
@@ -573,7 +579,7 @@ function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
     kept = next;
     used = { ...diff, sizedAsBuilt: new Set(sized) };
   }
-  return { notes: kept, diff: used };
+  return { notes: kept, diff: used, done: settledRun };
 }
 
 // A level's finished notes, once per song: the levels below it are cut from them.
