@@ -173,8 +173,8 @@ function slowChords(diff, timing) {
 // 35% of those with three or more), so only a phrase a piano or another pitched line carries is read this way. null without
 // the rule or the notes.
 function heardPitches(moments, ctx, rule, shift = 0) {
-  const notes = ctx.features.decodedNotes;
-  if (!rule || !Array.isArray(notes) || notes.length === 0) return null;
+  const notes = rule ? ctx.features.decodedNotes : null;
+  if (!Array.isArray(notes) || notes.length === 0) return null;
   const sorted = notes.filter((n) => Number.isFinite(n.t)).map((n) => ({ t: n.t + shift, pitch: n.pitch })).sort((a, b) => a.t - b.t);
   const starts = sorted.map((n) => n.t);
   const counts = moments.map((moment) => {
