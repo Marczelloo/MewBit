@@ -3,32 +3,52 @@ import { effectiveEffects } from "./effects.js";
 import { FRAME_MS, unlockAt } from "./glitch.js";
 import { GlitchFilters, paintNoise, setGlitchFilter, useGlitchPage } from "./GlitchFx.jsx";
 import Mewbit, { preloadMewbitGroup, usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
+import { MEWBIT_POSES } from "./mewbit/manifest.js";
 import "./mewbeat.css";
 
 const TIMELINE_VARS = ["--mb-dim", "--mb-scan", "--mb-rift-clip", "--mb-rift-split", "--mb-sprite-clip"];
 
-// glitch: the app tears and a rift opens. emerge: Mewbit climbs out of it. card: the rift shuts as the
-// title and buttons come in. settled: everything has stopped. Without full effects it starts settled.
-export default function UnlockReveal({ onDone, onPlay, effects = "full" }) {
+// How long "you found me!" is on screen before the game's cut: the reveal pose plays through, then holds a beat.
+const REVEAL_BEAT_MS = 900;
+const REVEAL_SHOWN_MS = (MEWBIT_POSES.reveal.frames.length / MEWBIT_POSES.reveal.fps) * 1000 + REVEAL_BEAT_MS;
+// The pose shows once its first frame is decoded, which can lag on a slow connection; if it never does, go on anyway.
+const REVEAL_GIVE_UP_MS = 6000;
+
+// glitch: the app tears and a rift opens. emerge: Mewbit climbs out of it. card: the rift shuts as she settles.
+// settled: everything has stopped. Without full effects it starts settled and hands over at once. Once the reveal
+// pose has been on screen for REVEAL_SHOWN_MS (or on Escape) it calls onDone, which starts the cut into the game.
+export default function UnlockReveal({ onDone, effects = "full" }) {
   const prefersReduced = usePrefersReducedMotion();
   const level = effectiveEffects(effects, prefersReduced);
   const calm = level !== "full";
   const [stage, setStage] = useState(calm ? "settled" : "glitch");
   const dialogRef = useRef(null);
-  const playRef = useRef(null);
   const noiseRef = useRef(null);
   const riftNoiseRef = useRef(null);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  const [revealUp, setRevealUp] = useState(false); // the reveal pose is on screen
   const running = stage !== "settled";
-  const cardIn = stage === "card" || !running;
+  const revealStage = stage === "card" || stage === "settled";
 
   useGlitchPage(stage === "glitch" || stage === "emerge");
 
   useEffect(() => preloadMewbitGroup("unlock"), []);
 
-  // The OS setting can flip mid-glitch; skip straight to the card then.
+  // The OS setting can flip mid-glitch; skip straight to the end then.
   useEffect(() => {
     if (calm) setStage("settled");
   }, [calm]);
+
+  useEffect(() => {
+    if (calm) {
+      onDoneRef.current?.();
+      return undefined;
+    }
+    if (!revealStage) return undefined;
+    const timer = window.setTimeout(() => onDoneRef.current?.(), revealUp ? REVEAL_SHOWN_MS : REVEAL_GIVE_UP_MS);
+    return () => window.clearTimeout(timer);
+  }, [calm, revealStage, revealUp]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -61,35 +81,25 @@ export default function UnlockReveal({ onDone, onPlay, effects = "full" }) {
   }, [running]);
 
   useEffect(() => {
-    if (cardIn) playRef.current?.focus();
-  }, [cardIn]);
-
-  useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onDone?.();
+        onDoneRef.current?.();
         return;
       }
-      if (running && !cardIn && (event.key === "Enter" || event.key === " ")) {
+      if (running && (event.key === "Enter" || event.key === " ")) {
         event.preventDefault();
         setStage("settled");
         return;
       }
-      if (event.key !== "Tab") return;
-      if (!cardIn) { event.preventDefault(); return; }
-      const buttons = [...(dialogRef.current?.querySelectorAll("button") || [])];
-      if (!buttons.length) { event.preventDefault(); return; }
-      const first = buttons[0];
-      const last = buttons[buttons.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      // There is nothing to tab to: keep focus on the dialog.
+      if (event.key === "Tab") event.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [cardIn, onDone, running]);
+  }, [running]);
 
-  const skip = () => { if (!cardIn) setStage("settled"); };
+  const skip = () => { if (running) setStage("settled"); };
 
   return (
     <div
@@ -97,7 +107,7 @@ export default function UnlockReveal({ onDone, onPlay, effects = "full" }) {
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label="mewbeat unlocked"
+      aria-label="mewbeat"
       tabIndex={-1}
       onClick={skip}
     >
@@ -119,17 +129,9 @@ export default function UnlockReveal({ onDone, onPlay, effects = "full" }) {
           ) : null}
           {stage === "glitch" ? null : (
             <div className="mb-reveal-sprite">
-              <Mewbit pose={stage === "emerge" ? "emerge" : "reveal"} effects={level} />
+              <Mewbit pose={stage === "emerge" ? "emerge" : "reveal"} effects={level} onShow={(name) => setRevealUp(name === "reveal")} />
             </div>
           )}
-        </div>
-        <div className={`mb-reveal-text ${cardIn ? "is-in" : ""}`.trim()}>
-          <h2 className="mb-reveal-title">mewbeat unlocked</h2>
-          <p className="mb-reveal-copy">A 4-lane rhythm game for whatever is playing in the room.</p>
-          <div className="mb-reveal-actions">
-            <button type="button" className="mb-btn mb-btn-primary" ref={playRef} onClick={onPlay}>Play now</button>
-            <button type="button" className="mb-btn" onClick={onDone}>Later</button>
-          </div>
         </div>
       </div>
     </div>

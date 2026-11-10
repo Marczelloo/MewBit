@@ -80,9 +80,9 @@ test("join sends the request and remembers that the client wants in", async () =
 });
 
 test("a refused join is kept as the reason", async () => {
-  const { store } = setup({ mewbeat_room_join: { type: "mewbeat_room_join", status: "error", reason: "locked" } });
+  const { store } = setup({ mewbeat_room_join: { type: "mewbeat_room_join", status: "error", reason: "room_full" } });
   await store.join();
-  assert.equal(store.get().joinError, "locked");
+  assert.equal(store.get().joinError, "room_full");
   assert.equal(store.get().joining, false);
 });
 

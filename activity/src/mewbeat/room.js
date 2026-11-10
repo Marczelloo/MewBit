@@ -235,7 +235,6 @@ const ROOM_ERRORS = {
   bad_difficulty: "Pick a valid difficulty.",
   bad_request: "That didn't work. Try again.",
   room_full: "The room is full.",
-  locked: "Unlock mewbeat first.",
   bad_uri: "That song link isn't valid.",
   bad_source: "That song link isn't valid.",
   resolve_failed: "Couldn't look that song up. Try again.",

@@ -254,6 +254,27 @@ function songStats({ audioKey }) {
   return { status: "ok", stats };
 }
 
+// The runs a map report can name, newest first: twelve rounds spread over the charted songs, each at a different level.
+// Their times follow the clock so the "ago" in the list reads like a real evening of play.
+function reportRuns() {
+  const charted = SONGS.filter((song) => song.stars);
+  const runs = Array.from({ length: 12 }, (_, i) => {
+    const song = charted[i % charted.length];
+    const level = (i * 2 + 1) % LEVELS.length;
+    const grade = ["S", "A", "B", "C", "D"][i % 5];
+    return {
+      audioKey: audioKeyOf(song),
+      difficulty: LEVELS[level],
+      at: Date.now() - (i + 1) * 47 * 60_000 - i * i * 3_600_000,
+      title: song.title,
+      artist: song.artist,
+      grade,
+      accuracy: Math.round((ACCURACY_BY_GRADE[grade] - i * 0.3) * 100) / 100,
+    };
+  });
+  return { status: "ok", runs };
+}
+
 const ANSWERS = {
   mewbeat_song_stats: songStats,
   mewbeat_played: played,
@@ -261,6 +282,7 @@ const ANSWERS = {
   mewbeat_profile: profile,
   mewbeat_stats: stats,
   mewbeat_ranking: ranking,
+  mewbeat_report_runs: reportRuns,
 };
 
 // request(type, body) -> a promise of the reply, like createMewbeatRequests().request without the socket.

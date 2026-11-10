@@ -102,6 +102,20 @@ function playedSongs() {
   return songs.sort((a, b) => (b.rounds[0].at ?? 0) - (a.rounds[0].at ?? 0));
 }
 
+// A played song the list lacks still opens when its features and audio are on disk. The list reads history.json, but the
+// bot keeps its history in AtlasHub when that is set up, and the file is then stale or missing: a link from a bug report
+// would open nothing. Nothing about who played it is known here, so there are no rounds, and the title is the id's hash.
+function unlistedPlayedSong(id) {
+  const sha = playedSha(id);
+  if (!sha || !existsSync(join(BOT_DATA, "features", `${sha}.json`)) || !existsSync(join(BOT_DATA, "audio", `${sha}.ogg`))) return null;
+  return {
+    id, artist: "", title: sha, creator: null, genre: "played", humanBpm: null, algoBpm: null, onHumanBeat: null, phase: null,
+    humanLevels: [], distance: { easy: null, normal: null, hard: null }, rounds: [],
+  };
+}
+
+const songById = (id) => allSongs().find((s) => s.id === id) ?? unlistedPlayedSong(id);
+
 function allSongs() {
   const train = existsSync(join(DATA, "songs.json")) ? readJson(join(DATA, "songs.json")) : [];
   return [...playedSongs(), ...train, ...previewSongs()];
@@ -165,7 +179,7 @@ function humanOf(id) {
 }
 
 function songPayload(id) {
-  const song = allSongs().find((s) => s.id === id);
+  const song = songById(id);
   if (!song) return null;
   if (isPlayed(id)) archivePlayedCharts();
   const f = featuresOf(id);
@@ -250,7 +264,7 @@ function sendFile(req, res, path) {
 }
 
 function audioPath(id) {
-  const song = allSongs().find((s) => s.id === id);
+  const song = songById(id);
   if (!song) return null;
   const path = isPreview(id) ? join(PREVIEW, song.audio) : isPlayed(id) ? join(BOT_DATA, "audio", `${playedSha(id)}.ogg`) : join(DATA, "audio", song.audio);
   return existsSync(path) ? path : null;
@@ -302,7 +316,7 @@ function route(req, res) {
       return payload ? sendJson(res, payload) : notFound(res, "no such song");
     }
     if (parts[1] === "chart" && parts[2] && LEVELS.includes(parts[3])) {
-      if (!allSongs().some((s) => s.id === parts[2])) return notFound(res, "no such song");
+      if (!songById(parts[2])) return notFound(res, "no such song");
       return sendJson(res, chartPayload(parts[2], parts[3]));
     }
     if (parts[1] === "snapshot" && playedSha(parts[2] ?? "") && LEVELS.includes(parts[3])) return playedSnapshotRoute(res, playedSha(parts[2]), parts[3], parts[4] ?? "");

@@ -113,7 +113,7 @@ function Group({ id, title, children }) {
 
 // The settings window. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs", onBlockCalibration }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs", onBlockCalibration, forcedGroup = null, onReplayTour, replayTourBlocked = false }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -173,7 +173,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   }, [flushField]);
 
   useEffect(() => {
-    panelRef.current?.focus();
+    if (!forcedGroup) panelRef.current?.focus(); // in the first-run tour, focus stays on the tour's buttons
   }, []);
 
   // The newest value wins over a stale render: it bumps the field's sequence (so an older request
@@ -252,8 +252,17 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
   }, [capture, send]);
 
   // Category rail: clicking scrolls the pane to the group, scrolling the pane highlights the group in view.
-  const [activeGroup, setActiveGroup] = useState(GROUPS[0].id);
+  const [scrolledGroup, setActiveGroup] = useState(GROUPS[0].id);
+  const activeGroup = forcedGroup ?? scrolledGroup; // the first-run tour pins the group it is talking about
   const paneRef = useRef(null);
+
+  // The tour moves the pane to the group at once, no smooth scroll, so its target is in place when the popup measures.
+  useEffect(() => {
+    if (!forcedGroup) return;
+    const pane = paneRef.current;
+    const target = pane?.querySelector(`#mb-group-${forcedGroup}`);
+    if (pane && target) pane.scrollTop = target.offsetTop;
+  }, [forcedGroup]);
 
   const scrollToGroup = (id) => {
     const pane = paneRef.current;
@@ -312,7 +321,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
 
           <div className="mb-settings-pane" ref={paneRef} onScroll={onPaneScroll}>
             <Group id="sound" title="Sound">
-              <section className="mb-row mb-row-stack">
+              <section className="mb-row mb-row-stack" data-tour="sound">
                 <label className="mb-row-label" htmlFor="mb-music-volume">Music volume</label>
                 <Slider
                   id="mb-music-volume"
@@ -383,7 +392,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
             </Group>
 
             <Group id="gameplay" title="Gameplay">
-              <section className="mb-row mb-row-stack">
+              <section className="mb-row mb-row-stack" data-tour="setkeys">
                 <div className="mb-row-text">
                   <span className="mb-row-label">Keys</span>
                   {keyError ? <p className="mb-field-error" role="alert">{keyError}</p> : <p className="mb-row-help">Click a key, then press the one you want. Space is FEVER.</p>}
@@ -431,7 +440,7 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
             </Group>
 
             <Group id="sync" title="Sync">
-              <section className="mb-row mb-row-stack">
+              <section className="mb-row mb-row-stack" data-tour="offset">
                 <div className="mb-row-head">
                   <label className="mb-row-label" htmlFor="mb-offset">Audio offset</label>
                   <output className="mb-value" htmlFor="mb-offset">{formatOffset(offsetMs)}</output>
@@ -519,6 +528,15 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                 </div>
                 <Segmented label="Show Mewbit" options={SHOW_MEWBIT} value={valueOf("showMewbit") !== false} onChange={(value) => send({ showMewbit: value })} />
               </section>
+              {onReplayTour ? (
+                <section className="mb-row">
+                  <div className="mb-row-text">
+                    <span className="mb-row-label">Tutorial</span>
+                    <p className="mb-row-help">{replayTourBlocked ? "Not in a room: leave the room to replay it." : "Mewbit shows you around mewbeat again."}</p>
+                  </div>
+                  <button type="button" className="mb-btn" disabled={replayTourBlocked} onClick={onReplayTour}>Replay tutorial</button>
+                </section>
+              ) : null}
             </Group>
           </div>
         </div>

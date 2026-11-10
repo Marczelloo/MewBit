@@ -11,7 +11,7 @@ function fakeTrack(info) {
   return { info: { sourceName: "youtube", identifier: "abc", length: 200000, ...info } };
 }
 
-function setup({ playback, unlocked = true, result } = {}) {
+function setup({ playback, result } = {}) {
   const calls = [];
   const charts = { easy: { id: "e" }, normal: { id: "n" }, hard: { id: "h", notes: [1, 2] } };
   const channel = createMewbeatChannel({
@@ -24,7 +24,6 @@ function setup({ playback, unlocked = true, result } = {}) {
         return result ?? { status: "ready", charts };
       },
     },
-    isUnlocked: () => unlocked,
     now: () => NOW,
   });
   return { channel, calls, charts };
@@ -47,7 +46,6 @@ describe("mewbeat activity channel", () => {
     const channel = createMewbeatChannel({
       readPlayback: () => ({ track: fakeTrack(), node: "n", positionMs: 1000, paused: false, durationMs: 200000 }),
       chartStore: { getCharts: async () => ({ status: "ready", charts: {} }) },
-      isUnlocked: () => true,
       now: () => NOW,
       audioLatencyMs: 500,
     });
@@ -71,11 +69,6 @@ describe("mewbeat activity channel", () => {
     assert.strictEqual(reply.anchor, null);
   });
 
-  it("syncs for a locked account", async () => {
-    const { channel } = setup({ unlocked: false });
-    const reply = await channel.handle("g", "u", { type: "mewbeat_sync", id: "s1", clientSentAt: 1 });
-    assert.strictEqual(reply.type, "mewbeat_sync");
-  });
 
   it("rejects a sync with a bad id or timestamp", async () => {
     const { channel } = setup();
@@ -91,12 +84,6 @@ describe("mewbeat activity channel", () => {
     }
   });
 
-  it("refuses a chart for a locked account without touching the store", async () => {
-    const { channel, calls } = setup({ unlocked: false });
-    const reply = await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "hard" });
-    assert.deepStrictEqual(reply, { type: "error", error: "Unlock mewbeat first." });
-    assert.strictEqual(calls.length, 0);
-  });
 
   it("answers stale when the playing track is not the requested one", async () => {
     const { channel, calls } = setup();
@@ -139,6 +126,19 @@ describe("mewbeat activity channel", () => {
     assert.deepStrictEqual(reply, { type: "mewbeat_chart", audioKey: KEY, difficulty: "normal", status: "pending" });
   });
 
+  it("echoes a request id on the chart reply, ready or stale, and only a sane one", async () => {
+    const { channel } = setup();
+    const ready = await channel.handle("g", "u", { type: "mewbeat_chart", id: "r7", audioKey: KEY, difficulty: "hard" });
+    assert.strictEqual(ready.id, "r7");
+    assert.strictEqual(ready.status, "ready");
+    const stale = await channel.handle("g", "u", { type: "mewbeat_chart", id: "r8", audioKey: "youtube:other:1", difficulty: "hard" });
+    assert.strictEqual(stale.id, "r8");
+    for (const id of [undefined, "", 5, "x".repeat(41)]) {
+      const reply = await channel.handle("g", "u", { type: "mewbeat_chart", id, audioKey: KEY, difficulty: "hard" });
+      assert.strictEqual("id" in reply, false);
+    }
+  });
+
   it("passes an explicit retry on, and only an explicit one", async () => {
     const { channel, calls } = setup();
     await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "hard" });
@@ -164,7 +164,6 @@ describe("mewbeat activity channel", () => {
     const channel = createMewbeatChannel({
       readPlayback: () => ({ track: fakeTrack(), node: null, positionMs: 0, paused: false, durationMs: 200000 }),
       chartStore: { getCharts: async () => { throw new Error("disk gone"); } },
-      isUnlocked: () => true,
     });
     await assert.rejects(channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "easy" }), /disk gone/);
   });
@@ -172,7 +171,7 @@ describe("mewbeat activity channel", () => {
     const SOLO_KEY = "spotify:xyz:180000";
     const soloTrack = { track: "encoded", info: { sourceName: "spotify", identifier: "xyz", length: 180000, title: "Song", author: "Band", uri: "https://open.spotify.com/track/xyz", artworkUrl: "https://img/a.jpg" } };
 
-    function soloSetup({ unlocked = true, resolved = { track: soloTrack, node: "node-2" }, playback, peekCharts } = {}) {
+    function soloSetup({ resolved = { track: soloTrack, node: "node-2" }, playback, peekCharts } = {}) {
       const soloTracks = createSoloTracks();
       const resolveCalls = [];
       const chartCalls = [];
@@ -187,7 +186,6 @@ describe("mewbeat activity channel", () => {
           },
           peekCharts,
         },
-        isUnlocked: () => unlocked,
         resolveTrack: async (guildId, query) => { resolveCalls.push({ guildId, ...query }); return resolved; },
         soloTracks,
         log: { warning() {} },
@@ -226,12 +224,6 @@ describe("mewbeat activity channel", () => {
       assert.deepStrictEqual(chartCalls, [{ track: soloTrack, node: "node-2" }]);
     });
 
-    it("refuses a locked account without resolving", async () => {
-      const { channel, resolveCalls } = soloSetup({ unlocked: false });
-      const reply = await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "x", source: "" });
-      assert.deepStrictEqual(reply, { type: "mewbeat_solo_prepare", id: "p1", status: "error", reason: "locked" });
-      assert.strictEqual(resolveCalls.length, 0);
-    });
 
     it("answers an error when nothing resolves", async () => {
       const { channel, soloTracks } = soloSetup({ resolved: null });
@@ -272,6 +264,33 @@ describe("mewbeat activity channel", () => {
       const reply = await channel.handle("g", "u", { type: "mewbeat_sync", id: "s", clientSentAt: 1 }, { id: "u", username: "U", avatarUrl: null });
       assert.strictEqual(reply.type, "mewbeat_sync");
       assert.strictEqual(channel.disconnect("g", "u"), undefined);
+    });
+  });
+
+  describe("tour songs", () => {
+    const warm = { heavy: { audioKey: "k:h", track: { title: "H" }, chartReady: true }, calm: { audioKey: "k:c", track: { title: "C", uri: "u", source: "youtube" }, chartReady: true } };
+    const channelOf = (tourSongs) => createMewbeatChannel({
+      readPlayback: () => null,
+      chartStore: { getCharts: async () => ({ status: "ready", charts: {} }) },
+      now: () => NOW,
+      tourSongs,
+    });
+
+    it("answers with both songs once the bot has them warm", async () => {
+      const reply = await channelOf({ state: () => warm }).handle("g", "u", { type: "mewbeat_tour_songs", id: "t1" });
+      assert.deepStrictEqual(reply, { type: "mewbeat_tour_songs", id: "t1", status: "ok", heavy: warm.heavy, calm: warm.calm });
+    });
+
+    it("says not_ready while either is still being found, charted or rendered, and when there is no warm-up at all", async () => {
+      const waiting = await channelOf({ state: () => null }).handle("g", "u", { type: "mewbeat_tour_songs", id: "t2" });
+      assert.deepStrictEqual(waiting, { type: "mewbeat_tour_songs", id: "t2", status: "not_ready" });
+      const none = await channelOf(null).handle("g", "u", { type: "mewbeat_tour_songs", id: "t3" });
+      assert.deepStrictEqual(none, { type: "mewbeat_tour_songs", id: "t3", status: "not_ready" });
+    });
+
+    it("refuses a request without a usable id", async () => {
+      const reply = await channelOf({ state: () => warm }).handle("g", "u", { type: "mewbeat_tour_songs" });
+      assert.strictEqual(reply.type, "error");
     });
   });
 });

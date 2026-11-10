@@ -86,3 +86,14 @@ test("answers an unknown type with an error", async () => {
   const reply = await request("mewbeat_nope", {});
   assert.deepEqual([reply.status, reply.reason], ["error", "unknown"]);
 });
+
+test("answers the map report with a list of recent runs, newest first, each one a different run", async () => {
+  const reply = await request("mewbeat_report_runs", {});
+  assert.equal(reply.status, "ok");
+  assert.ok(reply.runs.length >= 10);
+  for (const run of reply.runs) {
+    assert.ok(run.audioKey && run.title && run.difficulty && Number.isFinite(run.at), JSON.stringify(run));
+  }
+  assert.deepEqual(reply.runs.map((run) => run.at), reply.runs.map((run) => run.at).sort((a, b) => b - a));
+  assert.equal(new Set(reply.runs.map((run) => `${run.audioKey}|${run.difficulty}|${run.at}`)).size, reply.runs.length);
+});

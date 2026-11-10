@@ -108,3 +108,95 @@ export function createMockLink({
     track: () => (playing ? { title: "Demo track", artist: "mewbeat", queued: false } : null),
   };
 }
+
+// The first-run tour's link: an empty song standing still at its start, so the play screen shows a clear board while
+// Mewbit explains it, with nothing to score and nothing to send. Same surface as createMockLink (no send, no solo stage).
+// The tour's trap borrows it for a scene (playScene): a real song's chart running on the highway as an autoplay.
+export function createStillLink({ now = () => performance.now() } = {}) {
+  const songClock = createSongClock({ serverTimeAt: (perfMs) => perfMs, ready: () => true }, { now });
+  const anchorListeners = new Set();
+  const chartListeners = new Set();
+  const statusListeners = new Set();
+  const timers = new Set();
+  let status = "connecting";
+  let scene = null; // { audioKey, chart, durationMs } while a scene is on, else the empty song stands still
+
+  function subscribe(listeners, fn) {
+    listeners.add(fn);
+    return () => listeners.delete(fn);
+  }
+
+  function emitAnchor(next) {
+    const change = songClock.setAnchor(next);
+    for (const fn of [...anchorListeners]) fn(change);
+  }
+
+  function start() {
+    stop();
+    scene = null;
+    emitAnchor({ audioKey: MOCK_AUDIO_KEY, positionMs: 0, at: now(), paused: true, durationMs: 0 });
+    if (status !== "live") {
+      status = "live";
+      for (const fn of [...statusListeners]) fn(status);
+    }
+  }
+
+  function stop() {
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
+  }
+
+  // A scene: the given chart moving from positionMs, as if the song were playing. The link answers requestChart for
+  // its key with that chart (whatever level is asked: the caller decides which level the HUD shows), and state() says
+  // spectating, so the game runs it as an autoplay that scores nothing, leaves no summary and sends nothing.
+  function playScene({ audioKey, chart, positionMs, durationMs, at = now() }) {
+    scene = { audioKey, chart, durationMs };
+    emitAnchor({ audioKey, positionMs, at, paused: false, durationMs });
+  }
+
+  // Freezes the scene where it is: the clock stops and the highway keeps its last frame.
+  function pauseScene(at = now()) {
+    if (!scene) return;
+    emitAnchor({ audioKey: scene.audioKey, positionMs: songClock.songTimeAt(at) ?? 0, at, paused: true, durationMs: scene.durationMs });
+  }
+
+  // Back to the empty song standing still, with nothing special about the run.
+  function endScene() {
+    if (!scene) return;
+    scene = null;
+    emitAnchor({ audioKey: MOCK_AUDIO_KEY, positionMs: 0, at: now(), paused: true, durationMs: 0 });
+  }
+
+  function requestChart(audioKey, difficulty) {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      const current = audioKey === songClock.audioKey();
+      const message = current
+        ? { audioKey, difficulty, status: "ready", chart: scene && scene.audioKey === audioKey ? { ...scene.chart, audioKey, difficulty } : { audioKey, difficulty, notes: [] } }
+        : { audioKey, difficulty, status: "stale" };
+      for (const fn of [...chartListeners]) fn(message);
+    }, 0);
+    timers.add(timer);
+    return true;
+  }
+
+  return {
+    start,
+    stop,
+    handle: () => {},
+    syncNow: () => {},
+    requestChart,
+    playScene,
+    pauseScene,
+    endScene,
+    songClock,
+    status: () => status,
+    // No onState: the game asks for spectating at every run, and the screen has no stage to follow.
+    state: () => (scene ? { spectating: true } : {}),
+    onAnchor: (fn) => subscribe(anchorListeners, fn),
+    onChart: (fn) => subscribe(chartListeners, fn),
+    onStatus: (fn) => subscribe(statusListeners, fn),
+    setTrackInfo: () => {},
+    track: () => null,
+  };
+}

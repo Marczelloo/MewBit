@@ -1,6 +1,6 @@
 const { randomBytes } = require("node:crypto");
 const Log = require("../logs/log");
-const { audioKeyOf } = require("./audioKey");
+const { audioKeyOf, trackFromAudioKey } = require("./audioKey");
 const { summarizeCharts } = require("./chartSummary");
 const { createLiveBoard } = require("./liveBoard");
 const { isPrivatePlace } = require("./places");
@@ -26,6 +26,8 @@ const PLAYED_LIMIT = 500;
 const RANKING_LIMIT = 100;
 // Rows of the profile's recent and best lists.
 const PROFILE_ROWS = 8;
+// Runs the bug report window offers to pick from for a map problem.
+const REPORT_RUNS = 20;
 // The stats card lists the maps with the highest max combo; a player with 2000 maps would otherwise get them all.
 const STATS_MAPS = 50;
 // More key presses than this in one run is a bogus count, not a very fast player.
@@ -59,10 +61,10 @@ function errorReply(message) {
 // song, seats, queue; or null); the channel only rate-limits it.
 // warmAudio(audioKey, track, node) starts rendering a room song's audio when it
 // is queued, so the round's loading window doesn't pay for a cold render.
+// tourSongs.state() (tourSongs.js) is what the first-run tour is told about its two songs: both warm, or null.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
-  isUnlocked,
   now = Date.now,
   audioLatencyMs = 0,
   resolveTrack,
@@ -71,6 +73,7 @@ function createMewbeatChannel({
   postInvite,
   newInviteCode = () => randomBytes(8).toString("base64url"),
   warmAudio = () => {},
+  tourSongs = null,
   // eslint-disable-next-line no-unused-vars
   broadcast = () => {}, sendToUser,
   setTimer = setTimeout, clearTimer = clearTimeout,
@@ -97,22 +100,24 @@ function createMewbeatChannel({
     return { type: "mewbeat_sync", id, clientSentAt, serverNow, anchor };
   }
 
+  // A chart reply carries the request id when it has one (the sockets of the link match chart replies by key and
+  // difficulty and send none; the first-run tour asks through request(), which matches by id).
   async function chart(guildId, userId, message) {
     const { audioKey, difficulty } = message;
-    if (!isUnlocked(userId)) return errorReply("Unlock mewbeat first.");
+    const echo = typeof message.id === "string" && message.id && message.id.length <= MAX_ID_LENGTH ? { id: message.id } : null;
     if (!DIFFICULTIES.includes(difficulty)) return errorReply("Unknown mewbeat difficulty.");
 
     let source = typeof audioKey === "string" ? soloTracks.get(audioKey) : null;
     if (!source) {
       const playback = readPlayback(guildId);
       if (!playback || !audioKey || audioKeyOf(playback.track) !== audioKey) {
-        return { type: "mewbeat_chart", audioKey, difficulty, status: "stale" };
+        return { type: "mewbeat_chart", ...echo, audioKey, difficulty, status: "stale" };
       }
       source = playback;
     }
 
     const result = await chartStore.getCharts(source.track, source.node, { retry: message.retry === true });
-    const reply = { type: "mewbeat_chart", audioKey, difficulty, status: result.status };
+    const reply = { type: "mewbeat_chart", ...echo, audioKey, difficulty, status: result.status };
     if (result.reason !== undefined) reply.reason = result.reason;
     if (result.status === "ready") {
       reply.chart = result.charts[difficulty];
@@ -171,7 +176,6 @@ function createMewbeatChannel({
     const preview = message.preview === true;
     const fail = (reason) => ({ type: "mewbeat_solo_prepare", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat prepare.");
-    if (!isUnlocked(userId)) return fail("locked");
 
     try {
       const { audioKey, track } = await prepareSong(guildId, { uri, source }, { chart: !preview });
@@ -182,6 +186,16 @@ function createMewbeatChannel({
       if (!error.reason) throw error;
       return fail(error.reason);
     }
+  }
+
+  // The first-run tour's two songs, prepared by the bot on its own (tourSongs.js): their keys and info, or not_ready while
+  // either is still being found, charted or rendered. The client never sends a search.
+  function tourSongsReply(message) {
+    const { id } = message;
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat tour songs.");
+    const state = tourSongs?.state?.() ?? null;
+    if (!state) return { type: "mewbeat_tour_songs", id, status: "not_ready" };
+    return { type: "mewbeat_tour_songs", id, status: "ok", heavy: state.heavy, calm: state.calm };
   }
 
   const rooms = createRooms({
@@ -216,7 +230,6 @@ function createMewbeatChannel({
   // A progress update from a running game; nothing is sent back, the board
   // reaches everyone as a mewbeat_live_board push.
   function live(guildId, userId, message, profile) {
-    if (!isUnlocked(userId)) return null;
     liveBoard.update(guildId, userId, profile, message);
     return null;
   }
@@ -316,7 +329,6 @@ function createMewbeatChannel({
     const reply = (result) => (result.ok
       ? { type, id, status: "ok" }
       : { type, id, status: "error", reason: result.reason });
-    if (!isUnlocked(userId)) return reply({ ok: false, reason: "locked" });
 
     switch (type) {
       case "mewbeat_room_join":
@@ -359,22 +371,6 @@ function createMewbeatChannel({
       return { track: playback.track, info: trackInfoOf(playback.track) };
     }
     return null;
-  }
-
-  // A key is source:identifier:length, so a stored chart can be looked up
-  // without the original track (after a restart, for old history).
-  function trackFromAudioKey(audioKey) {
-    if (typeof audioKey !== "string") return null;
-    const first = audioKey.indexOf(":");
-    const last = audioKey.lastIndexOf(":");
-    if (first <= 0 || last <= first) return null;
-    return {
-      info: {
-        sourceName: audioKey.slice(0, first),
-        identifier: audioKey.slice(first + 1, last),
-        length: Number(audioKey.slice(last + 1)),
-      },
-    };
   }
 
   // The highlight is the same for every difficulty; any charted one has it. Takes the summary of the song's charts.
@@ -488,7 +484,6 @@ function createMewbeatChannel({
       refuse("bad_id");
       return errorReply("Bad mewbeat submit.");
     }
-    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore || !historyStore) return fail("unavailable");
     if (!DIFFICULTIES.includes(difficulty)) return fail("bad_difficulty");
     if (!Array.isArray(events) || events.length === 0) return fail("no_events");
@@ -619,7 +614,6 @@ function createMewbeatChannel({
     const { id, audioKey, difficulty, scope } = message;
     const fail = (reason) => ({ type: "mewbeat_board", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat board.");
-    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore) return fail("unavailable");
     if (!DIFFICULTIES.includes(difficulty) || typeof audioKey !== "string") return fail("bad_request");
     if (scope !== "server" && scope !== "global") return fail("bad_scope");
@@ -639,7 +633,6 @@ function createMewbeatChannel({
     const { id, scope } = message;
     const fail = (reason) => ({ type: "mewbeat_played", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat played.");
-    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore || !historyStore) return fail("unavailable");
     if (scope !== "server" && scope !== "global" && scope !== "mine") return fail("bad_scope");
 
@@ -684,18 +677,17 @@ function createMewbeatChannel({
   }
 
   // Shared start of the profile messages. Returns the reply to send, or { userId } to go on with.
-  function profileTarget(type, requesterId, message) {
+  function profileTarget(type, message) {
     const { id, userId } = message;
     const fail = (reason) => ({ type, id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return { reply: errorReply(`Bad ${type}.`) };
-    if (!isUnlocked(requesterId)) return { reply: fail("locked") };
     if (!statsStore || !scoreStore || !historyStore || !ranking) return { reply: fail("unavailable") };
     if (userId !== undefined && (typeof userId !== "string" || !userId || userId.length > MAX_ID_LENGTH)) return { reply: fail("bad_request") };
     return { fail, userId };
   }
 
   function playerProfile(guildId, requesterId, message, requesterProfile) {
-    const { reply, fail, userId: requested } = profileTarget("mewbeat_profile", requesterId, message);
+    const { reply, fail, userId: requested } = profileTarget("mewbeat_profile", message);
     if (reply) return reply;
     const player = playerFor(requesterId, requested, requesterProfile);
     if (!player) return fail("not_found");
@@ -749,8 +741,30 @@ function createMewbeatChannel({
     };
   }
 
+  // The player's own latest runs, newest first, for the map problem report to name one. A report names its run by
+  // audioKey, difficulty and at, which the server looks up again in the same history when the report comes in.
+  function reportRuns(userId, message) {
+    const { id } = message;
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat report runs.");
+    if (!historyStore) return { type: "mewbeat_report_runs", id, status: "error", reason: "unavailable" };
+    return {
+      type: "mewbeat_report_runs",
+      id,
+      status: "ok",
+      runs: historyStore.recent(userId, REPORT_RUNS).map((round) => ({
+        audioKey: round.audioKey,
+        difficulty: round.difficulty,
+        at: round.at,
+        title: round.title,
+        artist: round.artist ?? "",
+        grade: round.grade ?? null,
+        accuracy: round.accuracy ?? null,
+      })),
+    };
+  }
+
   function playerStats(_guildId, requesterId, message, requesterProfile) {
-    const { reply, fail, userId: requested } = profileTarget("mewbeat_stats", requesterId, message);
+    const { reply, fail, userId: requested } = profileTarget("mewbeat_stats", message);
     if (reply) return reply;
     const player = playerFor(requesterId, requested, requesterProfile);
     if (!player) return fail("not_found");
@@ -762,7 +776,6 @@ function createMewbeatChannel({
     const { id, scope } = message;
     const fail = (reason) => ({ type: "mewbeat_ranking", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat ranking.");
-    if (!isUnlocked(userId)) return fail("locked");
     if (!ranking) return fail("unavailable");
     if (scope !== "server" && scope !== "global") return fail("bad_scope");
 
@@ -791,7 +804,6 @@ function createMewbeatChannel({
     const { id, audioKey } = message;
     const fail = (reason) => ({ type: "mewbeat_song_stats", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat song stats.");
-    if (!isUnlocked(userId)) return fail("locked");
     if (!scoreStore) return fail("unavailable");
     if (typeof audioKey !== "string" || audioKey.length > MAX_URI_LENGTH) return fail("bad_request");
 
@@ -821,12 +833,14 @@ function createMewbeatChannel({
         case "mewbeat_sync": return sync(guildId, message);
         case "mewbeat_chart": return chart(guildId, userId, message);
         case "mewbeat_solo_prepare": return soloPrepare(guildId, userId, message);
+        case "mewbeat_tour_songs": return tourSongsReply(message);
         case "mewbeat_submit": return submit(guildId, userId, message, profile, room);
         case "mewbeat_board": return board(boards, userId, message);
         case "mewbeat_song_stats": return songStats(guildId, userId, message);
         case "mewbeat_played": return played(boards, userId, message);
         case "mewbeat_profile": return playerProfile(boards, userId, message, profile);
         case "mewbeat_stats": return playerStats(guildId, userId, message, profile);
+        case "mewbeat_report_runs": return reportRuns(userId, message);
         case "mewbeat_ranking": return rankingBoard(boards, userId, message, profile);
         case "mewbeat_live": return live(message.session === "room" ? room : guildId, userId, message, profile);
         default: {

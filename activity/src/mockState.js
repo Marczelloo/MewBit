@@ -115,7 +115,7 @@ function createMockPlaylistDetails(now) {
   };
 }
 
-export function createMockState({ idle = false, locked = false } = {}) {
+export function createMockState({ idle = false, firstRun = false } = {}) {
   const currentTrack = idle ? null : tracks[0];
   const now = Date.now();
   return {
@@ -169,7 +169,7 @@ export function createMockState({ idle = false, locked = false } = {}) {
       updatedAt: Date.now(),
     },
     lavalink: { connected: true, latencyMs: 24 },
-    mewbeat: { unlocked: !locked, settings: { ...MEWBEAT_DEFAULT_SETTINGS, keys: [...MEWBEAT_DEFAULT_SETTINGS.keys] } },
+    mewbeat: { tutorialSeen: !firstRun, settings: { ...MEWBEAT_DEFAULT_SETTINGS, keys: [...MEWBEAT_DEFAULT_SETTINGS.keys] } },
     playlists: [
       { id: "liked", name: "Liked Songs", type: "user", description: "Your saved tracks", trackCount: 5, thumbnail: "", public: false, collaborative: false, isDefault: true, artworks: [libraryTracks[3], libraryTracks[0], libraryTracks[6], libraryTracks[1]].map((track) => track.artworkUrl) },
       { id: "night-drive", name: "Night Drive.exe", type: "user", description: "Blue lights, no skips", trackCount: libraryTracks.length, thumbnail: "", public: true, collaborative: true, isDefault: false, artworks: libraryTracks.slice(0, 4).map((track) => track.artworkUrl) },

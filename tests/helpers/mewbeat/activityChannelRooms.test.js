@@ -49,7 +49,7 @@ describe("mewbeat channel rooms", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ unlocked = true, postInvite, warmAudio } = {}) {
+  function setup({ postInvite, warmAudio } = {}) {
     let time = 1_000_000;
     let nextTimer = 1;
     const timers = new Map();
@@ -61,7 +61,6 @@ describe("mewbeat channel rooms", () => {
         getCharts: async () => ({ status: "ready", charts }),
         peekCharts: () => ({ status: "ready", charts }),
       },
-      isUnlocked: () => unlocked,
       now: () => time,
       resolveTrack: async (_guildId, { uri }) => (uri === "missing" ? null : { track: fakeTrack(uri), node: "n" }),
       scoreStore: createScoreStore({ file: path.join(dir, "scores.json"), now: () => time }),
@@ -207,12 +206,7 @@ describe("mewbeat channel rooms", () => {
     });
   });
 
-  it("needs an id and the unlock like every mewbeat message", async () => {
-    const locked = setup({ unlocked: false });
-    assert.deepStrictEqual(
-      await locked.send(ANN, { type: "mewbeat_room_join", id: "1" }),
-      { type: "mewbeat_room_join", id: "1", status: "error", reason: "locked" },
-    );
+  it("needs an id like every mewbeat message", async () => {
     assert.strictEqual((await setup().send(ANN, { type: "mewbeat_room_join" })).type, "error");
   });
 
@@ -337,16 +331,13 @@ describe("mewbeat channel rooms", () => {
       assert.strictEqual(posts.length, 2);
     });
 
-    it("refuses non-members and locked users without posting", async () => {
+    it("refuses a non-member without posting", async () => {
       const posts = [];
-      const postInvite = async (args) => { posts.push(args); return { ok: true }; };
-      const { send } = setup({ postInvite });
+      const { send } = setup({ postInvite: async (args) => { posts.push(args); return { ok: true }; } });
       assert.deepStrictEqual(
         await invite(send, ANN, "1"),
         { type: "mewbeat_room_invite", id: "1", status: "error", reason: "not_in_room" },
       );
-      const locked = setup({ unlocked: false, postInvite });
-      assert.strictEqual((await invite(locked.send, ANN, "2")).reason, "locked");
       assert.deepStrictEqual(posts, []);
     });
 

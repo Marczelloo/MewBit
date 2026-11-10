@@ -211,3 +211,27 @@ test("close shuts the context, later plays do nothing and a late decode is dropp
   closing.play("hit");
   assert.equal(fresh.made[0].sources.length, 0);
 });
+
+test("ready resolves once the sample has loaded, also when it failed or the sounds close, and at once when loaded", async () => {
+  const { FakeContext } = fakeAudio({ failDecode: ["/tick.ogg"] });
+  const { fetchImpl } = fakeFetch();
+  const sounds = createSounds({ urls: URLS, AudioContextClass: FakeContext, fetchImpl });
+  let hitReady = false;
+  let tickReady = false;
+  sounds.ready("hit").then(() => { hitReady = true; });
+  sounds.ready("tick").then(() => { tickReady = true; });
+  await settled();
+  assert.equal(hitReady, false); // nothing loads before the first unlock
+  sounds.unlock();
+  await settled();
+  assert.equal(hitReady, true);
+  assert.equal(tickReady, true); // a sample that failed to decode stops the wait too
+  assert.equal(await sounds.ready("hit"), undefined); // already there
+
+  const closing = createSounds({ urls: URLS, AudioContextClass: FakeContext, fetchImpl });
+  let closedReady = false;
+  closing.ready("hit").then(() => { closedReady = true; });
+  closing.close();
+  await settled();
+  assert.equal(closedReady, true);
+});

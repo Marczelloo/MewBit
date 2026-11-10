@@ -200,8 +200,46 @@
 .mb-cal-dot-last { background: var(--mb-pink); }
 .mb-cal-side .mb-calib-row { margin-top: auto; }
 
+/* the report window: the settings window's look, sized to its form */
+.mb-settings.mb-report { width: min(480px, 100vw - 48px); height: auto; max-height: calc(100vh - 64px); }
+.mb-report-body { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 16px 20px 4px; overflow-y: auto; }
+.mb-report-field { display: flex; flex-direction: column; gap: 8px; }
+.mb-report-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--mb-line);
+  border-radius: 12px;
+  background: var(--mb-surface);
+  color: var(--mb-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.mb-report-text::placeholder { color: var(--mb-muted); }
+.mb-report-text:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 0; }
+.mb-report-count { flex: none; color: var(--mb-muted); font: 500 12px/1.4 "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+/* a map report's run list: one radio per run, the picked row lit like an on toggle */
+.mb-report-runs { display: flex; flex-direction: column; gap: 4px; max-height: 220px; padding: 4px; overflow-y: auto; border: 1px solid var(--mb-line); border-radius: 12px; background: var(--mb-surface); }
+.mb-report-run { display: block; position: relative; cursor: pointer; }
+.mb-report-run input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.mb-report-run-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; }
+.mb-report-run:hover .mb-report-run-row { background: rgb(255 255 255 / 0.05); }
+.mb-report-run input:checked + .mb-report-run-row { background: rgb(103 227 244 / 0.14); box-shadow: inset 0 0 0 1px var(--mb-cyan); }
+.mb-report-run input:focus-visible + .mb-report-run-row { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
+.mb-report-run-main, .mb-report-run-meta { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.mb-report-run-meta { flex: none; align-items: flex-end; }
+.mb-report-run-main b { overflow: hidden; color: var(--mb-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.mb-report-run small { overflow: hidden; color: var(--mb-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.mb-report-run-meta > span { font-size: 14px; font-weight: 800; }
+.mb-report-actions { display: flex; flex: none; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; }
+.mb-report-actions .mb-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 14px; font-size: 13px; }
+
 .mb-settings .mb-btn:disabled { opacity: 0.4; cursor: default; }
 .mb-settings .mb-btn:disabled:hover { background: var(--mb-raised); border-color: rgb(255 255 255 / 0.14); box-shadow: none; }
+.mb-settings .mb-btn-primary:disabled:hover { background: var(--mb-cyan); border-color: var(--mb-cyan); }
 .mb-settings .mb-seg:disabled:hover { background: transparent; }
 
 /* open animation: scale + fade only at Full effects, plain fade at Reduced, none at Off */

@@ -1,10 +1,11 @@
-import { ArrowCounterClockwise, GearSix, House, List, MusicNotesSimple, Pause, Play, SignOut } from "@phosphor-icons/react";
-import { cloneElement, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowCounterClockwise, Bug, GearSix, House, List, MusicNotesSimple, Pause, Play, SignOut } from "@phosphor-icons/react";
+import { cloneElement, lazy, memo, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { fetchMewbeatAudio } from "../api.js";
 import { createAlignClient } from "./alignClient.js";
 import { makeAlignWorker } from "./alignWorkerFactory.js";
 import { TrackCard } from "./GameHud.jsx";
 import CalibrationPanel from "./CalibrationPanel.jsx";
+import ReportPanel from "./ReportPanel.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
 import { Aura, FeverBanner, FeverTime, MissFlash, Readout, StageBackdrop, StageHost, StagedFeverBar, StagedGameHud, UnrankedChip } from "./StageLeaves.jsx";
 import { MIN_TAPS } from "./calibration.js";
@@ -13,8 +14,11 @@ import { fpsFlagOn, startFrameMonitor } from "./frameMonitor.js";
 import { createKeyHold, keyLabel } from "./input.js";
 import { createMewbeatLink } from "./link.js";
 import { createLiveBoardStore } from "./liveBoard.js";
-import { createMockLink } from "./mockLink.js";
-import { createMockRequest, MOCK_USER_ID } from "./mockRequests.js";
+import { createMockLink, createStillLink } from "./mockLink.js";
+import TourLayer from "./tour/TourLayer.jsx";
+import { AFTER_INDEX, AFTER_NO_TRAP_INDEX, END_INDEX, TOUR_STEPS, tourNext } from "./tour/steps.js";
+import { CUT_FADE_MS, HEAVY_MS, START_LEAD_S, TRAP_IDLE, TRAP_PAUSE_MS, createTrapPlayer, prepareTrap, trapReducer, trapSceneOf, trapScreenOf } from "./tour/trap.js";
+import { pickLine } from "./mewbit/lines.js";
 import { createMewbeatRequests } from "./requests.js";
 import { PrivatePlace } from "./placeContext.js";
 import { createRoomLink } from "./roomLink.js";
@@ -40,17 +44,22 @@ import "./mewbeat.css";
 
 // Same switch as MOCK_PREVIEW in App.jsx (a dev-server-only ?mock=1 page with no bot).
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
+// The mock game has no bot to ask, so the report window's list of runs is answered by mockRequests.js there.
+const mockRequest = MOCK_PREVIEW ? (type, body) => import("./mockRequests.js").then(({ createMockRequest }) => createMockRequest()(type, body)) : null;
 // ?mock=1&select=1 shows the Solo song select on fake replies (mockRequests.js) instead of the mock game.
 const MOCK_SELECT = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("select");
 // ?mock=1&lobby=1 shows the room lobby on a fake room (&results=1: the end-of-run Results with standings). The file
 // is a dynamic import behind the DEV flag, so the production build leaves it and its fake names out.
 const MOCK_LOBBY = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("lobby");
 const MockLobby = MOCK_LOBBY ? lazy(() => import("./MockLobby.jsx")) : null;
+// ?mock=1&firstrun&trap runs the tour's trap (tour/trap.js) on two silent mock songs instead of the bot's (trapMock.js).
+const MOCK_TRAP = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("trap");
 // ?fps=1 shows a corner box with the frames over 20 ms and the worst one (frameMonitor.js); off without it.
 const FPS_FLAG = typeof window !== "undefined" && fpsFlagOn(window.location.search);
 
 const SCREEN_IN_MS = 240; // same as mb-screen-in in mewbeat.css
 const SOLO_GO_MS = 900; // Mewbit's GO after a solo run's count
+const ENTRY_POSE_MS = 2600; // how long the entry pose (the Konami wink) stays up; .mb-entry-pose fades over the same time
 const SCREEN_OUT_MS = 160; // same as mb-screen-out
 const POSITION_JUMP_MS = 1500;
 const AUTO_OFFSET_EVERY = 16; // new taps between auto offset updates
@@ -66,6 +75,9 @@ const MODES = [
 const RESULTS_HOLD_MS = 5000;
 const PRESENCE_MS = 5000;
 const RESTART_HOLD_MS = 600;
+const NOOP = () => {};
+const NOOP_ASYNC = () => Promise.resolve();
+const TOUR_ROOM_CLOCK_MS = 45 * 60_000; // the tour's sample room runs its clock this far, so the round never starts under it
 
 const PHASE_COPY = {
   connecting: { title: "Connecting…" },
@@ -92,7 +104,8 @@ const SOLO_STAGE_COPY = {
 const liveSessionForLive = (audioKey) => `live:${audioKey}`;
 const liveSessionForRoom = () => "room";
 
-function createLink(mode, mewbeatSocketRef, audio, getUserId) {
+function createLink(mode, mewbeatSocketRef, audio, getUserId, touring) {
+  if (touring) return createStillLink(); // the first-run tour: a sample song standing still, nothing to send
   if (MOCK_PREVIEW) return createMockLink();
   const send = (payload) => mewbeatSocketRef.current?.send?.(payload) ?? false;
   if (mode === "solo") return createSoloLink({ send, audio });
@@ -143,12 +156,14 @@ function ScreenSlot({ screen, dead }) {
 // can't stop the song, so the game only ignores its keys while it is up. Esc resumes from anywhere
 // (MewbeatSession captures it, so it works whatever has focus); Enter does too, unless it is on another button.
 // With `level` and `onLevel` it also offers the four levels; picking one starts the map over on it.
-function GameMenu({ title, note, error, focusSettings, level, onLevel, onResume, onRestart, onPick, onSettings, onExit }) {
+function GameMenu({ quiet, title, note, error, focusButton, level, onLevel, onResume, onRestart, onPick, onSettings, onReport, onExit }) {
   const resumeRef = useRef(null);
   const settingsRef = useRef(null);
+  const reportRef = useRef(null);
   useEffect(() => {
-    (focusSettings ? settingsRef : resumeRef).current?.focus();
-  }, [focusSettings]);
+    if (quiet) return; // the tour's copy leaves the focus on the tour
+    ({ settings: settingsRef, report: reportRef }[focusButton] ?? resumeRef).current?.focus();
+  }, [focusButton, quiet]);
   const onKeyDown = (event) => {
     const onButton = event.target instanceof HTMLElement && event.target.tagName === "BUTTON";
     if (event.key === "Enter" && !onButton) {
@@ -198,6 +213,9 @@ function GameMenu({ title, note, error, focusSettings, level, onLevel, onResume,
           <button type="button" className="mb-btn" ref={settingsRef} onClick={onSettings}>
             <GearSix size={16} weight="bold" aria-hidden="true" /> Settings
           </button>
+          <button type="button" className="mb-btn" ref={reportRef} onClick={onReport} data-tour="report">
+            <Bug size={16} weight="bold" aria-hidden="true" /> Report a bug
+          </button>
         </div>
         <button type="button" className="mb-btn mb-pause-exit" onClick={onExit}>
           <SignOut size={16} weight="bold" aria-hidden="true" /> Quit mewbeat
@@ -209,16 +227,23 @@ function GameMenu({ title, note, error, focusSettings, level, onLevel, onResume,
 
 // The song select in the game's frame, answered by fake replies. Nothing plays and no preview is asked for.
 function MockSongSelect() {
-  const [request] = useState(createMockRequest);
-  const player = useMemo(() => ({ userId: MOCK_USER_ID }), []);
+  const [mock, setMock] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("./mockRequests.js").then(({ createMockRequest, MOCK_USER_ID }) => {
+      if (!cancelled) setMock({ request: createMockRequest(), player: { userId: MOCK_USER_ID } });
+    });
+    return () => { cancelled = true; };
+  }, []);
   const onPlay = useCallback(() => Promise.resolve(), []);
+  if (!mock) return null;
   return (
     <div className="mb-game mb-fx-full" role="dialog" aria-modal="true" aria-label="mewbeat">
       <header className="mb-header">
         <div className="mb-header-brand"><span className="mb-wordmark">mewbeat</span></div>
       </header>
       <div className="mb-screen">
-        <SongSelect request={request} player={player} onPlay={onPlay} />
+        <SongSelect request={mock.request} player={mock.player} onPlay={onPlay} />
       </div>
     </div>
   );
@@ -240,12 +265,21 @@ function MewbeatRoot(props) {
   const botPlaying = Boolean(player?.currentTrack);
   const liveAvailable = MOCK_PREVIEW || botPlaying;
   const roomInviteRef = useRef(context?.roomInvite ?? null);
+  // The pose Mewbit shows over the screen on entry (the Konami wink), once; it lives here so a mode switch does not replay it.
+  const [entryPose, setEntryPose] = useState(props.entryPose ?? null);
+  useEffect(() => {
+    if (!entryPose) return undefined;
+    const timer = window.setTimeout(() => setEntryPose(null), ENTRY_POSE_MS);
+    return () => window.clearTimeout(timer);
+  }, [entryPose]);
   const [mode, setMode] = useState(() => (roomInviteRef.current ? "room" : liveAvailable ? "live" : "solo"));
   const contextRef = useRef(context);
   contextRef.current = context;
   // One audio engine (and AudioContext) for the screen's life, shared by every solo link.
+  // The song bytes from the bot, for the game's audio engine and for the tour's trap.
+  const [fetchAudio] = useState(() => (audioKey, signal) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey, signal }));
   const [audio] = useState(() => createSoloAudio({
-    fetchAudio: (audioKey, signal) => fetchMewbeatAudio({ guildId: contextRef.current?.guildId, accessToken: contextRef.current?.accessToken, audioKey, signal }),
+    fetchAudio,
     aligner: createAlignClient({ makeWorker: makeAlignWorker }),
   }));
   const musicVolume = Number.isFinite(settings?.musicVolume) ? settings.musicVolume : DEFAULT_MUSIC_VOLUME;
@@ -262,13 +296,145 @@ function MewbeatRoot(props) {
   // fed by the session's message handler.
   const socketRef = props.mewbeatSocketRef;
   const [requests] = useState(() => createMewbeatRequests((payload) => socketRef?.current?.send?.(payload) ?? false));
-  return <PrivatePlace value={Boolean(context?.guildId?.startsWith("dm:"))}><MewbeatSession key={mode} {...props} minimized={minimized} mode={mode} onModeChange={setMode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} musicVolumeRef={musicVolumeRef} previewMusic={previewMusic} requests={requests} roomInviteRef={roomInviteRef} /></PrivatePlace>;
+
+  // The first-run tour (and Settings' Replay): null, or the step it is on. It runs on the real Solo screens, but on a
+  // session of its own (key "tour") with the sample song, a link that only stands still and no way to send anything
+  // (see tourProps below). The mode is never written, so the game comes back as it was. Only the first run tells the
+  // bot it was seen, once, when its first part ends; a replay tells nothing. After a played map there is a second part
+  // (the "after-*" steps): it waits in afterDueRef and the solo session says when the player is back at song select
+  // (soloBack). Skip anywhere in the first part means there is none.
+  const { firstRun, onAction } = props;
+  const [tour, setTour] = useState(firstRun ? 0 : null);
+  const [tourKit, setTourKit] = useState(null);
+  const unseenRef = useRef(Boolean(firstRun));
+  const afterDueRef = useRef(null); // the step the second part starts on, once the player is back at song select after a map
+  const secondPartRef = useRef(false); // the tour is in its second part, which prepares no trap
+  // The sample data is loaded when a tour starts, so a game that never tours does not carry it.
+  const tourWanted = tour !== null;
+  useEffect(() => {
+    if (!tourWanted || tourKit) return undefined;
+    let alive = true;
+    Promise.all([import("./mockRequests.js"), import("./mockRoom.js")]).then(([{ audioKeyOf, createMockRequest: sampleRequest, MOCK_USER_ID: sampleUserId, SONGS }, { createMockRoom }]) => {
+      if (!alive) return;
+      const song = SONGS[0];
+      const request = sampleRequest();
+      // The room step's lobby: a sample room (its clock set far off, so no countdown starts) and a store that changes nothing.
+      const now = Date.now();
+      const refused = async () => ({ status: "error" });
+      setTourKit({
+        requests: { request, handle: () => false }, // no send: nothing can reach the socket
+        userId: sampleUserId,
+        selectedKey: audioKeyOf(song),
+        room: { room: createMockRoom({ clockMs: TOUR_ROOM_CLOCK_MS, now }), receivedAt: performance.now() },
+        roomStore: {
+          ready: refused, start: refused, queueAdd: refused, queueRemove: refused, queueMove: refused, invite: refused,
+          songStats: async (audioKey) => {
+            const reply = await request("mewbeat_song_stats", { audioKey });
+            return reply.status === "ok" ? reply.stats ?? null : null;
+          },
+        },
+      });
+    }, () => {
+      if (alive) setTour(null); // no sample, no tour; the first run is not marked seen and comes again
+    });
+    return () => { alive = false; };
+  }, [tourWanted, tourKit]);
+  const touring = tourWanted && tourKit !== null;
+  const markSeen = useCallback(() => {
+    if (!unseenRef.current) return;
+    unseenRef.current = false;
+    onAction?.("mewbeat_tutorial_seen");
+  }, [onAction]);
+  const endTour = useCallback(() => {
+    setTour(null);
+    afterDueRef.current = null;
+    markSeen();
+  }, [markSeen]);
+  // The last step's Next ends it too (unless the trap takes it over, see tourPrimary), like every Skip. "Let's go" with no
+  // trap ready opens Solo for a song of the player's own, and the second part waits for that map like it does for the calm one.
+  const nextTour = useCallback(() => {
+    const next = tourNext(tour);
+    if (next !== null) {
+      setTour(next);
+      return;
+    }
+    endTour();
+    if (tour === END_INDEX) {
+      setMode("solo");
+      afterDueRef.current = AFTER_NO_TRAP_INDEX;
+    }
+  }, [tour, endTour]);
+  const replayTour = useCallback(() => {
+    afterDueRef.current = null;
+    secondPartRef.current = false;
+    setTour(0);
+  }, []);
+  // The second part, in the tour's own session.
+  const startSecondPart = useCallback((index = AFTER_INDEX) => {
+    afterDueRef.current = null;
+    secondPartRef.current = true;
+    setTour(index);
+  }, []);
+  // The player is back at song select after a map (the solo session reports it).
+  const soloBack = useCallback(() => {
+    if (afterDueRef.current !== null) startSecondPart(afterDueRef.current);
+  }, [startSecondPart]);
+  // The trap's "rude" ends the tour and opens the game in Solo on the calm song, as a run like any other. The song waits
+  // here for the new session (keyed by mode), which takes it once on mount.
+  const [autoStart, setAutoStart] = useState(null);
+  const playCalm = useCallback((song) => {
+    setAutoStart(song);
+    setMode("solo");
+    endTour();
+    afterDueRef.current = AFTER_INDEX; // after endTour, which clears it
+  }, [endTour]);
+  const clearAutoStart = useCallback(() => setAutoStart(null), []);
+  // The tour's trap (tour/trap.js). While a tour runs, the bot is asked for its two prepared songs and the heavy one is
+  // fetched, over the REAL requests (the tour's own are the sample ones), which needs the socket's replies: the tour
+  // session installs no handler, so this one takes the place. Whatever is not ready at the last step is no trap at all,
+  // and a tour that ends cancels the rest and gives the handler back.
+  const trapPrepRef = useRef(null);
+  const mewbeatHandlerRef = props.mewbeatHandlerRef;
+  useEffect(() => {
+    if (!touring || secondPartRef.current) return undefined; // the second part has no trap to prepare
+    const handler = (message) => requests.handle(message);
+    if (mewbeatHandlerRef) mewbeatHandlerRef.current = handler;
+    let alive = true;
+    let prep = null;
+    if (MOCK_TRAP) {
+      import("./tour/trapMock.js").then(({ mockTrapPrep }) => {
+        if (!alive) return;
+        prep = mockTrapPrep(() => audio.ctx());
+        trapPrepRef.current = prep;
+      }, () => {});
+    } else if (socketRef?.current && !botPlaying) {
+      prep = prepareTrap({ requests, fetchAudio, getContext: () => audio.ctx() });
+      trapPrepRef.current = prep;
+    }
+    return () => {
+      alive = false;
+      prep?.cancel();
+      trapPrepRef.current = null;
+      if (mewbeatHandlerRef && mewbeatHandlerRef.current === handler) mewbeatHandlerRef.current = null;
+    };
+    // Once per tour: what it reads (the socket, whether the bot plays) is what it was when the tour began.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touring]);
+  // The first run has mounted nothing yet, so it waits for the sample instead of starting a real link for a moment.
+  if (tourWanted && !tourKit && firstRun) return null;
+  const tourProps = touring
+    ? { tour, tourKit, requests: tourKit.requests, mewbeatHandlerRef: undefined, onAction: NOOP, onPresence: undefined, onModeChange: NOOP, onTourNext: nextTour, onTourSkip: endTour, onTourPlay: playCalm, onTourAfter: startSecondPart, trapPrepRef, autoStart: null, onSoloBack: undefined }
+    : { tour: null, tourKit: null, requests, onModeChange: setMode, autoStart, onAutoStartDone: clearAutoStart, onSoloBack: soloBack };
+  return <PrivatePlace value={Boolean(context?.guildId?.startsWith("dm:"))}><MewbeatSession key={touring ? "tour" : mode} {...props} {...tourProps} onReplayTour={replayTour} minimized={minimized} mode={touring ? "solo" : mode} liveAvailable={liveAvailable} botPlaying={botPlaying} audio={audio} musicVolumeRef={musicVolumeRef} previewMusic={previewMusic} roomInviteRef={roomInviteRef} />{entryPose ? <div className="mb-entry-pose" aria-hidden="true"><Mewbit pose={entryPose} effects={settings?.effects} /></div> : null}</PrivatePlace>;
 }
 
 // A preview resolves the song on the bot first, which can take a while for a search result.
 const PREVIEW_PREPARE_TIMEOUT_MS = 30_000;
 
-function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, player, feed, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose, onPresence, minimized, voiceChannelName, roomInviteRef }) {
+function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, musicVolumeRef, previewMusic, requests, context, player, feed, settings, mewbeatHandlerRef, mewbeatSocketRef, onAction, onClose, onPresence, minimized, voiceChannelName, roomInviteRef, tour, tourKit, onTourNext, onTourSkip, onTourPlay, onTourAfter, onReplayTour, trapPrepRef, autoStart, onAutoStartDone, onSoloBack }) {
+  // The first-run tour's session (Root keys it apart): fixed for its life, so effects may read it without re-running.
+  const touring = tour !== null;
+  const tourStep = touring ? TOUR_STEPS[tour] : null;
   const solo = mode === "solo";
   const roomMode = mode === "room" && !MOCK_PREVIEW;
   const userId = context?.user?.id ?? null;
@@ -282,8 +448,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const botClicksMineRef = useRef(false); // this player asked for them, so their run ends in the window, not in Results
   const [menuOpen, setMenuOpen] = useState(false); // the menu over Live, a room, or solo outside a run
   const [settingsFromMenu, setSettingsFromMenu] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false); // the "Report a bug" window, opened from the menu
+  const [reportFromMenu, setReportFromMenu] = useState(false); // the menu comes back with focus on its Report button
   const [pickedSong, setPickedSong] = useState(null); // what song select has selected, for the minimized tile
-  const [link] = useState(() => createLink(mode, mewbeatSocketRef, audio, () => userIdRef.current));
+  const [link] = useState(() => createLink(mode, mewbeatSocketRef, audio, () => userIdRef.current, touring));
   const [liveBoard] = useState(createLiveBoardStore);
   // A room's snapshots go to the store, which hands them on to the link (it loads and times the round).
   const [store] = useState(() => (roomMode ? createRoomStore({ requests, onRoom: (next, at) => link.setRoom(next, at), invite: roomInviteRef?.current ?? null, onInviteDone: () => { if (roomInviteRef) roomInviteRef.current = null; } }) : null));
@@ -313,11 +481,22 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const savedDifficulty = pickedLevel ?? savedLevel;
   const soloStage = soloState?.stage ?? null;
   const pauseOpen = solo && soloStage === "paused";
-  // Settings opens from the menu and covers it; closing it brings the menu back.
-  const menuShown = (pauseOpen || menuOpen) && !settingsOpen;
+  // Settings and the report window open from the menu and cover it; closing them brings the menu back.
+  // The tour's menu step shows it too (a copy nothing in it can press, see its render).
+  const menuShown = (pauseOpen || menuOpen || Boolean(tourStep?.menu)) && !settingsOpen && !reportOpen;
   // Song select is up with no song, while a pick is being resolved, and after a pick the server refused
   // (which has no audioKey yet; an audio load failure has one and shows its message on the stage).
-  const pickerOpen = solo && (soloStage === "idle" || soloStage === "preparing" || (soloStage === "error" && !soloState.audioKey));
+  // The tour shows song select or the play screen by its step.
+  const pickerOpen = touring ? tourStep.view === "select" : solo && (soloStage === "idle" || soloStage === "preparing" || (soloStage === "error" && !soloState.audioKey));
+  const tourGroup = tourStep?.settings ?? null; // the Settings group the tour has open behind it
+  // The tour's trap (tour/trap.js): its phase, the two prepared songs, and the small player of their sound. While a
+  // scene is on, its song is the track, its level the level, and the still link plays its notes as an autoplay.
+  const [trapState, dispatchTrap] = useReducer(trapReducer, TRAP_IDLE);
+  const trapPhase = trapState.phase;
+  const trapResultRef = useRef(null);
+  const [trapPlayer] = useState(() => createTrapPlayer(() => audio.ctx()));
+  const sceneSong = trapResultRef.current?.[trapSceneOf(trapPhase)] ?? null;
+  const sceneTrack = useMemo(() => (sceneSong ? { ...sceneSong.track, queued: false } : null), [sceneSong]);
 
   // The link has to be live before useMewbeatGame mounts its effects, so this effect stays above the hook.
   useEffect(() => {
@@ -362,7 +541,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     () => (roomTitle === null ? null : { title: roomTitle, artist: roomArtist, durationMs: roomDurationMs, artworkUrl: roomArtworkUrl, queued: roomQueued }),
     [roomTitle, roomArtist, roomDurationMs, roomArtworkUrl, roomQueued]
   );
-  const trackInfo = solo ? soloState?.track ?? null : roomMode ? roomTrackInfo : liveTrackInfo;
+  const trackInfo = touring ? sceneTrack : solo ? soloState?.track ?? null : roomMode ? roomTrackInfo : liveTrackInfo;
   // In a room the difficulty is the one picked in the lobby, and the run reports which round it belongs to.
   // Live and the Activity's own audio have different delays, so each has its offset. The game reads the one it plays to.
   const offsetField = mode === "live" ? "offsetMs" : "soloOffsetMs";
@@ -393,10 +572,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       ...settings,
       offsetMs: savedOffset,
       ...(pickedLevel ? { liveDifficulty: pickedLevel } : null),
+      ...(sceneSong ? { liveDifficulty: sceneSong.level } : null), // the tour never saves a level: only the game's copy
       ...(roomMode && me?.difficulty ? { liveDifficulty: me.difficulty } : null),
       ...(spectating ? { spectating: true, ...(targetDifficulty ? { liveDifficulty: targetDifficulty } : null) } : null),
     }),
-    [roomMode, settings, savedOffset, pickedLevel, me?.difficulty, spectating, targetDifficulty]
+    [roomMode, settings, savedOffset, pickedLevel, sceneSong, me?.difficulty, spectating, targetDifficulty]
   );
   const roomRound = roomLinkState?.playedRound ?? room?.round ?? null;
   const submitExtra = useMemo(() => (roomMode ? { round: roomRound } : null), [roomMode, roomRound]);
@@ -418,13 +598,107 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     settings: gameSettings,
     effects: settings?.effects,
     trackInfo,
-    inputPaused: settingsOpen || pauseOpen || menuOpen || pickerOpen || addOpen || Boolean(leaveConfirm) || lobbyScreen,
+    inputPaused: touring || settingsOpen || reportOpen || pauseOpen || menuOpen || pickerOpen || addOpen || Boolean(leaveConfirm) || lobbyScreen,
     minimized,
     liveSession: liveSessionOf,
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
+  const { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
+
+  // The trap, one phase at a time. The notes run on the still link (an autoplay: nothing is scored, sent or left in a
+  // summary) and the sound on the trap's own player, from the same moment. Heavy: the chart plays for HEAVY_MS and the
+  // cut comes. Joke: the music fades out in 100 ms, the clock freezes and the glitch plays; the tour is over for good once
+  // the player presses a button. The sound starts at once, at a level measured on what it plays (trap.js).
+  useEffect(() => {
+    const song = trapResultRef.current?.[trapSceneOf(trapPhase)];
+    if (trapPhase === "heavy" && song) {
+      // The highway runs TRAP_PAUSE_MS before the music, so the player sees the notes coming; the sound starts that much
+      // later and plays HEAVY_MS (song.chart has no note before song.fromMs, trimChart in trap.js).
+      const startMs = Math.max(0, song.fromMs - TRAP_PAUSE_MS);
+      link.playScene?.({ audioKey: song.audioKey, chart: song.chart, positionMs: startMs, durationMs: song.durationMs, at: performance.now() + START_LEAD_S * 1000 });
+      trapPlayer.play(song.buffer, 0, 0, { musicVolume: musicVolumeRef.current, lengthMs: HEAVY_MS, delayMs: song.fromMs - startMs });
+      const timer = window.setTimeout(() => dispatchTrap({ type: "cut" }), song.fromMs - startMs + HEAVY_MS);
+      return () => window.clearTimeout(timer);
+    }
+    if (trapPhase === "joke") {
+      trapPlayer.stop(CUT_FADE_MS);
+      link.pauseScene?.();
+      playSfx("glitch");
+    }
+    return undefined;
+  }, [trapPhase, link, trapPlayer, musicVolumeRef, playSfx]);
+  // The tour ends (Next on the last step, Skip, Escape) or the screen closes: the music fades out and goes.
+  useEffect(() => () => trapPlayer.stop(), [trapPlayer]);
+
+  // The last step's "Let's go" starts the trap, if both songs are ready by now and the sound can run (true then). Nothing
+  // else says no: a missing socket, a song not found, a chart that failed or one still coming all mean the tour just
+  // ends. The click unlocks the audio context so the sound can start at once.
+  const beginTrap = () => {
+    try { audio.unlock(); } catch { /* no sound, no trap */ }
+    const prep = trapPrepRef?.current;
+    const ready = prep?.result();
+    if (!ready || botPlaying) return false;
+    if (!prep.mock) {
+      const ctx = audio.ctx();
+      if (!ctx || ctx.state !== "running") return false;
+    }
+    trapResultRef.current = ready;
+    dispatchTrap({ type: "begin", line: pickLine("trap") });
+    return true;
+  };
+  const tourPrimary = () => {
+    if (tour === END_INDEX && beginTrap()) return;
+    onTourNext();
+  };
+  // "rude": the first part is over and the game opens on the calm song; the second part comes after it. The dev mock has
+  // no real song to play, so there it goes straight on to the second part.
+  const trapRude = () => {
+    const calm = trapResultRef.current?.calm;
+    if (calm?.uri) onTourPlay(calm);
+    else {
+      dispatchTrap({ type: "end" });
+      onTourAfter();
+    }
+  };
+  const unlockTourAudio = () => {
+    unlockAudio();
+    audio.unlock();
+  };
+  // The tour's session mounts on the player's first look at it, before any click: bring the sounds up now (the context
+  // and the sample load start here), so the very first line already has its blips. A context the browser keeps asleep
+  // until a gesture wakes on the first press.
+  useEffect(() => {
+    if (touring) unlockAudio();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The calm song of the trap's "rude", started as a normal run: the same path as a pick on song select (the player's own
+  // saved level, the count-in, scoring, Results). Taken once, by this session, on mount: a timer, so the development
+  // double mount takes it only the second time; a song that cannot be started leaves the player on song select.
+  useEffect(() => {
+    if (!autoStart || !solo || touring) return undefined;
+    const timer = window.setTimeout(() => {
+      onAutoStartDone?.();
+      // A song that cannot be started leaves the player on song select; the second part waits for the next map they play.
+      pickSong({ uri: autoStart.uri, source: autoStart.source }).catch(() => {});
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Back at song select after a run (it left the idle stage and came back to it): the tour's second part, when it is due.
+  // A song that failed to start is not a run.
+  const wasBusyRef = useRef(false);
+  useEffect(() => {
+    if (!solo || touring || !onSoloBack) return;
+    if (soloStage === "error") wasBusyRef.current = false;
+    else if (soloStage && soloStage !== "idle") wasBusyRef.current = true;
+    else if (wasBusyRef.current) {
+      wasBusyRef.current = false;
+      onSoloBack();
+    }
+  }, [solo, touring, soloStage, onSoloBack]);
+  const trapScreen = trapScreenOf(trapPhase);
 
   const playBotClicks = () => {
     botClicksMineRef.current = true;
@@ -480,6 +754,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   const closeMenu = () => {
     setMenuOpen(false);
     setSettingsFromMenu(false);
+    setReportFromMenu(false);
   };
   // A solo song that starts under the menu (it was opened while loading) is paused right away.
   useEffect(() => {
@@ -573,7 +848,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // Esc closes the menu (and resumes a paused run) wherever the focus is (a click on the scrim's blank part
   // leaves it outside the menu). The settings panel, when open, takes Esc first.
   useEffect(() => {
-    if (!menuShown) return undefined;
+    if (!menuShown || touring) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -582,11 +857,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [menuShown]);
+  }, [menuShown, touring]);
 
   // Esc in the "Leave round?" confirmation keeps playing, wherever the focus is.
   useEffect(() => {
-    if (!leaveConfirm || settingsOpen) return undefined;
+    if (!leaveConfirm || settingsOpen || touring) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -596,11 +871,11 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [leaveConfirm, settingsOpen]);
+  }, [leaveConfirm, settingsOpen, touring]);
   // The game's keys are paused on song select and the room's own screens, Esc among them, so it opens the menu from here.
   const ownScreen = lobbyScreen || pickerOpen;
   useEffect(() => {
-    if (!ownScreen || menuShown || settingsOpen || addOpen || leaveConfirm) return undefined;
+    if (!ownScreen || touring || menuShown || settingsOpen || reportOpen || addOpen || leaveConfirm) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || event.repeat) return;
       event.preventDefault();
@@ -609,10 +884,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [ownScreen, menuShown, settingsOpen, addOpen, leaveConfirm]);
+  }, [ownScreen, touring, menuShown, settingsOpen, reportOpen, addOpen, leaveConfirm]);
   // Esc closes the "add songs" window wherever the focus is. The settings panel, when open, takes Esc first.
   useEffect(() => {
-    if (!addOpen || settingsOpen) return undefined;
+    if (!addOpen || settingsOpen || touring) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -622,7 +897,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [addOpen, settingsOpen]);
+  }, [addOpen, settingsOpen, touring]);
   // An error shown in the lobby goes away once the lobby is left.
   useEffect(() => {
     if (view !== "lobby") setActionNotice(null);
@@ -647,6 +922,25 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     if (!settingsFromMenu) window.requestAnimationFrame(() => menuButtonRef.current?.focus());
   }, [audio, musicVolumeRef, settingsFromMenu]);
 
+  // The report window sits over the menu it came from; closing it brings the menu back with focus on Report a bug.
+  const closeReport = useCallback(() => setReportOpen(false), []);
+  const sendReport = useCallback(async ({ type, text, run }) => {
+    if (!onAction) return false;
+    try {
+      const done = await onAction("mewbeat_report", {
+        type,
+        text,
+        mode,
+        song: trackInfo ? [trackInfo.title, trackInfo.artist].filter(Boolean).join(" - ") || null : null,
+        level: runDifficulty ?? me?.difficulty ?? savedDifficulty,
+        run, // a map report's run; the bot reads the song and result from its own record of it
+      });
+      return done !== false;
+    } catch {
+      return false;
+    }
+  }, [onAction, mode, trackInfo, runDifficulty, me?.difficulty, savedDifficulty]);
+
   // The bot sends an anchor on its own schedule; a pause, track change or seek in the state is a reason to ask now.
   // The feed is written by App on each state push (the position moves four times a second), outside React state.
   useEffect(() => {
@@ -666,12 +960,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
 
   // Move focus into the dialog and keep Tab inside it.
   useEffect(() => {
+    if (touring) return undefined; // the tour layer keeps focus and Tab on its own buttons
     dialogRef.current?.focus();
     const onKeyDown = (event) => {
       if (event.key !== "Tab") return;
-      // With the settings panel or the pause overlay open, Tab stays inside it.
+      // With the settings or report panel or the pause overlay open, Tab stays inside it.
       const root = dialogRef.current?.querySelector(".mb-settings, .mb-pause") ?? dialogRef.current;
-      const buttons = [...(root?.querySelectorAll("button:not(:disabled), input, select") || [])];
+      const buttons = [...(root?.querySelectorAll("button:not(:disabled), input, select, textarea") || [])];
       if (!buttons.length) { event.preventDefault(); return; }
       const first = buttons[0];
       const last = buttons[buttons.length - 1];
@@ -682,7 +977,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [touring]);
 
   const keys = Array.isArray(settings?.keys) && settings.keys.length === 4 ? settings.keys : DEFAULT_KEYS;
   const running = phase === "playing" || phase === "paused";
@@ -720,13 +1015,14 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // Holding R restarts a solo song: during a run, on its pause menu and under its results. A lane bound to R keeps
   // the key while there are notes to hit.
   const restartAction = useRef(null);
-  if (!solo || settingsOpen || leaveConfirm || addOpen) restartAction.current = null;
+  if (!solo || touring || settingsOpen || reportOpen || leaveConfirm || addOpen) restartAction.current = null;
   else if (pauseOpen) restartAction.current = restartFromMenu;
   else if (menuShown) restartAction.current = null;
   else if (showCard) restartAction.current = () => link.restart();
   else restartAction.current = !keys.includes("KeyR") && ["playing", "countin", "ended"].includes(soloStage) ? () => link.restart() : null;
   const [restartHeld, setRestartHeld] = useState(false);
   useEffect(() => {
+    if (touring) return undefined; // R restarts nothing during the tour (restartAction is null then as well)
     const hold = createKeyHold({
       code: "KeyR",
       ms: RESTART_HOLD_MS,
@@ -749,7 +1045,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       window.removeEventListener("blur", hold.cancel);
       hold.cancel();
     };
-  }, []);
+  }, [touring]);
   // What Discord shows for the player, sent every few seconds at most: it allows about 5 updates in 20 s.
   const presenceRef = useRef(null);
   // Built when it is sent, so the score is read from the store then and a judgement does not render the session.
@@ -894,7 +1190,28 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       onCalibrate={() => { setSettingsFromMenu(false); setSettingsOpen(true); }}
     />
   ) : null;
-  const lobbyFade = useScreenExit(lobbyEl, screenOutMs);
+  // The tour's room step: the real lobby on a sample room, with a store that changes nothing.
+  const tourLobbyEl = touring && tourStep.view === "lobby" ? (
+    <Lobby
+      room={tourKit.room.room}
+      userId={tourKit.userId}
+      view="lobby"
+      receivedAt={tourKit.room.receivedAt}
+      serverClock={null}
+      store={tourKit.roomStore}
+      request={requests.request}
+      board={null}
+      standings={standingsOf(tourKit.room.room, tourKit.userId)}
+      effects={effectsLevel}
+      showMewbit={settings?.showMewbit !== false}
+      keys={keys}
+      offsetMs={savedOffset}
+      notice={null}
+      onAddSongs={NOOP}
+      onCalibrate={NOOP}
+    />
+  ) : null;
+  const lobbyFade = useScreenExit(lobbyEl ?? tourLobbyEl, screenOutMs);
   const joinEl = roomMode && view === "none" ? (
     <div className="mb-lobby-join" role="status">
       {roomStoreView?.joinError ? (
@@ -917,7 +1234,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       phase={phase}
       effects={effectsLevel}
       onSound={playSfx}
-      active={!settingsOpen && !menuShown && !leaveConfirm && !addOpen}
+      active={!settingsOpen && !reportOpen && !menuShown && !leaveConfirm && !addOpen}
       queued={Boolean(track?.queued)}
       upNext={roomMode ? upNextOf(room) : !solo && player?.nextTitle ? { title: player.nextTitle, ready: false } : null}
       standings={roomMode ? standingsOf(room, userId) : null}
@@ -928,25 +1245,27 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       timing={timing}
       savedOffset={savedOffset}
       onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { [offsetField]: offsetMs } })}
-      onBack={() => setDismissedId(endSummary.id)}
+      onBack={() => { setDismissedId(endSummary.id); if (solo) onSoloBack?.(); }}
       onSongSelect={solo ? () => link.leave() : undefined}
       onRestart={solo ? () => link.restart() : undefined}
     />
   ) : null;
   const resultsFade = useScreenExit(resultsEl, screenOutMs);
+  // The tour's picker runs on the sample replies with its song already picked; it previews and plays nothing.
   const pickerEl = pickerOpen ? (
     <SongSelect
-      context={context}
+      context={touring ? null : context}
       request={requests.request}
-      player={{ userId }}
+      player={{ userId: touring ? tourKit.userId : userId }}
       defaultDifficulty={savedDifficulty}
-      onPlay={pickSong}
-      onPreview={previewSong}
+      startSelectedKey={touring ? tourKit.selectedKey : null}
+      onPlay={touring ? NOOP_ASYNC : pickSong}
+      onPreview={touring ? undefined : previewSong}
       onSelected={setPickedSong}
     />
   ) : null;
   const pickerFade = useScreenExit(pickerEl, screenOutMs);
-  const screenUp = Boolean(lobbyEl || joinEl || resultsEl || pickerEl);
+  const screenUp = Boolean(lobbyEl || tourLobbyEl || joinEl || resultsEl || pickerEl);
   const screenLeaving = lobbyFade.leaving || joinFade.leaving || resultsFade.leaving || pickerFade.leaving;
   const [screenWasUp, setScreenWasUp] = useState(screenUp);
   const [screenEntering, setScreenEntering] = useState(false);
@@ -1011,6 +1330,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
               <button
                 key={id}
                 type="button"
+                data-tour={id}
                 className={`mb-mode${active ? " mb-mode-on" : ""}`}
                 aria-pressed={active}
                 disabled={disabled}
@@ -1059,7 +1379,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           <div className="mb-highway-slot">
             <div className="mb-highway">
               <canvas className="mb-canvas" ref={canvasRef} aria-hidden="true" />
-              <div className="mb-keys" aria-hidden="true">
+              <div className="mb-keys" aria-hidden="true" data-tour="keys">
                 {keys.map((code) => (
                   <kbd key={code} className="mb-kbd mb-lanekey">{keyLabel(code)}</kbd>
                 ))}
@@ -1136,17 +1456,19 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
 
       {menuShown ? (
         <GameMenu
+          quiet={touring}
           title={pauseOpen ? "Paused" : "Menu"}
           note={running && !solo ? (roomMode ? "The round keeps going." : "The song keeps playing in voice.") : null}
           error={pauseOpen ? soloState.error : null}
-          focusSettings={settingsFromMenu}
-          onResume={resumeFromMenu}
+          focusButton={settingsFromMenu ? "settings" : reportFromMenu ? "report" : null}
+          onResume={touring ? NOOP : resumeFromMenu}
           onRestart={restartFromMenu ?? undefined}
           level={restartFromMenu && solo ? menuLevel : undefined}
           onLevel={restartFromMenu && solo ? changeLevelFromMenu : undefined}
           onPick={solo && !pickerOpen ? () => { link.leave(); closeMenu(); backToGame(); } : undefined}
-          onSettings={() => { setSettingsFromMenu(true); setSettingsOpen(true); }}
-          onExit={() => {
+          onSettings={touring ? NOOP : () => { setSettingsFromMenu(true); setSettingsOpen(true); }}
+          onReport={touring ? NOOP : () => { setReportFromMenu(true); setReportOpen(true); }}
+          onExit={touring ? NOOP : () => {
             closeMenu();
             if (roomMode) requestLeave("close");
             else onClose();
@@ -1160,11 +1482,14 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           onApply={(offsetMs) => onAction?.("mewbeat_settings", { settings: { [blockCalibration === "live" ? "offsetMs" : "soloOffsetMs"]: offsetMs } })}
           onClose={closeBlockCalibration}
         /> : null}
-      {settingsOpen && !blockCalibration ? <SettingsPanel
+      {(settingsOpen || tourGroup) && !blockCalibration ? <SettingsPanel
           onBlockCalibration={openBlockCalibration}
           settings={settings}
           onAction={onAction}
-          onClose={closeSettings}
+          onClose={touring ? NOOP : closeSettings}
+          forcedGroup={tourGroup}
+          onReplayTour={touring ? undefined : () => { closeSettings(); closeMenu(); onReplayTour(); }}
+          replayTourBlocked={mode === "room"}
           timing={timing}
           autoOffset={autoOffset}
           onAutoOffset={setAutoOffset}
@@ -1175,6 +1500,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           liveCalibration={mode === "live"}
           offsetField={offsetField}
         /> : null}
+      {reportOpen ? <ReportPanel onSend={sendReport} onClose={closeReport} request={mockRequest ?? requests.request} /> : null}
+      {touring ? <TourLayer step={tourStep} keys={keys.map(keyLabel)} effects={effectsLevel} onNext={tourPrimary} onSkip={onTourSkip} playSfx={playSfx} unlockAudio={unlockTourAudio} soundReady={soundReady} trap={trapScreen ? { screen: trapScreen, line: trapState.line, onRude: trapRude } : null} /> : null}
     </div>
   );
 }

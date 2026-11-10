@@ -16,4 +16,20 @@ function audioKeyFile(key) {
   return createHash("sha1").update(key).digest("hex");
 }
 
-module.exports = { audioKeyFile, audioKeyOf };
+// A key is source:identifier:length, so a stored chart can be looked up without the original track (after a restart,
+// for old history). Null for anything that is not a key.
+function trackFromAudioKey(audioKey) {
+  if (typeof audioKey !== "string") return null;
+  const first = audioKey.indexOf(":");
+  const last = audioKey.lastIndexOf(":");
+  if (first <= 0 || last <= first) return null;
+  return {
+    info: {
+      sourceName: audioKey.slice(0, first),
+      identifier: audioKey.slice(first + 1, last),
+      length: Number(audioKey.slice(last + 1)),
+    },
+  };
+}
+
+module.exports = { audioKeyFile, audioKeyOf, trackFromAudioKey };

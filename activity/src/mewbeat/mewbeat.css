@@ -102,24 +102,9 @@
 .mb-reveal-figure { position: relative; width: min(64vw, 46vh, 360px); aspect-ratio: 1; }
 .mb-reveal-figure-fx { filter: url(#mb-glitch-sprite); }
 .mb-reveal-sprite { position: relative; clip-path: var(--mb-sprite-clip, none); }
-.mb-reveal-text { display: grid; justify-items: center; gap: 10px; visibility: hidden; }
-.mb-reveal-text.is-in { visibility: visible; animation: mb-card-in 360ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
-/* After the glitch she is already on screen, so the card stays still and only its text comes in. */
+/* After the glitch she is already on screen, so the figure stays still. */
 .mb-reveal-card-cut { animation: none; }
 .mb-reveal-card-cut .mb-motion-reveal { animation: none; }
-.mb-reveal-card-cut .is-in .mb-reveal-title { animation: mb-title-split 420ms steps(6, end) both; }
-.mb-reveal-card-calm .mb-reveal-text.is-in { animation: none; }
-.mb-reveal-title {
-  margin: 0;
-  font-size: clamp(28px, 6vw, 40px);
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  text-align: center;
-  color: var(--mb-cyan);
-}
-.mb-reveal-copy { margin: 0; max-width: 32ch; color: var(--mb-muted); font-size: 14px; line-height: 1.45; text-align: center; }
-.mb-reveal-actions { display: flex; gap: 10px; margin-top: 8px; }
 .mb-reveal-card-calm { animation: mb-fade-in 240ms ease-out both; }
 
 @keyframes mb-card-in {
@@ -127,10 +112,6 @@
   to { opacity: 1; transform: none; }
 }
 @keyframes mb-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes mb-title-split {
-  from { text-shadow: -10px 0 var(--mb-pink), 10px 0 var(--mb-violet); }
-  to { text-shadow: 0 0 transparent, 0 0 transparent; }
-}
 
 /* ---------- game screen ---------- */
 .mb-game {
@@ -318,7 +299,8 @@
 @keyframes mb-aura-a { from { transform: scale(1.06); } to { transform: scale(1); } }
 @keyframes mb-aura-b { from { transform: scale(1.06); } to { transform: scale(1); } }
 .mb-char .mb-mewbit { position: absolute; inset: 0; width: 100%; height: 100%; }
-.mb-char .mb-mewbit-bubble { right: 18%; font-size: 20px; }
+.mb-char .mb-mewbit-bubble { right: 18%; max-width: min(300px, 80%); }
+.mb-char .mb-mewbit-bubble .mb-tag-body { font-size: 15px; }
 
 /* highway */
 .mb-highway-slot { position: relative; box-sizing: border-box; display: flex; justify-content: center; min-height: 0; padding-top: 18px; z-index: 2; }
@@ -684,25 +666,38 @@
 .mb-mewbit { position: relative; width: 100%; aspect-ratio: 1; }
 .mb-mewbit-body { width: 100%; height: 100%; transform-origin: 50% 90%; will-change: transform; }
 .mb-mewbit-img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+/* The speech bubble is a glitch tag (.mb-tag, below): this wrapper only places it and pops it in. It wraps instead of
+   running off the stage, so a longer line gets taller, not wider than the figure. */
 .mb-mewbit-bubble {
   position: absolute;
   top: 4%;
   right: -4%;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background: var(--mb-text);
-  color: var(--mb-bg);
-  font: 900 18px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-  transform: rotate(6deg);
+  width: max-content;
+  max-width: min(260px, 90%);
+  transform-origin: 0 100%;
   animation: mb-bubble-pop 220ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 .mb-mewbit-off .mb-mewbit-bubble { animation: none; }
 
+/* The Konami wink: over whichever screen the game opens on, so the Solo picker cannot hide it. Lasts ENTRY_POSE_MS. */
+.mb-entry-pose {
+  position: fixed;
+  right: 24px;
+  bottom: 0;
+  z-index: 190;
+  width: min(280px, 38vw);
+  pointer-events: none;
+  animation: mb-entry-pose 2600ms ease both;
+}
+@keyframes mb-entry-pose {
+  0% { opacity: 0; }
+  6%, 88% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 @keyframes mb-bubble-pop {
-  from { opacity: 0; transform: rotate(6deg) scale(0.6); }
-  to { opacity: 1; transform: rotate(6deg) scale(1); }
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* One class per pose. Transform and opacity only. --mb-amp scales the motion down in reduced mode. */
@@ -766,8 +761,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .mb-reveal-card,
-  .mb-reveal-text.is-in,
-  .mb-reveal-card-cut .is-in .mb-reveal-title,
   .mb-mewbit-body,
   .mb-mewbit-bubble,
   .mb-mult,
@@ -1143,7 +1136,7 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 /* Rises in with a small overshoot. */
 @keyframes mb-res-mew-in { 0% { opacity: 0; transform: translateY(26px) scale(0.94); } 60% { opacity: 1; transform: translateY(-6px) scale(1.01); } 100% { opacity: 1; transform: none; } }
 /* Up in the corner, off Mewbit's face; it pops in once Mewbit has landed. */
-.mb-res-bubble { position: absolute; top: 0; right: 0; max-width: 150px; padding: 7px 10px; border-radius: 12px 12px 12px 3px; background: var(--mb-text); color: var(--mb-bg); font-weight: 800; font-size: 12.5px; line-height: 1.25; transform-origin: 0 100%; animation: mb-res-bubble-in 320ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards; }
+.mb-res-bubble { position: absolute; top: 0; right: 0; width: max-content; max-width: min(230px, 64%); transform-origin: 0 100%; animation: mb-res-bubble-in 320ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards; }
 @keyframes mb-res-bubble-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 
 .mb-res-footer { display: flex; flex-direction: column; gap: 10px; }
@@ -1370,3 +1363,30 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
   .mb-screen,
   .mb-screen-out { animation: none; }
 }
+
+/* ---------- glitch tag ---------- */
+/* The shared look of Mewbit's speech: near-black, cut corners, a cyan and pink split edge, JetBrains Mono, no tilt
+   (docs/superpowers/specs/mewbeat-mockups/first-run/bubble-style.html, style A). Two elements: the outer .mb-tag only
+   carries the colour-split filter, the inner .mb-tag-body the clip-path, because a filter on the clipped element itself
+   would be cut away with it. The stepped tail sits in the body's bottom padding; .mb-tag-plain drops it. */
+.mb-tag {
+  display: inline-block;
+  filter: drop-shadow(2px 0 0 var(--mb-cyan, #67e3f4)) drop-shadow(-2px 0 0 var(--mb-pink, #ff6ec7)) drop-shadow(0 -1px 0 var(--mb-violet, #a78bfa));
+}
+.mb-tag-body {
+  box-sizing: border-box;
+  padding: 10px 13px 19px;
+  background: #0b0913;
+  color: #ece7ff;
+  font: 700 13px/1.32 "JetBrains Mono", ui-monospace, monospace;
+  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% calc(100% - 9px), 38px calc(100% - 9px), 26px 100%, 26px calc(100% - 9px), 10px calc(100% - 9px), 0 calc(100% - 19px));
+}
+.mb-tag-plain .mb-tag-body {
+  padding-bottom: 10px;
+  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+/* Mewbit's speech bubbles (.mb-mewbit-bubble, .mb-lobby-bubble, .mb-res-bubble) place and animate a tag; the tag fills it. */
+:is(.mb-mewbit-bubble, .mb-lobby-bubble, .mb-res-bubble) .mb-tag { display: block; }
+:is(.mb-mewbit-bubble, .mb-lobby-bubble, .mb-res-bubble) .mb-tag-body { overflow-wrap: break-word; }
+.mb-tag-body b { color: var(--mb-cyan, #67e3f4); font-weight: 800; }
+.mb-tag-body em { color: var(--mb-pink, #ff6ec7); font-style: normal; }

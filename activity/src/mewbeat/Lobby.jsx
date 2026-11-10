@@ -6,7 +6,9 @@ import LiveBoard from "./LiveBoard.jsx";
 import { Avatar } from "./PlayerPanel.jsx";
 import { DIFFICULTIES, LevelTile, resolveArtworkUrl } from "./SongSelect.jsx";
 import { keyLabel } from "./input.js";
+import LineText from "./mewbit/LineText.jsx";
 import Mewbit from "./mewbit/Mewbit.jsx";
+import { pickLine } from "./mewbit/lines.js";
 import {
   countdownDigit,
   formatClock,
@@ -27,12 +29,10 @@ import { sendRoomInvite } from "./roomInvite.js";
 import "./lobby.css";
 
 // While idle Mewbit runs the manifest's "idle" routine (neutral for a while, then a stretch or a headphone
-// adjust); the bubble follows whichever of those is on screen.
-const IDLE_TEXT = {
-  neutral: "waiting for my song~",
-  stretch: "warming up the paws…",
-  adjust: "*adjusts headphones*",
-};
+// adjust); each of those poses says a fresh line from the "lobby" pool (mewbit/lines.js) when it comes on screen.
+const IDLE_POSES = new Set(["neutral", "stretch", "adjust"]);
+// The two lobby moments that are not idle keep their one line each.
+const STAGE_TEXT = { hype: "get ready~", peek: "it's almost our turn!" };
 const TOAST_MS = 4500;
 
 // The leaderboard of the song on deck. Memoised on plain values, so a room snapshot (or the clock's tick) neither
@@ -58,7 +58,13 @@ function StageMewbit({ pose, text, effects, tick = null, final = false, onShow =
   const beat = final ? ` mb-lobby-beat-${tick % 2 ? "a" : "b"}` : "";
   return (
     <div className="mb-lobby-stage">
-      {text ? <div className="mb-lobby-bubble" key={text}>{text}</div> : null}
+      {text ? (
+        <div className="mb-lobby-bubble" key={text}>
+          <div className="mb-tag">
+            <div className="mb-tag-body"><LineText line={text} /></div>
+          </div>
+        </div>
+      ) : null}
       <div className={`mb-lobby-mewbox${beat}`}>
         <div className="mb-lobby-spot" aria-hidden="true" />
         {tick != null ? <span key={tick} className={`mb-lobby-ring${final ? " mb-lobby-ring-final" : ""}`} aria-hidden="true" /> : null}
@@ -193,7 +199,10 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   // until its numbers arrive, and the old ones stay put while a refetch (after a round) is in flight.
   const [songStats, setSongStats] = useState({ key: null, stats: null });
   const [viewedLevel, setViewedLevel] = useState({ key: null, id: null }); // the level whose board is on screen, for one song
-  const [mewShown, setMewShown] = useState(null); // the pose Mewbit has on screen, for the idle bubble
+  const [mewShown, setMewShown] = useState(null); // { name, line }: the pose Mewbit has on screen and, if it is an idle one, its line
+
+  // One line per idle pose change, picked here and not while rendering, so a re-render keeps it.
+  const onMewShow = (name) => setMewShown({ name, line: IDLE_POSES.has(name) ? pickLine("lobby") : "" });
 
   useEffect(() => {
     mounted.current = true;
@@ -247,7 +256,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   const digit = !watching && left != null ? countdownDigit(serverToPerf(room.nextAt, mapping), nowPerf) : null;
   // Mewbit: hyped in the final seconds, peeking when the round is close, otherwise the idle routine.
   const stagePose = lobbyPose({ remainingMs: left, digit });
-  const stageText = stagePose === "idle" ? IDLE_TEXT[mewShown] ?? null : { hype: "get ready~", peek: "it's almost our turn!" }[stagePose] ?? null;
+  const stageText = stagePose === "idle" ? mewShown?.line || null : STAGE_TEXT[stagePose] ?? null;
 
   const canChange = Boolean(me) && !active;
   const spectating = Boolean(me?.watching); // chose to watch; a member who only joined mid-round is a plain spectator
@@ -340,7 +349,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
         </div>
 
         {!watching && heroKey ? (
-          <section className="mb-lobby-levels" aria-label="Levels">
+          <section className="mb-lobby-levels" aria-label="Levels" data-tour="lobby-levels">
             <span className="mb-ss-label mb-lobby-lvhead">{picksLevel ? "Pick your level" : "Levels of this song · tap one to see its board"}</span>
             <div className="mb-ss-diffs">
               {DIFFICULTIES.map(({ id, label }) => {
@@ -370,7 +379,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
           </section>
         ) : null}
 
-        <section className="mb-lobby-queue" aria-label="Queue">
+        <section className="mb-lobby-queue" aria-label="Queue" data-tour="lobby-queue">
           <div className="mb-lobby-qhead">
             <span className="mb-ss-label">Queue · {queue.length} {queue.length === 1 ? "song" : "songs"}</span>
             <button type="button" className="mb-btn mb-btn-primary mb-lobby-add" onClick={onAddSongs}>
@@ -404,9 +413,9 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
       </div>
 
       <aside className="mb-lobby-side">
-        {showMewbit ? <StageMewbit pose={stagePose} text={stageText} effects={effects} tick={watching ? null : second} final={digit != null} onShow={setMewShown} /> : null}
+        {showMewbit ? <StageMewbit pose={stagePose} text={stageText} effects={effects} tick={watching ? null : second} final={digit != null} onShow={onMewShow} /> : null}
 
-        <section className="mb-lobby-plist" aria-label="Players">
+        <section className="mb-lobby-plist" aria-label="Players" data-tour="lobby-players">
           <h3 className="mb-lobby-shead">
             <span>Players <small>{room.members.length}</small></span>
             <em>{watching && loading ? <><strong>{loaded.loaded} of {loaded.total}</strong> loaded</> : <><strong>{readyCount} of {players.length}</strong> ready</>}</em>
@@ -440,7 +449,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
           </ul>
         </section>
 
-        <div className="mb-ss-panel mb-lobby-invite">
+        <div className="mb-ss-panel mb-lobby-invite" data-tour="lobby-invite">
           <div className="mb-lobby-invite-row">
             <span className="mb-ss-label">Invite (optional)</span>
             <button
@@ -503,6 +512,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
             <button
               type="button"
               className={`mb-lobby-ready${me?.ready && !active ? " mb-lobby-ready-on" : ""}`}
+              data-tour="lobby-ready"
               aria-pressed={Boolean(me?.ready)}
               disabled={!canChange || busy === "ready"}
               onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}

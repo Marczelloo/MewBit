@@ -93,46 +93,40 @@ function validateSettingsPatch(patch, current) {
   return settings;
 }
 
-/* An unlock counts only for the current generation. Raising it locks mewbeat again for everyone, as if they
-   had never found it (so everyone gets the first unlock reveal again); their settings are kept. */
-const UNLOCK_GENERATION = 2;
-
+/* The game is open to everyone. tutorialSeen only records that the first-run tour was shown. An older stored
+   record ({ unlocked, generation, ... }) reads as an unseen tour; its settings are kept. */
 function getMewbeatRecord(userId) {
   const raw = userPreferences.getUserPreferences(userId)?.mewbeat;
   const stored = raw && typeof raw === "object" ? raw : {};
-  const unlocked = stored.unlocked === true && stored.generation === UNLOCK_GENERATION;
   return {
-    unlocked,
-    unlockedAt: unlocked && Number.isFinite(stored.unlockedAt) ? stored.unlockedAt : null,
+    tutorialSeen: stored.tutorialSeen === true,
     settings: normalizeSettings(stored.settings),
   };
 }
 
 function writeRecord(userId, record) {
-  userPreferences.setUserPreference(userId, "mewbeat", record.unlocked ? { ...record, generation: UNLOCK_GENERATION } : record);
+  userPreferences.setUserPreference(userId, "mewbeat", record);
   return record;
 }
 
-function unlockMewbeat(userId, now = Date.now()) {
+function markTutorialSeen(userId) {
   const current = getMewbeatRecord(userId);
-  if (current.unlocked) return current;
-  return writeRecord(userId, { unlocked: true, unlockedAt: now, settings: current.settings });
+  if (current.tutorialSeen) return current;
+  return writeRecord(userId, { ...current, tutorialSeen: true });
 }
 
 function updateMewbeatSettings(userId, patch) {
   const current = getMewbeatRecord(userId);
-  if (!current.unlocked) throw Object.assign(new Error("Unlock mewbeat first."), { statusCode: 403 });
   return writeRecord(userId, { ...current, settings: validateSettingsPatch(patch, current.settings) });
 }
 
 module.exports = {
   DEFAULT_SETTINGS,
   LIMITS,
-  UNLOCK_GENERATION,
   RESERVED_CODES,
   normalizeSettings,
   validateSettingsPatch,
   getMewbeatRecord,
-  unlockMewbeat,
+  markTutorialSeen,
   updateMewbeatSettings,
 };

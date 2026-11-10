@@ -1287,6 +1287,8 @@ el.filterChip.addEventListener("click", () => { filter = null; renderPanel(true)
 // ---------- song picker ----------
 const isPreview = (s) => s.id.startsWith("preview:");
 const isPlayed = (s) => s.id.startsWith("played:");
+// A played song the list lacks (see unlistedPlayedSong in server.mjs) is still opened from a link; the server decides if it exists.
+const PLAYED_ID = /^played:[0-9a-f]{40}$/;
 const roundsWord = (n) => (n === 1 ? "runda" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "rundy" : "rund");
 function renderSongList() {
   const q = el.songFilter.value.trim().toLowerCase();
@@ -1489,7 +1491,7 @@ async function boot() {
   S.songs = songs;
   renderSongList();
   const h = parseHash();
-  const id = h.id && songs.some((s) => s.id === h.id) ? h.id : songs.some((s) => s.id === "884441") ? "884441" : songs[0]?.id;
+  const id = h.id && (songs.some((s) => s.id === h.id) || PLAYED_ID.test(h.id)) ? h.id : songs.some((s) => s.id === "884441") ? "884441" : songs[0]?.id;
   if (!id) { el.songBtn.textContent = "Brak utworów"; return; }
   await loadSong(id, { lv: h.level ?? "normal", pos: h.pos ?? 0 });
 }

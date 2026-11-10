@@ -77,8 +77,8 @@ const LazyMewbeatGame = lazy(loadMewbeatGame);
 // data or search results, even if someone appends ?mock=1 to the URL.
 const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
 const MOCK_IDLE_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("idle");
-// ?mock=1&locked starts without mewbeat unlocked, so the Konami reveal can be checked.
-const MOCK_LOCKED_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("locked");
+// ?mock=1&firstrun starts as someone who has not seen the tour, so the reveal and the tour can be checked.
+const MOCK_FIRSTRUN_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("firstrun");
 // Lets us verify the Discord minimized composition at a fixed desktop viewport.
 // This is intentionally gated by both DEV and ?mock=1.
 const MOCK_COMPACT_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("compact");
@@ -430,6 +430,7 @@ function getActionFeedback(action, payload = {}, result = null, state = null) {
     case "surprise_me": return track ? `Picked ${result?.surpriseMoodLabel ? `a ${result.surpriseMoodLabel.toLowerCase()} pick` : result?.surpriseIntent && result.surpriseIntent !== "freestyle" ? "for this room" : "from today’s chart"}: ${track}` : "Picked a verified surprise track";
     case "stop": return "Playback stopped and queue cleared";
     case "mewbeat_calibrate": return result?.status === "queued" ? "Calibration clicks play next" : null;
+    case "mewbeat_report": return "Report sent, thanks!";
     case "skip": return payload.quiet ? null : "Skipped to the next track";
     case "previous": return "Restarted the current track";
     case "shuffle": return "Queue shuffled";
@@ -2540,7 +2541,7 @@ function PlayerBar({ state, onAction, onView, onOpenExternalLink, isActionPendin
 function App() {
   const [state, setState] = useState(() => {
     if (!import.meta.env.DEV) return createEmptyState();
-    return createMockState({ idle: MOCK_IDLE_PREVIEW, locked: MOCK_LOCKED_PREVIEW });
+    return createMockState({ idle: MOCK_IDLE_PREVIEW, firstRun: MOCK_FIRSTRUN_PREVIEW });
   });
   const [context, setContext] = useState({ mode: "local", guildId: "demo", accessToken: null, user: { username: "Local Listener" } });
   const [connection, setConnection] = useState({ status: "connecting", message: "Starting Activity" });
@@ -2581,6 +2582,8 @@ function App() {
   const [mewbeatRevealOpen, setMewbeatRevealOpen] = useState(false);
   // The glitch into the game; dimFrom is how dark the screen already is when it starts.
   const [mewbeatCut, setMewbeatCut] = useState(null);
+  // How this visit opened the game, fixed by openGame: { firstRun, entryPose }.
+  const [mewbeatEntry, setMewbeatEntry] = useState({ firstRun: false, entryPose: null });
   // Task 8's link reads the socket through these: it sends via mewbeatSocketRef and receives by setting mewbeatHandlerRef.
   const mewbeatSocketRef = useRef(null);
   const mewbeatHandlerRef = useRef(null);
@@ -2907,7 +2910,7 @@ function App() {
       if (action === "toggle") next.player.playing = !next.player.playing, next.player.paused = !next.player.playing;
       if (action === "pause") next.player.playing = false, next.player.paused = true;
       if (action === "resume") next.player.playing = true, next.player.paused = false;
-      if (action === "mewbeat_unlock") next.mewbeat = { ...next.mewbeat, unlocked: true };
+      if (action === "mewbeat_tutorial_seen") next.mewbeat = { ...next.mewbeat, tutorialSeen: true };
       if (action === "mewbeat_settings") next.mewbeat = { ...next.mewbeat, settings: { ...next.mewbeat?.settings, ...payload.settings } };
       if (action === "stop") { next.player.currentTrack = null; next.player.queue = []; next.player.playing = false; next.player.paused = true; next.player.positionMs = 0; }
       if (action === "volume" || action === "volume-preview") {
@@ -3134,6 +3137,11 @@ function App() {
             taken.userFacing = true;
             throw taken;
           }
+          if (action === "mewbeat_report") {
+            const offline = new Error("Reports need the live game, so this one was not sent.");
+            offline.userFacing = true;
+            throw offline;
+          }
           if (action === "get_playlist") {
             const details = Object.values(stateRef.current.playlistDetails || {});
             const found = details.find((detail) => detail.name === nextPayload.name);
@@ -3150,7 +3158,7 @@ function App() {
         }
       } catch (error) {
         if (error?.userFacing) { showToast(error.message, "error"); return false; }
-        if (context.mode === "local") { localMutation(action, nextPayload); showToast("Local preview updated. The live gateway is offline.", "info"); return true; }
+        if (context.mode === "local" && action !== "mewbeat_report") { localMutation(action, nextPayload); showToast("Local preview updated. The live gateway is offline.", "info"); return true; }
         showToast(error.message, "error");
         return false;
       }
@@ -3329,8 +3337,20 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goToView, mewbeatCut, mewbeatOpen, mewbeatRevealOpen, onAction, state.player.currentTrack]);
 
-  const mewbeatUnlocked = Boolean(state.mewbeat?.unlocked);
   const mewbeatDesktop = isDesktopClient(context);
+
+  // The one way into the game. Someone who has not seen the tour sees the reveal first (an invite link skips it and
+  // the tour: they came to play); everyone else goes straight into the cut. firstRun is decided here, once, and the
+  // game keeps it for the whole visit, so a state push mid-tour (the seen flag arriving) cannot change it.
+  // The Konami code winks at someone who knows the game; a button click does not.
+  const tutorialSeen = Boolean(state.mewbeat?.tutorialSeen);
+  const roomInvite = context.roomInvite;
+  const openGame = useCallback(({ konami = false } = {}) => {
+    const firstRun = !tutorialSeen && !roomInvite;
+    setMewbeatEntry({ firstRun, entryPose: konami && tutorialSeen ? "wink" : null });
+    if (firstRun) setMewbeatRevealOpen(true);
+    else setMewbeatCut({ dimFrom: 0 });
+  }, [roomInvite, tutorialSeen]);
 
   // Konami code: desktop only. Arrow keys are only swallowed when the code completes.
   useEffect(() => {
@@ -3342,37 +3362,28 @@ function App() {
       if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
       if (!matcher.push(event.key)) return;
       event.preventDefault();
-      if (mewbeatUnlocked) { setMewbeatCut({ dimFrom: 0 }); return; }
-      setMewbeatRevealOpen(true);
-      void onAction("mewbeat_unlock");
+      openGame({ konami: true });
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mewbeatCut, mewbeatDesktop, mewbeatOpen, mewbeatRevealOpen, mewbeatUnlocked, onAction]);
+  }, [mewbeatCut, mewbeatDesktop, mewbeatOpen, mewbeatRevealOpen, openGame]);
 
   /* Terminal states: the room cannot be joined at all, so the cockpit would be
      a set of controls wired to nothing. */
   const gate = connection.status === "error" ? "error" : context.mode === "discord" && context.inGuild === false ? "dm" : null;
 
   useEffect(() => {
-    if (mewbeatUnlocked && mewbeatDesktop) prepareGlitchSound();
-  }, [mewbeatDesktop, mewbeatUnlocked]);
+    if (mewbeatDesktop) prepareGlitchSound();
+  }, [mewbeatDesktop]);
 
   // A DM has no player to show and an invite link is there to play, so both go straight into the game, once.
-  const opensGame = gate === "dm" || Boolean(context.roomInvite);
+  const opensGame = gate === "dm" || Boolean(roomInvite);
   const gameAutoOpened = useRef(false);
   useEffect(() => {
     if (!opensGame || gameAutoOpened.current || !mewbeatDesktop || connection.status !== "live" || (showLoader && !gate)) return;
-    if (mewbeatUnlocked) {
-      gameAutoOpened.current = true;
-      setMewbeatCut({ dimFrom: 0 });
-    } else if (context.roomInvite) {
-      gameAutoOpened.current = true;
-      void Promise.resolve(onAction("mewbeat_unlock")).then((done) => {
-        if (done !== false) setMewbeatCut({ dimFrom: 0 });
-      });
-    }
-  }, [connection.status, context.roomInvite, gate, mewbeatDesktop, mewbeatUnlocked, onAction, opensGame, showLoader]);
+    gameAutoOpened.current = true;
+    openGame();
+  }, [connection.status, gate, mewbeatDesktop, openGame, opensGame, showLoader]);
 
   /* Not terminal: everything still renders and the queue still reads, but
      nothing can play or be searched, so this warns without taking the surface
@@ -3401,7 +3412,7 @@ function App() {
           path={typeof window === "undefined" ? "/" : window.location.pathname}
           detail={gate === "error" ? connection.message : null}
           onRetry={gate === "error" ? () => window.location.reload() : null}
-          action={gate === "dm" && mewbeatUnlocked && mewbeatDesktop ? { label: "Play mewbeat", onClick: () => setMewbeatCut({ dimFrom: 0 }) } : null}
+          action={gate === "dm" && mewbeatDesktop ? { label: "Play mewbeat", onClick: () => openGame() } : null}
         />
       ) : null}
       {showLoader && !gate ? <SignalLoader ready={!isHydrating} message={connection.message} onPhase={setLoaderPhase} onDone={hideLoader} /> : null}
@@ -3438,7 +3449,7 @@ function App() {
                 </div>
                 <div className="stage-actions" aria-label="Player tools">
                   <IconButton label="Room activity" className={`${activeTab === "activity" ? "is-active" : ""} ${hasActivityErrors ? "has-issues" : ""}`} onClick={() => goToView("activity")}><Bell size={17} weight={activeTab === "activity" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
-                  {mewbeatUnlocked && mewbeatDesktop ? <IconButton label="mewbeat" onClick={() => setMewbeatCut({ dimFrom: 0 })}><GameController size={17} aria-hidden="true" /></IconButton> : null}
+                  {mewbeatDesktop ? <IconButton label="mewbeat" onClick={() => openGame()}><GameController size={17} aria-hidden="true" /></IconButton> : null}
                   <IconButton label="Playback history" className={activeTab === "history" ? "is-active" : ""} aria-pressed={activeTab === "history"} onClick={() => goToView("history")}><ClockCounterClockwise size={17} weight={activeTab === "history" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                   <IconButton label="Toggle queue" className={rightSidebarOpen ? "is-active" : ""} aria-pressed={rightSidebarOpen} onClick={() => { if (window.matchMedia("(max-width: 900px)").matches) setLeftSidebarOpen(false); setRightSidebarOpen((value) => !value); }}><Queue size={17} weight={rightSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                 </div>
@@ -3463,9 +3474,9 @@ function App() {
       </div>
       </FrozenWhile>
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
-      {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => setMewbeatRevealOpen(false)} onPlay={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
+      {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
       {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} volume={state.mewbeat?.settings?.sfx === false ? 0 : state.mewbeat?.settings?.sfxVolume} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}
-      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} player={mewbeatPlayer} feed={mewbeatFeed} settings={mewbeatSettings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={closeMewbeat} onPresence={setGamePresence} voiceChannelName={state.guild?.voiceChannelName ?? null} /></Suspense> : null}
+      {mewbeatOpen ? <Suspense fallback={null}><LazyMewbeatGame context={context} firstRun={mewbeatEntry.firstRun} entryPose={mewbeatEntry.entryPose} player={mewbeatPlayer} feed={mewbeatFeed} settings={mewbeatSettings} mewbeatHandlerRef={mewbeatHandlerRef} mewbeatSocketRef={mewbeatSocketRef} onAction={onAction} onClose={closeMewbeat} onPresence={setGamePresence} voiceChannelName={state.guild?.voiceChannelName ?? null} /></Suspense> : null}
       {toast ? <div className={`toast toast-${toast.type}`} role="status"><span>{toast.type === "error" ? <WarningCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}</span><span className="toast-message">{toast.message}</span>{toast.action ? <button className="toast-action" type="button" onClick={() => { const action = toast.action; setToast(null); onAction(action.action, action.payload); }}>{toast.action.label}</button> : null}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={16} aria-hidden="true" /></button></div> : null}
     </main>
   );

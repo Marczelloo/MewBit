@@ -46,3 +46,15 @@ test("formatSeconds, formatCount and formatRank dash or zero what is missing", (
   assert.equal(format.formatRank(null), "—");
   assert.equal(format.formatSince(null), "");
 });
+
+test("formatAgo reads minutes, hours and days, then the date, and empty without a time", () => {
+  const now = Date.UTC(2026, 10, 10, 12, 0, 0);
+  const ago = (ms) => format.formatAgo(now - ms, now);
+  assert.equal(ago(20_000), "just now");
+  assert.equal(ago(5 * 60_000), "5 min ago");
+  assert.equal(ago(3 * 3_600_000 + 1000), "3 h ago");
+  assert.equal(ago(2 * 86_400_000), "2 d ago");
+  assert.match(ago(30 * 86_400_000), /^[A-Z][a-z]{2} \d{1,2}$/);
+  assert.equal(format.formatAgo(now + 60_000, now), "just now");
+  assert.equal(format.formatAgo(null, now), "");
+});

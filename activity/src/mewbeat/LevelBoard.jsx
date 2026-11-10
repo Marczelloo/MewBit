@@ -71,11 +71,11 @@ export function BoardRows({ board, userId, size, onOpenPlayer }) {
 
 // The scores on one level of one song, for this server or for everyone. userId is yours: your row is lit, and
 // pinned under the list with your rank when you are further down than the rows shown. A row opens that player.
-export default function LevelBoard({ request, audioKey, difficulty, userId, onOpenPlayer }) {
+export default function LevelBoard({ request, audioKey, difficulty, userId, onOpenPlayer, tour }) {
   const board = useLevelBoard({ request, audioKey, difficulty, userId });
 
   return (
-    <div className={`mb-ss-panel mb-ss-block mb-ss-board mb-ss-d-${difficulty}`}>
+    <div className={`mb-ss-panel mb-ss-block mb-ss-board mb-ss-d-${difficulty}`} data-tour={tour}>
       <BoardHeading difficulty={difficulty} scope={board.scope} onScope={board.setScope} />
       <div className="mb-ss-block-rows">
         {audioKey ? (

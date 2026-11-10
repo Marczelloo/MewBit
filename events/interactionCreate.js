@@ -376,6 +376,13 @@ module.exports = {
         return;
       }
 
+      // Handle report modals
+      if (interaction.customId.startsWith("report:")) {
+        const reportCommand = require("../commands/utility/report");
+        await reportCommand.handleModal(interaction);
+        return;
+      }
+
       if (interaction.customId !== "player-volume-modal") return;
 
       const rawValue = interaction.fields.getTextInputValue("player-volume-value").trim();

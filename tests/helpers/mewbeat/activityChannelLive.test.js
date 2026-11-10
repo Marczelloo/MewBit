@@ -9,7 +9,7 @@ const ANN = { id: "ann", username: "Ann", avatarUrl: "https://a/ann.png" };
 const BO = { id: "bo", username: "Bo", avatarUrl: null };
 
 describe("mewbeat channel live board", () => {
-  function setup({ unlocked = true } = {}) {
+  function setup() {
     let time = 1_000_000;
     let nextTimer = 1;
     const timers = new Map();
@@ -17,7 +17,6 @@ describe("mewbeat channel live board", () => {
     const channel = createMewbeatChannel({
       readPlayback: () => null,
       chartStore: { getCharts: async () => ({ status: "ready", charts: {} }) },
-      isUnlocked: () => unlocked,
       now: () => time,
       resolveTrack: async () => null,
       broadcast: (guildId, userIds, payload) => pushes.push({ guildId, userIds: [...userIds], payload }),
@@ -54,12 +53,6 @@ describe("mewbeat channel live board", () => {
     ]);
   });
 
-  it("ignores a locked account", async () => {
-    const { live, pushes, advance } = setup({ unlocked: false });
-    assert.strictEqual(await live(ANN), null);
-    advance(10_000);
-    assert.strictEqual(pushes.length, 0);
-  });
 
   it("answers nothing to a bad update and pushes nothing", async () => {
     const { live, pushes } = setup();
@@ -119,21 +112,8 @@ describe("mewbeat channel live board", () => {
     assert.deepStrictEqual(last.userIds, ["bo"]);
   });
 
-  it("answers a locked account with the request id", async () => {
-    const { send } = setup({ unlocked: false });
-    assert.deepStrictEqual(
-      await send(ANN, { type: "mewbeat_played", id: "p1", scope: "server" }),
-      { type: "mewbeat_played", id: "p1", status: "error", reason: "locked" },
-    );
-    assert.deepStrictEqual(
-      await send(ANN, { type: "mewbeat_board", id: "b1", audioKey: KEY, difficulty: "hard", scope: "server" }),
-      { type: "mewbeat_board", id: "b1", status: "error", reason: "locked" },
-    );
-    assert.deepStrictEqual(
-      await send(ANN, { type: "mewbeat_submit", id: "s1" }),
-      { type: "mewbeat_submit", id: "s1", status: "error", reason: "locked" },
-    );
-    // Without an id there is nobody to answer by id.
+  it("answers a request without an id with an error", async () => {
+    const { send } = setup();
     assert.strictEqual((await send(ANN, { type: "mewbeat_played", scope: "server" })).type, "error");
   });
 });

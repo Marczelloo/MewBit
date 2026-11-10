@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mewbeat tutorial mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#050608; --surface:#0c0e12; --raised:#111318; --text:#f4f6f9; --muted:#9ba4b2; --faint:#6b7380; --cyan:#67e3f4; --violet:#a78bfa; --pink:#ff6ec7; --gold:#ffd479; --line:rgb(255 255 255 / .1); }
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; background:#020305; color:var(--text); font-family:"Hanken Grotesk","Segoe UI",sans-serif; overflow:hidden; }
+#fit { position:fixed; inset:0 0 64px 0; display:flex; align-items:center; justify-content:center; }
+#stage { position:relative; width:1120px; height:660px; flex:none; overflow:hidden; border-radius:14px; border:1px solid var(--line);
+  background:radial-gradient(420px 300px at 170px 130px, rgb(167 139 250 / .2), transparent 70%), linear-gradient(180deg,#0b0c16 0%,#120e22 62%,#080910 100%); }
+.top { position:absolute; inset:0 0 auto 0; height:46px; display:flex; align-items:center; padding:0 18px; border-bottom:1px solid var(--line); background:rgb(5 6 8 / .6); font-weight:900; letter-spacing:-.01em; }
+.tabs { position:absolute; left:50%; top:9px; transform:translateX(-50%); display:flex; gap:3px; padding:2px; border-radius:9px; background:rgb(255 255 255 / .05); }
+.tabs span { padding:5px 15px; font-size:11px; font-weight:800; letter-spacing:.12em; color:var(--muted); border-radius:7px; }
+.tabs span.on { color:var(--cyan); background:rgb(103 227 244 / .12); }
+.highway { position:absolute; left:410px; top:62px; bottom:0; width:300px; border-radius:18px 18px 0 0; background:rgb(5 6 10 / .82); border:1px solid var(--line); border-bottom:0; }
+.lane { position:absolute; top:0; bottom:0; width:25%; border-right:1px solid rgb(255 255 255 / .05); }
+.n { position:absolute; left:9%; width:82%; height:17px; border-radius:6px; background:var(--cyan); }
+.n.v { background:var(--violet); }
+.keys { position:absolute; left:8px; right:8px; bottom:14px; display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.keys b { display:block; text-align:center; padding:9px 0; border-radius:9px; border:1px solid rgb(255 255 255 / .22); font:700 13px "JetBrains Mono",monospace; background:rgb(255 255 255 / .04); }
+.panel { position:absolute; left:845px; top:62px; width:255px; border-radius:16px; padding:14px; background:rgb(12 14 18 / .9); border:1px solid var(--line); }
+.track { display:flex; gap:11px; align-items:center; padding:2px; border-radius:10px; }
+.art { width:54px; height:54px; border-radius:10px; background:linear-gradient(135deg,var(--violet),var(--pink)); flex:none; }
+.track small { color:var(--pink); font-weight:800; font-size:10px; letter-spacing:.12em; }
+.track div b { display:block; font-size:15px; margin-top:2px; }
+.track div i { font-style:normal; font-size:12px; color:var(--muted); }
+.diff { display:flex; gap:4px; margin-top:13px; padding:2px; border-radius:9px; }
+.diff span { flex:1; text-align:center; padding:6px 0; border-radius:7px; font-size:11px; font-weight:700; color:var(--muted); background:rgb(255 255 255 / .05); }
+.diff span.on { color:var(--pink); background:rgb(255 110 199 / .14); }
+.score { margin-top:15px; display:flex; justify-content:space-between; align-items:flex-end; }
+.score b { font-size:30px; font-weight:900; }
+.score em { font-style:normal; font-size:46px; font-weight:900; color:var(--pink); line-height:1; }
+.board { margin-top:14px; font-size:12px; color:var(--muted); display:grid; gap:7px; }
+.board div { display:flex; justify-content:space-between; }
+.board b { color:var(--text); font:700 12px "JetBrains Mono",monospace; }
+.settings { position:absolute; left:410px; top:62px; width:690px; bottom:24px; border-radius:18px; background:#0c0e12; border:1px solid rgb(255 255 255 / .16); padding:18px 20px; display:none; }
+.settings.show { display:block; }
+.settings h2 { margin:0 0 12px; font-size:20px; font-weight:900; }
+.stabs { display:flex; gap:5px; margin-bottom:14px; }
+.stabs span { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:700; color:var(--muted); background:rgb(255 255 255 / .04); }
+.stabs span.on { color:var(--cyan); background:rgb(103 227 244 / .12); }
+.row { display:flex; justify-content:space-between; align-items:center; padding:12px 12px; border-radius:11px; border:1px solid var(--line); margin-bottom:9px; font-weight:700; font-size:14px; }
+.row small { display:block; color:var(--muted); font-weight:500; font-size:12px; margin-top:3px; }
+.row .pill { padding:6px 12px; border-radius:8px; background:rgb(255 255 255 / .07); font-size:12px; }
+.row .k { display:flex; gap:5px; } .row .k b { width:30px; text-align:center; padding:6px 0; border-radius:7px; background:rgb(255 255 255 / .08); font:700 12px "JetBrains Mono",monospace; }
+.mew { position:absolute; left:48px; bottom:0; height:448px; pointer-events:none; }
+.mew.up { z-index:6; }
+#dim { position:absolute; inset:0; z-index:3; background:rgb(2 3 6 / .68); display:none; }
+#spot { position:absolute; z-index:4; border-radius:12px; box-shadow:0 0 0 9999px rgb(2 3 6 / .68), 0 0 0 2px var(--gold); display:none; transition:all .28s cubic-bezier(.2,.8,.2,1); }
+#arrow { position:absolute; inset:0; width:100%; height:100%; z-index:7; pointer-events:none; overflow:visible; }
+#arrow path { fill:none; stroke:var(--text); stroke-width:3.5; stroke-linecap:round; stroke-linejoin:round; }
+#bubble { position:absolute; z-index:8; background:var(--text); color:var(--bg); border-radius:18px; padding:15px 17px 13px; animation:pop .22s cubic-bezier(.2,1.3,.4,1); }
+#bubble.tail::after { content:""; position:absolute; left:64px; bottom:-11px; border:12px solid transparent; border-bottom:0; border-top-color:var(--text); }
+@keyframes pop { from { opacity:0; transform:scale(.86); } to { opacity:1; transform:scale(1); } }
+.head { display:flex; gap:11px; align-items:flex-start; }
+.face { width:46px; height:46px; border-radius:50%; flex:none; background-color:#1a1730; background-repeat:no-repeat; background-size:330%; background-position:50% 6%; display:none; }
+#bubble.compact .face { display:block; }
+#say { font-size:16px; font-weight:800; line-height:1.3; letter-spacing:-.005em; }
+.foot { display:flex; align-items:center; gap:7px; margin-top:12px; }
+.foot .c { font:700 11px "JetBrains Mono",monospace; color:#5a6270; margin-right:auto; }
+.foot button { font:800 13px "Hanken Grotesk",sans-serif; padding:8px 13px; border-radius:9px; border:0; cursor:pointer; }
+.go { background:#0b0d14; color:var(--text); } .skip { background:transparent; color:#4a5160; }
+#bar { position:fixed; left:0; right:0; bottom:0; height:64px; display:flex; align-items:center; gap:14px; padding:0 20px; border-top:1px solid var(--line); background:#07080c; font-size:13px; color:var(--muted); }
+#bar .sw { display:flex; gap:4px; }
+#bar button { font:700 13px "Hanken Grotesk",sans-serif; color:var(--muted); background:rgb(255 255 255 / .06); border:1px solid transparent; padding:8px 13px; border-radius:9px; cursor:pointer; }
+#bar button.on { color:var(--cyan); border-color:rgb(103 227 244 / .5); background:rgb(103 227 244 / .1); }
+#dots { display:flex; gap:5px; margin-left:auto; } #dots i { width:9px; height:9px; border-radius:50%; background:rgb(255 255 255 / .16); cursor:pointer; } #dots i.on { background:var(--cyan); } #dots i.fork { background:rgb(255 212 121 / .5); } #dots i.fork.on { background:var(--gold); }
+#toast { display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:9; background:var(--raised); padding:16px 22px; border-radius:14px; border:1px solid var(--line); font-weight:800; }
+</style>
+</head>
+<body>
+<div id="fit"><div id="stage">
+  <div class="top">mewbeat
+    <div class="tabs"><span data-t="live" id="tLive">LIVE</span><span data-t="solo" id="tSolo">SOLO</span><span data-t="room" id="tRoom">ROOM</span></div>
+  </div>
+  <img id="mew" class="mew" src="neutral.webp" alt="">
+  <div class="highway">
+    <div class="lane" style="left:0"><div class="n" style="top:22%"></div></div>
+    <div class="lane" style="left:25%"><div class="n v" style="top:38%"></div></div>
+    <div class="lane" style="left:50%"><div class="n" style="top:10%"></div><div class="n" style="top:58%"></div></div>
+    <div class="lane" style="left:75%;border:0"><div class="n v" style="top:72%"></div></div>
+    <div class="keys" data-t="keys"><b>D</b><b>F</b><b>J</b><b>K</b></div>
+  </div>
+  <div class="panel">
+    <div class="track" data-t="track"><div class="art"></div><div><small>NORMAL</small><b>Rude Buster</b><i>Toby Fox</i></div></div>
+    <div class="diff" data-t="diff"><span>Easy</span><span class="on">Normal</span><span>Hard</span><span>Hell</span></div>
+    <div class="score"><b>0</b><em>D</em></div>
+    <div class="board" data-t="board"><div><span>1. Marczelloo</span><b>982 410</b></div><div><span>2. Kuba</span><b>941 020</b></div><div><span>3. Ola</span><b>902 775</b></div></div>
+  </div>
+  <div class="settings" id="settings"><h2>Settings</h2>
+    <div class="stabs"><span id="sSound">Sound</span><span id="sGameplay">Gameplay</span><span id="sSync">Sync</span><span id="sVisual">Visual</span></div>
+    <div id="rows"></div>
+  </div>
+  <div id="dim"></div><div id="spot"></div>
+  <svg id="arrow"><path id="line"></path><path id="head"></path></svg>
+  <div id="bubble"><div class="head"><div class="face"></div><div id="say"></div></div><div class="foot"><span class="c" id="count"></span><button class="skip" id="skip"></button><button class="go" id="next"></button></div></div>
+  <div id="toast"></div>
+</div></div>
+<div id="bar"><span>Wariant:</span><div class="sw"><button id="vA">A: Mewbit mówi ze sceny</button><button id="vB">B: dymek przy elemencie</button></div><span id="stepName"></span><div id="dots"></div></div>
+<script>
+const ROWS = {
+  Sound: '<div class="row" data-t="sound">Music volume<span class="pill">70%</span></div><div class="row">Hit sounds<span class="pill">osu!</span></div><div class="row">Sound effects<span class="pill">On</span></div>',
+  Gameplay: '<div class="row" data-t="setkeys">Keys<span class="k"><b>D</b><b>F</b><b>J</b><b>K</b></span></div><div class="row">Scroll speed<span class="pill">By tempo</span></div><div class="row">Default difficulty<span class="pill">Normal</span></div>',
+  Sync: '<div class="row">Audio offset<span class="pill">+20 ms</span></div><div class="row" data-t="offset"><div>Activity audio<small>Solo and rooms. A block falls, you press when you hear the click.</small></div><span class="pill">Calibrate with a block</span></div><div class="row"><div>Bot audio<small>Live, with the bot in voice.</small></div><span class="pill">Calibrate with a block</span></div>',
+};
+const P1 = 6, P2 = 4;
+const STEPS = [
+  { name:"Powitanie po glitchu", say:"You found me! I'm Mewbit, and this is mewbeat: any song, turned into a rhythm game. Quick tour?", pose:"reveal", c:"1/6", go:"Show me around", skip:"Skip" },
+  { name:"Solo", t:"solo", tab:"tSolo", side:"below", say:"Solo is just you. Pick any song and it plays right here.", c:"2/6" },
+  { name:"Live", t:"live", tab:"tLive", side:"below", say:"Live follows the bot. Whatever's on in voice, you play along.", c:"3/6" },
+  { name:"Room", t:"room", tab:"tRoom", side:"below", say:"Room is for friends: same song, same start, one scoreboard. You can invite them from anywhere.", c:"4/6" },
+  { name:"Charting", t:"track", side:"left", pose:"charting", say:"Brand new song? I listen and write the notes myself. The first time takes a moment, then it's ready for everyone.", c:"5/6" },
+  { name:"Poziomy i rankingi", t:"diff", side:"left", also:"board", say:"Every song has four levels, and each one has its own leaderboard: this server and global.", c:"6/6" },
+  { name:"Rozwidlenie: dalej albo do gry", fork:true, say:"That's the tour! Want the controls too, or straight to the game?", go:"Show me the controls", skip:"Skip to the game" },
+  { name:"Klawisze w grze", t:"keys", side:"right", say:"Notes fall to the line. Press D, F, J or K as they land.", c:"1/4" },
+  { name:"Zmiana klawiszy", settings:"Gameplay", t:"setkeys", side:"below", say:"Rather use other keys? Change them here, along with the scroll speed.", c:"2/4" },
+  { name:"Offset i kalibracja", settings:"Sync", t:"offset", side:"above", say:"Notes feel early or late? A block falls, you press on the click, and I'll work out your offset.", c:"3/4" },
+  { name:"Dźwięki", settings:"Sound", t:"sound", side:"below", say:"Music, hit sounds and effects are all up to you.", c:"4/4" },
+  { name:"Koniec", say:"That's everything! You can replay this any time in Settings. Go get that full combo ✦", pose:"go", go:"Play", skip:"" },
+];
+let i = 0, variant = "A";
+const $ = (id) => document.getElementById(id), S = $("stage");
+function fit() { const b = $("fit").getBoundingClientRect(); S.style.transform = `scale(${Math.min(1, b.width/1140, b.height/680)})`; S.dataset.s = Math.min(1, b.width/1140, b.height/680); }
+addEventListener("resize", () => { fit(); render(); });
+function rectOf(el) { const s = +S.dataset.s, o = S.getBoundingClientRect(), r = el.getBoundingClientRect(); return { x:(r.left-o.left)/s, y:(r.top-o.top)/s, w:r.width/s, h:r.height/s }; }
+function dots() { $("dots").innerHTML = STEPS.map((s,n)=>`<i class="${n===i?"on":""} ${s.fork?"fork":""}" data-n="${n}"></i>`).join(""); }
+$("dots").onclick = (e) => { if (e.target.dataset.n) { i = +e.target.dataset.n; render(); } };
+function drawArrow(a, b) {
+  const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1, bend=Math.min(90, len*.32);
+  const cx=(a.x+b.x)/2 + (-dy/len)*bend*(a.flip?-1:1), cy=(a.y+b.y)/2 + (dx/len)*bend*(a.flip?-1:1);
+  $("line").setAttribute("d",`M${a.x} ${a.y} Q${cx} ${cy} ${b.x} ${b.y}`);
+  const t=Math.atan2(b.y-cy,b.x-cx), L=15, W=.5;
+  $("head").setAttribute("d",`M${b.x-L*Math.cos(t-W)} ${b.y-L*Math.sin(t-W)} L${b.x} ${b.y} L${b.x-L*Math.cos(t+W)} ${b.y-L*Math.sin(t+W)}`);
+  const total=$("line").getTotalLength(); const l=$("line"); l.style.transition="none"; l.style.strokeDasharray=total; l.style.strokeDashoffset=total; l.getBoundingClientRect(); l.style.transition="stroke-dashoffset .32s ease-out"; l.style.strokeDashoffset=0;
+}
+function edgePoint(r, from, gap) { // the point just off rectangle r, on the side facing `from`
+  const cx=r.x+r.w/2, cy=r.y+r.h/2, dx=from.x-cx, dy=from.y-cy;
+  const sx = dx===0?1e9:(r.w/2+gap)/Math.abs(dx), sy = dy===0?1e9:(r.h/2+gap)/Math.abs(dy), k=Math.min(sx,sy);
+  return { x:cx+dx*k, y:cy+dy*k };
+}
+function render() {
+  const s = STEPS[i]; $("toast").style.display="none"; $("bubble").style.display="";
+  const b = $("bubble");
+  document.querySelectorAll(".tabs span").forEach(x=>x.classList.remove("on")); (s.tab?$(s.tab):$("tLive")).classList.add("on");
+  $("settings").classList.toggle("show", Boolean(s.settings));
+  document.querySelectorAll(".stabs span").forEach(x=>x.classList.remove("on"));
+  if (s.settings) { $("s"+s.settings).classList.add("on"); $("rows").innerHTML = ROWS[s.settings]; }
+  const pose = s.pose || "neutral"; $("mew").src=`${pose}.webp`; document.querySelector(".face").style.backgroundImage=`url(${pose}.webp)`;
+  $("say").textContent=s.say; $("count").textContent=s.c||""; $("next").textContent=s.go||"Next"; $("skip").textContent= s.skip===undefined?"Skip":s.skip; $("skip").style.display=$("skip").textContent?"":"none";
+  $("stepName").textContent=`${i+1}/${STEPS.length} · ${s.name}`;
+  const target = s.t ? document.querySelector(`[data-t="${s.t}"]`) : null;
+  const center = !target;
+  const stageMode = variant==="A" || center;
+  $("mew").classList.toggle("up", stageMode);
+  b.className = stageMode ? "tail" : "compact"; void b.offsetWidth; b.style.animation="none"; void b.offsetWidth; b.style.animation="";
+  if (center) { $("dim").style.display="block"; $("spot").style.display="none"; } else { $("dim").style.display="none"; const r=rectOf(target), p=6; const sp=$("spot"); sp.style.display="block"; sp.style.left=r.x-p+"px"; sp.style.top=r.y-p+"px"; sp.style.width=r.w+2*p+"px"; sp.style.height=r.h+2*p+"px"; }
+  let bw, br;
+  if (stageMode) { bw=350; b.style.width=bw+"px"; b.style.left="26px"; b.style.top="auto"; b.style.bottom="418px"; }
+  else { bw=340; b.style.width=bw+"px"; b.style.bottom="auto"; const r=rectOf(target), h=b.offsetHeight, gap=72; let x,y;
+    if (s.side==="below") { x=r.x+r.w/2-bw/2+70; y=r.y+r.h+gap; }
+    else if (s.side==="above") { x=r.x+r.w/2-bw/2+130; y=r.y-h-gap; }
+    else if (s.side==="left") { x=r.x-bw-gap; y=r.y+r.h/2-h/2+30; }
+    else { x=r.x+r.w+gap; y=r.y+r.h/2-h-30; }
+    b.style.left=Math.max(14,Math.min(1120-bw-14,x))+"px"; b.style.top=Math.max(54,y)+"px"; }
+  br = rectOf(b);
+  if (target) { const r=rectOf(target), tc={x:r.x+r.w/2,y:r.y+r.h/2}, bc={x:br.x+br.w/2,y:br.y+br.h/2};
+    const a=edgePoint(br,tc,5), e=edgePoint({x:r.x-6,y:r.y-6,w:r.w+12,h:r.h+12},bc,7); a.flip = tc.x<bc.x; drawArrow(a,e); $("arrow").style.display=""; }
+  else $("arrow").style.display="none";
+  dots();
+}
+function pick(v){ variant=v; $("vA").classList.toggle("on",v==="A"); $("vB").classList.toggle("on",v==="B"); render(); }
+$("vA").onclick=()=>pick("A"); $("vB").onclick=()=>pick("B");
+function done(){ $("bubble").style.display="none"; $("arrow").style.display="none"; $("spot").style.display="none"; $("dim").style.display="block"; $("mew").classList.remove("up"); $("settings").classList.remove("show"); const t=$("toast"); t.textContent="Tutorial zamknięty, startuje gra"; t.style.display="block"; }
+$("next").onclick=()=>{ if(i<STEPS.length-1){i++;render();} else done(); };
+$("skip").onclick=()=>{ done(); };
+document.fonts.ready.then(()=>{ fit(); pick("A"); });
+fit(); pick("A");
+</script>
+</body>
+</html>

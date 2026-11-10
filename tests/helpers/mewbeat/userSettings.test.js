@@ -5,9 +5,8 @@ const {
   DEFAULT_SETTINGS,
   normalizeSettings,
   validateSettingsPatch,
-  UNLOCK_GENERATION,
   getMewbeatRecord,
-  unlockMewbeat,
+  markTutorialSeen,
   updateMewbeatSettings,
 } = require("../../../helpers/mewbeat/userSettings");
 const { installFakePreferences } = require("./fakePreferences");
@@ -123,55 +122,48 @@ describe("mewbeat per-account record", () => {
   after(() => fake.restore());
   beforeEach(() => fake.store.clear());
 
-  it("starts locked with the default settings", () => {
-    assert.deepStrictEqual(getMewbeatRecord("u1"), { unlocked: false, unlockedAt: null, settings: DEFAULT_SETTINGS });
+  it("starts with the tutorial unseen and the default settings", () => {
+    assert.deepStrictEqual(getMewbeatRecord("u1"), { tutorialSeen: false, settings: DEFAULT_SETTINGS });
   });
 
-  it("keeps the first unlock time when unlocked twice", () => {
-    assert.strictEqual(unlockMewbeat("u1", 1000).unlockedAt, 1000);
-    assert.strictEqual(unlockMewbeat("u1", 2000).unlockedAt, 1000);
-    assert.strictEqual(getMewbeatRecord("u1").unlockedAt, 1000);
-  });
-
-  it("locks an unlock from an earlier generation again, keeping its settings", () => {
-    const settings = { ...DEFAULT_SETTINGS, keys: [...DEFAULT_SETTINGS.keys], offsetMs: 40 };
-    fake.store.set("u1", { mewbeat: { unlocked: true, unlockedAt: 1000, settings } });
-    fake.store.set("u2", { mewbeat: { unlocked: true, unlockedAt: 1000, settings, generation: UNLOCK_GENERATION - 1 } });
-    for (const userId of ["u1", "u2"]) {
-      assert.deepStrictEqual(getMewbeatRecord(userId), { unlocked: false, unlockedAt: null, settings });
-      assert.throws(() => updateMewbeatSettings(userId, { offsetMs: 50 }), { statusCode: 403 });
-    }
-    const record = unlockMewbeat("u1", 5000);
-    assert.strictEqual(record.unlocked, true);
-    assert.strictEqual(record.unlockedAt, 5000);
-    assert.strictEqual(record.settings.offsetMs, 40);
-    assert.strictEqual(fake.store.get("u1").mewbeat.generation, UNLOCK_GENERATION);
-    assert.strictEqual(getMewbeatRecord("u1").unlocked, true);
-  });
-
-  it("keeps the current generation through a settings change", () => {
-    unlockMewbeat("u1", 1000);
-    updateMewbeatSettings("u1", { offsetMs: 40 });
-    assert.strictEqual(fake.store.get("u1").mewbeat.generation, UNLOCK_GENERATION);
-    assert.strictEqual(getMewbeatRecord("u1").unlocked, true);
-  });
-
-  it("refuses a settings change before the unlock", () => {
-    assert.throws(() => updateMewbeatSettings("u1", { offsetMs: 40 }), (error) => error.statusCode === 403 && /unlock/i.test(error.message));
-  });
-
-  it("stores settings per user after the unlock", () => {
-    unlockMewbeat("u1", 1000);
-    unlockMewbeat("u2", 1000);
+  it("changes settings with no unlock first", () => {
     const record = updateMewbeatSettings("u1", { offsetMs: 40 });
     assert.strictEqual(record.settings.offsetMs, 40);
+    assert.strictEqual(record.tutorialSeen, false);
+  });
+
+  it("remembers the tutorial was seen and keeps the settings", () => {
+    updateMewbeatSettings("u1", { offsetMs: 40 });
+    const record = markTutorialSeen("u1");
+    assert.strictEqual(record.tutorialSeen, true);
+    assert.strictEqual(record.settings.offsetMs, 40);
+    assert.strictEqual(getMewbeatRecord("u1").tutorialSeen, true);
+    assert.strictEqual(getMewbeatRecord("u1").settings.offsetMs, 40);
+    assert.strictEqual(markTutorialSeen("u1").tutorialSeen, true);
+  });
+
+  it("keeps the tutorial flag through a settings change", () => {
+    markTutorialSeen("u1");
+    updateMewbeatSettings("u1", { offsetMs: 40 });
+    assert.strictEqual(getMewbeatRecord("u1").tutorialSeen, true);
+  });
+
+  it("reads an old unlock record as an unseen tutorial, keeping its settings", () => {
+    const settings = { ...DEFAULT_SETTINGS, keys: [...DEFAULT_SETTINGS.keys], offsetMs: 40 };
+    fake.store.set("u1", { mewbeat: { unlocked: true, unlockedAt: 1000, generation: 2, settings } });
+    assert.deepStrictEqual(getMewbeatRecord("u1"), { tutorialSeen: false, settings });
+    assert.strictEqual(updateMewbeatSettings("u1", { offsetMs: 50 }).settings.offsetMs, 50);
+  });
+
+  it("stores settings and the tutorial flag per user", () => {
+    markTutorialSeen("u1");
+    updateMewbeatSettings("u1", { offsetMs: 40 });
     assert.strictEqual(getMewbeatRecord("u1").settings.offsetMs, 40);
     assert.strictEqual(getMewbeatRecord("u2").settings.offsetMs, 0);
-    assert.strictEqual(getMewbeatRecord("u1").unlockedAt, 1000);
+    assert.strictEqual(getMewbeatRecord("u2").tutorialSeen, false);
   });
 
   it("keeps the old settings when a patch is refused", () => {
-    unlockMewbeat("u1", 1000);
     updateMewbeatSettings("u1", { scrollSpeed: 8 });
     assert.throws(() => updateMewbeatSettings("u1", { scrollSpeed: 8, offsetMs: 5000 }), { statusCode: 400 });
     assert.strictEqual(getMewbeatRecord("u1").settings.scrollSpeed, 8);

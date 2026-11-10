@@ -1,0 +1,107 @@
+/* The first-run tour layer (docs/superpowers/specs/mewbeat-mockups/first-run/tutorial-flow.html, variant B). The popup is
+   a glitch tag (.mb-tag, mewbeat.css). Positions are set inline by TourLayer; colour tokens come from .mb-game. */
+
+/* Fixed and above everything in the game, including the Settings scrim (z-index 2) and the minimized bar (60): the
+   tour opens Settings itself on some steps and has to stay on top of it. It takes all pointer input. */
+.mb-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow: hidden;
+  font-family: "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+.mb-tour-dim { position: absolute; inset: 0; background: rgb(2 3 6 / 0.68); }
+/* The dimming is the spotlight's own shadow, so the lit area is simply the hole in it. */
+.mb-tour-spot {
+  position: absolute;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgb(2 3 6 / 0.68), 0 0 0 2px var(--mb-gold, #ffd479);
+  pointer-events: none;
+}
+.mb-tour-animated .mb-tour-spot { transition: left 280ms cubic-bezier(0.2, 0.8, 0.2, 1), top 280ms cubic-bezier(0.2, 0.8, 0.2, 1), width 280ms cubic-bezier(0.2, 0.8, 0.2, 1), height 280ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+.mb-tour-mew { position: absolute; pointer-events: none; }
+
+.mb-tour-arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.mb-tour-arrow path { fill: none; stroke: var(--mb-cyan, #67e3f4); }
+.mb-tour-arrow-line { stroke-width: 2.5; stroke-dasharray: 7 5; }
+.mb-tour-arrow-head { stroke-width: 2.5; }
+/* Draw-in: a solid path reveals the dashed one through a mask; the head follows. */
+.mb-tour-arrow path.mb-tour-arrow-reveal { stroke: #fff; stroke-width: 8; stroke-dasharray: 1; stroke-dashoffset: 1; animation: mb-tour-draw 320ms ease-out forwards; }
+.mb-tour-animated .mb-tour-arrow-head { animation: mb-tour-head 120ms ease-out 260ms backwards; }
+@keyframes mb-tour-draw { to { stroke-dashoffset: 0; } }
+@keyframes mb-tour-head { from { opacity: 0; } }
+
+.mb-tour-pop { position: absolute; width: 340px; max-width: calc(100% - 28px); }
+.mb-tour-pop .mb-tag { display: block; }
+.mb-tour-pop .mb-tag-plain .mb-tag-body { padding-bottom: 12px; }
+
+.mb-tour-head { display: flex; gap: 11px; align-items: flex-start; }
+/* Mewbit's face: her canvas, 330% of the box, shifted to the face and cropped to a notched square. */
+.mb-tour-face {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  background: #231a41;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+.mb-tour-face-img { position: absolute; inset: 0; }
+.mb-tour-say { margin: 0; min-width: 0; }
+
+.mb-tour-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.mb-tour-count { margin-right: auto; color: var(--mb-muted, #9ba4b2); font-size: 11px; }
+.mb-tour-foot button {
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--mb-muted, #9ba4b2);
+  font: 800 12px/1.2 "JetBrains Mono", ui-monospace, monospace;
+  cursor: pointer;
+}
+.mb-tour-foot button:hover { color: #ece7ff; }
+.mb-tour-foot .mb-tour-next {
+  background: var(--mb-cyan, #67e3f4);
+  color: #04141a;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+}
+.mb-tour-foot .mb-tour-next:hover { background: #8aeaf7; color: #04141a; }
+.mb-tour-foot button:focus-visible { outline: 2px solid var(--mb-cyan, #67e3f4); outline-offset: 2px; }
+.mb-tour-foot .mb-tour-next:focus-visible { clip-path: none; }
+
+/* Her line types in: the part not typed yet keeps its room (so the popup has its full size from the first frame) but
+   is not drawn. The whole line is also in the page once, visually hidden, for screen readers. */
+.mb-tour-say { position: relative; }
+.mb-tour-rest { visibility: hidden; }
+.mb-tour-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The trap (tour/trap.js). While the heavy chart plays there is only a small Skip in the corner; then the joke: a
+   centred Mewbit under a dim, with her line and one button. */
+.mb-tour-corner {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 5px 10px;
+  border: 0;
+  background: rgb(2 3 6 / 0.55);
+  color: var(--mb-muted, #9ba4b2);
+  font: 800 12px/1.2 "JetBrains Mono", ui-monospace, monospace;
+  cursor: pointer;
+}
+.mb-tour-corner:hover { color: #ece7ff; }
+.mb-tour-corner:focus-visible { outline: 2px solid var(--mb-cyan, #67e3f4); outline-offset: 2px; }
+
+.mb-tour-joke { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.mb-tour-joke-body { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 340px; max-width: 100%; }
+.mb-tour-joke-mew { width: min(300px, 38vh); height: min(300px, 38vh); pointer-events: none; }
+.mb-tour-joke-body .mb-tag { display: block; width: 100%; }
+.mb-tour-joke-body .mb-tag-plain .mb-tag-body { padding-bottom: 12px; }

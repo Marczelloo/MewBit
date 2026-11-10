@@ -6,7 +6,9 @@ import { BoardHeading, BoardRow, BoardRows, useLevelBoard } from "./LevelBoard.j
 import { resultBoardTarget } from "./resultBoard.js";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
+import LineText from "./mewbit/LineText.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
+import { pickLine } from "./mewbit/lines.js";
 import { formatOffset } from "./SettingsPanel.jsx";
 import { resolveArtworkUrl } from "./SongSelect.jsx";
 
@@ -24,15 +26,6 @@ const PHASE_NOTES = {
   uncharted: "This track can't be charted.",
   failed: "Charting failed. We'll try the next track.",
 };
-
-const BUBBLES = {
-  S: "S rank?! you're cracked!!",
-  A: "great run!",
-  B: "nice one~",
-  C: "not bad!",
-  D: "nyoo… next time!",
-};
-const NEW_BEST_BUBBLE = "NEW BEST!! ✦";
 
 // Rows asked of the board: the screen's side column is short, and your own row is pinned under them when you are further down.
 const TOP_ROWS = 5;
@@ -298,6 +291,10 @@ export default function Results({
   const showSide = Boolean(standings?.length) || Boolean(boardTarget);
   const grade = gradeKey(summary.grade);
   const fullCombo = isFullCombo(summary);
+  // Mewbit's line: a new best first, then a full combo, else the grade's. Picked once per moment, so a re-render (the
+  // score reply replacing the summary, the clock) keeps the same words.
+  const bubbleMoment = newBest ? "newBest" : fullCombo ? "fullCombo" : `grade${grade}`;
+  const bubbleLine = useMemo(() => pickLine(bubbleMoment), [bubbleMoment]);
   // Keyed on the numbers: the score reply replaces the summary object, and new events would re-run the sounds.
   const { score, accuracy, maxCombo, fevers } = summary;
   const soundEvents = useMemo(() => resultSoundEvents({ grade, score, accuracy, maxCombo, fevers, fullCombo }), [grade, score, accuracy, maxCombo, fevers, fullCombo]);
@@ -411,7 +408,13 @@ export default function Results({
             <div className="mb-res-mew">
               {/* Mewbit waits with everyone else and reacts only once the grade is out. */}
               <Mewbit pose={verdict ? resultPose(summary.grade, newBest) : "hype"} effects={effects} />
-              {verdict ? <div className="mb-res-bubble" aria-hidden="true">{newBest ? NEW_BEST_BUBBLE : BUBBLES[grade]}</div> : null}
+              {verdict ? (
+                <div className="mb-res-bubble" aria-hidden="true">
+                  <div className="mb-tag">
+                    <div className="mb-tag-body"><LineText line={bubbleLine} /></div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

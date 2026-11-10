@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { WebhookClient } = require("discord.js");
 const { WebSocket } = require("ws");
 const {
   createActivityServer,
@@ -17,6 +18,7 @@ const {
   findQueueItemIndex,
 } = require("../../../helpers/activity/server");
 const { getActivityEvents } = require("../../../helpers/activity/feed");
+const { getClient, setClient } = require("../../../helpers/clientRegistry");
 const { resetActivitySessions } = require("../../../helpers/activity/sessions");
 const { getActivityStateRevision, markActivityStateChanged, resetActivityStateRevision } = require("../../../helpers/activity/sync");
 const { installFakePreferences } = require("../mewbeat/fakePreferences");
@@ -333,31 +335,78 @@ test("Activity mewbeat unlock and settings are per-account, gated, and stay out 
   });
   socket.send(JSON.stringify({ type: "auth", guildId }));
   const initial = await nextMessage(["state"]);
-  assert.deepEqual(initial.state.mewbeat.unlocked, false);
+  assert.deepEqual(Object.keys(initial.state.mewbeat).sort(), ["settings", "tutorialSeen"]);
+  assert.equal(initial.state.mewbeat.tutorialSeen, false);
 
-  socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 40 } } }));
-  assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
-
-  socket.send(JSON.stringify({ type: "action", action: "mewbeat_calibrate" }));
-  assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
-
-  socket.send(JSON.stringify({ type: "action", action: "mewbeat_unlock" }));
-  const unlocked = await nextMessage(["state"]);
-  assert.equal(unlocked.state.mewbeat.unlocked, true);
-  assert.equal(unlocked.state.mewbeat.unlockedAt, undefined);
-
-  // Unlocked, but the clicks play in voice like any other track.
-  socket.send(JSON.stringify({ type: "action", action: "mewbeat_calibrate" }));
-  assert.match((await nextMessage(["error"])).error, /voice channel/i);
-
+  // Open to everyone from the start: no unlock first.
   socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 40 } } }));
   const updated = await nextMessage(["state"]);
   assert.equal(updated.state.mewbeat.settings.offsetMs, 40);
+  assert.equal(updated.state.mewbeat.tutorialSeen, false);
+
+  // The clicks play in voice like any other track.
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_calibrate" }));
+  assert.match((await nextMessage(["error"])).error, /voice channel/i);
+
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_tutorial_seen" }));
+  const seen = await nextMessage(["state"]);
+  assert.equal(seen.state.mewbeat.tutorialSeen, true);
+  assert.equal(seen.state.mewbeat.settings.offsetMs, 40);
 
   socket.send(JSON.stringify({ type: "action", action: "mewbeat_settings", payload: { settings: { offsetMs: 9999 } } }));
   assert.match((await nextMessage(["error"])).error, /offset/i);
 
+  // A report: the reporter and the place are the server's to say, a refusal reaches the player and a failure
+  // costs nothing; none of it shows in the room.
+  const posted = [];
+  const reportWebhookBefore = process.env.MEWBEAT_REPORT_WEBHOOK_URL;
+  const registered = getClient();
+  t.after(() => {
+    setClient(registered);
+    if (reportWebhookBefore === undefined) delete process.env.MEWBEAT_REPORT_WEBHOOK_URL;
+    else process.env.MEWBEAT_REPORT_WEBHOOK_URL = reportWebhookBefore;
+  });
+  setClient({ guilds: { cache: new Map([[guildId, { name: "Test Server" }]]) } });
+  t.mock.method(WebhookClient.prototype, "send", async (message) => posted.push(message));
+  const report = { type: "bug", text: "The notes stop falling after the pause.", mode: "solo", song: "Some Song", level: "Normal" };
+
+  delete process.env.MEWBEAT_REPORT_WEBHOOK_URL;
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_report", payload: report }));
+  assert.match((await nextMessage(["error"])).error, /not set up/i);
+
+  process.env.MEWBEAT_REPORT_WEBHOOK_URL = `https://discord.com/api/webhooks/${"1".repeat(18)}/${"a".repeat(68)}`;
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_report", payload: { ...report, text: "short" } }));
+  assert.match((await nextMessage(["error"])).error, /at least 10/i);
+  assert.equal(posted.length, 0);
+
+  // A map report names a run of the player's own history; one that is not there is refused, whatever song text comes with it.
+  socket.send(JSON.stringify({
+    type: "action",
+    action: "mewbeat_report",
+    payload: { ...report, type: "map", song: "Forged Song", run: { audioKey: "youtube:nothing:1000", difficulty: "normal", at: 1 } },
+  }));
+  assert.match((await nextMessage(["error"])).error, /could not find that run/i);
+  assert.equal(posted.length, 0);
+
+  socket.send(JSON.stringify({
+    type: "action",
+    action: "mewbeat_report",
+    payload: { ...report, reporter: { id: "forged", name: "Forged" }, place: "Elsewhere" },
+  }));
+  await nextMessage(["state"]);
+  assert.equal(posted.length, 1);
+  assert.deepEqual(posted[0].allowedMentions, { parse: [] });
+  const sentFields = Object.fromEntries(posted[0].embeds[0].toJSON().fields.map((field) => [field.name, field.value]));
+  assert.match(sentFields.Reporter, /local-user/);
+  assert.doesNotMatch(JSON.stringify(sentFields), /forged|Elsewhere/i);
+  assert.equal(sentFields.Place, `Test Server (${guildId})`);
+  assert.equal(sentFields.Song, "Some Song");
+
+  socket.send(JSON.stringify({ type: "action", action: "mewbeat_report", payload: report }));
+  assert.match((await nextMessage(["error"])).error, /wait a minute/i);
+
   assert.equal(JSON.stringify(getActivityEvents(guildId)).toLowerCase().includes("mewbeat"), false);
+  assert.equal(JSON.stringify(getActivityEvents(guildId)).toLowerCase().includes("report"), false);
 });
 
 test("Activity routes mewbeat_ messages to the mewbeat channel", async (t) => {
@@ -429,7 +478,8 @@ test("Activity routes mewbeat_ messages to the mewbeat channel", async (t) => {
   assert.equal(reply.anchor, null);
 
   socket.send(JSON.stringify({ type: "mewbeat_chart", audioKey: "youtube:abc:1", difficulty: "easy" }));
-  assert.match((await nextMessage(["error"])).error, /unlock mewbeat first/i);
+  // No account gate: nothing is playing, so the chart is stale rather than refused.
+  assert.equal((await nextMessage(["mewbeat_chart"])).status, "stale");
 
   // A finished run on a dense chart is one big message: it reaches the channel rather than closing the socket.
   const events = Array.from({ length: 2000 }, (_, n) => ({ n, part: "head", j: "great", t: 123456.78901234567, d: -12.345678901234567 }));
@@ -438,7 +488,7 @@ test("Activity routes mewbeat_ messages to the mewbeat channel", async (t) => {
   socket.send(body);
   const big = await nextMessage(["mewbeat_submit"]);
   assert.equal(big.id, "big-run");
-  assert.equal(big.reason, "locked");
+  assert.equal(big.reason, "bad_difficulty");
 });
 
 test("Activity dev identity is only for the local preview: a Discord token on the dev server stays that person", async (t) => {

@@ -50,6 +50,21 @@ describe("mewbeat history store", () => {
     assert.deepStrictEqual(store.recent("nobody", 5), []);
   });
 
+  it("finds one round of a user by song, level and time, and nothing close to it", () => {
+    const store = open();
+    store.add("u1", entry("a", { at: 100, difficulty: "hard", score: 1 }));
+    store.add("u1", entry("a", { at: 200, difficulty: "hard", score: 2 }));
+    store.add("u1", entry("a", { at: 200, difficulty: "easy", score: 3 }));
+    store.add("u2", entry("a", { at: 300, difficulty: "hard", score: 4 }));
+    assert.strictEqual(store.roundOf("u1", "a", "hard", 200).score, 2);
+    assert.strictEqual(store.roundOf("u1", "a", "easy", 200).score, 3);
+    assert.strictEqual(store.roundOf("u1", "a", "hard", 100).score, 1);
+    assert.strictEqual(store.roundOf("u1", "a", "hard", 201), null);
+    assert.strictEqual(store.roundOf("u1", "b", "hard", 200), null);
+    assert.strictEqual(store.roundOf("u1", "a", "hard", 300), null, "another user's round is not found");
+    assert.strictEqual(store.roundOf("nobody", "a", "hard", 100), null);
+  });
+
   it("aggregates the distinct songs played per server and anywhere", () => {
     const store = open();
     store.add("u1", entry("a", { at: 100, guildId: "g1" }));

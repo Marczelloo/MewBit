@@ -15,6 +15,7 @@ export function gainOf(volume) {
 // worse than none, and the game must not depend on its sounds.
 export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
   const buffers = new Map();
+  const waiting = new Map(); // name -> what waits for that sample to load (or fail)
   let ctx = null;
   let loading = false;
   let closed = false;
@@ -30,6 +31,11 @@ export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
       ctx = null;
     }
     return ctx;
+  }
+
+  function settle(name) {
+    for (const resolve of waiting.get(name) ?? []) resolve();
+    waiting.delete(name);
   }
 
   function load(audio) {
@@ -48,7 +54,8 @@ export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
         .then((buffer) => {
           if (!closed) buffers.set(name, buffer);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .then(() => settle(name));
     }
   }
 
@@ -83,13 +90,20 @@ export function createSounds({ urls = {}, AudioContextClass, fetchImpl } = {}) {
     };
   }
 
+  // Resolves when the sample has loaded, failed to, or the sounds are closed; the sample load starts with unlock().
+  function ready(name) {
+    if (buffers.has(name) || closed) return Promise.resolve();
+    return new Promise((resolve) => waiting.set(name, [...(waiting.get(name) ?? []), resolve]));
+  }
+
   function close() {
     closed = true;
+    for (const name of [...waiting.keys()]) settle(name);
     const audio = ctx;
     ctx = null;
     buffers.clear();
     audio?.close?.()?.catch?.(() => {});
   }
 
-  return { play, unlock, close };
+  return { play, unlock, ready, close };
 }

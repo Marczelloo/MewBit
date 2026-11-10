@@ -65,8 +65,10 @@ const { audioStore } = require("../mewbeat/sharedAudio");
 const { getClient } = require("../clientRegistry");
 const { createInvitePoster } = require("../mewbeat/invites");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
+const { createTourSongs } = require("../mewbeat/tourSongs");
 const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore, statsStore: mewbeatStatsStore } = require("../mewbeat/stores");
-const { getMewbeatRecord, unlockMewbeat, updateMewbeatSettings } = require("../mewbeat/userSettings");
+const { createRunLookup, getReporter, placeLabel, setRunLookup } = require("../mewbeat/reports");
+const { getMewbeatRecord, markTutorialSeen, updateMewbeatSettings } = require("../mewbeat/userSettings");
 const health = require("../monitoring/health");
 const { importPlaylistFromUrl } = require("../playlists/import");
 const playlistStore = require("../playlists/store");
@@ -440,7 +442,7 @@ function isAllowedOrigin(origin, config) {
 }
 
 // A DM has no player or server settings; only what belongs to the account works there.
-const PRIVATE_PLACE_ACTIONS = new Set(["mewbeat_unlock", "mewbeat_settings"]);
+const PRIVATE_PLACE_ACTIONS = new Set(["mewbeat_tutorial_seen", "mewbeat_settings", "mewbeat_report"]);
 
 function assertPlayerVoiceAccess(player, identity, action) {
   if (identity.dev || !player?.voiceChannel) return;
@@ -577,10 +579,9 @@ function getSerializedEqualizerPresets(userId) {
   return [...builtIn, ...custom];
 }
 
-// The unlock time stays server-side; the client only needs to know whether
-// the game is open to this account and how it is set up.
+// The client needs to know whether this account has seen the first-run tour and how the game is set up.
 function serializeMewbeat(record) {
-  return { unlocked: record.unlocked, settings: record.settings };
+  return { tutorialSeen: record.tutorialSeen, settings: record.settings };
 }
 
 function buildActivityState(client, guildId, userId) {
@@ -764,10 +765,17 @@ function sendToGuildSockets(guildId, userIds, payload) {
   }
 }
 
+// The first-run tour's two songs, warmed from the Activity server's start (tourSongs.js).
+const tourSongs = createTourSongs({
+  resolveTrack: resolveMewbeatTrack,
+  soloTracks,
+  chartStore,
+  warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
+});
+
 const mewbeatChannel = createMewbeatChannel({
   readPlayback: readMewbeatPlayback,
   chartStore,
-  isUnlocked: (userId) => getMewbeatRecord(userId).unlocked,
   audioLatencyMs: MEWBEAT_AUDIO_LATENCY_MS,
   resolveTrack: resolveMewbeatTrack,
   soloTracks,
@@ -776,12 +784,16 @@ const mewbeatChannel = createMewbeatChannel({
   statsStore: mewbeatStatsStore,
   postInvite: createInvitePoster({ getClient }),
   warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
+  tourSongs,
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
   // A pending room phase must not keep the process alive.
   setTimer: (run, ms) => setTimeout(run, ms).unref(),
   clearTimer: clearTimeout,
 });
+
+// A map report names its run; the reporter finds it in the player's own history and the chart store.
+setRunLookup(createRunLookup({ historyStore: mewbeatHistoryStore, summaryReader: () => chartStore.summaryReader() }));
 
 function mewbeatProfileOf(identity) {
   return {
@@ -1238,12 +1250,28 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
     }
     // Per-account only: nothing here touches the player, so neither action is
     // DJ- or voice-guarded, and actionDetail keeps both out of the room feed.
-    case "mewbeat_unlock":
-      return { mewbeat: serializeMewbeat(unlockMewbeat(identity.id)) };
+    case "mewbeat_tutorial_seen":
+      return { mewbeat: serializeMewbeat(markTutorialSeen(identity.id)) };
     case "mewbeat_settings":
       return { mewbeat: serializeMewbeat(updateMewbeatSettings(identity.id, payload.settings)) };
+    // Who and where come from the server; only the type, the text and the game context come from the browser. A map report
+    // names a run, and everything shown about the song comes from the server's own record of that run.
+    case "mewbeat_report": {
+      const guildName = isPrivatePlace(guildId) ? null : getClient()?.guilds?.cache?.get(guildId)?.name;
+      await getReporter().send({
+        type: payload.type,
+        text: payload.text,
+        reporter: { id: identity.id, name: identity.username || identity.tag },
+        source: "activity",
+        place: isPrivatePlace(guildId) ? placeLabel() : placeLabel(guildName, guildId),
+        mode: payload.mode,
+        song: payload.song,
+        level: payload.level,
+        run: payload.run,
+      });
+      return { sent: true };
+    }
     case "mewbeat_calibrate": {
-      if (!getMewbeatRecord(identity.id).unlocked) throw Object.assign(new Error("Unlock mewbeat first."), { statusCode: 403 });
       const settings = guildState.getGuildState(guildId);
       const voiceId = player?.voiceChannel || identity.member?.voice?.channelId;
       const textId = settings?.playerChannel || player?.textChannel || null;
@@ -1392,7 +1420,8 @@ async function runTrackedActivityAction({ guildId, identity, action, payload = {
     markActivityStateChanged(guildId, `activity:${action}`);
     return result;
   } catch (error) {
-    if ((Number(error.statusCode) || 500) >= 500) {
+    // A report that could not be posted is the reporter's to hear about, not the room's.
+    if ((Number(error.statusCode) || 500) >= 500 && action !== "mewbeat_report") {
       reportActivityIssue(guildId, "Activity action failed", error.message || "MewBit could not complete that action.");
       markActivityStateChanged(guildId, `activity:${action}:error`);
     }
@@ -1648,8 +1677,7 @@ function createActivityServer(client) {
       if (url.pathname === "/api/activity/mewbeat/audio" && request.method === "GET") {
         enforceRateLimit(request, "mewbeat-audio", 60, 60_000);
         const guildId = limitText(url.searchParams.get("guildId") || config.devGuildId, 80);
-        const identity = await authenticateRequest(client, request, guildId, config);
-        if (!getMewbeatRecord(identity.id).unlocked) throw Object.assign(new Error("Unlock mewbeat first."), { statusCode: 403 });
+        await authenticateRequest(client, request, guildId, config);
         return await sendMewbeatAudio(response, config, guildId, limitText(url.searchParams.get("audioKey"), 300));
       }
 
@@ -1865,6 +1893,7 @@ function createActivityServer(client) {
       interval.unref?.();
       heartbeat = startHeartbeat({ sockets });
       chartStore.warmSummaries?.();
+      if (process.env.NODE_ENV !== "test") tourSongs.start();
       return server;
     },
     stop() {
@@ -1872,6 +1901,7 @@ function createActivityServer(client) {
       interval = null;
       heartbeat?.stop();
       heartbeat = null;
+      tourSongs.stop();
       if (listeningForPlayerChanges) {
         activityStateEvents.off("change", handlePlayerStateChange);
         listeningForPlayerChanges = false;

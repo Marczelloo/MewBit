@@ -193,6 +193,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     };
   }, []);
   const unlockAudio = useCallback(() => soundsRef.current?.unlock(), []);
+  // Resolves once the named sample is loaded (or could not be); at once when the sounds are gone.
+  const soundReady = useCallback((name) => soundsRef.current?.ready(name) ?? Promise.resolve(), []);
   // One hit at the given volume, so the settings slider and the choice of sound can be heard as they change.
   const previewHit = useCallback((volume, choice = cfgRef.current.hitSound) => playHit(soundsRef.current, volume, choice), []);
   const previewSfx = useCallback((volume) => soundsRef.current?.play("tick", volume), []);
@@ -297,6 +299,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       hudStore.set(toHud(snap));
       startLive(snap);
       setPhase(songClock.paused() ? "paused" : "playing");
+      redrawRef.current = true; // a run that starts paused (the tour's standing song) is painted once
       // A solo link starts its count-in only now that the game took the chart (the live link has no such hook).
       link.chartAccepted?.(chart);
     }
@@ -852,5 +855,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     if (!runRef.current && (current === "failed" || current === "uncharted")) beginChartingRef.current({ retry: true });
   }, []);
 
-  return { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
+  return { phase, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, mewbitPose, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
 }

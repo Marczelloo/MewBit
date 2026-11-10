@@ -216,14 +216,14 @@ const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary })
 // With player ({ userId }, only the Solo picker passes it) the left side is the player's Profile and Stats until
 // a song is picked, and a picked song shows its leaderboard; without it (the room's add-songs window) the left
 // side is the song's details alone.
-export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose, onSelected }) {
+export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onClose, onSelected, startSelectedKey = null }) {
   const isPrivate = usePrivatePlace();
   const [scope, setScope] = useState(isPrivate ? "global" : "server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
   const [found, setFound] = useState({ status: "idle", rows: [] });
   const [reload, setReload] = useState(0);
-  const [selectedKey, setSelectedKey] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(startSelectedKey); // the first-run tour opens with its sample song picked
   const [difficulty, setDifficulty] = useState(DIFFICULTIES.some((d) => d.id === defaultDifficulty) ? defaultDifficulty : "normal");
   const [preparing, setPreparing] = useState(null); // the row key being prepared
   const [playError, setPlayError] = useState(null);
@@ -460,7 +460,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                 <button type="button" className="mb-ss-back" onClick={() => setSelectedKey(null)}>← Profile</button>
               </div>
             ) : null}
-            <div className="mb-ss-hero">
+            <div className="mb-ss-hero" data-tour="track">
               <Cover row={selected} className="mb-ss-cover" />
               <div className="mb-ss-hero-text">
                 <span className="mb-ss-label">{selected.plays ? `played ${selected.plays}×` : searching ? "search result" : "song"}</span>
@@ -479,7 +479,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                 </div>
               </div>
             </div>
-            <div className="mb-ss-diffs" role={onPlay ? "radiogroup" : undefined} aria-label={onPlay ? "Difficulty" : undefined}>
+            <div className="mb-ss-diffs" data-tour="diff" role={onPlay ? "radiogroup" : undefined} aria-label={onPlay ? "Difficulty" : undefined}>
               {DIFFICULTIES.map(({ id, label }) => {
                 return (
                   <LevelTile
@@ -507,7 +507,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                   <span className="mb-ss-label">Modifiers</span>
                   {[0, 1, 2, 3].map((slot) => <span key={slot} className="mb-ss-slot">soon</span>)}
                 </div>
-                <LevelBoard request={request} audioKey={selected.audioKey} difficulty={difficulty} userId={player.userId} onOpenPlayer={openPlayer} />
+                <LevelBoard request={request} audioKey={selected.audioKey} difficulty={difficulty} userId={player.userId} onOpenPlayer={openPlayer} tour="board" />
               </>
             ) : null}
           </>
@@ -532,7 +532,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
         </ProfileColumn>
       </section>
 
-      <aside className="mb-ss-list">
+      <aside className="mb-ss-list" data-tour="list">
         <div className="mb-ss-tabs" role="tablist" aria-label="Songs">
           {scopesFor(SCOPES, isPrivate).map(({ id, label }) => (
             <button

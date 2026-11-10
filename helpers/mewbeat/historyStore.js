@@ -139,6 +139,11 @@ function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200
     return (users.get(userId) ?? []).slice(-limit).reverse();
   }
 
+  // One round of the user, found by the three things that name it; null when the user has no such round.
+  function roundOf(userId, audioKey, difficulty, at) {
+    return (users.get(userId) ?? []).findLast((entry) => entry.audioKey === audioKey && entry.difficulty === difficulty && entry.at === at) ?? null;
+  }
+
   // Distinct songs played in a guild (null: anywhere) by one user (null: anyone), last played first. The
   // track info comes from the latest round of the song; playsBy counts the rounds per level.
   function played({ guildId = null, userId = null, limit = 50 } = {}) {
@@ -185,7 +190,7 @@ function createHistoryStore({ file = DEFAULT_FILE, now = Date.now, perUser = 200
     return { title: round.title, artist: round.artist ?? "", artworkUrl: round.artworkUrl ?? null };
   }
 
-  return { add, recent, played, firstTrackOf, hydrate, applyOp, flush: disk ? disk.flush : () => Promise.resolve() };
+  return { add, recent, roundOf, played, firstTrackOf, hydrate, applyOp, flush: disk ? disk.flush : () => Promise.resolve() };
 }
 
 module.exports = { createHistoryStore, historyIdOf, historyRowOf, historyFromRow };

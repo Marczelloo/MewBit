@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mewbeat bubble styles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#050608; --surface:#0c0e12; --text:#f4f6f9; --muted:#9ba4b2; --cyan:#67e3f4; --violet:#a78bfa; --pink:#ff6ec7; --gold:#ffd479; --line:rgb(255 255 255 / .1); }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:"Hanken Grotesk","Segoe UI",sans-serif; padding:24px 20px 60px; }
+main { max-width:1120px; margin:0 auto; }
+h1 { font-size:24px; font-weight:900; margin:0 0 4px; letter-spacing:-.01em; }
+.lead { color:var(--muted); margin:0 0 26px; font-size:15px; }
+section { margin-bottom:34px; }
+h2 { font-size:18px; font-weight:900; margin:0 0 3px; }
+h2 span { color:var(--muted); font-weight:700; font-size:14px; margin-left:8px; }
+.scene { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-top:12px; }
+.card { position:relative; height:290px; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:linear-gradient(180deg,#0b0c16,#171130 70%,#090a12); }
+.card img { position:absolute; left:50%; bottom:-46px; height:285px; transform:translateX(-50%); }
+.card small { position:absolute; left:10px; bottom:9px; font:700 10px "JetBrains Mono",monospace; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+.pos { position:absolute; left:12px; right:12px; top:12px; }
+/* A: glitch tag */
+.a .w { display:inline-block; filter:drop-shadow(2px 0 0 var(--cyan)) drop-shadow(-2px 0 0 var(--pink)) drop-shadow(0 -1px 0 var(--violet)); }
+.a .bub { background:#0b0913; color:#ece7ff; font:700 13px/1.32 "JetBrains Mono",monospace; padding:10px 13px 19px;
+  clip-path:polygon(0 0,calc(100% - 11px) 0,100% 11px,100% calc(100% - 9px),38px calc(100% - 9px),26px 100%,26px calc(100% - 9px),10px calc(100% - 9px),0 calc(100% - 19px)); }
+.a .bub b { color:var(--cyan); font-weight:800; }
+.a .bub em { color:var(--pink); font-style:normal; }
+/* B: neon sticker */
+.b .w { display:inline-block; position:relative; transform:rotate(-2.5deg); }
+.b .bub { position:relative; background:#1b1033; color:#fff; font:900 15px/1.22 "Hanken Grotesk",sans-serif; padding:10px 14px; border-radius:16px 16px 16px 4px; border:3px solid #fff; }
+.b .bub em { color:var(--pink); font-style:normal; }
+.b .bub b { color:var(--cyan); font-weight:900; }
+.b .w::before,.b .w::after { content:""; position:absolute; top:-9px; width:18px; height:18px; background:#1b1033; border:3px solid #fff; border-right:0; border-bottom:0; border-radius:3px 0 0 0; transform:rotate(45deg) skew(8deg,8deg); }
+.b .w::before { left:16px; } .b .w::after { left:42px; }
+.tut { position:relative; margin-top:12px; height:210px; border-radius:14px; border:1px solid var(--line); background:#090a10; overflow:hidden; }
+.tut .target { position:absolute; right:4%; top:26px; display:flex; gap:3px; padding:2px; border-radius:9px; outline:2px solid var(--gold); outline-offset:4px; background:rgb(255 255 255 / .05); }
+.tut .target span { padding:5px 15px; font-size:11px; font-weight:800; letter-spacing:.12em; color:var(--muted); }
+.tut .target span.on { color:var(--cyan); }
+.tut .pop { position:absolute; left:3%; top:74px; width:min(370px,52%); }
+.tut .head { display:flex; gap:11px; align-items:flex-start; }
+.tut .face { width:46px; height:46px; flex:none; background:#231a41 url(neutral.webp) no-repeat 50% 6% / 330%; }
+.a .tut .face { clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px)); }
+.b .tut .face { border-radius:50%; border:2px solid #fff; }
+.tut .foot { display:flex; justify-content:flex-end; gap:12px; margin-top:9px; font-size:12px; font-weight:800; opacity:.7; }
+.tut .bub { padding-bottom:14px; }
+.a .tut .bub { padding-bottom:22px; }
+.tut svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.a .tut path { stroke:var(--cyan); stroke-width:2.5; stroke-dasharray:7 5; fill:none; stroke-linecap:butt; }
+.a .tut path.h { stroke-dasharray:none; }
+.b .tut path { stroke:#fff; stroke-width:3.5; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+td { padding:9px 11px; border-top:1px solid var(--line); vertical-align:top; line-height:1.45; }
+td:first-child { width:165px; color:var(--muted); font-weight:700; }
+tr td:nth-child(2) i { font-style:normal; display:inline-block; padding:2px 8px; margin:2px 5px 2px 0; border-radius:6px; background:rgb(255 255 255 / .06); }
+</style>
+</head>
+<body><main>
+<h1>Dymki Mewbit: wygląd i teksty</h1>
+<p class="lead">Te same momenty w dwóch stylach. Poniżej ten sam dymek w tutorialu i propozycje tekstów.</p>
+
+<section class="a">
+  <h2>A: glitch tag <span>ciemny, ścięte rogi, rozjechane kolory, font terminalowy</span></h2>
+  <div class="scene">
+    <div class="card"><div class="pos"><div class="w"><div class="bub">100! <b>don't look</b> at your hands</div></div></div><img src="combo.webp" alt=""><small>combo</small></div>
+    <div class="card"><div class="pos"><div class="w"><div class="bub">that note had <em>a family</em></div></div></div><img src="miss.webp" alt=""><small>miss</small></div>
+    <div class="card"><div class="pos"><div class="w"><div class="bub"><em>FEVER!!</em> no skips today</div></div></div><img src="fever.webp" alt=""><small>fever</small></div>
+    <div class="card"><div class="pos"><div class="w"><div class="bub">shh, listening to <b>the good part</b></div></div></div><img src="charting.webp" alt=""><small>charting</small></div>
+  </div>
+  <div class="tut">
+    <div class="target"><span>LIVE</span><span>SOLO</span><span class="on">ROOM</span></div>
+    <div class="pop"><div class="w"><div class="bub"><div class="head"><div class="face"></div><div>Room is for friends: same song, same start, one scoreboard.</div></div><div class="foot"><span>Skip</span><span>Next</span></div></div></div></div>
+    <svg><path class="l"></path><path class="h"></path></svg>
+  </div>
+</section>
+
+<section class="b">
+  <h2>B: neonowa naklejka <span>ciemny fiolet, biały kontur jak wycięta naklejka, kocie uszy, grubszy font</span></h2>
+  <div class="scene">
+    <div class="card"><div class="pos"><div class="w"><div class="bub">100! <b>don't look</b> at your hands</div></div></div><img src="combo.webp" alt=""><small>combo</small></div>
+    <div class="card"><div class="pos"><div class="w"><div class="bub">that note had <em>a family</em></div></div></div><img src="miss.webp" alt=""><small>miss</small></div>
+    <div class="card"><div class="pos"><div class="w"><div class="bub"><em>FEVER!!</em> no skips today</div></div></div><img src="fever.webp" alt=""><small>fever</small></div>
+    <div class="card"><div class="pos"><div class="w"><div class="bub">shh, listening to <b>the good part</b></div></div></div><img src="charting.webp" alt=""><small>charting</small></div>
+  </div>
+  <div class="tut">
+    <div class="target"><span>LIVE</span><span>SOLO</span><span class="on">ROOM</span></div>
+    <div class="pop"><div class="w"><div class="bub"><div class="head"><div class="face"></div><div>Room is for friends: same song, same start, one scoreboard.</div></div><div class="foot"><span>Skip</span><span>Next</span></div></div></div></div>
+    <svg><path class="l"></path><path class="h"></path></svg>
+  </div>
+</section>
+
+<section>
+  <h2>Propozycje tekstów <span>obecne zostają, te dochodzą</span></h2>
+  <table>
+    <tr><td>Combo</td><td><i>ok you can stay</i><i>100! don't look at your hands</i><i>your keyboard is purring</i><i>who let you cook</i></td></tr>
+    <tr><td>Miss</td><td><i>that note had a family</i><i>skill issue, nya</i><i>i saw nothing</i><i>blame the aux cable</i></td></tr>
+    <tr><td>Dużo missów</td><td><i>breathe. they smell fear</i><i>we're rebuilding</i><i>it's a training arc now</i></td></tr>
+    <tr><td>Fever</td><td><i>FEVER!! no skips today</i><i>main character mix!!</i><i>keyboard's on fire</i></td></tr>
+    <tr><td>Charting</td><td><i>shh, listening to the good part</i><i>stealing the bassline…</i><i>works on my headphones</i></td></tr>
+    <tr><td>Lobby, czekanie</td><td><i>queue's empty. like my bowl</i><i>add a song, i'll behave</i><i>small cat, enormous soundstage</i></td></tr>
+    <tr><td>Odliczanie</td><td><i>paws ready?</i><i>no looking at the keys</i></td></tr>
+    <tr><td>Wynik S / full combo</td><td><i>not one miss?! suspicious</i><i>S rank. touch grass, then come back</i></td></tr>
+    <tr><td>Wynik D</td><td><i>the song won this round</i><i>rematch. i'm not asking</i></td></tr>
+  </table>
+</section>
+</main><script>
+function arrows(){document.querySelectorAll(".tut").forEach(t=>{const o=t.getBoundingClientRect(),p=t.querySelector(".bub").getBoundingClientRect(),g=t.querySelector(".target").getBoundingClientRect();
+const a={x:p.right-o.left+8,y:p.top-o.top+p.height*.42},b={x:g.left-o.left-12,y:g.top-o.top+g.height/2};
+const c={x:(a.x+b.x)/2,y:Math.max(a.y,b.y)+26};t.querySelector(".l").setAttribute("d","M"+a.x+" "+a.y+" Q"+c.x+" "+c.y+" "+b.x+" "+b.y);
+const r=Math.atan2(b.y-c.y,b.x-c.x),L=14,W=.5;t.querySelector(".h").setAttribute("d","M"+(b.x-L*Math.cos(r-W))+" "+(b.y-L*Math.sin(r-W))+" L"+b.x+" "+b.y+" L"+(b.x-L*Math.cos(r+W))+" "+(b.y-L*Math.sin(r+W)));});}
+addEventListener("resize",arrows);document.fonts.ready.then(arrows);arrows();
+</script></body>
+</html>

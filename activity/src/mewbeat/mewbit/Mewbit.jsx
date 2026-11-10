@@ -2,6 +2,8 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { effectiveEffects } from "../effects.js";
 import { createQueue } from "./fetchQueue.js";
 import { budgetBytes, frameBytes } from "./frameBudget.js";
+import LineText from "./LineText.jsx";
+import { pickLine } from "./lines.js";
 import { MEWBIT_POSES } from "./manifest.js";
 import placeholderUrl from "./mewbit.png";
 import "../mewbeat.css";
@@ -427,18 +429,20 @@ function wantedSize() {
   return size;
 }
 
-function Mewbit({ pose = "neutral", effects = "full", className = "", onShow = null }) {
+function Mewbit({ pose = "neutral", effects = "full", className = "", onShow = null, silent = false }) {
   const prefersReduced = usePrefersReducedMotion();
   const level = effectiveEffects(effects, prefersReduced);
   const animated = level !== "off";
   const canvasRef = useRef(null);
   const onShowRef = useRef(onShow);
   onShowRef.current = onShow;
-  const [shown, setShown] = useState(null);
+  // The pose on screen with the line it says: picked once when the pose shows, so a re-render never changes it.
+  const [shown, setShown] = useState(null); // { name, line } | null
   const engineRef = useRef(null);
   if (!engineRef.current) {
     engineRef.current = createPlayer((name) => {
-      setShown(name);
+      const moment = MEWBIT_POSES[name]?.bubble;
+      setShown({ name, line: moment ? pickLine(moment) : "" });
       onShowRef.current?.(name);
     });
   }
@@ -497,15 +501,21 @@ function Mewbit({ pose = "neutral", effects = "full", className = "", onShow = n
     preloadMewbitGroup(screen, pose);
   }, [wanted.group]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const entry = MEWBIT_POSES[shown] || null;
+  const entry = MEWBIT_POSES[shown?.name] || null;
   const motion = animated && entry?.motion ? entry.motion : "";
 
   return (
-    <div className={`mb-mewbit mb-mewbit-${level} ${className}`.trim()} data-pose={shown ?? pose}>
+    <div className={`mb-mewbit mb-mewbit-${level} ${className}`.trim()} data-pose={shown?.name ?? pose}>
       <div className={`mb-mewbit-body ${motion}`.trim()}>
         <canvas className="mb-mewbit-img" ref={canvasRef} role="img" aria-label="Mewbit" />
       </div>
-      {entry?.bubble ? <div className="mb-mewbit-bubble" key={shown}>{entry.bubble}</div> : null}
+      {shown?.line && !silent ? (
+        <div className="mb-mewbit-bubble" key={shown.name}>
+          <div className="mb-tag">
+            <div className="mb-tag-body"><LineText line={shown.line} /></div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

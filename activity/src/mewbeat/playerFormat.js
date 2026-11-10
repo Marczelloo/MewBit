@@ -45,3 +45,14 @@ export function formatSince(at) {
   if (!Number.isFinite(at)) return "";
   return new Date(at).toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
+
+// "5 min ago", "3 h ago", "2 d ago", then the date. For a list of recent runs; a missing time reads empty.
+export function formatAgo(at, now = Date.now()) {
+  if (!Number.isFinite(at)) return "";
+  const minutes = Math.max(0, Math.floor((now - at) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} h ago`;
+  if (minutes < 10_080) return `${Math.floor(minutes / 1440)} d ago`;
+  return new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}

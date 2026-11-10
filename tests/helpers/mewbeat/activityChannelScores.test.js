@@ -68,7 +68,7 @@ describe("mewbeat channel scores", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ charts = makeCharts(), unlocked = true, playback = null, register = true, log, durationMs = 200000, walks } = {}) {
+  function setup({ charts = makeCharts(), playback = null, register = true, log, durationMs = 200000, walks } = {}) {
     let clock = 1_000;
     const now = () => (clock += 10);
     const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now });
@@ -97,7 +97,6 @@ describe("mewbeat channel scores", () => {
           return charts && audioKeyOf(candidate) === KEY ? { status: "ready", charts } : null;
         },
       },
-      isUnlocked: () => unlocked,
       now,
       soloTracks,
       scoreStore,
@@ -322,21 +321,6 @@ describe("mewbeat channel scores", () => {
       assert.strictEqual((await submit(channel, submitMessage({ events: undefined }))).reason, "no_events");
       assert.strictEqual((await submit(channel, submitMessage({ difficulty: "insane" }))).reason, "bad_difficulty");
     });
-
-    it("a locked account", async () => {
-      const { channel } = setup({ unlocked: false });
-      // The reply carries the request id, so the client doesn't wait out its timeout.
-      for (const message of [
-        submitMessage(),
-        { type: "mewbeat_board", id: "b", audioKey: KEY, difficulty: "hard", scope: "server" },
-        { type: "mewbeat_played", id: "p", scope: "server" },
-      ]) {
-        const reply = await submit(channel, message);
-        assert.deepStrictEqual({ type: reply.type, id: reply.id, status: reply.status, reason: reply.reason }, {
-          type: message.type, id: message.id, status: "error", reason: "locked",
-        });
-      }
-    });
   });
 
   describe("boards", () => {
@@ -508,14 +492,32 @@ describe("mewbeat channel scores", () => {
       });
     });
 
-    it("refuses an unknown player, a locked requester and a bad user id", async () => {
+    it("refuses an unknown player and a bad user id", async () => {
       const { channel } = setup();
       assert.deepStrictEqual(await submit(channel, profileMessage({ userId: "nobody" }), asCy), { type: "mewbeat_profile", id: "pr1", status: "error", reason: "not_found" });
-      assert.strictEqual((await submit(setup({ unlocked: false }).channel, profileMessage())).reason, "locked");
       for (const userId of [5, "", "x".repeat(41), { a: 1 }]) {
         assert.strictEqual((await submit(channel, profileMessage({ userId }), asCy)).reason, "bad_request", String(userId));
       }
       assert.strictEqual((await submit(channel, profileMessage({ id: "" }), asCy)).type, "error");
+    });
+
+    it("lists your own latest runs, newest first and at most twenty, for a map report to name one", async () => {
+      const { channel, historyStore } = setup();
+      assert.deepStrictEqual(await submit(channel, { type: "mewbeat_report_runs", id: "rr0" }), { type: "mewbeat_report_runs", id: "rr0", status: "ok", runs: [] });
+      for (let i = 0; i < 25; i += 1) {
+        historyStore.add("ann", {
+          audioKey: "youtube:r" + i + ":1000", uri: null, source: "youtube", title: "R" + i, artist: "", artworkUrl: null, durationMs: 1, difficulty: "normal",
+          score: 1, accuracy: 90 + i / 100, grade: "A", ranked: true, mode: "solo", guildId: "g1", at: 1000 + i,
+        });
+      }
+      historyStore.add("bo", { audioKey: "youtube:bo:1000", title: "Bo's", difficulty: "hard", mode: "solo", at: 5000 });
+      const reply = await submit(channel, { type: "mewbeat_report_runs", id: "rr1" });
+      assert.strictEqual(reply.status, "ok");
+      assert.strictEqual(reply.runs.length, 20);
+      assert.deepStrictEqual(reply.runs[0], { audioKey: "youtube:r24:1000", difficulty: "normal", at: 1024, title: "R24", artist: "", grade: "A", accuracy: 90.24 });
+      assert.strictEqual(reply.runs[19].title, "R5");
+      assert.ok(reply.runs.every((run) => run.title !== "Bo's"));
+      assert.strictEqual((await submit(channel, { type: "mewbeat_report_runs", id: "" })).type, "error");
     });
 
     it("shows a profile with the rounds, the best plays and the rating after a ranked run", async () => {
@@ -653,9 +655,8 @@ describe("mewbeat channel scores", () => {
       assert.deepStrictEqual(nobody.own, { rank: null, pp: 0, username: "Cy", avatarUrl: null, accuracy: null });
     });
 
-    it("refuses a bad scope and a locked requester", async () => {
+    it("refuses a bad scope", async () => {
       assert.strictEqual((await submit(setup().channel, rankingMessage({ scope: "mine" }))).reason, "bad_scope");
-      assert.strictEqual((await submit(setup({ unlocked: false }).channel, rankingMessage())).reason, "locked");
     });
 
     it("does not rebuild the ranking for a run that is no new best", async () => {
@@ -719,7 +720,6 @@ describe("mewbeat channel scores", () => {
       const channel = createMewbeatChannel({
         readPlayback: () => null,
         chartStore: { getCharts: async () => ({ status: "ready", charts: makeCharts() }), peekCharts: () => ({ status: "ready", charts: makeCharts() }) },
-        isUnlocked: () => true,
         soloTracks: (() => { const tracks = createSoloTracks(); tracks.put(KEY, { track: fakeTrack(), node: "n", info: { title: "Song" } }); return tracks; })(),
         scoreStore: createScoreStore({ file: path.join(dir, "scores2.json") }),
         historyStore: createHistoryStore({ file: path.join(dir, "history2.json") }),
@@ -757,11 +757,7 @@ describe("mewbeat channel scores", () => {
       assert.strictEqual((await submit(setup().channel, statsMessage({ audioKey: "youtube:other:1" }))).stats, null);
     });
 
-    it("refuses a locked user, a bad key and a bad id", async () => {
-      assert.deepStrictEqual(
-        await submit(setup({ unlocked: false }).channel, statsMessage()),
-        { type: "mewbeat_song_stats", id: "t1", status: "error", reason: "locked" },
-      );
+    it("refuses a bad key and a bad id", async () => {
       const { channel } = setup();
       assert.strictEqual((await submit(channel, statsMessage({ audioKey: 5 }))).reason, "bad_request");
       assert.strictEqual((await submit(channel, statsMessage({ audioKey: undefined }))).reason, "bad_request");
