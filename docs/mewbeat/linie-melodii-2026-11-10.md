@@ -308,6 +308,29 @@ Zestaw 7 w bocie: zestaw 6 + `heardChords`, `pitchLanes`.
   673 → 658 (+37/−52 momenty, najwięcej 0:40–0:50 i 1:50–2:00), MEGALOVANIA 709 → 691 (+7/−25; 0:30, 0:50, 1:10),
   Camellia Remix 2355 → 2340 (+53/−68, z czego +26/−25 w 4:20–4:30), Finale 612 → 621 z holdami 61 → 68 (+15/−2 w
   pierwszych 20 s). To ostatni zestaw flag melodii; po nim złożenie zaliczonych flag i poziomy.
+- **Zestaw 9 bez różnicy dla ucha:** „gra się dobrze, nie odczułem dużych zmian, nie ma gorzej". Przy remisie zostaje
+  `melodyLines` (lepsza zgodność z ludźmi, 79,1 wobec 78,1), `melodyLinesFirst` wypada przy składaniu flag. Normal
+  zostaje na zestawie 8 i na tym odsłuch flag melodii jest zamknięty.
+
+### Poziomy, pierwszy zestaw: `plusMelody` (Hard, Hell)
+
+Normal i Easy bez zmian (zestaw 8). Flaga zmienia tylko to, które dodatki biorą Hard i Hell: chętniej nuty melodii,
+których Normal nie gra.
+
+| | bez flagi | `plusMelody` | ludzie |
+|---|---|---|---|
+| dodatki Harda na nucie melodii | 9% | 18% | 22% |
+| na stopie | 24% | 21% | 14% |
+| na werblu | 15% | 14% | 17% |
+| dodatki ludzi, które gramy też my | 14% | 14% | |
+| F1 Hard wobec ludzi (korpus) | 80,9 | 80,9 | |
+
+Liczba bloczków zostaje, zmienia się ok. 4% momentów Harda: Rush E Hard +34/−36 (827 → 825), Finale +35/−36
+(716 → 715), Camellia Remix +110/−107 (2821 → 2824); Hell Rush E +46/−45, Remix +256/−252 (3460 → 3464). MEGALOVANIA
+bez zmian. Zagnieżdżenie poziomów trzyma: na 160 utworach Hardowi brakuje 1 momentu Normala (bez flagi 2), Hellowi 1
+momentu Harda (bez flagi 0). Skład dodatków przesuwa się w stronę ludzi, ale trafność w ich konkretne dodatki nie
+rośnie: to dopiero pierwszy krok, następny to ranking dodatków według tego, na czym leżą (werbel przed stopą, inne
+linie).
 
 ### Na czym leżą dodatki w ludzkich mapach
 
