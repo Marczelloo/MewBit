@@ -74,6 +74,7 @@ function searchLanes(notes, ctx, diff, upper = null) {
     left: 0, total: 0, decayT: null, trill: 1, active: [], placed: [], tail: [], echo: null,
   }];
   let phraseAt = 0;
+  const oddsMemo = new Map(); // grammarOdds is pure on (table, gap, size, history) and the table is fixed for this call
 
   // Everything before `limit` is settled on the path of the cheapest hypothesis, so a repeat can read its source.
   const commitBefore = (limit) => {
@@ -236,7 +237,13 @@ function searchLanes(notes, ctx, diff, upper = null) {
 
       const size = kept.length;
       const gap = h.lastT === null ? GAP_LIMITS_MS.length : gapClass(t - h.lastT);
-      const odds = grammarOdds(table, gap, size, [h.m3, h.m2, h.m1].filter((x) => x > 0));
+      // The odds hang on the gap class, the size and the last masks only, and many hypotheses of a moment share them.
+      const oddsKey = (((gap * 8 + size) * 4 + (h.m3 > 0) + (h.m2 > 0) + (h.m1 > 0)) << 12) | ((h.m3 > 0 ? h.m3 : 0) << 8) | ((h.m2 > 0 ? h.m2 : 0) << 4) | (h.m1 > 0 ? h.m1 : 0);
+      let odds = oddsMemo.get(oddsKey);
+      if (odds === undefined) {
+        odds = grammarOdds(table, gap, size, [h.m3, h.m2, h.m1].filter((x) => x > 0));
+        oddsMemo.set(oddsKey, odds);
+      }
       const decay = h.decayT === null ? 1 : Math.exp(-(t - h.decayT) / ((BALANCE_BEATS / 2) * beat));
       const dLeft = h.left * decay;
       const dTotal = h.total * decay;
