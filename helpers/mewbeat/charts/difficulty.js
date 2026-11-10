@@ -108,6 +108,27 @@ const TWO_KEY_TRILL = { minNotes: 4, maxGapBeats: 0.6, weight: 3 };
 // for by ear, as Normal hardly sped up with the music (train speed-ups per minute: people 26, Normal 17). Train F1 .8035
 // -> .8041.
 const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
+// laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
+// single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
+// asks for one lane (a step of the scale), two from `twoLanes` semitones, three from `threeLanes` (and a beat for the leap);
+// near an edge it takes what room is left, at the edge it starts over like melodyPull. A repeated pitch keeps its lane when
+// slow enough for a jack, else goes back to the lane it had `recallMoments` moments back. Costs are nats: `offTarget` per lane
+// away from the lane asked for, `wrongSide` for a lane against the pitch (or the same one), `recall` for missing the lane
+// a repeated pitch goes back to; `weight` scales all three; `maxGapBeats` is the longest gap a pair counts across. `room`
+// (nats per lane short) looks ahead: a lane that leaves less room than the climb or fall coming in the next `lookMoments`
+// moments (each within `lookBeats`) costs that much, so a rise starts left of the right edge instead of hitting it and
+// turning back against the pitch (that was most of the 28% opposed pairs at weight 3 without it: Rush E 59 -> 66 of 82
+// pairs with it, MEGALOVANIA 121 -> 145 of 212). People follow the pitch no more than chance does (47% with it, 41%
+// against), so this is the user's wish, not the corpus.
+const PITCH_LANES = { weight: 3, maxGapBeats: 2, twoLanes: 4, threeLanes: 8, offTarget: 0.8, wrongSide: 2.5, recall: 2, recallMoments: 4, room: 2, lookMoments: 4, lookBeats: 1 };
+// laneRules.js runCost, runStartCost (generator flag runLanes, Normal only): a fast run (at least minNotes single notes on
+// the melody, each within maxGapBeats of the last and a semitone or more above or below it) is laid as one staircase, a lane a
+// note the way the pitch goes, and at the edge wraps to the far end (a roll, 1234 1234) instead of turning back against the
+// pitch. A lane on the right side that is not the neighbour costs `nearMiss`, any other `miss`, times `weight`; the first note
+// pays `startRoom` for each step of the staircase (up to three) its lane has no room for. It stands in for stairs and the
+// weak melody term on the notes it covers. At weight 3 it lost to pitchLanes' own pull on the same notes (run pairs on a
+// neighbouring lane 40.5% against 45.3% for pitchLanes alone); at 6 together they reach 46.0% and the pitch agreement holds.
+const RUN_LANES = { minNotes: 3, maxGapBeats: 0.6, weight: 6, nearMiss: 1.4, miss: 3.9, startRoom: 1.5 };
 // dips.js thinDips: Normal slows down where the music dips for a moment inside a loud passage; asked for by ear
 // (MEGALOVANIA, Camellia remix, 2:18-2:23). Train, audio dips of 400 ms+: people thin 35% of them to under half the density
 // around, v39 21%, this 41%. Dropping every off-beat moment where the energy falls under `deep` of the level around, as
@@ -568,9 +589,11 @@ module.exports = {
   MELODY_SHIFT_PICK,
   MINI_RESTS,
   NORMAL_HOLDS,
+  PITCH_LANES,
   PLUS_FIGURES,
   PLUS_MELODY,
   QUIET_LONE,
+  RUN_LANES,
   SLOW_DYNAMICS,
   SOLO_LEAD,
   STAIRS,

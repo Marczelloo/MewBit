@@ -7,7 +7,9 @@
 const grammar = require("./laneGrammar.json");
 const { beatMsOf, holdBlocks, spacedBlocked, underHoldFlagged } = require("./holds");
 const { groupByTime } = require("./difficultyFilter");
-const { TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, stairSteps } = require("./laneRules");
+const {
+  TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, pitchCost, pitchRoom, pitchTrack, recallLane, runCost, runStartCost, stairSteps,
+} = require("./laneRules");
 const { isRepeatOf } = require("./phrases");
 const { sourceTime } = require("./repeats");
 const { nearestIndex } = require("./util");
@@ -71,6 +73,10 @@ function searchLanes(notes, ctx, diff, upper = null) {
   const times = moments.map((raw) => raw[0].t);
   const stairs = diff.stairs ? stairSteps(ctx, moments.map((raw) => (raw.length === 1 ? raw[0].t : null)), (at) => beatMsOf(timing, at), diff.stairs) : null;
   const alternates = diff.twoKeyTrill ? alternateSteps(ctx, moments.map((raw) => (raw.length === 1 ? raw[0].t : null)), (at) => beatMsOf(timing, at), diff.twoKeyTrill) : null;
+  // The contour of the melody per moment (diff.pitchLanes: a lane step the way the pitch moves; diff.runLanes: a staircase for a fast run).
+  const track = diff.pitchLanes || diff.runLanes
+    ? pitchTrack(ctx, moments.map((raw) => (raw.length === 1 ? raw[0].t : null)), (at) => beatMsOf(timing, at), diff.pitchLanes, diff.runLanes)
+    : null;
   const committed = new Array(moments.length).fill(0);
   let committedTo = -1;
   const repeats = phrases.map((p, i) => isRepeatOf(p, i));
@@ -132,7 +138,7 @@ function searchLanes(notes, ctx, diff, upper = null) {
     }
     const placed = [...h.placed, ...laid];
     if (placed.length > RECENT_NOTES) placed.splice(0, placed.length - RECENT_NOTES);
-    const tail = [...h.tail, { t, lanes }];
+    const tail = [...h.tail, { t, lanes, m }];
     if (tail.length > TAIL) tail.shift();
     return {
       cost: c.cost, node: { m, mask: c.mask, prev: h.node, notes: laid, broke: c.broke },
@@ -177,6 +183,24 @@ function searchLanes(notes, ctx, diff, upper = null) {
     const holdsFirst = [...raw].sort((a, b) => (b.len > 0) - (a.len > 0) || a.lane - b.lane);
     const melody = o.melody > 0 && raw.length === 1 ? melodyDirection(ctx, t) : null;
     const inUpper = upper?.at?.get(t)?.map((n) => n.lane) ?? [];
+
+    // The contour of the melody at this moment (pitchLanes, runLanes). Where it speaks it stands in for the old melody term
+    // (pitchLanes, runLanes) and the stairs term (runLanes): each pulls the edge of the keys its own way, and a sum of both would
+    // fight there. The run staircase is the stronger form of the stairs.
+    const contourAt = raw.length === 1 ? track?.[m] ?? null : null;
+    const contourRun = !!diff.runLanes && contourAt !== null && contourAt.run !== 0;
+    const contourPitch = !contourRun && !!diff.pitchLanes && contourAt !== null;
+    const contoured = contourRun || contourPitch || (!!diff.runLanes && contourAt?.start != null);
+    const contourMelody = contourRun || (contourPitch && contourAt.delta !== null);
+    const contourStairs = contourRun;
+    const contourCost = (h, lane, prev, gapMs) => {
+      let cost = contourAt.start && diff.runLanes ? runStartCost(diff.runLanes, contourAt.start, lane) : 0;
+      if (contourPitch) cost += pitchRoom(diff.pitchLanes, contourAt, lane);
+      if (prev === null) return cost;
+      if (contourRun) return cost + runCost(diff.runLanes, contourAt.run, lane, prev);
+      if (contourPitch && contourAt.delta !== null) cost += pitchCost(diff.pitchLanes, contourAt, lane, prev, recallLane(diff.pitchLanes, track, h.tail, m, prev), gapMs, beat);
+      return cost;
+    };
     const candidates = [];
 
     for (const h of beam) {
@@ -288,8 +312,9 @@ function searchLanes(notes, ctx, diff, upper = null) {
         if (isSingle(mask) && h.m1 !== 0 && isSingle(h.m1) && mask !== h.m1) run = h.m2 === mask && t - h.lastT <= beat ? h.trill + 1 : 2;
         if (run > TRILL_MAX) cost += TRILL_OVER;
         else if (run > TRILL_FREE && !alternates?.[m]) cost += (run - TRILL_FREE) * Math.LN2;
-        if (direction !== null) cost -= o.melody * Math.log(melodyPull(direction, maskLanes[0], prevLane, beforeLane, t - h.lastT, beat));
-        if (stairs?.[m] && size === 1) cost -= diff.stairs.weight * Math.log(melodyPull(stairs[m], maskLanes[0], prevLane, beforeLane, t - h.lastT, beat));
+        if (contoured && size === 1) cost += contourCost(h, maskLanes[0], prevLane, t - h.lastT);
+        if (direction !== null && !contourMelody) cost -= o.melody * Math.log(melodyPull(direction, maskLanes[0], prevLane, beforeLane, t - h.lastT, beat));
+        if (stairs?.[m] && size === 1 && !contourStairs) cost -= diff.stairs.weight * Math.log(melodyPull(stairs[m], maskLanes[0], prevLane, beforeLane, t - h.lastT, beat));
         // An alternation goes back to the lane two notes before (melodyPull's fast repeat: no gap, so never a jack).
         if (alternates?.[m] && size === 1) cost -= diff.twoKeyTrill.weight * Math.log(melodyPull(0, maskLanes[0], prevLane, beforeLane, 0, beat));
         if (size === 1 && h.lastT !== null && t - h.lastT <= FAST_BEATS * beat && (mask & h.m1) !== 0) cost += isSingle(h.m1) ? o.restrike : o.overChord;

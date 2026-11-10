@@ -177,6 +177,127 @@ function melodyPull(direction, lane, prev, before, gapMs, beatMs) {
   return lane === restart ? STEP_PULL : lane === prev ? WRONG_SIDE : 1;
 }
 
+// --- the contour of the melody (diff.pitchLanes, diff.runLanes) --------------------------------------------------
+
+// pitchTrack(ctx, times, beatOf, pitchRule, runRule) -> [{ pitch, delta, steps, up, down, run, start }] per moment
+// What the lead line (or failing it nothing: the bass is a different voice, its pitches would not compare) plays at each
+// moment, as a contour. `times` holds null for a chord; a chord and a moment the line does not play are null in the result.
+//   delta  the semitones from the moment before to this one (null when that one has no pitch or is over pitchRule.maxGapBeats away)
+//   steps  the lanes that step asks for, signed: 1 for a step of the scale, 2 from pitchRule.twoLanes semitones, 3 from threeLanes
+//          (and a beat for the leap, WIDE_STEP_BEATS); 0 for a repeated pitch
+//   up, down  how far the next pitchRule.lookMoments steps (each within lookBeats of the last) climb and fall at most from
+//          here, in lanes: the room the contour will want, so the lane is chosen with it in mind
+//   run    1 / -1 for a note a fast one-way run reaches (runRule: at least minNotes notes in a row, each within maxGapBeats of the
+//          last and a semitone or more above / below it), 0 otherwise; the run's first note has run 0 and start { direction, steps }
+function pitchTrack(ctx, times, beatOf, pitchRule, runRule) {
+  const out = new Array(times.length).fill(null);
+  const features = ctx?.features;
+  if (!features || !(pitchRule || runRule)) return out;
+  const { line, times: at } = linesOf(features).tonal[0];
+  const pitch = times.map((t) => {
+    const i = t === null ? -1 : nearestIndex(at, t);
+    return i >= 0 && Math.abs(at[i] - t) <= MATCH_MS ? line[i].pitch : null;
+  });
+  const maxGap = pitchRule?.maxGapBeats ?? 0;
+  const move = new Array(times.length).fill(0); // the semitone step into each moment inside a run's gap
+  for (let m = 0; m < times.length; m++) {
+    if (pitch[m] === null) continue;
+    const here = { pitch: pitch[m], delta: null, steps: 0, up: 0, down: 0, run: 0, start: null };
+    const gap = m > 0 && pitch[m - 1] !== null ? times[m] - times[m - 1] : Infinity;
+    if (gap <= maxGap * beatOf(times[m])) {
+      here.delta = pitch[m] - pitch[m - 1];
+      const size = Math.abs(here.delta);
+      if (size >= MOVED_SEMITONES) here.steps = Math.sign(here.delta) * (1 + (size >= pitchRule.twoLanes ? 1 : 0) + (size >= pitchRule.threeLanes && gap >= WIDE_STEP_BEATS * beatOf(times[m]) ? 1 : 0));
+    }
+    if (runRule && gap <= runRule.maxGapBeats * beatOf(times[m]) && Math.abs(pitch[m] - pitch[m - 1]) >= MOVED_SEMITONES) move[m] = Math.sign(pitch[m] - pitch[m - 1]);
+    out[m] = here;
+  }
+  for (let m = 0; pitchRule && m < times.length; m++) {
+    if (!out[m]) continue;
+    let [climb, k] = [0, m + 1];
+    for (; k <= m + pitchRule.lookMoments && out[k] && out[k].delta !== null && times[k] - times[k - 1] <= pitchRule.lookBeats * beatOf(times[k]); k++) {
+      climb += out[k].steps;
+      out[m].up = Math.max(out[m].up, climb);
+      out[m].down = Math.max(out[m].down, -climb);
+    }
+  }
+  for (let m = 1; runRule && m < times.length; ) {
+    let end = m;
+    while (move[m] !== 0 && end + 1 < times.length && move[end + 1] === move[m]) end++;
+    if (move[m] !== 0 && end - m + 2 >= runRule.minNotes) {
+      for (let k = m; k <= end; k++) out[k].run = move[m];
+      out[m - 1].start = { direction: move[m], steps: end - m + 1 };
+    }
+    m = end + 1;
+  }
+  return out;
+}
+
+// The lane a repeated pitch went back to: the lane of the most recent of the last `rule.recallMoments` moments (`tail`, which
+// carries each moment's index m) that played the pitch of moment m on another lane than `prev`, with the track unbroken
+// between. null when there is none.
+function recallLane(rule, track, tail, m, prev) {
+  const here = track[m];
+  if (Math.abs(here.delta) > SAME_SEMITONES) return null;
+  for (let i = tail.length - 1; i >= 0 && tail[i].m >= m - rule.recallMoments; i--) {
+    const [moment, then] = [tail[i], track[tail[i].m]];
+    if (!then || Math.abs(then.pitch - here.pitch) > SAME_SEMITONES || moment.lanes.length !== 1) continue;
+    for (let k = moment.m + 1; k <= m; k++) if (!track[k] || track[k].delta === null) return null;
+    if (moment.lanes[0] !== prev) return moment.lanes[0];
+  }
+  return null;
+}
+
+// What a single note on `lane` costs against the contour (nats, 0 for the lane the contour asks for), after a note on `prev`.
+// `here` is pitchTrack's entry for the moment, `recall` recallLane's answer, gapMs the time since the last moment.
+// A pitch that moved asks for a lane step the way it moved (higher = right): one lane for a step of the scale, two from
+// rule.twoLanes semitones, three from rule.threeLanes (and a leap across the keys needs a beat: WIDE_STEP_BEATS). Near an edge
+// the step takes what room is left; with none it starts over like melodyPull does (from the far end when there is a beat).
+// A repeated pitch keeps its lane when it is slow enough for a jack, else goes back to the lane it had before.
+function pitchCost(rule, here, lane, prev, recall, gapMs, beatMs) {
+  const size = Math.abs(here.delta);
+  if (size < MOVED_SEMITONES) {
+    if (size > SAME_SEMITONES) return 0;
+    const slow = gapMs >= Math.max(JACK_BEATS * beatMs, TRILL_MIN_MS) * 0.98;
+    const wanted = slow ? prev : recall;
+    return wanted === null || lane === wanted ? 0 : rule.weight * rule.recall;
+  }
+  const direction = Math.sign(here.delta);
+  const room = direction > 0 ? 3 - prev : prev;
+  const wide = gapMs >= WIDE_STEP_BEATS * beatMs;
+  if (room < 1) {
+    const restart = direction > 0 ? (wide ? 0 : 1) : wide ? 3 : 2;
+    return rule.weight * (rule.offTarget * Math.abs(lane - restart) + (lane === prev ? rule.wrongSide : 0));
+  }
+  const target = prev + direction * Math.min(Math.abs(here.steps), room);
+  return rule.weight * (rule.offTarget * Math.abs(lane - target) + (direction * (lane - prev) <= 0 ? rule.wrongSide : 0));
+}
+
+// What a single note on `lane` costs for the room the contour will want from it (pitchTrack's up and down): each lane the next
+// few steps would climb past the top key, or fall past the bottom one, from here. Starting a rising stretch on the far lane
+// is the way to get through it without starting over in the middle.
+function pitchRoom(rule, here, lane) {
+  return rule.weight * rule.room * (Math.max(0, lane + here.up - 3) + Math.max(0, here.down - lane));
+}
+
+// What a note of a fast one-way run (`direction` 1 / -1) costs on `lane` after one on `prev`: the staircase goes to the
+// neighbouring lane the way the run goes, and at the edge wraps to the far end (a roll, 1234 1234) rather than turning
+// back against the pitch. A lane on the right side that is not the neighbour costs rule.nearMiss, any other rule.miss.
+function runCost(rule, direction, lane, prev) {
+  const next = prev + direction;
+  const inside = next >= 0 && next < 4;
+  const target = inside ? next : direction > 0 ? 0 : 3;
+  if (lane === target) return 0;
+  return rule.weight * (inside && direction * (lane - prev) > 0 ? rule.nearMiss : rule.miss);
+}
+
+// What the first note of a run costs on `lane` when the run has less room to climb (or fall) from there than it could have:
+// each step short of the three a full staircase can take costs rule.startRoom (a four-note run from the far lane never wraps).
+function runStartCost(rule, start, lane) {
+  const room = start.direction > 0 ? 3 - lane : lane;
+  return rule.startRoom * (Math.min(start.steps, 3) - Math.min(start.steps, room));
+}
+
 // --- the rules -----------------------------------------------------------------------------------------------
 
 // A gap is measured against the larger beat of its two ends: beatMsAt moves by up to about 8% between neighbouring moments,
@@ -283,4 +404,7 @@ function normalViolations(notes, timing = null, { durationMs = Infinity } = {}) 
   return out.sort((a, b) => a.t - b.t);
 }
 
-module.exports = { TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, normalViolations, stairSteps };
+module.exports = {
+  TAIL, alternateSteps, breaksLaneRules, melodyDirection, melodyPull, normalViolations, pitchCost, pitchRoom, pitchTrack, recallLane, runCost, runStartCost,
+  stairSteps,
+};

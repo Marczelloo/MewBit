@@ -3,7 +3,17 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
-const { COPY_MELODY, EASY_SAME_CUTS, HARD_HOLDS, HEARD_CHORDS, MELODY_KEEP, MELODY_SHIFT_PICK, PLUS_MELODY } = require("./difficulty");
+const {
+  COPY_MELODY,
+  EASY_SAME_CUTS,
+  HARD_HOLDS,
+  HEARD_CHORDS,
+  MELODY_KEEP,
+  MELODY_SHIFT_PICK,
+  PITCH_LANES,
+  PLUS_MELODY,
+  RUN_LANES,
+} = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
@@ -32,8 +42,12 @@ const FLAGS = {
   melodyKeep: { label: "Normal: przerzedzanie oszczędza nuty melodii", levels: { normal: { melodyKeep: MELODY_KEEP } } },
   // Normal: the decoded melody is moved to where it meets the song's sounds best (generate.js pickedMelodyShift).
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
+  // Normal: the lane moves the way the melody's pitch moves, by about as much (laneRules.js pitchCost). Lanes only: no note moves in time.
+  pitchLanes: { label: "Normal: tor idzie za wysokością melodii (wyżej = w prawo)", levels: { normal: { pitchLanes: PITCH_LANES } } },
   // Hard, Hell: an extra on a note of the decoded melody scores more (generate.js plusNotes).
   plusMelody: { label: "Hard, Hell: dodatkowe nuty chętniej na melodii", levels: { hard: { plusMelody: PLUS_MELODY }, hell: { plusMelody: PLUS_MELODY } } },
+  // Normal: a fast run of the melody is one staircase or roll across neighbouring lanes (laneRules.js runCost). Lanes only.
+  runLanes: { label: "Normal: szybki bieg melodii to schodki po sąsiednich torach", levels: { normal: { runLanes: RUN_LANES } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);
