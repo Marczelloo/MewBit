@@ -14,7 +14,7 @@ const { sourceTime } = require("./repeats");
 const { soloLeadRates } = require("./selection");
 const { strengthAt } = require("./rhythm");
 const { opensOnChord } = require("./sections");
-const { nearestIndex } = require("./util");
+const { lowerBound, nearestIndex } = require("./util");
 
 const GRID_SLACK = 0.9; // as in the difficulty's other gaps in beats
 const BEATS_PER_BAR = 4;
@@ -166,16 +166,47 @@ function slowChords(diff, timing) {
   };
 }
 
-// planChords(notes, ctx, diff, upper) -> notes with every moment at the size it plays.
+// heardPitches(moments, ctx, rule, shift) -> per moment how many pitches the second detector hears begin on it (all its notes,
+// features.decodedNotes moved by `shift`, within rule.nearMs), or null where no pitched line leads: in a phrase with fewer than
+// rule.minMoments moments or with a pitch on under rule.pitched of them. Drums give the detector nothing, and people chord
+// on a drum accent as often as anywhere (corpus Normal: 35% of the moments with no pitch are chords, 28% of those with one,
+// 35% of those with three or more), so only a phrase a piano or another pitched line carries is read this way. null without
+// the rule or the notes.
+function heardPitches(moments, ctx, rule, shift = 0) {
+  const notes = ctx.features.decodedNotes;
+  if (!rule || !Array.isArray(notes) || notes.length === 0) return null;
+  const sorted = notes.filter((n) => Number.isFinite(n.t)).map((n) => ({ t: n.t + shift, pitch: n.pitch })).sort((a, b) => a.t - b.t);
+  const starts = sorted.map((n) => n.t);
+  const counts = moments.map((moment) => {
+    const { t } = moment[0];
+    const pitches = new Set();
+    for (let i = lowerBound(starts, t - rule.nearMs); i < sorted.length && starts[i] <= t + rule.nearMs; i++) pitches.add(sorted[i].pitch);
+    return pitches.size;
+  });
+  const times = moments.map((moment) => moment[0].t);
+  const spans = ctx.phrases.length > 0 ? ctx.phrases : [{ startMs: -Infinity, endMs: Infinity }];
+  const out = new Array(moments.length).fill(null);
+  for (const span of spans) {
+    const from = lowerBound(times, span.startMs), to = lowerBound(times, span.endMs);
+    const pitched = counts.slice(from, to).filter((n) => n > 0).length;
+    if (to - from >= rule.minMoments && pitched >= rule.pitched * (to - from)) for (let m = from; m < to; m++) out[m] = counts[m];
+  }
+  return out;
+}
+
+// planChords(notes, ctx, diff, upper, heardShift) -> notes with every moment at the size it plays.
 // `upper` (rhythm.js) is the level above, for a level cut from it. With diff.keepSizes the notes come with their sizes
-// (Normal's, under hardPlus): a moment that came as a chord stays one, as far as the hands are free.
-function planChords(notes, ctx, diff, upper = null) {
+// (Normal's, under hardPlus): a moment that came as a chord stays one, as far as the hands are free. With diff.heardChords (a
+// flag) a moment of a phrase a pitched line leads plays no more notes than pitches begin on it (heardPitches, its notes moved
+// by `heardShift`), and a chord saved up there waits for a moment with more than one pitch, or with none.
+function planChords(notes, ctx, diff, upper = null, heardShift = 0) {
   const { timing, phrases, sections, energy } = ctx;
   const moments = groupByTime(notes);
   const barScale = barScales(moments, ctx);
   const strength = strengthScales(moments, ctx);
   const opening = new Set(sections.filter((s) => opensOnChord(s, diff, energy)).map((s) => s.t));
   const quietLone = quietLoneMoments(moments, ctx, diff.quietLone);
+  const heard = heardPitches(moments, ctx, diff.heardChords, heardShift);
   const solo = diff.soloLead && phrases.length > 0 ? soloLeadRates(ctx, diff.soloLead) : null;
   const carry = [0, 0, 0, 0]; // what each place in the bar has saved towards its next chord
   const carryNew = [0, 0, 0, 0];
@@ -223,7 +254,7 @@ function planChords(notes, ctx, diff, upper = null) {
         carryNew[rank] += (diff.chordNew?.[rank] ?? 0) * scale;
       }
       // A level that caps its chords (diff.maxChordShare) plays a planned one only while the share so far has room for it.
-      const room = !(diff.chordRates && diff.maxChordShare) || chords + 1 <= diff.maxChordShare * (m + 1);
+      const room = (!(diff.chordRates && diff.maxChordShare) || chords + 1 <= diff.maxChordShare * (m + 1)) && heard?.[m] !== 1;
       if (carry[rank] >= 1 && !room) carry[rank] = 1;
       if (carry[rank] >= 1 && room) {
         carry[rank] -= 1;
@@ -232,7 +263,7 @@ function planChords(notes, ctx, diff, upper = null) {
         carryNew[rank] -= 1;
         want = 2;
       }
-      if (want === 2 && diff.chordTriples) {
+      if (want === 2 && diff.chordTriples && heard?.[m] !== 2) {
         carryTriple[rank] += diff.chordTriples[rank];
         if (carryTriple[rank] >= 1) {
           carryTriple[rank] -= 1;
@@ -250,6 +281,8 @@ function planChords(notes, ctx, diff, upper = null) {
     // A lone moment in quiet music plays one note, but counts as planned: the chords around it stay where they were.
     // So does a moment of a phrase a quiet soloist leads (selection.js soloLeadRates): one note at a time follows the line.
     if ((quietLone.has(t) || solo?.[phraseAt] > 0) && !opens) want = Math.min(want, Math.max(1, Math.min(holds.length, 2)));
+    // diff.heardChords: no more notes than pitches begin here, where a pitched line leads the phrase.
+    if (heard?.[m] > 0 && !opens) want = Math.min(want, Math.max(heard[m], Math.min(holds.length, 2)));
     // hardPlus (diff.keepSizes): a moment comes in at the size Normal played it, and the rates above only add to it.
     if (diff.keepSizes && handsFree) want = Math.max(want, moment.length);
     // ...but where the lanes found no room for a moment it was built on (generate.js withoutCrowding), only its own size.

@@ -77,6 +77,13 @@ const MELODY_SHIFT_PICK = { reachMs: 60, stepMs: 2, matchMs: 25, margin: 0.03 };
 // corpus songs Hard's moments on the melody, over a shifted control, went 6.5 -> 10.4 points with 7.7% of its moments moved and
 // F1 against people .813 -> .812; at bonus 2 F1 fell to .810.
 const PLUS_MELODY = { bonus: 1.25, minStrength: 0 };
+// chords.js heardPitches (flag heardChords): in a phrase where at least `pitched` of the moments (and `minMoments` of them) have
+// a decoded pitch begin within `nearMs`, a moment plays no more notes than pitches begin on it. The decoder's notes are read at
+// the shift generate.js pickedMelodyShift finds with `shift`. Chords on a moment with one pitch: Finale Normal 20.8 -> 2.0%,
+// Hard 44.6 -> 3.7%, Rush E Hard 32.2 -> 11.7% (the rest open a phrase or sit where drums lead), triples on one or two
+// pitches near none. The 80 corpus songs: Normal's chords 26.3 -> 24.6% of its moments, F1 against people the same on every
+// level (.805 Normal, .813 Hard). Easy, cut from Normal, keeps other moments where Normal's chords went (Finale).
+const HEARD_CHORDS = { nearMs: 60, pitched: 0.8, minMoments: 6, shift: MELODY_SHIFT_PICK };
 // chords.js loudnessScale: Normal's chord rate scales with how loud the music is ([energy, factor] steps); bars were
 // ranked against the song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 /
 // -0.45 / -0.6 / louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, this 8 / 8 / 15 / 21 / 29%. F1
@@ -537,6 +544,7 @@ module.exports = {
   FIGURES,
   FLAT_LOUD,
   HARD_HOLDS,
+  HEARD_CHORDS,
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,

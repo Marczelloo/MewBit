@@ -161,6 +161,15 @@ function pickedMelodyShift(ctx, line, diff, applied) {
   return picked;
 }
 
+// diff.heardChords (a flag): the shift at which chords.js reads all the decoder's notes, which the melody file moved as it
+// moved its line: the line's shift to the onsets, or the one that meets Normal's sounds better (pickedMelodyShift).
+function heardShiftOf(ctx, rule) {
+  const { decodedMelody, decodedMelodyTuned, decodedMelodyShift } = ctx.features;
+  const line = Array.isArray(decodedMelodyTuned) ? decodedMelodyTuned : decodedMelody;
+  const applied = Number.isFinite(decodedMelodyShift) ? decodedMelodyShift : 0;
+  return Array.isArray(line) && line.length > 0 ? pickedMelodyShift(ctx, line, { ...diffOf(ctx, "normal"), melodyShiftPick: rule.shift }, applied) : applied;
+}
+
 // The moments a level that picks from the music scores, with the second detector's melody raised (diff.melodyPick,
 // melodyPick.js) where one was decoded (chartStore.js). Kept on the ctx, as every phrase asks.
 function scoredFor(ctx, diff) {
@@ -494,7 +503,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   // diff.keepNormalHolds: a long hold of the level this one is built on or cut from plays as it does there (holds.js keptHolds).
   const source = diff.keepNormalHolds && (diff.buildOn ?? diff.cutFrom);
   const capped = source ? step("normalHolds", shared, keptHolds(shared, finalNotes(ctx, source), diff, ctx.timing, ctx.durationMs)) : shared;
-  const planned = step("chords", capped, planChords(capped, ctx, diff, upper));
+  const planned = step("chords", capped, planChords(capped, ctx, diff, upper, diff.heardChords ? heardShiftOf(ctx, diff.heardChords) : 0));
   const quietHeld = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   // After the hold cap and the chords (sustain.js): the long notes it holds are not cut back to taps, and the passages it
   // rewrites play one note at a time.
