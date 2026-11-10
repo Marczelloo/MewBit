@@ -294,7 +294,12 @@ function gapOf(diff, timing) {
 // the phrase before (`edges.before`, its time) with the sounds that lie after that note in `edges.carry` (earlier moments,
 // they may be chosen too). What the foreground leaves of the budget goes first to what the drums and bass repeat (`edges.figures`,
 // the times of figures.js), then to beats and half beats in the rests where something sounds; a beat nothing sounds on is played
-// only where the phrase has a steady pulse. The budget is never passed, but for the figures' `edges.figureRoom`.
+// only where the phrase has a steady pulse. The budget is never passed, but for the figures' `edges.figureRoom` and the lines'
+// `edges.lineRoom`. With diff.melodyLines (a flag) the moments of the melody's held lines (`edges.lines`, the times of
+// melodyLines.js) come before the foreground, beats before the rest, even under diff.foreground ("linia"); the long stretches
+// never swap one out. With diff.melodyDuel (a flag) the foreground, about to take a moment off the melody, takes a melody
+// moment inside its gap instead when that one is not clearly quieter (`edges.loud`, a moment's time to its rank of strength in
+// the song; "melodia").
 function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
   const snapped = !!timing?.snapped;
   const beatAt = (t) => beatMsOf(timing, t);
@@ -311,14 +316,43 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     return [before?.t, after?.t, lastBefore].every((n) => n === undefined || n === null || Math.abs(n - t) >= apart);
   };
   const add = (c, reason) => {
-    chosen.splice(nearest(c.t).i, 0, { t: c.t, s: c.s, reason, source: c.source, score: c.score, down: c.down });
+    chosen.splice(nearest(c.t).i, 0, { t: c.t, s: c.s, reason, source: c.source, score: c.score, down: c.down, held: reason === "linia" });
+  };
+
+  // The melody's held lines (diff.melodyLines): before the foreground, as many as the budget and the lines' room hold.
+  if (edges.lines?.size > 0) {
+    const most = budget + (edges.lineRoom ?? 0);
+    const held = scored.filter((c) => edges.lines.has(c.t)).sort((a, b) => a.metric - b.metric || b.score - a.score || a.t - b.t);
+    for (const c of held) {
+      if (chosen.length >= most) break;
+      if (fits(c.t)) add(c, "linia");
+    }
+  }
+
+  // The best melody moment inside the gap of a moment that is about to be taken (diff.melodyDuel), if the melody's is not clearly
+  // quieter than it: the best score, then the nearest.
+  const duelWinner = (c) => {
+    if (!diff.melodyDuel || !edges.loud || c.melody) return null;
+    const loud = edges.loud.get(c.t);
+    if (loud === undefined) return null;
+    let best = null;
+    for (const m of scored) {
+      if (!m.melody || Math.abs(m.t - c.t) >= gapAt(c.t) || chosen.some((n) => n.t === m.t) || !fits(m.t)) continue;
+      const theirs = edges.loud.get(m.t);
+      if (theirs === undefined || loud - theirs >= diff.melodyDuel.louder) continue;
+      if (!best || m.score > best.score || (m.score === best.score && Math.abs(m.t - c.t) < Math.abs(best.t - c.t))) best = m;
+    }
+    return best;
   };
 
   // The foreground.
   const foreground = scored.filter((c) => c.score >= diff.foreground).sort((a, b) => b.down - a.down || b.score - a.score || a.t - b.t);
   for (const c of foreground) {
     if (chosen.length >= budget) break;
-    if (fits(c.t)) add(c, "ocena");
+    if (!fits(c.t)) continue;
+    const winner = duelWinner(c);
+    if (winner) add(winner, "melodia");
+    else add(c, "ocena");
   }
 
   // A long stretch with a sound in it, between two notes and at the phrase's edges.
@@ -339,7 +373,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
       add(best.c, "dopełnienie");
       continue;
     }
-    const weakest = chosen.filter((n) => !n.down && n.score < best.c.score).sort((a, b) => a.score - b.score || a.t - b.t)[0];
+    const weakest = chosen.filter((n) => !n.down && !n.held && n.score < best.c.score).sort((a, b) => a.score - b.score || a.t - b.t)[0];
     if (!weakest) break;
     chosen.splice(chosen.indexOf(weakest), 1);
     add(best.c, "dopełnienie");
@@ -531,4 +565,4 @@ function plusFigures(scored, occupied, room, diff, timing, fromMs, toMs) {
   return chosen.sort(byTime);
 }
 
-module.exports = { audibleOf, extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };
+module.exports = { audibleOf, extraMoments, gapOf, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments, soloLeadRates };

@@ -10,7 +10,8 @@ const { addGapHolds, addSustainHolds, clipHolds, keptHolds, limitHoldShare, long
 const { assignLanes } = require("./lanes");
 const { searchLanes } = require("./laneSearch");
 const { withMergedLead } = require("./legato");
-const { withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
+const { heldLineMoments } = require("./melodyLines");
+const { ranks, withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
@@ -252,6 +253,33 @@ function melodyMoments(ctx, diff) {
   return ctx.melodyMoments.get(diff);
 }
 
+// diff.melodyLines (a flag): the times of the moments the decoded melody's held lines play (melodyLines.js), over the whole
+// song, which selectMoments takes before the foreground; null without the flag or a melody, or when no line is held. Kept on the ctx.
+function melodyLineMoments(ctx, diff) {
+  if (!diff.melodyLines) return null;
+  ctx.melodyLineMoments ??= new Map();
+  if (!ctx.melodyLineMoments.has(diff)) {
+    const melody = decodedMelodyOf(ctx, diff);
+    const held = melody ? heldLineMoments(scoredFor(ctx, diff), melody, ctx.timing, diff) : null;
+    ctx.melodyLineMoments.set(diff, held && held.size > 0 ? held : null);
+  }
+  return ctx.melodyLineMoments.get(diff);
+}
+
+// diff.melodyLines or diff.melodyDuel (flags): each moment's time to its rank of strength among the song's moments (0 the
+// quietest, 1 the loudest), which selectMoments compares a melody moment with its neighbour by; null without either flag or a
+// melody. Kept on the ctx.
+function momentLoudness(ctx, diff) {
+  if (!diff.melodyLines && !diff.melodyDuel) return null;
+  ctx.momentLoudness ??= new Map();
+  if (!ctx.momentLoudness.has(diff)) {
+    const scored = decodedMelodyOf(ctx, diff) ? scoredFor(ctx, diff) : null;
+    const loud = scored ? ranks(scored.map((m) => m.s)) : null;
+    ctx.momentLoudness.set(diff, loud ? new Map(scored.map((m, i) => [m.t, loud[i]])) : null);
+  }
+  return ctx.momentLoudness.get(diff);
+}
+
 // Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
 function keptShare(ctx, diff) {
   ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
@@ -289,7 +317,9 @@ function musicNotes(ctx, i, diff, trace, before = null) {
   const figures = diff.figures ? figureTimes(ctx, diff.figures) : null;
   const weakLead = diff.figures && (phrase.rate?.lead ?? 0) * (ctx.timing.medianMs / 1000) < diff.figures.weakLead;
   const figureRoom = weakLead ? Math.round(diff.figures.extra * budget) : 0;
-  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom });
+  const lines = melodyLineMoments(ctx, diff);
+  const lineRoom = lines ? Math.round(diff.melodyLines.room * budget) : 0;
+  const chosen = selectMoments(phrase, heard, budget, diff, ctx.timing, { before, carry, figures, figureRoom, lines, lineRoom, loud: momentLoudness(ctx, diff) });
   return placed(chosen.filter((m) => playable(ctx, m.t)), trace);
 }
 

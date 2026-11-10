@@ -129,6 +129,21 @@ const PITCH_LANES = { weight: 3, maxGapBeats: 2, twoLanes: 4, threeLanes: 8, off
 // weak melody term on the notes it covers. At weight 3 it lost to pitchLanes' own pull on the same notes (run pairs on a
 // neighbouring lane 40.5% against 45.3% for pitchLanes alone); at 6 together they reach 46.0% and the pitch agreement holds.
 const RUN_LANES = { minNotes: 3, maxGapBeats: 0.6, weight: 6, nearMiss: 1.4, miss: 3.9, startRoom: 1.5 };
+// melodyLines.js heldLineMoments, selection.js selectMoments (flag melodyLines, Normal only): the decoded melody held as lines.
+// A line is a run of at least `minNotes` melody notes, each within the larger of `joinBeats` beats and `joinMs` of the last. Only
+// 6% of the melody's notes sit in a line Normal plays whole (72 songs): one by one the budget, a louder neighbour inside the gap
+// or a sound too weak for the foreground takes a note out of the line. A line is held when `heard` of its notes have a sound
+// (a scored moment within melodyPick.js ONSET_MS) and those moments' mean loudness rank (a rank of the strength over the song's
+// moments, 0 the quietest) is at least `minLoud`: the listening test of 2026-11, where the melody picked the moments alone, lost
+// because quiet melody notes took the place of loud, full ones and left holes, so a quiet line is not held. A moment off the line
+// closer than the level's gap and `louder` of a rank louder keeps its place and the line's moment gives way. What is left of the
+// line is thinned to the level's step (every second note of a fast run, on beats and half beats first), and the held moments are
+// chosen before the foreground, may take a phrase `room` of its budget over it.
+const MELODY_LINES = { joinBeats: 1, joinMs: 450, minNotes: 4, heard: 0.6, minLoud: 0.3, louder: 0.3, room: 0.15 };
+// selection.js selectMoments (flag melodyDuel, Normal only): a moment on a melody note wins a close call. When the foreground is
+// about to take a moment off the melody and a melody moment lies inside the gap and is not `louder` of a rank quieter than it
+// (a rank of the strength over the song's moments), the melody's moment is taken instead; a clearly louder sound keeps its place.
+const MELODY_DUEL = { louder: 0.2 };
 // dips.js thinDips: Normal slows down where the music dips for a moment inside a loud passage; asked for by ear
 // (MEGALOVANIA, Camellia remix, 2:18-2:23). Train, audio dips of 400 ms+: people thin 35% of them to under half the density
 // around, v39 21%, this 41%. Dropping every off-beat moment where the energy falls under `deep` of the level around, as
@@ -582,7 +597,9 @@ module.exports = {
   HARD_PLUS,
   HELL_PLUS,
   HOLD_SLOW,
+  MELODY_DUEL,
   MELODY_KEEP,
+  MELODY_LINES,
   MELODY_ONLY,
   MELODY_PICK,
   MELODY_RUNS,

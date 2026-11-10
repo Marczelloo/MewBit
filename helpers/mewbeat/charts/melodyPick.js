@@ -85,4 +85,4 @@ function withRunNotes(notes, scored, timing, rule) {
   return added.length ? [...notes, ...added].sort((a, b) => a.t - b.t) : notes;
 }
 
-module.exports = { withMelody, withMelodyRuns, withRunNotes };
+module.exports = { ONSET_MS, ranks, withMelody, withMelodyRuns, withRunNotes };
