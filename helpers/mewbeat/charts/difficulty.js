@@ -68,6 +68,10 @@ const STAIRS = { minNotes: 3, maxGapBeats: 1, weight: 3 };
 // .8018 -> .8036, moments on the melody 27.1 -> 36.6% (people 37.0%), a melody direction on 74% of single notes (65%).
 // A song with no melody file is charted as before.
 const MELODY_PICK = { bonus: 1.25, minStrength: 0 };
+// generate.js pickedMelodyShift (flag melodyShiftPick): the decoded melody is moved to where the most of its notes meet a sound
+// Normal scores, looked for within reachMs of the file's times in steps of stepMs; a note meets a sound within matchMs. The
+// shift of the melody file stays unless another one matches `margin` more of the notes.
+const MELODY_SHIFT_PICK = { reachMs: 60, stepMs: 2, matchMs: 25, margin: 0.03 };
 // chords.js loudnessScale: Normal's chord rate scales with how loud the music is ([energy, factor] steps); bars were
 // ranked against the song only, so a near-silent opening chorded like its middle. Train, chords by energy 0.1-0.2 / -0.3 /
 // -0.45 / -0.6 / louder: people 6 / 7 / 15 / 19 / 33%, v38 23 / 31 / 35 / 30 / 27%, this 8 / 8 / 15 / 21 / 29%. F1
@@ -534,6 +538,7 @@ module.exports = {
   MELODY_ONLY,
   MELODY_PICK,
   MELODY_RUNS,
+  MELODY_SHIFT_PICK,
   MINI_RESTS,
   NORMAL_HOLDS,
   PLUS_FIGURES,

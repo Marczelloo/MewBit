@@ -3,7 +3,7 @@
 // enabled flags from a file (chartStore.js), so a flag can be flipped while the bot runs, and each combination of
 // flags has its own cached charts. Names must not contain "-": the enabled names are joined with it.
 
-const { EASY_SAME_CUTS, HARD_HOLDS } = require("./difficulty");
+const { EASY_SAME_CUTS, HARD_HOLDS, MELODY_SHIFT_PICK } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
 
@@ -24,6 +24,8 @@ const FLAGS = {
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
   // Hard: its own holds on sustains and rests, let go with the sound (generate.js plusNotes). Hell, built on Hard, follows.
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
+  // Normal: the decoded melody is moved to where it meets the song's sounds best (generate.js pickedMelodyShift).
+  melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
 };
 
 const isKnown = (name) => typeof name === "string" && Object.hasOwn(FLAGS, name);

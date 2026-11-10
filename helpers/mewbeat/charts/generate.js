@@ -26,7 +26,7 @@ const { accentSections, openWithFirstSound, sectionStarts } = require("./section
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { holdFadeOut, thinFadeOut } = require("./fades");
-const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, selectMoments, snappedMoments } = require("./selection");
+const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
 const { createTrace } = require("./trace");
@@ -113,14 +113,52 @@ const playable = (ctx, t) => t >= LEAD_IN_MS && ctx.energy.at(t) >= SILENCE_ENER
 
 // The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one.
 // With diff.melodyOnsetShift it is moved by features.decodedMelodyShift (chartStore.js: the export's shift to the onsets of
-// all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once.
+// all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once. With diff.melodyShiftPick (a
+// flag) the shift is found here instead, against the sounds the level scores (pickedMelodyShift).
 function decodedMelodyOf(ctx, diff) {
   const { decodedMelody, decodedMelodyTuned, decodedMelodyShift } = ctx.features;
   const line = diff.melodyTuned && Array.isArray(decodedMelodyTuned) ? decodedMelodyTuned : Array.isArray(decodedMelody) ? decodedMelody : null;
-  if (!line || !diff.melodyOnsetShift || !Number.isFinite(decodedMelodyShift) || decodedMelodyShift === 0) return line;
+  if (!line) return line;
+  const applied = diff.melodyOnsetShift && Number.isFinite(decodedMelodyShift) ? decodedMelodyShift : 0;
+  const shift = diff.melodyShiftPick ? pickedMelodyShift(ctx, line, diff, applied) : applied;
+  if (shift === 0) return line;
   ctx.shiftedMelody ??= new Map();
-  if (!ctx.shiftedMelody.has(line)) ctx.shiftedMelody.set(line, line.map((n) => ({ ...n, t: n.t + decodedMelodyShift })));
-  return ctx.shiftedMelody.get(line);
+  ctx.shiftedMelody.has(line) || ctx.shiftedMelody.set(line, new Map());
+  const byShift = ctx.shiftedMelody.get(line);
+  if (!byShift.has(shift)) byShift.set(shift, line.map((n) => ({ ...n, t: n.t + shift })));
+  return byShift.get(shift);
+}
+
+// The shift that puts the most notes of a decoded line within rule.matchMs of a sound the level scores (selection.js
+// scoreMoments, the times as measured), looked for within rule.reachMs of the file's own times. The two shifts of the melody
+// file are medians over the nearest lead note or onset, and where the onsets are dense or the lead is thin the median lands
+// between two sounds (Rush E: 52 ms applied where 0 fits; 15 of 69 bot songs sit 10 points of matched notes under their
+// best). `applied` stays unless another shift matches rule.margin more of the notes; equal counts take the nearer to it.
+function pickedMelodyShift(ctx, line, diff, applied) {
+  const rule = diff.melodyShiftPick;
+  ctx.pickedShift ??= new Map();
+  ctx.pickedShift.has(line) || ctx.pickedShift.set(line, new Map());
+  const byKey = ctx.pickedShift.get(line);
+  const key = `${diff.scoreLevel}|${applied}`;
+  if (byKey.has(key)) return byKey.get(key);
+  const sounds = scoreMoments(ctx, diff.scoreLevel, diff.feltTempo).map((m) => m.t);
+  const starts = line.map((n) => n.t).filter(Number.isFinite);
+  const matched = (shift) => {
+    let count = 0;
+    for (const t of starts) {
+      const i = lowerBound(sounds, t + shift);
+      if ((i < sounds.length && sounds[i] - (t + shift) <= rule.matchMs) || (i > 0 && t + shift - sounds[i - 1] <= rule.matchMs)) count++;
+    }
+    return count;
+  };
+  let best = applied, bestCount = -1;
+  for (let shift = -rule.reachMs; shift <= rule.reachMs; shift += rule.stepMs) {
+    const count = matched(shift);
+    if (count > bestCount || (count === bestCount && Math.abs(shift - applied) < Math.abs(best - applied))) { best = shift; bestCount = count; }
+  }
+  const picked = bestCount > matched(applied) + rule.margin * starts.length ? best : applied;
+  byKey.set(key, picked);
+  return picked;
 }
 
 // The moments a level that picks from the music scores, with the second detector's melody raised (diff.melodyPick,
