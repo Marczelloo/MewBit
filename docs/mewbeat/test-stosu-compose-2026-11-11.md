@@ -40,6 +40,19 @@ Trzy przebiegi: (1) kopia danych i logowanie deweloperskie, żeby przejść grę
 7. **Zegar w kontenerze to UTC** (log bota pokazuje 15:35 przy 16:35 czasu lokalnego). Nie sprawdzałem, czy coś w bocie zależy od czasu lokalnego.
 8. Przesunięcie świeżo policzonego utworu wyszło niepewnie (24 ms, pewność 0,43), więc ten utwór gra starym dopasowaniem. Jeden przypadek, bez wniosku.
 
+## Co z tym zrobione (wieczór 2026-11-11)
+
+| Nr | Stan |
+| --- | --- |
+| 1 | Poprawione. Właściwy plik w repo (78f53f2), `pnpm lavalink:mewbeat:build` buduje wtyczkę w Dockerze (z testami) i zapisuje obok znacznik źródła; test `tests/scripts/mewbeatPluginJar.test.js` pada, gdy źródło wtyczki zmieniło się bez nowego pliku. Sprawdzone: build z obecnego źródła daje te same 57 klas o tych samych rozmiarach. |
+| 2 | Poprawione: zmienna jest w `.env-example` (672548d), `docs/configuration.md` i `docs/deployment.md` opisują ją zgodnie z kodem. |
+| 3 | Poprawione: obraz startuje przez `node index.js` (672548d). Sprawdzone po przebudowie: w logu nowego kontenera nie ma pobierania pnpm. |
+| 4 | Poprawione: `docs/deployment.md` ma kroki dla mewbeat, jest też przewodnik `docs/mewbeat.md`. |
+| 5 | Opisane w `docs/deployment.md` (pusty plik przed pierwszym startem). Compose bez zmian. |
+| 6 | Poprawione (7a325a7): odcisk pliku analizy to rozmiar i skrót treści, bez daty. Stare rekordy mierzą się jeszcze raz, jednorazowo. |
+| 7 | Poprawione: compose przekazuje `TZ` (672548d). Node ją respektuje (log pokazuje czas lokalny); systemowe `date` w obrazie alpine dalej pokazuje UTC, bo obraz nie ma danych stref. |
+| 8 | Bez zmian, jeden przypadek. |
+
 ## Czego ten test nie sprawdził
 
 - Zagrania utworu do końca i zapisu wyniku: panel podglądu był ukryty, więc zegar gry stał. Mapa i audio doszły, reszta to kod klienta, ten sam co przy bocie uruchamianym ręcznie.

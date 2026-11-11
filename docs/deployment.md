@@ -47,7 +47,7 @@
    pnpm lavalink:mewbeat:build
    ```
 
-   It compiles the plugin inside a Gradle Docker image and writes the jar into `helpers/lavalink/plugins/`. Add `--test` to run the plugin's tests first. Restart the `lavalink` service to load a new jar. Its settings (queue length, longest track, debug routes) are under `plugins.mewbeat` in `helpers/lavalink/application.yml`.
+   It compiles the plugin inside a Gradle Docker image, runs the plugin's tests (`--skip-tests` leaves them out) and writes the jar into `helpers/lavalink/plugins/`, with a stamp file next to it, `mewbeat-plugin.source.json`, that records which source the jar was built from. `pnpm test` compares that stamp with the plugin source and fails when the source has moved on without a new jar, so commit the jar and the stamp together. Restart the `lavalink` service to load a new jar. Its settings (queue length, longest track, debug routes) are under `plugins.mewbeat` in `helpers/lavalink/application.yml`.
 
 6. Build the Activity if you serve it yourself (see [Discord setup](discord-setup.md)):
 

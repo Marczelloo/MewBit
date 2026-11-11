@@ -16,7 +16,7 @@ The first half of this page is for people playing. The second half, from [For op
 
 ### Opening it
 
-The game needs a physical keyboard, so it is there only on the **desktop Discord client**. Open the Activity and press the gamepad button in the header. The first time, MewBit's mascot, Mewbit, walks you through the game (see [The first-run tour](#the-first-run-tour)). If you were sent an invite link to a room, the game opens by itself and skips the tour. In a DM with the bot there is no music player, only a "Play mewbeat" button.
+The game needs a physical keyboard, so it is there only on the **desktop Discord client**. Open the Activity and press the gamepad button in the header. The first time, MewBit's mascot, Mewbit, walks you through the game (see [The first-run tour](#the-first-run-tour)). If you were sent an invite link to a room, the game opens by itself and skips the tour. In a DM with the bot there is no music player: the game opens by itself, and a "Play mewbeat" button brings it back after you close it.
 
 ### The three modes
 
@@ -42,7 +42,7 @@ The list has five tabs:
 - **Everywhere**: songs played on any server this bot is in.
 - **Played by you**: your own history.
 - **For you**: songs like the ones you play, and ones worth another go. It draws on songs similar to yours (that part needs the bot to have a Last.fm key), songs you could play again, and songs from this server. A new player with no plays gets the Popular list instead. It has a Refresh button.
-- **Popular**: well-known songs from rhythm games, picked from community-map favourites in osu!, Beat Saber, Quaver, Geometry Dash and Clone Hero.
+- **Popular**: well-known songs from rhythm games, picked from community-map favourites in osu!, Beat Saber, Quaver, Geometry Dash, Clone Hero and Friday Night Funkin' mods.
 
 The For you and Popular lists only suggest songs; nothing is charted until you pick one.
 
@@ -80,7 +80,7 @@ Notes fall down four lanes toward the line at the bottom. Press the lane's key w
 - **Points.** A Perfect is worth 300, a Great 200, a Good 100. Your points are multiplied by your combo: x2 from a combo of 10, up to x4 from 30. A miss breaks the combo.
 - **Holds.** A long note has a head and a tail. Press on the head and keep the key down until the tail. Releasing early, or not pressing, is a miss. The tail is judged with windows 1.5 times wider.
 - **FEVER.** Hits fill a bar and misses take a little from it. When it is full, press **Space** to start a FEVER: 8 seconds of double points. You can switch the setting to start it automatically.
-- **Health.** The bar starts at half. Perfects and Greats add a little, Goods less, and a miss takes a lot (a missed hold tail half as much). If it empties, the run fails, unless you picked No Fail.
+- **Health.** The bar starts at half. Perfects and Greats add a little, Goods less, and a miss takes a lot (a missed hold tail half as much). If it empties, the run fails, unless you picked No Fail. With One Life or Four Lives it is the count of misses that ends the run, not the bar.
 - **Grades.** From your accuracy: **S** 95% and up, **A** 90, **B** 80, **C** 70, **D** below. Accuracy counts Perfect as 100, Great 80, Good 50 and a miss 0.
 
 Esc opens the menu (resume, restart, level, settings, report a bug, leave). Hold **R** to restart the song.
@@ -108,7 +108,7 @@ Runs with different modifiers share a leaderboard; the multiplier is what makes 
 
 ### Results
 
-When the song ends you get a results screen: the grade, your score (marked **NEW BEST** when it is one), accuracy, max combo, how many FEVERs you had, your average timing offset, a histogram of how early or late your hits were, and a graph of your health through the song. Under it are **Up next** and a suggested next song. From here you can restart or go back to song select.
+When the song ends you get a results screen: the grade, your score (marked **NEW BEST** when it is one), accuracy, max combo, how many FEVERs you had, your average timing offset, a histogram of how early or late your hits were, and a graph of your health through the song. Under it is a suggested next song, and in Live and Room an **Up next** line with the song that follows. From here you can restart or go back to song select.
 
 The histogram has an **Adjust offset** button. If it leans one way, your audio offset is probably off; see [Settings](#settings-worth-knowing).
 
@@ -157,9 +157,9 @@ How a round starts:
 
 1. The first round waits up to 60 seconds for people to press **Ready**. When everyone is ready, that shortens to 5 seconds.
 2. Everyone's game loads the song (up to 20 seconds, or 120 if the song may still be charting), and the round starts together.
-3. When a round ends there is a 10-second results grace, then the results with everyone's standings.
+3. The round ends when everyone who loaded the song has finished it, or 10 seconds after the song would have ended at the latest. Then come the results, with everyone's standings.
 
-After a round, **Ready** turns into **Play next**, a vote. When more than half of the players have voted, a 5-second countdown starts the next song. The host has **Force start**: the first press begins the countdown, the second skips what is left of it. Spectators do not count towards a vote.
+After a round, being ready is a vote for the next song: the results screen calls it **Play next**, the lobby still calls it **Ready**. When more than half of the players have voted, a 5-second countdown starts the next song. The host has a start button of their own (**Start round** before the first round, **Force start** while a vote is open, **Start now** during a countdown): the first press begins the countdown, the second skips what is left of it. Spectators do not count towards a vote.
 
 If you leave in the middle of a round, the game warns you that your score will not count. If you join while a round is running, you spectate until the next one.
 
@@ -240,7 +240,7 @@ Players' game settings are stored with their other Activity settings, per Discor
 
 **AtlasHub** is an optional place for the scores, history and stats, a REST API over Postgres. With `ATLASHUB_URL` and `ATLASHUB_SECRET_KEY` set, every change is written to the journal first and sent in the background, so a slow or unreachable AtlasHub does not stall the game and nothing is lost when it comes back. Without them everything stays in the JSON files above.
 
-A song is identified by a key made from its audio, not from a link, so the same song reached through two links has one chart and one board.
+A song is identified by where it comes from, its id there and its length (for example a YouTube video id and its duration), not by its title. The same video reached through two different links has one chart and one board; the same song from another source, or another upload of it, is a different song to the game.
 
 ### The pieces that must run
 
@@ -250,7 +250,7 @@ A song is identified by a key made from its audio, not from a link, so the same 
 | **Decoder service** (`mewbeat-decoder`) | The melody. | Charts are made without a melody after a wait, and the decode is tried again later. |
 | **The bot** | Everything: the worker that generates charts, rooms, scores. | The game is closed. |
 
-The plugin's routes live under `/v4/mewbeat/` on Lavalink: `version`, `analyze` and `audio`. A debug route that returns raw PCM exists only when `plugins.mewbeat.debugRoutes` is `true`, and is off by default. A busy plugin answers 503 and the bot tries again (up to 24 times, 5 seconds apart). The plugin's job time limit is the longer of 120 seconds and 30% of the track's length.
+The plugin's routes live under `/v4/mewbeat/` on Lavalink: `version`, `analyze` and `audio`. A debug route that returns raw PCM exists only when `plugins.mewbeat.debugRoutes` is `true`, and is off by default. A busy plugin answers 503 and the bot tries again (up to 24 times, 5 seconds apart). An analysis may take the longer of 120 seconds and 30% of the track's length; an audio render has a flat limit of 600 seconds and a queue of its own.
 
 How to start them is in [Deployment](deployment.md#production-with-docker-compose), and the variables in [Configuration](configuration.md#mewbeat).
 

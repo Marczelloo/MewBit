@@ -171,4 +171,4 @@ The decoder service has its own variables, set in its `environment` block in `do
 | `MEWBEAT_DECODER_MAX_QUEUE` | `4` | Requests allowed to wait behind the running one; more get 503. |
 | `MEWBEAT_BP_MODEL` | the model in the image | Path of the Basic Pitch model file. The image sets it; leave it alone. |
 
-The Lavalink plugin that analyses songs is configured in `helpers/lavalink/application.yml` under `plugins.mewbeat`, not through `.env`: `maxQueue` (default `4`), `maxTrackMs` (default `1200000`, 20 minutes) and `debugRoutes` (default `false`). See [Deployment](deployment.md).
+The Lavalink plugin that analyses songs is configured in `helpers/lavalink/application.yml` under `plugins.mewbeat`, not through `.env`: `maxQueue` (default `4`), `maxTrackMs` (default `1200000`, 20 minutes) and `debugRoutes` (default `false`) are set there. Two more can be added and are otherwise left at their defaults: `audioMaxQueue` (default `2`, audio renders allowed to wait) and `timeoutFactor` (default `0.3`, the share of a track's length an analysis may take when that is more than 120 seconds). See [Deployment](deployment.md).
