@@ -6,7 +6,9 @@
 // Charts are made live from the code in helpers/mewbeat/charts, so an edit there shows on the next load, no restart.
 // The songs the bot's players played come from helpers/data/mewbeat (history, features, audio) and show first. The bot
 // deletes the charts of older generator versions, so the chart files it made are copied to .mewbeat-debug/played-charts
-// once seen and offered as snapshots.
+// once seen and offered as snapshots. A bot that keeps its history in AtlasHub leaves history.json behind: start the
+// debugger with the bot's ATLASHUB_URL and ATLASHUB_SECRET_KEY to list its rounds
+// (npx dotenv -e .env.dev -- node scripts/mewbeat-debug/server.mjs).
 import { createHash } from "node:crypto";
 import { copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -65,26 +67,68 @@ function previewSongs() {
     });
 }
 
+const sha1 = (text) => createHash("sha1").update(text).digest("hex");
+
+// The bot keeps its rounds in AtlasHub when ATLASHUB_URL and ATLASHUB_SECRET_KEY are set, and history.json then stops
+// growing. With the same two variables here the rounds are read from there too, at most once in REMOTE_ROUNDS_MS.
+// Only what a round shows is kept: who played it and where is dropped on arrival, and its id stays as a hash, to tell
+// a round from its copy in the file. A read that fails keeps the rounds of the last one that worked.
+const REMOTE_ROUNDS_MS = 15000;
+const remote = { rounds: [], at: 0, loading: null };
+
+function remoteRounds() {
+  if (!process.env.ATLASHUB_URL || !process.env.ATLASHUB_SECRET_KEY || Date.now() - remote.at < REMOTE_ROUNDS_MS) return Promise.resolve();
+  remote.loading ??= (async () => {
+    try {
+      const { createAtlasHubClient } = require(join(REPO, "helpers/mewbeat/atlasHub.js"));
+      const { TABLES } = require(join(REPO, "helpers/mewbeat/remoteSchema.js"));
+      const { historyFromRow } = require(join(REPO, "helpers/mewbeat/historyStore.js"));
+      const client = createAtlasHubClient({ url: process.env.ATLASHUB_URL, secretKey: process.env.ATLASHUB_SECRET_KEY });
+      const rows = await client.selectAll(TABLES.history.name);
+      remote.rounds = rows.flatMap((row) => {
+        const e = historyFromRow(row)?.entry;
+        if (!e) return [];
+        const entry = { audioKey: e.audioKey, title: e.title, artist: e.artist, at: e.at, difficulty: e.difficulty, accuracy: e.accuracy, grade: e.grade, mode: e.mode, chartVersion: e.chartVersion };
+        return [{ key: sha1(String(row.id)), entry }];
+      });
+    } catch (error) {
+      console.error(`the rounds in AtlasHub could not be read: ${error?.message ?? error}`);
+    } finally {
+      remote.at = Date.now();
+      remote.loading = null;
+    }
+  })();
+  return remote.loading;
+}
+
+// The rounds in the bot's own file, by player: all of them without AtlasHub, the ones before it with it.
+function fileRounds() {
+  const file = join(BOT_DATA, "history.json");
+  if (!existsSync(file)) return {};
+  try {
+    return readJson(file)?.users ?? {};
+  } catch {
+    return {};
+  }
+}
+
 // Songs somebody played, last played first, as far as their features and audio are still on disk. A round says when,
 // at what level and how it went, never who or where: this page is reachable through a public tunnel.
 function playedSongs() {
-  const file = join(BOT_DATA, "history.json");
-  if (!existsSync(file)) return [];
-  let users;
-  try {
-    users = readJson(file)?.users;
-  } catch {
-    return [];
-  }
   const bySha = new Map();
-  for (const entries of Object.values(users ?? {})) {
-    for (const entry of Array.isArray(entries) ? entries : []) {
-      if (typeof entry?.audioKey !== "string" || !entry.audioKey) continue;
-      const sha = createHash("sha1").update(entry.audioKey).digest("hex");
-      if (!bySha.has(sha)) bySha.set(sha, []);
-      bySha.get(sha).push(entry);
-    }
+  const seen = new Set();
+  const add = (key, entry) => {
+    if (typeof entry?.audioKey !== "string" || !entry.audioKey || seen.has(key)) return;
+    seen.add(key);
+    const sha = sha1(entry.audioKey);
+    if (!bySha.has(sha)) bySha.set(sha, []);
+    bySha.get(sha).push(entry);
+  };
+  for (const [userId, entries] of Object.entries(fileRounds())) {
+    // the id the bot gives a round in AtlasHub (historyIdOf)
+    for (const entry of Array.isArray(entries) ? entries : []) add(sha1(`${userId}|${entry?.at}|${entry?.audioKey}|${entry?.difficulty}`), entry);
   }
+  for (const { key, entry } of remote.rounds) add(key, entry);
   const songs = [];
   for (const [sha, entries] of bySha) {
     if (!existsSync(join(BOT_DATA, "features", `${sha}.json`)) || !existsSync(join(BOT_DATA, "audio", `${sha}.ogg`))) continue;
@@ -105,9 +149,9 @@ function playedSongs() {
   return songs.sort((a, b) => (b.rounds[0].at ?? 0) - (a.rounds[0].at ?? 0));
 }
 
-// A played song the list lacks still opens when its features and audio are on disk. The list reads history.json, but the
-// bot keeps its history in AtlasHub when that is set up, and the file is then stale or missing: a link from a bug report
-// would open nothing. Nothing about who played it is known here, so there are no rounds, and the title is the id's hash.
+// A played song the list lacks still opens when its features and audio are on disk: without the AtlasHub variables the
+// list knows only history.json, which the bot leaves stale once it keeps its history in AtlasHub, and a link from a bug
+// report would open nothing. Nothing about the rounds is known then, so there are none, and the title is the id's hash.
 function unlistedPlayedSong(id) {
   const sha = playedSha(id);
   if (!sha || !existsSync(join(BOT_DATA, "features", `${sha}.json`)) || !existsSync(join(BOT_DATA, "audio", `${sha}.ogg`))) return null;
@@ -307,10 +351,11 @@ function playedSnapshotRoute(res, sha, level, label) {
   return Array.isArray(notes) ? sendJson(res, notes) : notFound(res, "no such snapshot");
 }
 
-function route(req, res) {
+async function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "api") {
+    await remoteRounds();
     if (parts[1] === "listening") return listeningRoute(res, parts);
     if (parts[1] === "songs") {
       archivePlayedCharts();
@@ -343,10 +388,8 @@ function route(req, res) {
 console.log(`archived ${archivePlayedCharts()} new chart files from the bot`);
 
 createServer((req, res) => {
-  try {
-    route(req, res);
-  } catch (error) {
+  route(req, res).catch((error) => {
     console.error(error);
     send(res, 500, JSON.stringify({ error: String(error?.stack ?? error) }));
-  }
+  });
 }).listen(PORT, "127.0.0.1", () => console.log(`mewbeat debugger: http://localhost:${PORT}`));
