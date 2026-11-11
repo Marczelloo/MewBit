@@ -3413,6 +3413,7 @@ function App() {
           detail={gate === "error" ? connection.message : null}
           onRetry={gate === "error" ? () => window.location.reload() : null}
           action={gate === "dm" && mewbeatDesktop ? { label: "Play mewbeat", onClick: () => openGame() } : null}
+          under={gate === "dm" && (mewbeatOpen || mewbeatRevealOpen || Boolean(mewbeatCut))}
         />
       ) : null}
       {showLoader && !gate ? <SignalLoader ready={!isHydrating} message={connection.message} onPhase={setLoaderPhase} onDone={hideLoader} /> : null}

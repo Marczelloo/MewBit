@@ -42,12 +42,15 @@ const COPY = {
  * read it. That reads as a broken product rather than as a room that was never
  * joined. It is built from the loader's own parts because it is the same world,
  * but it holds still: these are destinations, not waits.
+ *
+ * `under` is for the one thing that opens over a gate: mewbeat, from a DM's "Play mewbeat". The gate sits on the
+ * loader's layer, above every dialog, so without stepping down it would cover the game it has just opened.
  */
-export default function ActivityGate({ variant = "outside", path = "/", detail = null, onRetry = null, action = null }) {
+export default function ActivityGate({ variant = "outside", path = "/", detail = null, onRetry = null, action = null, under = false }) {
   const copy = COPY[variant] || COPY.outside;
 
   return (
-    <section className="activity-gate" role="alert">
+    <section className={`activity-gate${under ? " is-under" : ""}`} role="alert" aria-hidden={under || undefined} inert={under || undefined}>
       <div className="loader-ambient loader-ambient-cyan" aria-hidden="true" />
       <div className="loader-ambient loader-ambient-magenta" aria-hidden="true" />
 
