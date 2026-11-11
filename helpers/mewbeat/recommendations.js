@@ -14,11 +14,16 @@
 //   historyStore  recent(userId, limit) and played({ guildId, userId, limit }) (historyStore.js)
 //   starsReader() -> (audioKey) -> { easy, normal, hard, hell } | null: stars of the charts that are stored, never
 //            generates (a reader looks up many songs at the cost of one read of the generator flags)
-//   discover({ title, artist }) -> Promise of [{ title, artist, uri, source, audioKey, durationMs, artworkUrl, score }]
+//   discover({ title, artist }, { anchor }) -> Promise of [{ title, artist, uri, source, audioKey, durationMs, artworkUrl, score }]
+//            (anchor: a song of the player's taste in general, or null; recommendDiscover.js moves what fits it up)
+//   taste(userId, guildId) -> { tracks, artists } what the player listens to through the music bot (listeningTaste.js),
+//            or null: seeds for "similar" next to the game history
 
 const { isCalibrationTrack } = require("./calibrationTrack");
 const { trackFromAudioKey } = require("./audioKey");
 const { CLASSICS } = require("./classics");
+const { anchorOf, listeningSeedsOf } = require("./listeningTaste");
+const { artistKeyOf, identityOf } = require("./songIdentity");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const LEVEL_NAMES = { easy: "Easy", normal: "Normal", hard: "Hard", hell: "Hell" };
@@ -43,21 +48,13 @@ const CLOSE_ACCURACY = 60;
 // The level to suggest is a little above the player's comfortable stars, so a suggestion stretches a bit.
 const STRETCH = 1.08;
 const STEP_UP_MAX = 1.3;
-// A discovery runs for at most this many seeds per refresh.
+// A discovery runs for at most this many seeds per refresh: two from the game, three once the music bot's listening is
+// among them (a game seed and two listening ones, say).
 const SEEDS_PER_REFRESH = 2;
+const SEEDS_WITH_LISTENING = 3;
+// The game history leads the seeds when the player played this lately; otherwise what they listen to does.
+const RECENT_GAME_DAYS = 7;
 const MIN_SIMILAR_SCORE = 45;
-
-const identityOf = (title, artist = "") => {
-  const text = (value) => String(value ?? "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[([{].*?[)\]}]/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const name = text(title);
-  return name ? `${name}|${text(artist).split(" ")[0] ?? ""}` : null;
-};
 
 function lengthOfKey(audioKey) {
   return Number(trackFromAudioKey(audioKey)?.info?.length);
@@ -158,9 +155,30 @@ function seedsOf(rounds, { now, justPlayed = null, limit = SEEDS_PER_REFRESH } =
   return seeds;
 }
 
+// Game seeds name the song; a listening seed names what the player listens to (an artist or a song, see listeningTaste.js).
 const seedReason = (seed) => (seed.role === "just" ? `Because you just played ${seed.title}`
   : seed.role === "well" ? `Because you did well on ${seed.title}`
-    : `Because you played ${seed.title}`);
+    : seed.role === "artist" || seed.role === "listen" ? `Because you listen to ${seed.label}`
+      : seed.role === "liked" ? `Because you liked ${seed.label}`
+        : `Because you played ${seed.title}`);
+
+// The seeds of a refresh: the game's and the listening ones taken turns, so one kind never crowds the other out. The
+// game goes first when the player just played (the song asked for) or played within a week, the listening first when
+// not. A listening seed by an artist a game seed has is left out (the game seed already asks about that artist).
+function mixSeeds(game, listening, { now, rounds, justPlayed }) {
+  const taken = new Set(game.map((seed) => artistKeyOf(seed.artist)));
+  const listen = listening.filter((seed) => !taken.has(artistKeyOf(seed.artist)));
+  const newest = Math.max(0, ...(rounds ?? []).map((round) => Number(round?.at) || 0));
+  const gameFirst = game.some((seed) => seed.audioKey === justPlayed) || now - newest < RECENT_GAME_DAYS * DAY_MS;
+  const first = gameFirst ? game : listen;
+  const second = gameFirst ? listen : game;
+  const mixed = [];
+  for (let at = 0; at < Math.max(first.length, second.length); at += 1) {
+    if (first[at]) mixed.push(first[at]);
+    if (second[at]) mixed.push(second[at]);
+  }
+  return mixed.slice(0, listen.length ? SEEDS_WITH_LISTENING : SEEDS_PER_REFRESH);
+}
 
 // Songs other players played that this one has not, the ones played most and most lately first, and those with a level
 // near the player's own a little ahead.
@@ -317,6 +335,7 @@ function createRecommender({
   historyStore,
   starsReader = () => () => null,
   discover = null,
+  taste = null,
   classics = CLASSICS,
   now = Date.now,
   budget = createSearchBudget({ now }),
@@ -336,6 +355,17 @@ function createRecommender({
     while (map.size > maxEntries) map.delete(map.keys().next().value);
   };
 
+  // What the player listens to through the bot; a store that fails leaves the game's seeds alone.
+  function readTasteOf(userId, guildId) {
+    try {
+      const read = taste?.(userId, guildId);
+      return read && Array.isArray(read.tracks) && read.tracks.length > 0 ? read : null;
+    } catch (error) {
+      log.debug("mewbeat suggestions: listening taste failed", error?.message);
+      return null;
+    }
+  }
+
   // What the player's own plays and the server's say, without any search. Shared by every kind but "similar".
   function baseOf(userId, guildId) {
     const key = `${userId}|${guildId ?? ""}`;
@@ -351,6 +381,7 @@ function createRecommender({
       ownKeys: new Set(ownTracks.keys()),
       ownIdentities,
       rounds: historyStore?.recent(userId, OWN_ROUNDS) ?? [],
+      taste: readTasteOf(userId, guildId),
       played: historyStore?.played({ guildId: guildId ?? null, limit: HERE_SONGS }) ?? [],
     };
     bases.set(key, { at: now(), value });
@@ -358,10 +389,10 @@ function createRecommender({
     return value;
   }
 
-  function startSeed(seed, userId, id) {
+  function startSeed(seed, anchor, id) {
     const state = { at: now(), rows: null, failed: false, promise: null };
     const timer = new Promise((resolve) => setTimeout(() => resolve("timeout"), discoverTimeoutMs).unref?.());
-    state.promise = Promise.race([Promise.resolve().then(() => discover({ title: seed.title, artist: seed.artist })), timer])
+    state.promise = Promise.race([Promise.resolve().then(() => discover({ title: seed.title, artist: seed.artist }, { anchor: anchor ?? null })), timer])
       .then((found) => {
         state.rows = Array.isArray(found) ? found : null;
         state.failed = !state.rows;
@@ -383,20 +414,28 @@ function createRecommender({
 
   // The "similar" rows from what is already found, and whether more is on the way. Starts the missing searches
   // (within the budget) and returns at once.
-  function similarOf(userId, seeds) {
+  // `anchorFor(seed)` is the song of the player's taste that the seed's rows are also measured against, or null. A discovery
+  // is the same for everybody asking with the same seed and anchor; a player with no listening has no anchor and shares
+  // the plain seed's.
+  function similarOf(userId, seeds, anchorFor) {
     let pending = false;
     const lists = [];
     for (const seed of seeds) {
       if (!discover) break;
-      const id = identityOf(seed.title, seed.artist) ?? seed.audioKey;
+      const anchor = anchorFor(seed);
+      const id = `${identityOf(seed.title, seed.artist) ?? seed.audioKey ?? seed.title}${anchor ? `~${identityOf(anchor.title, anchor.artist)}` : ""}`;
       let state = seedStates.get(id);
       if (state && !state.promise && now() - state.at > (state.failed ? failedTtlMs : seedTtlMs)) state = null;
-      if (!state && budget.take(userId)) state = startSeed(seed, userId, id);
+      if (!state && budget.take(userId)) state = startSeed(seed, anchor, id);
       if (state?.promise) pending = true;
       if (state?.rows) lists.push({ seed, rows: state.rows });
     }
     return { lists, pending };
   }
+
+  // One seed says its own reason; game seeds alone are "what you play", anything with listening in it is "for you".
+  const similarTitle = (seeds) => (seeds.length === 1 ? seedReason(seeds[0])
+    : seeds.every((seed) => ["just", "well", "played"].includes(seed.role)) ? "Like what you play" : "Picked for you");
 
   function sectionsFor({ userId, guildId, seedKey = null }) {
     const base = baseOf(userId, guildId);
@@ -405,10 +444,13 @@ function createRecommender({
     const plays = playsOf(base.rounds, starsOf);
     const skill = skillOf(plays);
     const exclude = new Set(seedKey ? [seedKey] : []);
-    const seeds = seedsOf(base.rounds, { now: at, justPlayed: seedKey });
+    const gameSeeds = seedsOf(base.rounds, { now: at, justPlayed: seedKey });
+    const listenSeeds = listeningSeedsOf(base.taste, { now: at, limit: SEEDS_WITH_LISTENING, skip: new Set(gameSeeds.map((seed) => artistKeyOf(seed.artist))) });
+    const seeds = mixSeeds(gameSeeds, listenSeeds, { now: at, rounds: base.rounds, justPlayed: seedKey });
 
-    const { lists, pending } = similarOf(userId, seeds);
-    const seen = new Set([...exclude, ...base.ownKeys]);
+    const { lists, pending } = similarOf(userId, seeds, (seed) => anchorOf(base.taste, { now: at, artist: seed.artist }));
+    // New songs are new to the player in the game and in what they listen to.
+    const seen = new Set([...exclude, ...base.ownKeys, ...(base.taste?.tracks ?? []).map((song) => identityOf(song.title, song.artist))]);
     const similar = [];
     const queues = lists.map(({ seed, rows }) => rows
       .filter((row) => Number(row.score) >= MIN_SIMILAR_SCORE)
@@ -433,7 +475,7 @@ function createRecommender({
     const classic = classicRows({ classics, userId, ownKeys: base.ownKeys, ownIdentities: base.ownIdentities, skill, starsOf, exclude });
 
     const sections = [
-      { kind: "similar", title: seeds.length === 1 ? seedReason(seeds[0]) : "Like what you play", rows: similar },
+      { kind: "similar", title: similarTitle(seeds), rows: similar },
       { kind: "again", title: "Worth another go", rows: again },
       { kind: "here", title: "Played here", rows: here },
       { kind: "classic", title: "Rhythm game classics", rows: classic },
@@ -466,6 +508,7 @@ module.exports = {
   identityOf,
   isOfferable,
   levelFor,
+  mixSeeds,
   playsOf,
   seedsOf,
   skillOf,

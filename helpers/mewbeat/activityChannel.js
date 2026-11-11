@@ -6,6 +6,7 @@ const { createLiveBoard } = require("./liveBoard");
 const { isPrivatePlace } = require("./places");
 const { createRanking } = require("./ranking");
 const { createRecommender } = require("./recommendations");
+const { readTaste } = require("./listeningTaste");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
 const { RULES_VERSION, boardKeyOf, loadClientModifiers } = require("./rules");
 const { DIFFICULTIES: ROOM_DIFFICULTIES, MAX_PLAYERS, createRooms } = require("./rooms");
@@ -73,8 +74,10 @@ function errorReply(message) {
 // warmAudio(audioKey, track, node) starts rendering a room song's audio when it
 // is queued, so the round's loading window doesn't pay for a cold render.
 // tourSongs.state() (tourSongs.js) is what the first-run tour is told about its two songs: both warm, or null.
-// discover({ title, artist }) -> [song] finds new songs like one (recommendDiscover.js) for the suggestions
+// discover({ title, artist }, { anchor }) -> [song] finds new songs like one (recommendDiscover.js) for the suggestions
 // (recommendations.js); without it the suggestions are the player's own songs, the server's and the classics.
+// listening is where the music bot keeps what a player listens to (listeningTaste.js: topTracks, topArtists, roomTracks,
+// liked); the suggestions use it as seeds next to the game history. Without it they know the game only.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
@@ -88,6 +91,7 @@ function createMewbeatChannel({
   warmAudio = () => {},
   tourSongs = null,
   discover = null,
+  listening = null,
   recommendOptions = {},
   // eslint-disable-next-line no-unused-vars
   broadcast = () => {}, sendToUser,
@@ -524,6 +528,7 @@ function createMewbeatChannel({
         };
       },
       discover,
+      taste: listening ? (userId, guildId) => readTaste({ userId, guildId, sources: listening, now: now() }) : null,
       now,
       log,
       ...recommendOptions,
