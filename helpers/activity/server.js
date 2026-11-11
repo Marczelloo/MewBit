@@ -98,6 +98,8 @@ const MAX_BODY_SIZE = 64 * 1024;
 const MAX_BULK_TRACKS = 50;
 const MAX_ARTWORK_SIZE = 8 * 1024 * 1024;
 const CLIENT_CACHE_TTL = 5 * 60 * 1000;
+// How long an identity outlives its cache entry when Discord cannot be asked again (fetchDiscordUser).
+const IDENTITY_STALE_TTL = 60 * 60 * 1000;
 const MAX_IDENTITY_CACHE_ENTRIES = 1_000;
 const MAX_ACTIVITY_SOCKETS = 200;
 // A finished mewbeat run is one message: its event log (up to 20000 judgements) passes 64 KB from about 900 notes.
@@ -299,10 +301,20 @@ async function fetchDiscordUser(token) {
   const cached = identityCache.get(token);
   if (cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL) return cached.identity;
 
-  const response = await fetch("https://discord.com/api/v10/users/@me", {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
-  });
+  // Discord not answering (no network, a timeout, 429 or 5xx) says nothing about the token: somebody Discord vouched
+  // for a moment ago stays who they were, so a short outage does not fail every request of an open Activity.
+  const stale = cached && Date.now() - cached.timestamp < IDENTITY_STALE_TTL ? cached.identity : null;
+  let response;
+  try {
+    response = await fetch("https://discord.com/api/v10/users/@me", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    if (stale) return stale;
+    throw error;
+  }
+  if (stale && (response.status === 429 || response.status >= 500)) return stale;
 
   if (!response.ok) throw new Error("Discord authentication expired. Reopen the Activity.");
 
@@ -2016,6 +2028,7 @@ function createActivityServer(client) {
 
 module.exports = {
   createActivityServer,
+  fetchDiscordUser,
   findActivityTrackSources,
   buildActivityState,
   clampLyricsSyncOffset,
