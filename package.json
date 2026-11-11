@@ -21,6 +21,7 @@
     "lavalink:dev": "docker compose -f helpers/lavalink/docker-compose.yml --env-file .env.dev up -d",
     "lavalink:dev:down": "docker compose -f helpers/lavalink/docker-compose.yml down",
     "lavalink:youtube:patch": "node scripts/build-youtube-tvua-plugin.mjs",
+    "lavalink:mewbeat:build": "node scripts/build-mewbeat-plugin.mjs",
     "lint": "eslint . --ext .js,.cjs,.mjs,.jsx",
     "lint:fix": "eslint . --ext .js,.cjs,.mjs,.jsx --fix",
     "test": "node scripts/run-tests.js",
