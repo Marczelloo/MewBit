@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
@@ -12,7 +13,7 @@ test.before(async () => {
 const KEYS = ["D", "F", "J", "K"];
 const IDS = [
   "welcome", "solo", "list", "charting", "levels", "live", "room", "lobby-players", "lobby-queue", "lobby-invite", "fork",
-  "keys", "setkeys", "offset", "sound", "end", "after-sorry", "after-generator", "after-report", "after-bye",
+  "keys", "setkeys", "offset", "sound", "end", "after-sorry", "after-generator", "after-modifiers", "after-links", "after-report", "after-bye",
 ];
 const byId = (id) => steps.TOUR_STEPS[steps.stepIndex(id)];
 
@@ -21,7 +22,7 @@ test("the tour has its steps in the agreed order, each with its own id", () => {
   assert.deepEqual(TOUR_STEPS.map((s) => s.id), IDS);
   assert.deepEqual(
     TOUR_STEPS.map((s) => s.target),
-    [null, "solo", "list", "track", "diff", "live", "room", "lobby-players", "lobby-queue", "lobby-invite", null, "keys", "setkeys", "offset", "sound", null, null, null, "report", null],
+    [null, "solo", "list", "track", "diff", "live", "room", "lobby-players", "lobby-queue", "lobby-invite", null, "keys", "setkeys", "offset", "sound", null, null, null, "modifiers", "search", "report", null],
   );
 });
 
@@ -53,7 +54,7 @@ test("the levels step spotlights the leaderboard too, the lobby steps their seco
 test("each step runs on its screen: song select, the sample room, the play screen", () => {
   const { TOUR_STEPS } = steps;
   const views = Object.fromEntries(TOUR_STEPS.map((s) => [s.id, s.view]));
-  for (const id of ["welcome", "solo", "list", "charting", "levels", "live", "room", "fork", "after-sorry", "after-generator", "after-report", "after-bye"]) {
+  for (const id of ["welcome", "solo", "list", "charting", "levels", "live", "room", "fork", "after-sorry", "after-generator", "after-modifiers", "after-links", "after-report", "after-bye"]) {
     assert.equal(views[id], "select", id);
   }
   for (const id of ["lobby-players", "lobby-queue", "lobby-invite"]) assert.equal(views[id], "lobby", id);
@@ -94,7 +95,7 @@ test("counts follow the two runs, with none on the fork, the end and the second 
   const main = ["welcome", "solo", "list", "charting", "levels", "live", "room", "lobby-players", "lobby-queue", "lobby-invite"];
   assert.deepEqual(main.map((id) => counts[id]), main.map((_, i) => `${i + 1}/10`));
   assert.deepEqual(["keys", "setkeys", "offset", "sound"].map((id) => counts[id]), ["1/4", "2/4", "3/4", "4/4"]);
-  for (const id of ["fork", "end", "after-sorry", "after-generator", "after-report", "after-bye"]) assert.equal(counts[id], null, id);
+  for (const id of ["fork", "end", "after-sorry", "after-generator", "after-modifiers", "after-links", "after-report", "after-bye"]) assert.equal(counts[id], null, id);
 });
 
 test("buttons default to Next and Skip, with the special steps", () => {
@@ -126,7 +127,9 @@ test("tourNext walks each part and stops at its end: the second part never follo
   assert.equal(tourNext(END_INDEX), null);
   assert.equal(AFTER_NO_TRAP_INDEX, stepIndex("after-generator"));
   assert.equal(tourNext(AFTER_INDEX), AFTER_NO_TRAP_INDEX);
-  assert.equal(tourNext(stepIndex("after-generator")), stepIndex("after-report"));
+  assert.equal(tourNext(stepIndex("after-generator")), stepIndex("after-modifiers"));
+  assert.equal(tourNext(stepIndex("after-modifiers")), stepIndex("after-links"));
+  assert.equal(tourNext(stepIndex("after-links")), stepIndex("after-report"));
   assert.equal(tourNext(stepIndex("after-report")), stepIndex("after-bye"));
   assert.equal(tourNext(TOUR_STEPS.length - 1), null);
   assert.equal(TOUR_STEPS.length - 1, stepIndex("after-bye"));
@@ -140,6 +143,51 @@ test("the second part says sorry, owns up to the generator and points at the rep
   assert.match(byId("after-report").say, /still growing/);
   assert.match(byId("after-bye").say, /Have fun/);
   assert.equal(byId("after-bye").pose, "wave");
+});
+
+test("the modifier and link steps sit in the second part, before the report entry, on song select", () => {
+  const { stepIndex, END_INDEX } = steps;
+  assert.ok(stepIndex("after-generator") < stepIndex("after-modifiers"));
+  assert.equal(stepIndex("after-links"), stepIndex("after-modifiers") + 1);
+  assert.equal(stepIndex("after-report"), stepIndex("after-links") + 1);
+  assert.ok(stepIndex("after-modifiers") > END_INDEX, "not in the first part");
+  for (const id of ["after-modifiers", "after-links"]) {
+    assert.equal(byId(id).view, "select", id);
+    assert.ok(byId(id).portrait, id);
+    assert.ok(byId(id).side, id);
+  }
+});
+
+test("the modifier step names what the picker offers and how a score changes", () => {
+  const say = byId("after-modifiers").say;
+  assert.match(say, /modifiers/i);
+  assert.match(say, /multiplier/);
+  assert.match(say, /solo only/);
+  assert.match(say, /board/);
+  for (const name of ["One Life", "Ghost Notes", "Strict Timing"]) assert.ok(say.includes(name), name);
+});
+
+test("the links step names the platforms the bot resolves and the two limits", () => {
+  const say = byId("after-links").say;
+  assert.match(say, /links/);
+  for (const platform of ["YouTube", "Spotify", "SoundCloud"]) assert.ok(say.includes(platform), platform);
+  assert.match(say, /20 minutes/);
+  assert.match(say, /live streams/);
+});
+
+test("the new steps point at anchors that exist on the screen they run on", () => {
+  const root = path.resolve(__dirname, "../../../activity/src/mewbeat");
+  const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+  assert.ok(read("ModifierPicker.jsx").includes('data-tour="modifiers"'));
+  assert.ok(read("SongSelect.jsx").includes('data-tour="search"'));
+  assert.equal(byId("after-modifiers").target, "modifiers");
+  assert.equal(byId("after-links").target, "search");
+});
+
+test("the tour song select shows the picker inert: a no-op handler and no picks", () => {
+  const game = fs.readFileSync(path.resolve(__dirname, "../../../activity/src/mewbeat/MewbeatGame.jsx"), "utf8");
+  assert.match(game, /modifiers=\{touring \? NO_MODIFIERS : playerModifiers\}/);
+  assert.match(game, /onModifiers=\{touring \? NOOP : saveModifiers\}/);
 });
 
 test("the keys step names the player's own keys, the others are plain text", () => {

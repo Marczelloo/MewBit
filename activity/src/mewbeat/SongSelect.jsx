@@ -670,7 +670,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
           ))}
           {searching ? <span className="mb-ss-tab mb-ss-tab-on mb-ss-tab-static">Search results</span> : null}
         </div>
-        <label className="mb-ss-search">
+        <label className="mb-ss-search" data-tour="search">
           <MagnifyingGlass size={16} weight="bold" aria-hidden="true" />
           <input
             ref={inputRef}
