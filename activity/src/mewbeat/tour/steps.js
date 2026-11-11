@@ -48,7 +48,7 @@ export const TOUR_STEPS = [
   },
   {
     id: "lobby-players", target: "lobby-players", also: "lobby-ready", side: "left", portrait: "explain",
-    say: "This is a room. Everyone in it is listed here, and the crown marks who owns it. Press Ready when you are: the round starts once all of you are.",
+    say: "This is a room. Everyone in it is listed here, and the crown marks who owns it. Press Play next when you are: the next song starts once more than half of you voted, or when the owner starts it.",
     count: "8/10", view: "lobby", settings: null, primary: "Next", secondary: "Skip",
   },
   {

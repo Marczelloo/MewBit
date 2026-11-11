@@ -5,7 +5,7 @@
 import { audioKeyOf, MOCK_USER_ID, SONGS } from "./mockRequests.js";
 import { accuracyOf, applyJudgement, canFever, createScore, gradeOf, isFailed, startFever } from "./scoring.js";
 
-export const ROUND_CLOCK_MS = 30_000; // how long the mock round clock runs before it starts over
+export const FINAL_COUNTDOWN_MS = 5000; // the final seconds after a vote passed or the host forced the start, as on the bot
 export const MAX_QUEUE = 20;
 
 const ME = { userId: MOCK_USER_ID, username: "Meowczelloo" };
@@ -35,10 +35,30 @@ export function mockTrack(title, addedBy) {
 
 const member = (player) => ({ avatarUrl: null, loaded: false, spectator: false, watching: false, submitted: false, modifiers: [], ...player });
 
-// A lobby with four players, the owner among them, three songs queued and the round clock running.
-// hostId: who owns the room (the player themselves, or "kuba" to see it as a guest). clockMs: time left on the clock.
-export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = ROUND_CLOCK_MS, now = Date.now() } = {}) {
-  return {
+// The vote the way the bot counts it (helpers/mewbeat/rooms.js tallyOf): the players, i.e. not the watchers, and more
+// than half of them. The snapshot carries the tally next to the members' own flags.
+export function withTally(room) {
+  const players = room.members.filter((m) => !m.spectator);
+  return { ...room, votes: players.filter((m) => m.ready).length, votesNeeded: players.length ? Math.floor(players.length / 2) + 1 : 0 };
+}
+
+// The final countdown to the next round: `clockMs` from `now`, started by a passed vote or, with `forced`, by the host.
+export function startCountdown(room, clockMs = FINAL_COUNTDOWN_MS, now = Date.now(), forced = false) {
+  return { ...room, serverNow: now, nextAt: now + clockMs, finalCountdown: true, forced };
+}
+
+// The vote and its countdown cleared, which is the room right after a round has started; the preview puts the others'
+// votes back so it can be run again.
+export function clearCountdown(room, now = Date.now()) {
+  const voted = new Set(PLAYERS.filter((p) => p.ready).map((p) => p.userId));
+  return withTally({ ...room, serverNow: now, nextAt: null, finalCountdown: false, forced: false, members: room.members.map((m) => ({ ...m, ready: voted.has(m.userId) && !m.spectator })) });
+}
+
+// A lobby with four players, the owner among them and three songs queued. Two of the four have voted for the next
+// map, one short of the majority, so nothing counts down. clockMs: start with the final countdown running instead.
+// hostId: who owns the room (the player themselves, or "kuba" to see it as a guest).
+export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = null, now = Date.now() } = {}) {
+  const room = withTally({
     hostId,
     phase: "lobby",
     round: 0,
@@ -48,10 +68,13 @@ export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = ROUND_CLOCK_MS
     played: QUEUEABLE.filter((title) => !START_QUEUE.some(([queued]) => queued === title)).slice(0, 2).map((title) => mockTrack(title, "neko")),
     current: null,
     startAt: null,
-    nextAt: now + clockMs,
+    nextAt: null,
+    finalCountdown: false,
+    forced: false,
     results: [],
     serverNow: now,
-  };
+  });
+  return clockMs ? startCountdown(room, clockMs, now) : room;
 }
 
 // The same room one round later: Hopes and Dreams has just ended, the others wait in the queue, and the standings are in.
@@ -67,7 +90,7 @@ export function createMockFinishedRoom({ hostId = MOCK_USER_ID, now = Date.now()
   ];
   return {
     ...base,
-    phase: "intermission",
+    phase: "lobby",
     round: 1,
     endedAt: now - 4000,
     current: second,
@@ -86,17 +109,23 @@ export function createMockFinishedRoom({ hostId = MOCK_USER_ID, now = Date.now()
   };
 }
 
-// The same room with the round clock set to run out in `clockMs` from `now`.
-export function restartClock(room, clockMs, now = Date.now()) {
-  return { ...room, serverNow: now, nextAt: now + clockMs };
-}
-
 const ok = (room) => ({ room, reply: { status: "ok" } });
 const fail = (room, reason) => ({ room, reply: { status: "error", reason } });
 const patchMember = (room, userId, patch) => ({ ...room, members: room.members.map((m) => (m.userId === userId ? { ...m, ...patch } : m)) });
 
-// store.ready({ ready } | { difficulty } | { spectate } | { modifiers }) for one player. A spectator is never ready.
-export function applyReady(room, userId, change) {
+// The vote after a change, as the bot settles it: a majority starts the final countdown, and a vote that drops back
+// below one stops a countdown it started (a host's forced start stays).
+function settleVote(room, now) {
+  const tallied = withTally(room);
+  const passed = tallied.votesNeeded > 0 && tallied.votes >= tallied.votesNeeded && tallied.queue.length > 0;
+  if (passed && !tallied.finalCountdown) return startCountdown(tallied, FINAL_COUNTDOWN_MS, now);
+  if (!passed && tallied.finalCountdown && !tallied.forced) return { ...tallied, nextAt: null, finalCountdown: false };
+  return tallied;
+}
+
+// store.ready({ ready } | { difficulty } | { spectate } | { modifiers }) for one player. A spectator never votes, and
+// neither does anyone with no song queued to vote for.
+export function applyReady(room, userId, change, now = Date.now()) {
   const me = room.members.find((m) => m.userId === userId);
   if (!me) return fail(room, "not_in_room");
   if ("difficulty" in change) {
@@ -104,12 +133,32 @@ export function applyReady(room, userId, change) {
     return ok(patchMember(room, userId, { difficulty: change.difficulty }));
   }
   if ("modifiers" in change) return ok(patchMember(room, userId, { modifiers: Array.isArray(change.modifiers) ? change.modifiers : [] }));
-  if ("spectate" in change) return ok(patchMember(room, userId, change.spectate ? { watching: true, ready: false } : { watching: false }));
+  if ("spectate" in change) {
+    // Watching takes the vote back with it, so the others' count shrinks as well.
+    const patch = change.spectate ? { watching: true, spectator: true, ready: false } : { watching: false, spectator: false };
+    return ok(settleVote(patchMember(room, userId, patch), now));
+  }
   if ("ready" in change) {
-    if (me.watching) return fail(room, "spectator");
-    return ok(patchMember(room, userId, { ready: Boolean(change.ready) }));
+    if (me.watching) return fail(room, "spectating");
+    if (change.ready && !room.queue.length) return fail(room, "empty_queue");
+    return ok(settleVote(patchMember(room, userId, { ready: Boolean(change.ready) }), now));
   }
   return fail(room, "bad_request");
+}
+
+// The host's start without the vote: the final countdown runs even with no majority.
+export function forceStart(room, userId, now = Date.now()) {
+  if (room.hostId !== userId) return fail(room, "not_host");
+  if (!room.queue.length) return fail(room, "empty_queue");
+  return ok(startCountdown(room, FINAL_COUNTDOWN_MS, now, true));
+}
+
+// A new queue. The votes were for the song at the head, so when another song takes its place (or none is left) they
+// are gone, and so is a countdown to the old head, as on the bot.
+function afterQueueChange(room, queue) {
+  const next = { ...room, queue };
+  if (queue[0]?.audioKey === room.queue[0]?.audioKey && queue.length) return next;
+  return withTally({ ...next, nextAt: null, finalCountdown: false, forced: false, members: room.members.map((m) => ({ ...m, ready: false })) });
 }
 
 // The "Add songs" button: the next charted song nobody queued yet (then the list starts over).
@@ -124,7 +173,7 @@ export function removeFromQueue(room, userId, index) {
   const track = room.queue[index];
   if (!track) return fail(room, "bad_index");
   if (room.hostId !== userId && track.addedBy !== userId) return fail(room, "forbidden");
-  return ok({ ...room, queue: room.queue.filter((_, i) => i !== index) });
+  return ok(afterQueueChange(room, room.queue.filter((_, i) => i !== index)));
 }
 
 export function moveInQueue(room, userId, from, to) {
@@ -132,7 +181,7 @@ export function moveInQueue(room, userId, from, to) {
   if (!room.queue[from] || !room.queue[to]) return fail(room, "bad_index");
   const queue = [...room.queue];
   queue.splice(to, 0, queue.splice(from, 1)[0]);
-  return ok({ ...room, queue });
+  return ok(afterQueueChange(room, queue));
 }
 
 // A full-combo run of Hopes and Dreams on Normal, as the Results screen gets it from the game.

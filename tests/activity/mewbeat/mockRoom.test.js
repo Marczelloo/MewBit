@@ -16,13 +16,18 @@ test.before(async () => {
 
 const ME = "mock-me";
 
-test("the mock lobby has four players with an owner, three queued songs and a running clock", () => {
+test("the mock lobby has four players with an owner, three queued songs and a vote one short of the majority", () => {
   const snapshot = mockRoom.createMockRoom({ now: 1000 });
   assert.equal(snapshot.members.length, 4);
   assert.ok(room.isHost(snapshot, ME));
   assert.equal(snapshot.queue.length, 3);
-  assert.equal(snapshot.nextAt, 1000 + mockRoom.ROUND_CLOCK_MS);
+  // Two of four voted and three are needed, so nothing counts down by itself.
+  assert.deepEqual([snapshot.votes, snapshot.votesNeeded], [2, 3]);
+  assert.equal(snapshot.nextAt, null);
+  assert.equal(snapshot.finalCountdown, false);
   assert.equal(room.roomView(snapshot, ME), "lobby");
+  // The clock option starts the final countdown instead.
+  assert.equal(mockRoom.createMockRoom({ now: 1000, clockMs: 8000 }).nextAt, 9000);
   assert.ok(snapshot.members.some((member) => member.ready) && snapshot.members.some((member) => !member.ready));
   // The owner can be somebody else, and then comes first in the list.
   const guest = mockRoom.createMockRoom({ hostId: "kuba" });
@@ -38,9 +43,9 @@ test("every queued song is one the fake replies know, so its levels and board lo
   }
 });
 
-test("ready, level and spectate change only the asked player, and a spectator cannot be ready", () => {
+test("ready, level and spectate change only the asked player, and a spectator cannot vote", () => {
   const start = mockRoom.createMockRoom();
-  const ready = mockRoom.applyReady(start, ME, { ready: true });
+  const ready = mockRoom.applyReady(start, ME, { ready: true }, 5000);
   assert.equal(ready.reply.status, "ok");
   assert.equal(room.memberOf(ready.room, ME).ready, true);
   assert.equal(room.memberOf(ready.room, "ola").ready, false);
@@ -53,7 +58,7 @@ test("ready, level and spectate change only the asked player, and a spectator ca
 
   const watching = mockRoom.applyReady(ready.room, ME, { spectate: true });
   assert.deepEqual([room.memberOf(watching.room, ME).watching, room.memberOf(watching.room, ME).ready], [true, false]);
-  assert.equal(mockRoom.applyReady(watching.room, ME, { ready: true }).reply.reason, "spectator");
+  assert.equal(mockRoom.applyReady(watching.room, ME, { ready: true }).reply.reason, "spectating");
   assert.equal(room.memberOf(mockRoom.applyReady(watching.room, ME, { spectate: false }).room, ME).watching, false);
   assert.equal(mockRoom.applyReady(start, "stranger", { ready: true }).reply.reason, "not_in_room");
 });
@@ -92,11 +97,35 @@ test("moveInQueue reorders for the owner only", () => {
   assert.equal(mockRoom.moveInQueue(mockRoom.createMockRoom({ hostId: "kuba" }), ME, 0, 1).reply.reason, "not_host");
 });
 
-test("restartClock moves only the clock", () => {
+test("the mock vote starts the final seconds on a majority, and takes them back below it", () => {
   const start = mockRoom.createMockRoom({ now: 1000 });
-  const restarted = mockRoom.restartClock(start, 5000, 2000);
-  assert.deepEqual([restarted.serverNow, restarted.nextAt], [2000, 7000]);
-  assert.equal(restarted.queue, start.queue);
+  const passed = mockRoom.applyReady(start, ME, { ready: true }, 2000); // 3 of 4
+  assert.deepEqual([passed.room.votes, passed.room.votesNeeded, passed.room.finalCountdown, passed.room.nextAt], [3, 3, true, 2000 + mockRoom.FINAL_COUNTDOWN_MS]);
+  const withdrawn = mockRoom.applyReady(passed.room, ME, { ready: false }, 3000);
+  assert.deepEqual([withdrawn.room.votes, withdrawn.room.finalCountdown, withdrawn.room.nextAt], [2, false, null]);
+  // A watcher leaves the count: two of three players is already a majority.
+  const watching = mockRoom.applyReady(start, "ola", { spectate: true }, 2000);
+  assert.deepEqual([watching.room.votes, watching.room.votesNeeded, watching.room.finalCountdown], [2, 2, true]);
+  assert.equal(mockRoom.applyReady({ ...start, queue: [] }, ME, { ready: true }).reply.reason, "empty_queue");
+});
+
+test("the host's force start runs the countdown without a majority, and is the host's alone", () => {
+  const start = mockRoom.createMockRoom({ now: 1000 });
+  const forced = mockRoom.forceStart(start, ME, 2000);
+  assert.deepEqual([forced.room.forced, forced.room.finalCountdown, forced.room.votes, forced.room.nextAt], [true, true, 2, 7000]);
+  assert.equal(mockRoom.forceStart(mockRoom.createMockRoom({ hostId: "kuba" }), ME).reply.reason, "not_host");
+  // A forced start stays when a vote is taken back.
+  const kept = mockRoom.applyReady(forced.room, "kuba", { ready: false }, 3000);
+  assert.equal(kept.room.finalCountdown, true);
+});
+
+test("a queue change that moves the head clears the vote and its countdown", () => {
+  const passed = mockRoom.applyReady(mockRoom.createMockRoom({ now: 1000 }), ME, { ready: true }, 2000).room;
+  const moved = mockRoom.moveInQueue(passed, ME, 2, 0).room;
+  assert.deepEqual([moved.votes, moved.finalCountdown, moved.nextAt, moved.members.some((m) => m.ready)], [0, false, null, false]);
+  const behind = mockRoom.removeFromQueue(passed, ME, 2).room; // the head stays
+  assert.deepEqual([behind.votes, behind.finalCountdown], [3, true]);
+  assert.equal(mockRoom.clearCountdown(passed, 9000).nextAt, null);
 });
 
 test("the finished room gives Results standings with the player among them, and the queue's head as up next", () => {
