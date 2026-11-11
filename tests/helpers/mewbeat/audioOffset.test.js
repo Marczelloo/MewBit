@@ -181,6 +181,26 @@ describe("audio offset: a record is tied to the files it was measured from", () 
     assert.strictEqual(calls.length, 2);
   });
 
+  it("features with other bytes but the same size make it stale", async () => {
+    const { audioOffset, calls } = await measured();
+    const bytes = fs.readFileSync(featuresFile());
+    bytes[bytes.length - 20] = 0x79; // one byte of the padding ("x" before)
+    fs.writeFileSync(featuresFile(), bytes);
+    assert.strictEqual(fs.statSync(featuresFile()).size, bytes.length);
+    assert.strictEqual(await audioOffset.peek(KEY), null);
+    await audioOffset.lookup(KEY);
+    assert.strictEqual(calls.length, 2);
+  });
+
+  it("features with a new mtime and the same bytes (a plain copy of the folder) keep it valid", async () => {
+    const { audioOffset, calls } = await measured();
+    const later = new Date(Date.now() + 60_000);
+    fs.utimesSync(featuresFile(), later, later);
+    assert.notStrictEqual(await audioOffset.peek(KEY), null);
+    await audioOffset.lookup(KEY);
+    assert.strictEqual(calls.length, 1);
+  });
+
   it("the audio store touching the file's mtime (every use does) does not make it stale", async () => {
     const { audioOffset, calls } = await measured();
     const later = new Date(Date.now() + 60_000);

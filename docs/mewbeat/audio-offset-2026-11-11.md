@@ -22,7 +22,7 @@ Port numpy ekstraktora LIGHT wtyczki: mono 24 kHz, FFT 1024, krok 256, `log1p(10
 
 ## Zapis w bocie (`helpers/mewbeat/audioOffset.js`)
 
-- Rekord `<katalog>/offset/<sha1(klucz audio)>.json`: surowy offset, pewność, odcisk audio (rozmiar + sha1 pierwszych i ostatnich 64 KB) i features (rozmiar + mtime). Nowe bajty audio albo nowe features unieważniają rekord. Dotknięcie mtime pliku audio (sklep robi to przy każdym użyciu) nie unieważnia.
+- Rekord `<katalog>/offset/<sha1(klucz audio)>.json`: surowy offset, pewność, odcisk audio (rozmiar + sha1 pierwszych i ostatnich 64 KB) i features (rozmiar + sha1 całego pliku, nigdy mtime: zwykła kopia katalogu danych nie unieważnia rekordów). Nowe bajty audio albo nowe features unieważniają rekord. Dotknięcie mtime pliku audio (sklep robi to przy każdym użyciu) nie unieważnia.
 - Offset to surowa wartość tylko wtedy, gdy pewność >= 0,6; inaczej null (surowa zostaje w rekordzie).
 - Usługa niedostępna: jedno ostrzeżenie w logu, potem brak pomiarów przez 5 minut i wynik "wyłączone". Błąd przejściowy: ponowienia po 10 i 30 minutach, najwyżej 3 próby. Błąd trwały (zły plik) jest ostateczny.
 - Utwór nigdy nie jest odrzucany ani zauważalnie opóźniany: odpowiedź na prośbę o mapę czeka na pomiar najwyżej 1200 ms, a pomiar kończy się w tle.
