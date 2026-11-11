@@ -24,6 +24,8 @@ const {
   MELODY_LINES_FIRST,
   MELODY_SHIFT_PICK,
   PITCH_LANES,
+  PLUS_CALM,
+  PLUS_CALM_END,
   PLUS_HEARD,
   PLUS_MELODY,
 } = require("./difficulty");
@@ -82,6 +84,10 @@ const FLAGS = {
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
   // Normal: the lane moves the way the melody's pitch moves, by about as much (laneRules.js pitchCost). Lanes only: no note moves in time.
   pitchLanes: { label: "Normal: tor idzie za wysokością melodii (wyżej = w prawo)", levels: { normal: { pitchLanes: PITCH_LANES } } },
+  // Hard, Hell: in a quiet stretch the extras number at most half of what the level below plays there (generate.js plusNotes, quiet.js).
+  plusCalm: { label: "Hard, Hell: w cichym fragmencie dodatkowych nut najwyżej połowa tego, co gra poziom niżej", levels: { hard: { plusCalm: PLUS_CALM }, hell: { plusCalm: PLUS_CALM } } },
+  // Hard, Hell: the quiet ending of a song takes no extras, the level plays the notes it was built on (generate.js plusNotes).
+  plusCalmEnd: { label: "Hard, Hell: ciche zakończenie bez dodatkowych nut (gra to, co poziom niżej)", levels: { hard: { plusCalmEnd: PLUS_CALM_END }, hell: { plusCalmEnd: PLUS_CALM_END } } },
   // Hard, Hell: an extra on a note of the decoded melody scores more (generate.js plusNotes).
   // Hard, Hell: in a song a piano or another pitched line carries, no extra where no pitch begins (voices.js offPitch).
   plusHeard: { label: "Hard, Hell: w utworze na pianino itp. dodatkowe nuty tylko tam, gdzie zaczyna się dźwięk", levels: { hard: { plusHeard: PLUS_HEARD }, hell: { plusHeard: PLUS_HEARD } } },

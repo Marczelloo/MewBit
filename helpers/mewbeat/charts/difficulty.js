@@ -282,6 +282,22 @@ const FADE_OUT = { loud: 0.6, from: 0.5, quiet: 0.35, minSec: 4, keep: 0.5, barB
 // took every other note of it, 9 moments in two seconds down to 4. Of the bot's 31 songs with a fade-out 9 end like that
 // (last third .90 of the first or more); the 22 that fade sit at .13 to .62.
 const FADE_FALLS = { ...FADE_OUT, falls: 0.7 };
+// generate.js plusNotes, quiet.js (flag plusCalm): where the song plays under `below` of its loud level, a level adds at most
+// `share` of the moments the level under it plays there. A player's report and the user's ear, 2026-11-11: many blocks in the
+// calmer moments. A phrase's room for extras follows what sounds, and a quiet part of a slow song is full of soft drum hits
+// where the level under it holds long notes: on five of the bot's 98 songs Hard played 1.8 to 4 times Normal's moments there
+// (youtube:CHENRaquRHo 2:32-2:52 Normal 1.9/s, Hard 4.3, Hell 4.7; with the flag 3.0 and 3.6, its loud part as it was).
+// Over the 98 songs (the bot's flags, 4 s windows, 588 of them quiet): Hard 3.08 -> 2.92 moments/s in the quiet ones and
+// Hell 3.89 -> 3.49, the loud ones untouched (6.35 and 7.68); windows where Hard plays 1.8 times Normal or more 15 -> 4.
+// Half is where the median song already sits (Hard/Normal 1.25 in quiet windows, 1.22 in loud ones), so most songs keep
+// every note: all of Hard's moments fall by 0.3%, Hell's by 0.5%.
+const PLUS_CALM = { below: 0.5, share: 0.5 };
+// generate.js plusNotes (flag plusCalmEnd): the quiet ending of a song, as FADE_OUT finds it and whether or not it falls
+// (FADE_FALLS leaves an ending that plays on at one loudness at full density), takes no extras: the level ends on the notes
+// of the level under it. The report was MEGALOVANIA on Hard: its last 12 s play at .21 of the energy (loud parts .6 to .97)
+// and Hard added 4.7 moments/s there against Normal's 3.9, Hell 5.0; with the flag both play 3.9. 27 of the 98 songs end
+// quietly; all of Hard's moments fall by 0.2%, Hell's by 0.5%.
+const PLUS_CALM_END = { loud: FADE_OUT.loud, from: FADE_OUT.from, quiet: FADE_OUT.quiet, minSec: FADE_OUT.minSec };
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -716,6 +732,8 @@ module.exports = {
   PACE_HOLES,
   NORMAL_HOLDS,
   PITCH_LANES,
+  PLUS_CALM,
+  PLUS_CALM_END,
   PLUS_FIGURES,
   PLUS_HEARD,
   PLUS_MELODY,
