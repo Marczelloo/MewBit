@@ -14,6 +14,7 @@ const {
   FREE_TIME,
   HARD_HOLDS,
   HEARD_CHORDS,
+  HELL_HOLDS,
   LEAD_VOICE_BOTH,
   LINE_REPEATS,
   LOUD_HOLES,
@@ -60,6 +61,8 @@ const FLAGS = {
   hardHolds: { label: "Hard: własne holdy, puszczane z dźwiękiem", levels: { hard: { ...HARD_HOLDS } } },
   // Normal, Hard, Hell: where a pitched line leads, a moment plays no more notes than pitches begin on it (chords.js heardPitches).
   heardChords: { label: "Akordy tylko tam, gdzie gra kilka dźwięków naraz (linia pianina itp.)", levels: { normal: { heardChords: HEARD_CHORDS }, hard: { heardChords: HEARD_CHORDS }, hell: { heardChords: HEARD_CHORDS } } },
+  // Hell: every hold of Hard stays a hold, let go with its sound, and no extra lands under it (generate.js plusNotes, holds.js keptHolds).
+  hellHolds: { label: "Hell: trzyma holdy Harda", levels: { hell: { ...HELL_HOLDS } } },
   // Normal: in a song a piano or another pitched line carries, both hands play: the bass gives way only where it would take a
   // melody note's place (voices.js underLine, rule.clashMs), and Hard and Hell are built on this Normal.
   leadVoiceBoth: { label: "Normal: w utworze na pianino itp. grają obie ręce, bas ustępuje tylko tam, gdzie zabrałby miejsce nucie melodii", levels: { normal: { leadVoice: LEAD_VOICE_BOTH } } },

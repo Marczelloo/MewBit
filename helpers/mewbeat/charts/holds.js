@@ -561,7 +561,8 @@ const longHolds = (notes, minBeats, timing) => notes.filter((n) => n.len >= minB
 // rule that a hold lets go on the next moment cut Normal's long holds on a slow passage to taps, and Easy dropped them or capped
 // them away, while the music still sounds there (GHOST 2:09-2:17). So under such a hold only the source's own moments stay, the
 // hold lets go before the next of them, and where this level does not play the hold's moment it gets it, unless it plays a
-// moment closer before it than its note gap.
+// moment closer before it than its note gap. With keepNormalHolds.shortest (flag hellHolds) a hold may be as short as the level's
+// shortest (shortestHold), not holdMinBeats: Hard's rest holds are half a beat.
 function keptHolds(notes, source, diff, timing, limitMs = Infinity) {
   const sourceTimes = new Set(source.map((n) => n.t));
   const last = limitMs - (diff.minLaneGapMs ?? 0);
@@ -572,7 +573,7 @@ function keptHolds(notes, source, diff, timing, limitMs = Infinity) {
     const gap = Math.max(EARLY_RELEASE_BEATS * beat, reach);
     const next = Math.min(h.t + h.len + gap, ...out.filter((n) => n.t > h.t && sourceTimes.has(n.t)).map((n) => n.t));
     const len = Math.round(Math.min(next - gap, last) - h.t);
-    if (len < diff.holdMinBeats * beat) continue;
+    if (len < (diff.keepNormalHolds.shortest ? shortestHold(diff, beat) : diff.holdMinBeats * beat)) continue;
     let here = out.filter((n) => n.t === h.t);
     if (here.length === 0) {
       if (out.some((n) => n.t < h.t && n.t > h.t - reach)) continue;

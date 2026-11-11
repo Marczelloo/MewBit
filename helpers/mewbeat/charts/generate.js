@@ -394,7 +394,8 @@ function plusNotes(ctx, diff) {
   const drawn = diff.plusHeard ? drawnMelodyOf(ctx, base) : null;
   const silent = drawn ? offPitch(scored, decodedNotesAt(ctx, melodyShiftOf(ctx, base, drawn)), ctx.features.drums, phrases, diff.plusHeard) : new Set();
   const free = (m) => playable(ctx, m.t) && !silent.has(m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
-  // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left
+  // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left (not with
+  // keepNormalHolds.fullRoom, flag hellHolds: where every hold of Hard counts, that is as much as a tenth of the song)
   const heldShare = (phrase) => held.reduce((sum, h) => sum + Math.max(0, Math.min(h.t + h.len, phrase.endMs) - Math.max(h.t, phrase.startMs)), 0) / Math.max(1, phrase.endMs - phrase.startMs);
   const extras = [];
   const keyed = []; // the chord keys of diff.plusDense, kept apart from the extras a repeat copies
@@ -402,7 +403,7 @@ function plusNotes(ctx, diff) {
     const fromMs = i === 0 ? 0 : phrase.startMs;
     const toMs = i === phrases.length - 1 ? Infinity : phrase.endMs;
     const mine = lowerBound(moments, toMs) - lowerBound(moments, fromMs);
-    const open = held.length > 0 ? 1 - Math.min(1, heldShare(phrase)) : 1;
+    const open = held.length > 0 && !diff.keepNormalHolds.fullRoom ? 1 - Math.min(1, heldShare(phrase)) : 1;
     const room = Math.round(open * Math.max(Math.ceil((diff.plusFloor ?? 0) * mine), budgetOf(ctx, phrase, diff) - mine));
     if (room === 0) return;
     // diff.plusDense (flag hellPlus): the denser the phrase already is, the fewer moments it takes on top, and the room it does not
@@ -655,8 +656,10 @@ const flagged = (ctx, difficulty) => withFlags(levelOf(difficulty), difficulty, 
 const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(flagged(ctx, difficulty), ctx.busy), ctx.timing), ctx.timing);
 
 const notesFor = (ctx, difficulty, trace = null) => {
-  const diff = diffOf(ctx, difficulty);
-  const charted = chartNotes(ctx, diff, trace);
+  const level = diffOf(ctx, difficulty);
+  const charted = chartNotes(ctx, level, trace);
+  // diff.holdYield: the lanes let a hold go before they lose a moment the level is built on (lanes.js, laneSearch.js).
+  const diff = level.holdYield && charted.protect ? { ...level, holdYield: charted.protect } : level;
   if (!charted.protect) return finish(ctx, charted, diff, trace);
   const settled = withoutCrowding(ctx, charted, diff);
   // The round that lost no moment ran finish on exactly these notes and this diff: untraced, its notes are the real run's.
