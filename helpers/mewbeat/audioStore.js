@@ -4,6 +4,7 @@ const { randomUUID } = require("node:crypto");
 
 const Log = require("../logs/log");
 const { audioKeyFile } = require("./audioKey");
+const { createPriorityGate } = require("./priorityGate");
 
 const AUDIO_ROUTE = "/v4/mewbeat/audio";
 // The plugin holds one request for its own job timeout plus queue wait.
@@ -27,10 +28,14 @@ async function fetchPluginAudio(track, node, { timeoutMs = REQUEST_TIMEOUT_MS } 
   return Buffer.from(await response.arrayBuffer());
 }
 
-function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, log = Log }) {
+// Warm-ups and decodes that wait for the plugin's audio worker; one more is refused (the song is rendered when a player asks).
+const MAX_BACKGROUND = 30;
+
+function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, maxBackground = MAX_BACKGROUND, log = Log }) {
   const pendingByKey = new Map();
-  // Plugin jobs run one at a time across keys; the chain never rejects.
-  let queue = Promise.resolve();
+  // Plugin jobs run one at a time across keys (the plugin's audio worker keeps two waiting and refuses the rest).
+  const gate = createPriorityGate({ concurrency: 1, backgroundCap: maxBackground });
+  let nextEntry = 0;
 
   const fileOf = (audioKey) => path.join(dir, `${audioKeyFile(audioKey)}.ogg`);
 
@@ -80,7 +85,7 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
       // not cached yet
     }
 
-    const job = queue.then(async () => {
+    await gate.run(async () => {
       if (state.cancelled) throw Object.assign(new Error("The audio request was cancelled."), { cancelled: true });
       // A job queued behind another one for the same key may find it written.
       try {
@@ -91,30 +96,37 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
       }
       state.started = true;
       await fetchAndStore(audioKey, track, node, file);
-    });
-    queue = job.catch(() => {});
-    await job;
+    }, { priority: state.priority, key: state.gateKey });
     return file;
   }
 
-  // get(audioKey, track, node, { signal }): the file of the song's rendition, rendering it when it is missing. Callers
-  // share one job per key. A caller whose signal aborts stops waiting (the promise rejects with the signal's reason); when
-  // none is left waiting and the job has not started, the job is cancelled. A caller without a signal never leaves
-  // (warm-ups), so its job always runs.
-  function get(audioKey, track, node, { signal } = {}) {
+  // get(audioKey, track, node, { signal, priority }): the file of the song's rendition, rendering it when it is missing.
+  // Callers share one job per key. A caller whose signal aborts stops waiting (the promise rejects with the signal's
+  // reason); when none is left waiting and the job has not started, the job is cancelled. A caller without a signal never
+  // leaves (warm-ups), so its job always runs.
+  //
+  // priority "play" is a player who waits for the file; "background" is work nobody waits for (a warm-up, a decode). It
+  // defaults to play for a caller with a signal (the audio route) and to background for one without. Play jobs go first in
+  // the order they came; a play request for a job that waits as background takes over its place. A background job is
+  // refused with code "QUEUE_FULL" while maxBackground of them wait.
+  function get(audioKey, track, node, { signal, priority = signal ? "play" : "background" } = {}) {
     let entry = pendingByKey.get(audioKey);
     if (entry?.cancelled) {
       pendingByKey.delete(audioKey);
       entry = null;
     }
     if (!entry) {
-      entry = { waiters: 0, started: false, cancelled: false, promise: null };
+      // The gate's key is per entry: a cancelled job still waits in the gate and must not be taken for the new one.
+      entry = { waiters: 0, started: false, cancelled: false, priority, gateKey: `${audioKey}\n${nextEntry++}`, promise: null };
       const created = entry;
       created.promise = load(audioKey, track, node, created).finally(() => {
         if (pendingByKey.get(audioKey) === created) pendingByKey.delete(audioKey);
       });
       created.promise.catch(() => {}); // a cancelled job has no one left to hear its rejection
       pendingByKey.set(audioKey, created);
+    } else if (priority === "play" && entry.priority !== "play") {
+      entry.priority = "play";
+      gate.promote(entry.gateKey);
     }
     const joined = entry;
     joined.waiters += 1;
@@ -142,7 +154,12 @@ function createAudioStore({ dir, fetchAudio = fetchPluginAudio, maxFiles = 40, l
     });
   }
 
-  return { get };
+  // How many renders run and wait: { running, play, background } (for the status lines and the tests).
+  function size() {
+    return gate.size();
+  }
+
+  return { get, size };
 }
 
 module.exports = { createAudioStore, fetchPluginAudio };

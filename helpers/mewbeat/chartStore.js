@@ -99,6 +99,7 @@ function generateOnWorker(features, audioKey, flags, options) {
   return chartRunner.run(features, audioKey, flags, options);
 }
 generateOnWorker.promote = (audioKey, flags) => chartRunner?.promote(audioKey, flags) ?? false;
+generateOnWorker.place = (audioKey, flags) => chartRunner?.place(audioKey, flags) ?? null;
 
 const READY = (charts) => ({ status: "ready", charts });
 const UNCHARTED = (reason) => ({ status: "uncharted", reason });
@@ -421,7 +422,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
         return UNCHARTED(stored.reason);
       }
       // Not bound to the request: the charts on disk are served as they are.
-      if (melodyDecoder && !offline && !melodyDecoder.has(key)) decodeLater(track, key, node, priority);
+      if (melodyDecoder && !offline && !melodyDecoder.has(key)) decodeLater(track, key, node);
       return remember(id, stored);
     }
 
@@ -451,11 +452,13 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   }
 
   // Asks the decoder for the melody of a song whose charts are served as they are, without waiting for it; the charts are
-  // replaced when it is there. Looks for the song's cached features itself and does nothing without them.
-  function decodeLater(track, key, node, priority) {
+  // replaced when it is there. Looks for the song's cached features itself and does nothing without them. Nobody waits for
+  // this decode, whatever the request that found it due was, so it queues behind the decodes players wait for (a later play
+  // request for the same song takes it over, getCharts).
+  function decodeLater(track, key, node) {
     Promise.resolve()
       .then(() => analysis.peek?.(track))
-      .then((features) => features && replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features, { priority }), key))
+      .then((features) => features && replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features, { priority: "background" }), key))
       .catch((error) => log.warning("mewbeat could not look for features to decode the melody", error?.message));
   }
 
@@ -498,7 +501,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     if (cached) {
       // Charts made without the melody stay until it is decoded; each request is a chance for a decode that is due again
       // (a failed one is retried later, melodyDecoder.js), which does nothing while one is pending or the decoder gives up.
-      if (cached.variant !== state.key && !offline && melodyDecoder?.wants?.(key)) decodeLater(track, key, node, priority);
+      if (cached.variant !== state.key && !offline && melodyDecoder?.wants?.(key)) decodeLater(track, key, node);
       return Promise.resolve(READY(cached.charts));
     }
     if (retry && !pendingByKey.has(id) && claimRetry(key)) {
@@ -526,6 +529,23 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     pendingByKey.set(id, request);
     if (priority === "background") backgroundIds.add(id);
     return request;
+  }
+
+  // Where a song that is being charted waits, for a player who asks: the step it is at ("analysis", "melody" or "charts") and
+  // how many jobs are ahead of it in that step's line (0 and `running` when it is the one being worked on). Null when
+  // nothing is queued for the song (not asked yet, finished, or between two steps). Sync, reads nothing.
+  function queueOf(track) {
+    const key = audioKeyOf(track);
+    if (!key || !pendingByKey.has(memoryKey(key, currentFlags().key))) return null;
+    const steps = [
+      ["analysis", analysis.queueOf?.(track)],
+      ["melody", melodyDecoder?.queueOf?.(key)],
+      ["charts", generate.place?.(key, currentFlags().flags)],
+    ];
+    for (const [step, place] of steps) {
+      if (place) return { step, ahead: place.running ? 0 : place.ahead, running: Boolean(place.running) };
+    }
+    return null;
   }
 
   // Why a song cannot be charted offline now, or null when it can (the re-chart pass, chartStore.rechart): "has_charts" and
@@ -611,7 +631,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     return warming;
   }
 
-  return { getCharts, peekCharts, rechartBlock, summaryReader, warmSummaries };
+  return { getCharts, peekCharts, queueOf, rechartBlock, summaryReader, warmSummaries };
 }
 
 const DATA_DIR = path.join(__dirname, "..", "data", "mewbeat");

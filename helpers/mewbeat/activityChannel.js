@@ -21,6 +21,9 @@ const RESOLVE_CACHE_MS = 10 * 60_000;
 const CHART_MAP_PER_PLAYER = 3;
 const CHART_MAP_MEMORY_MS = 10 * 60_000;
 const RESOLVE_CACHE_MAX = 200;
+// A chart request that is still being worked on after this long is answered "pending" (with where it waits), so the player's
+// client, which gives up on a request nobody answers after about 15 s, knows the bot is on it.
+const CHART_PENDING_MS = 8000;
 const MODES = ["live", "solo", "room"];
 const MAX_EVENTS = 20000;
 const MAX_FEVERS = 200;
@@ -123,7 +126,25 @@ function createMewbeatChannel({
       source = playback;
     }
 
-    const result = await chartStore.getCharts(source.track, source.node, { retry: message.retry === true });
+    // The charts of a song nobody played yet wait for the analysis, the melody and the generator, in line behind other servers'
+    // songs. Past CHART_PENDING_MS the player is told so, with the step the song is at and how many jobs are ahead of it; the
+    // client asks again and the next answer joins the same work. A failure inside the store is a "failed" chart, not silence.
+    const charting = Promise.resolve(chartStore.getCharts(source.track, source.node, { retry: message.retry === true }))
+      .catch((error) => {
+        log.warning("mewbeat chart request failed", error?.message);
+        return { status: "failed" };
+      });
+    let timer;
+    const slow = new Promise((resolve) => {
+      timer = setTimer(() => resolve(null), CHART_PENDING_MS);
+    });
+    const result = await Promise.race([charting, slow]).finally(() => clearTimer(timer));
+    if (!result) {
+      const reply = { type: "mewbeat_chart", ...echo, audioKey, difficulty, status: "pending" };
+      const queue = chartStore.queueOf?.(source.track);
+      if (queue) reply.queue = queue;
+      return reply;
+    }
     const reply = { type: "mewbeat_chart", ...echo, audioKey, difficulty, status: result.status };
     if (result.reason !== undefined) reply.reason = result.reason;
     if (result.status === "ready") {
@@ -176,12 +197,12 @@ function createMewbeatChannel({
   // only a preview was asked for). A song the bot already knows by audioKey
   // (soloTracks) is used as it is, without asking Lavalink again. Throws an
   // error with `reason` when the song can't be used.
-  async function prepareSong(guildId, { uri, source, audioKey: knownKey }, { chart = true } = {}) {
+  async function prepareSong(guildId, { uri, source, audioKey: knownKey }, { chart = true, priority = "play" } = {}) {
     const refuse = (reason) => Object.assign(new Error(reason), { reason });
     const known = typeof knownKey === "string" && knownKey && knownKey.length <= MAX_URI_LENGTH ? soloTracks.get(knownKey) : null;
     if (known?.track) {
       if (chart) {
-        Promise.resolve(chartStore.getCharts(known.track, known.node))
+        Promise.resolve(chartStore.getCharts(known.track, known.node, { priority }))
           .catch((error) => log.warning("mewbeat solo chart failed", error?.message));
       }
       return { audioKey: knownKey, track: known.info ?? trackInfoOf(known.track) };
@@ -207,7 +228,7 @@ function createMewbeatChannel({
     // Charting starts now so it is usually done by the time Play is pressed. A
     // song-select preview doesn't chart: browsing would analyse every row.
     if (chart) {
-      Promise.resolve(chartStore.getCharts(resolved.track, resolved.node))
+      Promise.resolve(chartStore.getCharts(resolved.track, resolved.node, { priority }))
         .catch((error) => log.warning("mewbeat solo chart failed", error?.message));
     }
     return { audioKey, track: info };
@@ -245,7 +266,12 @@ function createMewbeatChannel({
     setTimer,
     clearTimer,
     prepareTrack: async ({ guildId, uri, source }) => {
-      const prepared = await prepareSong(guildId, { uri, source });
+      // A room queues up to 20 songs; only the one a round waits for (the current one, or the next when none is queued) is a
+      // player's wait. The room's other songs are charted behind other servers' players and move up when their round starts
+      // and asks for them again.
+      const room = rooms.snapshot(guildId);
+      const waitedFor = !room || room.current?.uri === uri || room.queue.length === 0;
+      const prepared = await prepareSong(guildId, { uri, source }, { priority: waitedFor ? "play" : "background" });
       const entry = soloTracks.get(prepared.audioKey);
       if (entry) {
         Promise.resolve()
