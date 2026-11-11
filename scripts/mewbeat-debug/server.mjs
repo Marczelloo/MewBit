@@ -17,17 +17,20 @@ import { fileURLToPath } from "node:url";
 const PORT = Number(process.env.PORT) || 5180;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../..");
-const DATA = join(REPO, ".mewbeat-debug/data");
-const PREVIEW = join(REPO, ".mewbeat-preview");
+// The songs may live in another checkout than the code (a worktree has the generator, the main checkout the data):
+// MEWBEAT_DEBUG_DATA names that checkout's root.
+const DATA_REPO = process.env.MEWBEAT_DEBUG_DATA ? resolve(process.env.MEWBEAT_DEBUG_DATA) : REPO;
+const DATA = join(DATA_REPO, ".mewbeat-debug/data");
+const PREVIEW = join(DATA_REPO, ".mewbeat-preview");
 const PUBLIC = join(HERE, "public");
 const CHARTS = join(REPO, "helpers/mewbeat/charts") + sep;
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const SNAPSHOTS = ["v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v29"];
 const PREVIEW_PREFIX = "preview:";
 const PLAYED_PREFIX = "played:";
-const BOT_DATA = join(REPO, "helpers/data/mewbeat");
+const BOT_DATA = join(DATA_REPO, "helpers/data/mewbeat");
 const BOT_CHARTS = join(BOT_DATA, "charts");
-const PLAYED_CHARTS = join(REPO, ".mewbeat-debug/played-charts");
+const PLAYED_CHARTS = join(DATA_REPO, ".mewbeat-debug/played-charts");
 const SHA1 = /^[0-9a-f]{40}$/;
 // <sha1 of the audio key>.<label>.json, the label being the version, then the generator flags: v31 or v31-density-holds.
 const CHART_FILE = /^([0-9a-f]{40})\.(v\d+(?:-[A-Za-z0-9_-]+)?)\.json$/;
