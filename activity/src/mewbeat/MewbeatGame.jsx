@@ -1332,8 +1332,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       onPreview={touring ? undefined : previewSong}
       onUnlockAudio={touring ? undefined : unlockPreview}
       onSelected={setPickedSong}
-      modifiers={playerModifiers}
-      onModifiers={touring ? undefined : saveModifiers}
+      modifiers={touring ? NO_MODIFIERS : playerModifiers}
+      onModifiers={touring ? NOOP : saveModifiers}
       onModifiersOpen={setModifiersOpen}
     />
   ) : null;

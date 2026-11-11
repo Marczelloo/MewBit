@@ -80,7 +80,7 @@ export default function ModifierPicker({ value, onChange, mode = "solo", onOpenC
 
   return (
     <>
-      <div className="mb-modbar" role="group" aria-label="Modifiers">
+      <div className="mb-modbar" role="group" aria-label="Modifiers" data-tour="modifiers">
         <span className="mb-modbar-label">Modifiers</span>
         <div className="mb-modbar-chips">
           {barGroups.map(({ id: groupId, label }) => (

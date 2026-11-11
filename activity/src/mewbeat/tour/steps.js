@@ -103,6 +103,16 @@ export const TOUR_STEPS = [
     count: null, view: "select", settings: null, also: null, primary: "Next", secondary: "Skip",
   },
   {
+    id: "after-modifiers", target: "modifiers", side: "left", portrait: "explain",
+    say: "Want it harder? Pick modifiers here, like One Life, Ghost Notes or Strict Timing. Most raise your score multiplier, and your board entry shows them. Faster and slower song are solo only.",
+    count: null, view: "select", settings: null, also: null, primary: "Next", secondary: "Skip",
+  },
+  {
+    id: "after-links", target: "search", side: "right", portrait: "talk",
+    say: "The search bar takes links too. Paste a YouTube, Spotify or SoundCloud link to one song. Songs over 20 minutes and live streams don't work.",
+    count: null, view: "select", settings: null, also: null, primary: "Next", secondary: "Skip",
+  },
+  {
     id: "after-report", target: "report", side: "left", portrait: "talk", menu: true,
     say: "A weird map or a bug? Report it here: pick the song you played and tell me where it went wrong. mewbeat is still growing, so things can break.",
     count: null, view: "select", settings: null, also: null, primary: "Got it", secondary: null,
