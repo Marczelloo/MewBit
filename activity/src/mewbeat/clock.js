@@ -105,9 +105,16 @@ export function createSongClock(
     return anchor.durationMs > 0 ? Math.min(time, anchor.durationMs) : time;
   }
 
+  // The song is playing and the clock has reached the end it is clamped to: it will not move on.
+  function atEnd(perfMs) {
+    if (!anchor || anchor.paused || !(anchor.durationMs > 0)) return false;
+    return rawAt(perfMs) >= anchor.durationMs;
+  }
+
   return {
     setAnchor,
     songTimeAt,
+    atEnd,
     audioKey: () => anchor?.audioKey ?? null,
     paused: () => Boolean(anchor?.paused),
   };
