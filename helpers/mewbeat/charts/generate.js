@@ -21,13 +21,14 @@ const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { localKeep, thinned } = require("./localThin");
 const { flagsKey, noMelodyKey, normalFlags, withFlags } = require("./flags");
+const { quietLookup } = require("./quiet");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sameCuts, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
 const { fillGaps } = require("./seams");
 const { figureTimes } = require("./figures");
 const { freePhrases, inFree } = require("./freeTime");
-const { holdFadeOut, thinFadeOut } = require("./fades");
+const { fadeOutOf, holdFadeOut, thinFadeOut } = require("./fades");
 const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
@@ -76,6 +77,7 @@ function analyse(raw, flags) {
     final: {}, // difficulty -> its finished notes (finalNotes)
     localKeep: null, // the share of moments each second keeps (keptShare)
     calm: undefined, // t -> how calm the music is, null with nothing to tell it from (calmOf)
+    quiet: new Map(), // threshold -> t -> whether the song plays quietly there (quietOf)
     rhythms: {}, // difficulty -> the moments the level below it is cut from (upperRhythm)
     oddsMemo: new Map(), // lane grammar table -> the cost of each mask by (gap, size, last masks) (laneSearch.js)
   };
@@ -336,6 +338,12 @@ function calmOf(ctx, diff) {
   return ctx.calm;
 }
 
+// Where the song plays quietly against its loud parts (quiet.js), once per threshold; null with no energy curve to read.
+function quietOf(ctx, rule) {
+  if (!ctx.quiet.has(rule.below)) ctx.quiet.set(rule.below, quietLookup(ctx.features, rule));
+  return ctx.quiet.get(rule.below);
+}
+
 // Moments selection.js chose as notes, each with a lane to hold its place (finish lays the lanes over the finished moments).
 function placed(chosen, trace) {
   const events = laneTheRest(chosen);
@@ -393,7 +401,15 @@ function plusNotes(ctx, diff) {
   const base = diffOf(ctx, "normal");
   const drawn = diff.plusHeard ? drawnMelodyOf(ctx, base) : null;
   const silent = drawn ? offPitch(scored, decodedNotesAt(ctx, melodyShiftOf(ctx, base, drawn)), ctx.features.drums, phrases, diff.plusHeard) : new Set();
-  const free = (m) => playable(ctx, m.t) && !silent.has(m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
+  // diff.plusCalmEnd (a flag): the quiet ending of a song (fades.js fadeOutOf, whether it falls or plays on at one loudness)
+  // takes no extra and no chord key: the level winds down on the notes it was built on
+  const ending = diff.plusCalmEnd ? fadeOutOf(ctx, diff.plusCalmEnd) : null;
+  const wound = (t) => ending !== null && t >= ending.startMs;
+  const free = (m) => playable(ctx, m.t) && !silent.has(m.t) && !wound(m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
+  // diff.plusCalm (a flag): where the song plays quietly against its loud parts (quiet.js), null with no energy to read
+  const quietAt = diff.plusCalm ? quietOf(ctx, diff.plusCalm) : null;
+  const soundAt = quietAt ? new Map(wanted.map((m) => [m.t, m.score])) : null;
+  const gone = new Set(); // the times of the extras that give way there
   // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left (not with
   // keepNormalHolds.fullRoom, flag hellHolds: where every hold of Hard counts, that is as much as a tenth of the song)
   const heldShare = (phrase) => held.reduce((sum, h) => sum + Math.max(0, Math.min(h.t + h.len, phrase.endMs) - Math.max(h.t, phrase.startMs)), 0) / Math.max(1, phrase.endMs - phrase.startMs);
@@ -417,13 +433,24 @@ function plusNotes(ctx, diff) {
     const heard = wanted.slice(lowerBound(scoredTimes, fromMs), lowerBound(scoredTimes, toMs)).filter(free);
     const candidates = copy ? copy.notes.filter(free).map((n) => ({ t: n.t, s: 0.5, score: Infinity, source: "copy" })) : heard;
     const take = Math.min(room, most);
-    const chosen = take === 0 ? [] : diff.plusFigures ? plusFigures(candidates, occupied, take, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, take, diff, ctx.timing);
-    for (const m of chosen) occupied.splice(lowerBound(occupied, m.t), 0, m.t);
-    if (dense) keyed.push(...chordKeys(normal, scored, scoredTimes, fromMs, toMs, Math.min(room - chosen.length, most), ctx.timing));
-    extras.push(...placed(chosen, null));
+    const picked = take === 0 ? [] : diff.plusFigures ? plusFigures(candidates, occupied, take, diff, ctx.timing, fromMs, toMs) : plusMoments(candidates, occupied, take, diff, ctx.timing);
+    for (const m of picked) occupied.splice(lowerBound(occupied, m.t), 0, m.t);
+    // diff.plusCalm: in the quiet part of a phrase the extras number at most plusCalm.share of the moments the level is built on
+    // plays there. The ones over that give way, the weakest sound first, and nothing takes their room: the phrases after it
+    // are picked as if they played, a repeat still copies them (its own part may be loud), and the room does not go to chord
+    // keys. So the loud parts play what they played.
+    if (quietAt) {
+      const calm = picked.filter((m) => quietAt(m.t));
+      const built = moments.slice(lowerBound(moments, fromMs), lowerBound(moments, toMs)).filter(quietAt).length;
+      const calmMost = Math.ceil(diff.plusCalm.share * built);
+      const sound = (m) => soundAt.get(m.t) ?? -Infinity;
+      for (const m of calm.sort((a, b) => sound(b) - sound(a) || a.t - b.t).slice(calmMost)) gone.add(m.t);
+    }
+    if (dense) keyed.push(...chordKeys(normal, scored, scoredTimes, fromMs, toMs, Math.min(room - picked.length, most), ctx.timing).filter((n) => !wound(n.t)));
+    extras.push(...placed(picked, null));
   });
   const key = (n) => `${n.t}:${n.lane}`;
-  const all = [...normal, ...extras, ...keyed].sort(byTime);
+  const all = [...normal, ...extras.filter((n) => !gone.has(n.t)), ...keyed].sort(byTime);
   const sustained = new Set(normal.filter((n) => n.len > 0).map(key));
   if (!diff.plusHolds) return { notes: all, sustained, protect: new Set(moments) };
   // diff.plusHolds (flag hardHolds): the level's own holds on top of the ones it was built on, as a level charted from the
