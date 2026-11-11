@@ -40,10 +40,11 @@ export function fetchActivityState({ guildId, accessToken }) {
   return request(`/api/activity/state?guildId=${encodeURIComponent(guildId)}`, {}, accessToken);
 }
 
-export function searchActivity({ guildId, accessToken, query, source, exact = false, signal }) {
+// `game` asks for the song select's search (ranked for songs to play, links resolved, unplayable results marked).
+export function searchActivity({ guildId, accessToken, query, source, exact = false, game = false, signal }) {
   return request(
     "/api/activity/search",
-    { method: "POST", body: JSON.stringify({ guildId, query, source, exact }), signal },
+    { method: "POST", body: JSON.stringify({ guildId, query, source, exact, ...(game ? { game: true } : null) }), signal },
     accessToken
   );
 }

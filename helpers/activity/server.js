@@ -58,6 +58,8 @@ const { cleanTrackMetadata, getVariantKinds } = require("../lavalink/trackNormal
 const Log = require("../logs/log");
 const { markAlive, releaseSession, startHeartbeat } = require("./socketLifecycle");
 const { createMewbeatChannel } = require("../mewbeat/activityChannel");
+const { MAX_LINK_LENGTH, parseSongLink } = require("../mewbeat/songLink");
+const { playIssueOf, searchGameSongs, searchSongLink } = require("../mewbeat/songSearch");
 const { isPrivatePlace, isValidPrivatePlace } = require("../mewbeat/places");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { chartStore } = require("../mewbeat/chartStore");
@@ -926,6 +928,24 @@ function serializeActivitySearchResults(tracks, query) {
   });
 }
 
+// The song select's results (the game asks with `game: true`). Like the list above, but ranked by songSearch, with
+// each result's `playIssue` ("too_long", "stream": it is listed, and cannot be played) and `searchVia`. Charts are only
+// looked up, so a search starts no work.
+function serializeGameSearchResults(tracks) {
+  const chartInfo = mewbeatChannel.chartInfoOf(tracks);
+  return tracks.map((track, index) => {
+    const serialized = serializeTrack(track);
+    return {
+      ...serialized,
+      playQuery: serialized.uri || `${serialized.title} ${serialized.author}`,
+      audioKey: chartInfo[index].audioKey,
+      stars: chartInfo[index].stars,
+      playIssue: track.playIssue === undefined ? playIssueOf(track) : track.playIssue,
+      ...(track.searchVia ? { searchVia: track.searchVia } : null),
+    };
+  });
+}
+
 // Matches from the user's own library, answered without Lavalink so the
 // panel can show them while the provider search is still running.
 function searchActivityLibrary(identityId, guildId, query) {
@@ -1484,9 +1504,35 @@ async function searchActivitySimilar(title, author) {
   });
 }
 
-async function searchActivityTracks(query, preferredSource, { exact = false } = {}) {
+// The song select's search: a pasted link loads that song (or lists the playlist), anything else is a text search.
+async function searchGameTracks(poru, query, { exact = false } = {}) {
+  const text = String(query ?? "").trim();
+  const link = parseSongLink(text);
+  if (link) {
+    const found = await searchSongLink(poru, link);
+    return { tracks: serializeGameSearchResults(found.tracks), correction: null, suggestions: [], link: found.link };
+  }
+  const normalizedQuery = limitText(text, 200);
+  const result = await searchGameSongs(poru, normalizedQuery, { exact });
+  return {
+    tracks: serializeGameSearchResults(result.tracks),
+    correction: result.correction ? { query: result.correction, original: normalizedQuery } : null,
+    suggestions: result.suggestions,
+  };
+}
+
+async function searchActivityTracks(query, preferredSource, { exact = false, game = false } = {}) {
   const poru = getPoru();
   if (!poru) throw Object.assign(new Error("Lavalink is still connecting."), { statusCode: 503 });
+
+  if (game) {
+    try {
+      return await searchGameTracks(poru, String(query ?? "").slice(0, MAX_LINK_LENGTH), { exact });
+    } catch (error) {
+      // The shared search below still answers when the game's own search breaks.
+      Log.warning("game song search failed, using the shared search", error?.message);
+    }
+  }
 
   const selectedSource = toSource(preferredSource);
   const normalizedQuery = limitText(query, 200);
@@ -1748,7 +1794,7 @@ function createActivityServer(client) {
         const body = await readJson(request);
         const guildId = limitText(body.guildId || config.devGuildId, 80);
         await authenticateRequest(client, request, guildId, config);
-        const result = await searchActivityTracks(body.query, body.source, { exact: body.exact === true });
+        const result = await searchActivityTracks(body.query, body.source, { exact: body.exact === true, game: body.game === true });
         return sendJson(response, 200, { ok: true, ...result }, config);
       }
 
