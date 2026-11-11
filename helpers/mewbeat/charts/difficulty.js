@@ -311,6 +311,19 @@ const PLUS_CALM_END = { loud: FADE_OUT.loud, from: FADE_OUT.from, quiet: FADE_OU
 // short ones. Measured in bars because a rule over one second (1.4 times the denser side) cut MEGALOVANIA's opening riff
 // differently on each repeat, a figure being uneven inside its bar; over 1.4 leaves 1.45 / 1.92 on Normal, 1.5 1.81 / 2.07.
 const CALM_SPOTS = { below: 0.65, windowBeats: 4, sideBeats: 12, minSideBeats: 4, most: 6, over: 1.3 };
+// generate.js playedNotes, noise.js (flag noNoise): read every `hopMs` over `windowMs`, a place is no music when `minSounds`
+// sounds or more sit under `onGrid` of the grid's quarter lines and the decoder finds under `pitched` notes a second there.
+// The user, 2026-11-11: noises that are no notes and no vocals get mapped with blocks, a creator's intro or outro too.
+// The control is people's charts: on the 80 corpus songs the rule calls 109 s of 10788 noise (1.0%, 102 s of it in the
+// first or last 12 s) and people play 11 of their 31799 Normal notes there (Hard 22 of 49574), where our Normal played 62
+// moments, Hard 77, Hell 86. F1 against people .7907 -> .7911 on Normal, .8040 -> .8043 on Hard, .7303 -> .7308 on Easy.
+// On the bot's 98 songs: 196 s of 20262 on 48 songs (56 s of it away from the ends), Normal -264 moments (0.3%), Easy
+// -160, Hard -356, Hell -449. Against the stretches people marked as no part of the song on SponsorBlock (27 of the 98
+// videos have some, 320 s; most are silent endings we never charted): of the 309 notes Normal plays in them the rule
+// takes 34. It finds the noise before a song (King Gnu AIZO 0:00-0:06, 17 notes) and cannot find a creator's outro over a
+// music bed (youtube:CHENRaquRHo 4:30-5:05, 56 notes; youtube:wjOj_6cMGEY 13:31-14:06, 146): that is music by every
+// measure here. Looser numbers (onGrid .15, pitched 2) take in stretches people do play (0.72 notes/s against 0.13).
+const NO_NOISE = { windowMs: 4000, hopMs: 1000, minSounds: 8, onGrid: 0.1, pitched: 1 };
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -746,6 +759,7 @@ module.exports = {
   NORMAL_HOLDS,
   PITCH_LANES,
   CALM_SPOTS,
+  NO_NOISE,
   PLUS_CALM,
   PLUS_CALM_END,
   PLUS_FIGURES,
