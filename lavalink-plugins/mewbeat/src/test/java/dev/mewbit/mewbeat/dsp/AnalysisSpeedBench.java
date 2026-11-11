@@ -72,6 +72,92 @@ class AnalysisSpeedBench {
         return sorted[sorted.length / 2];
     }
 
+    /** The transform as it was before the per-stage twiddle tables, kept as the reference to time and compare against. */
+    private static void referenceTransform(int size, float[] cos, float[] sin, int[] reversed, float[] re, float[] im) {
+        for (int i = 0; i < size; i++) {
+            int j = reversed[i];
+            if (j > i) {
+                float t = re[i];
+                re[i] = re[j];
+                re[j] = t;
+                t = im[i];
+                im[i] = im[j];
+                im[j] = t;
+            }
+        }
+        for (int span = 2; span <= size; span <<= 1) {
+            int half = span >> 1;
+            int step = size / span;
+            for (int start = 0; start < size; start += span) {
+                for (int j = 0, k = 0; j < half; j++, k += step) {
+                    float wr = cos[k];
+                    float wi = -sin[k];
+                    int a = start + j;
+                    int b = a + half;
+                    float tr = re[b] * wr - im[b] * wi;
+                    float ti = re[b] * wi + im[b] * wr;
+                    re[b] = re[a] - tr;
+                    im[b] = im[a] - ti;
+                    re[a] += tr;
+                    im[a] += ti;
+                }
+            }
+        }
+    }
+
+    @Test
+    void fftAgainstReference() {
+        assumeTrue("true".equals(System.getProperty("mewbeat.bench")), "set -Dmewbeat.bench=true to run");
+        for (int size : new int[] {1024, 4096}) {
+            float[] cos = new float[size / 2];
+            float[] sin = new float[size / 2];
+            for (int k = 0; k < size / 2; k++) {
+                double angle = 2 * Math.PI * k / size;
+                cos[k] = (float) Math.cos(angle);
+                sin[k] = (float) Math.sin(angle);
+            }
+            int[] reversed = new int[size];
+            int bits = Integer.numberOfTrailingZeros(size);
+            for (int i = 0; i < size; i++) {
+                reversed[i] = Integer.reverse(i) >>> (32 - bits);
+            }
+            Fft fft = new Fft(size);
+            java.util.Random random = new java.util.Random(7);
+            float[] source = new float[size];
+            for (int i = 0; i < size; i++) {
+                source[i] = random.nextFloat() - 0.5f;
+            }
+            float[] re = new float[size];
+            float[] im = new float[size];
+            int rounds = 40_000;
+            long reference = 0;
+            long current = 0;
+            for (int repeat = 0; repeat < 5; repeat++) {
+                long start = System.nanoTime();
+                for (int r = 0; r < rounds; r++) {
+                    System.arraycopy(source, 0, re, 0, size);
+                    Arrays.fill(im, 0);
+                    referenceTransform(size, cos, sin, reversed, re, im);
+                }
+                reference = System.nanoTime() - start;
+                float[] referenceRe = re.clone();
+                float[] referenceIm = im.clone();
+                start = System.nanoTime();
+                for (int r = 0; r < rounds; r++) {
+                    System.arraycopy(source, 0, re, 0, size);
+                    Arrays.fill(im, 0);
+                    fft.transform(re, im);
+                }
+                current = System.nanoTime() - start;
+                if (!Arrays.equals(referenceRe, re) || !Arrays.equals(referenceIm, im)) {
+                    throw new AssertionError("transform differs from the reference at size " + size);
+                }
+            }
+            System.out.printf("BENCH fft %d: reference %.2f us, current %.2f us per transform%n", size,
+                    reference / 1000.0 / rounds, current / 1000.0 / rounds);
+        }
+    }
+
     @Test
     void fourMinutesAndTwentyMinutes() {
         assumeTrue("true".equals(System.getProperty("mewbeat.bench")), "set -Dmewbeat.bench=true to run");
