@@ -186,6 +186,19 @@ test("a ready reply notifies listeners and releases the dedupe key", () => {
   assert.equal(heard.length, 1);
 });
 
+test("a pending reply passes the bot's place in line on to listeners, and leaves it out when there is none", () => {
+  const { link } = setup();
+  const heard = [];
+  link.onChart((r) => heard.push(r));
+  link.start();
+  link.requestChart("k", "normal");
+  const queue = { step: "analysis", ahead: 2, running: false };
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "pending", reason: "queued", queue });
+  link.handle({ type: "mewbeat_chart", audioKey: "k", difficulty: "normal", status: "pending", reason: "queued" });
+  assert.deepEqual(heard[0].queue, queue);
+  assert.equal("queue" in heard[1], false);
+});
+
 test("a pending reply resends the same request after 3000 ms and stays deduped", () => {
   const { link, scheduler, sent } = setup();
   const heard = [];

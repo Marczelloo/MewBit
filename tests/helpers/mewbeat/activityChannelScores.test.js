@@ -68,7 +68,7 @@ describe("mewbeat channel scores", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ charts = makeCharts(), playback = null, register = true, log, durationMs = 200000, walks } = {}) {
+  function setup({ charts = makeCharts(), playback = null, register = true, log, durationMs = 200000, walks, queue } = {}) {
     let clock = 1_000;
     const now = () => (clock += 10);
     const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now });
@@ -96,6 +96,7 @@ describe("mewbeat channel scores", () => {
           peeked.push(candidate);
           return charts && audioKeyOf(candidate) === KEY ? { status: "ready", charts } : null;
         },
+        queueOf: queue === undefined ? undefined : () => queue,
       },
       now,
       soloTracks,
@@ -860,6 +861,19 @@ describe("mewbeat channel scores", () => {
       const { channel } = setup({ charts: null });
       assert.deepStrictEqual(await submit(channel, statsMessage()), { type: "mewbeat_song_stats", id: "t1", status: "ok", stats: null });
       assert.strictEqual((await submit(setup().channel, statsMessage({ audioKey: "youtube:other:1" }))).stats, null);
+    });
+
+    it("says where the song stands in line while its charts are still being made, and only then", async () => {
+      const place = { step: "melody", ahead: 0, running: true };
+      const waiting = setup({ charts: null, queue: place });
+      assert.deepStrictEqual(await submit(waiting.channel, statsMessage()), { type: "mewbeat_song_stats", id: "t1", status: "ok", stats: null, queue: place });
+      // Nothing pending for the song (queueOf answers null), or a song the bot does not know: no queue key.
+      assert.deepStrictEqual(await submit(setup({ charts: null, queue: null }).channel, statsMessage()), { type: "mewbeat_song_stats", id: "t1", status: "ok", stats: null });
+      assert.deepStrictEqual(await submit(waiting.channel, statsMessage({ audioKey: "youtube:other:1" })), { type: "mewbeat_song_stats", id: "t1", status: "ok", stats: null });
+      // A charted song carries stats and no queue, even when the store still has a line entry for it.
+      const charted = await submit(setup({ queue: place }).channel, statsMessage());
+      assert.strictEqual(charted.queue, undefined);
+      assert.strictEqual(charted.stats.easy.stars, 1.5);
     });
 
     it("refuses a bad key and a bad id", async () => {

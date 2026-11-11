@@ -102,6 +102,9 @@
 
 /* the four levels of the song on deck: a tile sets the player's level, for a spectator it only picks the board below */
 .mb-lobby-levels { display: flex; flex-direction: column; gap: 8px; }
+/* the levels label and, while the song waits for its charts, where it stands in line and for how long */
+.mb-lobby-lvtop { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.mb-lobby-wait { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mb-muted); font-size: 12px; }
 .mb-lobby .mb-ss-diff:disabled { cursor: default; }
 .mb-lobby .mb-ss-diff { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 6px; min-width: 0; padding: 9px 12px; }
 .mb-lobby .mb-ss-diff > .mb-ss-bar,
@@ -251,7 +254,7 @@
   .mb-tl-act { width: 22px; height: 22px; }
 
   .mb-lobby-levels { gap: 6px; }
-  .mb-lobby-lvhead { display: none; }
+  .mb-lobby-lvtop { display: none; }
   .mb-lobby .mb-ss-diffs { gap: 6px; }
   .mb-lobby .mb-ss-diff { gap: 1px 6px; padding: 6px 7px; border-radius: 10px; }
   .mb-lobby .mb-ss-diff > b { font-size: 13px; }

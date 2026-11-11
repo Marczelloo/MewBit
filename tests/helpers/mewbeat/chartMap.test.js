@@ -12,6 +12,7 @@ const STARS = { easy: { stars: 1.2, notes: 100 }, normal: { stars: 2.4, notes: 2
 // A chart store whose charting waits until the test settles it.
 function setup({ maps = {}, perPlayerClock = NOW } = {}) {
   const peeked = new Map(); // identifier -> peekCharts result
+  const queues = new Map(); // identifier -> what queueOf answers
   const getCalls = [];
   const settlers = [];
   let clock = perPlayerClock;
@@ -21,6 +22,7 @@ function setup({ maps = {}, perPlayerClock = NOW } = {}) {
       settlers.push((result) => resolve(result));
     }),
     peekCharts: (track) => peeked.get(track.info.identifier) ?? null,
+    queueOf: (track) => queues.get(track.info.identifier) ?? null,
     summaryReader: () => (track) => (peeked.get(track.info.identifier)?.status === "ready" ? STARS : null),
   };
   const resolveTrack = async (_guildId, query) => {
@@ -38,7 +40,7 @@ function setup({ maps = {}, perPlayerClock = NOW } = {}) {
   });
   const ask = (userId, identifier, extra = {}) => channel.handle("g", userId, { type: "mewbeat_chart_map", id: `m-${identifier}`, uri: `https://youtu.be/${identifier}`, source: "youtube", ...extra });
   const tick = () => new Promise((resolve) => setImmediate(resolve));
-  return { channel, ask, peeked, getCalls, settlers, tick, advance: (ms) => { clock += ms; } };
+  return { channel, ask, peeked, queues, getCalls, settlers, tick, advance: (ms) => { clock += ms; } };
 }
 
 describe("mewbeat chart this map", () => {
@@ -48,6 +50,28 @@ describe("mewbeat chart this map", () => {
     assert.deepStrictEqual(reply, { type: "mewbeat_chart_map", id: "m-a", status: "ok", state: "queued", audioKey: keyOf("a") });
     await tick();
     assert.deepStrictEqual(getCalls, [{ identifier: "a", node: "node-1", options: { priority: "background", retry: false } }]);
+  });
+
+  it("tells where the song stands in line on every queued answer, and leaves the key out when nothing is pending", async () => {
+    const { ask, queues, tick } = setup();
+    const first = await ask("u", "a");
+    assert.strictEqual("queue" in first, false);
+    await tick();
+    queues.set("a", { step: "analysis", ahead: 2, running: false });
+    const behind = await ask("u", "a");
+    assert.strictEqual(behind.state, "queued");
+    assert.deepStrictEqual(behind.queue, { step: "analysis", ahead: 2, running: false });
+    queues.set("a", { step: "charts", ahead: 0, running: true });
+    assert.deepStrictEqual((await ask("u", "a")).queue, { step: "charts", ahead: 0, running: true });
+    queues.delete("a");
+    assert.strictEqual("queue" in (await ask("u", "a")), false);
+  });
+
+  it("does not add a queue to a ready answer", async () => {
+    const { ask, peeked, queues } = setup();
+    peeked.set("a", { status: "ready" });
+    queues.set("a", { step: "charts", ahead: 0, running: true });
+    assert.strictEqual("queue" in (await ask("u", "a")), false);
   });
 
   it("is idempotent: asking again while it runs queues nothing new, and it answers ready with the stats once charted", async () => {

@@ -164,7 +164,7 @@ export function createMewbeatLink({
   }
 
   function handleChart(payload) {
-    const { audioKey, difficulty, status: chartStatus, reason, chart, best } = payload;
+    const { audioKey, difficulty, status: chartStatus, reason, chart, best, queue } = payload;
     const key = chartKey(audioKey, difficulty);
     if (!inflightCharts.has(key)) return;
     if (audioKey !== songClock.audioKey()) {
@@ -177,7 +177,8 @@ export function createMewbeatLink({
     } else {
       releaseChart(key);
     }
-    emit(chartListeners, { audioKey, difficulty, status: chartStatus, reason, chart, best });
+    // A pending reply carries where the song stands in line (`queue`), for the waiting screen.
+    emit(chartListeners, queue === undefined ? { audioKey, difficulty, status: chartStatus, reason, chart, best } : { audioKey, difficulty, status: chartStatus, reason, chart, best, queue });
   }
 
   function handle(payload) {

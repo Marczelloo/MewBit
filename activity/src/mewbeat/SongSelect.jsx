@@ -2,6 +2,8 @@ import { MagnifyingGlass, Play, Plus, Sparkle, SpeakerHigh, SpeakerSlash } from 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
 import { describeLinkError, describeLinkNote, describePlayIssue, listedTracks, playIssueOf } from "./searchResults.js";
+import ChartWaitLine from "./ChartWaitLine.jsx";
+import { createChartWait } from "./chartWait.js";
 import LevelBoard from "./LevelBoard.jsx";
 import ModifierPicker from "./ModifierPicker.jsx";
 import PlayerPanel from "./PlayerPanel.jsx";
@@ -294,6 +296,8 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   // "Chart this map": { id, row: { key, audioKey, uri, source }, status: "running" | "error", error?, startedAt, retry }
   // for the song being charted, and what finished jobs added to rows (key -> { audioKey, stars, bests }).
   const [chartJob, setChartJob] = useState(null);
+  // Where the song being charted stands in the bot's line and for how long; only ChartWaitLine repaints as it ticks, never the list.
+  const [chartWait] = useState(createChartWait);
   const [charted, setCharted] = useState({});
   const [sort, setSort] = useState("recent");
   const [direction, setDirection] = useState("desc");
@@ -390,7 +394,11 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     if (!chartJob || chartJob.status !== "running" || chartJob.row.key !== activeKey) return undefined;
     let cancelled = false;
     let timer = null;
-    const fail = (error) => setChartJob((job) => (job?.id === chartJob.id ? { ...job, status: "error", error } : job));
+    chartWait.begin(chartJob.row.key, { at: chartJob.startedAt, restart: chartJob.retry });
+    const fail = (error) => {
+      chartWait.end();
+      setChartJob((job) => (job?.id === chartJob.id ? { ...job, status: "error", error } : job));
+    };
     const ask = async (retry) => {
       let reply;
       try {
@@ -403,11 +411,15 @@ export default function SongSelect({ context, request, player, defaultDifficulty
       if (reply?.status === "ok" && reply.state === "ready") {
         const fields = chartedFields(reply);
         if (!fields) return fail(describeChartError("failed"));
+        chartWait.end();
         setCharted((current) => ({ ...current, [chartJob.row.key]: fields }));
         setChartJob((job) => (job?.id === chartJob.id ? null : job));
       } else if (reply?.status === "ok") {
         if (Date.now() - chartJob.startedAt > CHART_POLL_MAX_MS) fail(describeChartError("timeout"));
-        else timer = window.setTimeout(() => ask(false), CHART_POLL_MS);
+        else {
+          chartWait.report(chartJob.row.key, reply.queue); // no state change here: the list does not render again
+          timer = window.setTimeout(() => ask(false), CHART_POLL_MS);
+        }
       } else {
         fail(describeChartError(reply?.reason));
       }
@@ -417,7 +429,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [chartJob, activeKey, request]);
+  }, [chartJob, activeKey, request, chartWait]);
 
   const startChart = useCallback((row, retry = false) => {
     setChartJob({ id: Date.now(), row: { key: row.key, audioKey: row.audioKey, uri: row.uri, source: row.source }, status: "running", startedAt: Date.now(), retry });
@@ -654,7 +666,11 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                 {chartError ? (
                   <p className="mb-ss-error" role="alert">{chartError}</p>
                 ) : (
-                  <p className="mb-ss-note" role="status">{chartRunning ? "Charting this map. It takes about half a minute; the stars appear here when it is done." : "Not charted yet. Charting takes about half a minute."}</p>
+                  chartRunning ? (
+                    <p className="mb-ss-note"><ChartWaitLine store={chartWait} fallback="Charting this map. It takes about half a minute; the stars appear here when it is done." /></p>
+                  ) : (
+                    <p className="mb-ss-note" role="status">Not charted yet. Charting takes about half a minute.</p>
+                  )
                 )}
               </div>
             ) : player && selectedStars !== null ? null : (

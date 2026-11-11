@@ -983,7 +983,12 @@ function createMewbeatChannel({
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat song stats.");
     if (!scoreStore) return fail("unavailable");
     if (typeof audioKey !== "string" || audioKey.length > MAX_URI_LENGTH) return fail("bad_request");
-    return { type: "mewbeat_song_stats", id, status: "ok", stats: statsOfSong(audioKey, userId) };
+    const reply = { type: "mewbeat_song_stats", id, status: "ok", stats: statsOfSong(audioKey, userId) };
+    // A song whose charts are still being made says where it stands in line (the room lobby shows it under the levels).
+    const track = reply.stats === null ? soloTracks.get(audioKey)?.track : null;
+    const queue = track ? chartStore.queueOf?.(track) : null;
+    if (queue) reply.queue = queue;
+    return reply;
   }
 
   // Search results: each track's audio key and, when that song already has charts, its stars per level (else null). The
@@ -1003,6 +1008,13 @@ function createMewbeatChannel({
   // seconds) or "ready" (with the stats of the song), or an error with a reason. `retry: true` after a failure tries again.
   // A player may have CHART_MAP_PER_PLAYER maps queued at once; a map somebody else already queued is shared.
   const chartingMaps = new Map(); // audioKey -> { users: Set, outcome: null | { status, reason }, at }
+  // The "still going" answer; it says where the song stands in line (chartStore.queueOf) once the work has started.
+  function queuedReply(id, audioKey, track) {
+    const reply = { type: "mewbeat_chart_map", id, status: "ok", state: "queued", audioKey };
+    const queue = chartStore.queueOf?.(track);
+    if (queue) reply.queue = queue;
+    return reply;
+  }
   async function chartMap(guildId, userId, message) {
     const { id, uri, source } = message;
     const fail = (reason) => ({ type: "mewbeat_chart_map", id, status: "error", reason });
@@ -1032,7 +1044,7 @@ function createMewbeatChannel({
     if (current?.outcome?.status === "failed" && !retry) return fail(current.outcome.reason);
     if (current && !current.outcome) {
       current.users.add(userId);
-      return { type: "mewbeat_chart_map", id, status: "ok", state: "queued", audioKey };
+      return queuedReply(id, audioKey, entry.track);
     }
 
     const queued = [...chartingMaps.values()].filter((other) => !other.outcome && other.users.has(userId)).length;
@@ -1057,7 +1069,7 @@ function createMewbeatChannel({
       .finally(() => {
         record.at = now();
       });
-    return { type: "mewbeat_chart_map", id, status: "ok", state: "queued", audioKey };
+    return queuedReply(id, audioKey, entry.track);
   }
 
   return {

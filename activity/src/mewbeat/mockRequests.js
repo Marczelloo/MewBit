@@ -248,9 +248,14 @@ function ranking({ scope }) {
 }
 
 // The four levels of one song, as the room lobby's tiles want them: stars, notes and the player's best.
+// The uncharted song (queued in the lobby with &charting=1) is being charted: no stats and a queue until CHART_MS has passed.
 function songStats({ audioKey }) {
   const song = SONGS.find((candidate) => audioKeyOf(candidate) === audioKey);
-  if (!song?.stars) return { status: "ok", stats: null };
+  if (!song) return { status: "ok", stats: null };
+  if (!song.stars) {
+    const elapsed = mockElapsed(audioKey);
+    return elapsed < CHART_MS ? { status: "ok", stats: null, queue: mockQueueAt(elapsed) } : { status: "ok", stats: chartedStats() };
+  }
   const stats = Object.fromEntries(LEVELS.map((level, i) => {
     const grade = song.grades[i];
     return [level, { stars: song.stars[i], notes: NOTES[level], best: grade ? { score: SCORE_BY_GRADE[grade], grade } : null }];
@@ -281,7 +286,20 @@ function reportRuns() {
 
 // "Chart this map" on the uncharted song: the first ask queues it, and it is ready CHART_MS later (so a few polls see
 // "queued"). The charted stars are the ones the mock hands out for it from then on; reset it with resetMockCharting().
-const CHART_MS = 9000;
+// While it waits, the replies carry the `queue` the bot sends (see chartStore.queueOf), stepping through two songs ahead,
+// one ahead, then the three steps of its own job, a few seconds each: every 4 s poll of song select shows a new line.
+const CHART_MS = 19000;
+const QUEUE_STEPS = [
+  [3500, { step: "analysis", ahead: 2, running: false }],
+  [7500, { step: "analysis", ahead: 1, running: false }],
+  [11000, { step: "analysis", ahead: 0, running: true }],
+  [15000, { step: "melody", ahead: 0, running: true }],
+  [CHART_MS, { step: "charts", ahead: 0, running: true }],
+];
+export function mockQueueAt(elapsedMs) {
+  const [, queue] = QUEUE_STEPS.find(([until]) => elapsedMs < until) ?? QUEUE_STEPS[QUEUE_STEPS.length - 1];
+  return { ...queue };
+}
 const CHARTED_STARS = [1.4, 2.6, 3.8, 5.0];
 const chartingSince = new Map(); // audioKey -> when the first ask came
 
@@ -289,16 +307,23 @@ export function resetMockCharting() {
   chartingSince.clear();
 }
 
+// Time since the first ask for the song (which starts the clock).
+function mockElapsed(key) {
+  const since = chartingSince.get(key) ?? Date.now();
+  chartingSince.set(key, since);
+  return Date.now() - since;
+}
+
+const chartedStats = () => Object.fromEntries(LEVELS.map((level, i) => [level, { stars: CHARTED_STARS[i], notes: NOTES[level], best: null }]));
+
 function chartMap({ audioKey, uri }) {
   const song = SONGS.find((candidate) => audioKeyOf(candidate) === audioKey || `https://mock.invalid/watch?v=${slug(candidate.title)}` === uri);
   if (!song) return { status: "error", reason: "not_found" };
   const key = audioKeyOf(song);
   if (song.stars) return { status: "ok", state: "ready", audioKey: key, stats: songStats({ audioKey: key }).stats };
-  const since = chartingSince.get(key) ?? Date.now();
-  chartingSince.set(key, since);
-  if (Date.now() - since < CHART_MS) return { status: "ok", state: "queued", audioKey: key };
-  const stats = Object.fromEntries(LEVELS.map((level, i) => [level, { stars: CHARTED_STARS[i], notes: NOTES[level], best: null }]));
-  return { status: "ok", state: "ready", audioKey: key, stats };
+  const elapsed = mockElapsed(key);
+  if (elapsed < CHART_MS) return { status: "ok", state: "queued", audioKey: key, queue: mockQueueAt(elapsed) };
+  return { status: "ok", state: "ready", audioKey: key, stats: chartedStats() };
 }
 
 // Suggestions (mewbeat_recs): one section of each kind, from the sample songs and a few that nobody charted. The

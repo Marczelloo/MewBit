@@ -160,6 +160,18 @@ test("songStats asks for the song's numbers and returns them", async () => {
   assert.deepEqual(sent[0], { type: "mewbeat_song_stats", audioKey: "song" });
 });
 
+test("songStats hands the song's place in line to onQueue, and null when the reply has none or fails", async () => {
+  const queue = { step: "charts", ahead: 0, running: true };
+  const heard = [];
+  const waiting = setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "ok", stats: null, queue } });
+  assert.equal(await waiting.store.songStats("song", { onQueue: (q) => heard.push(q) }), null);
+  const plain = setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "ok", stats: null } });
+  assert.equal(await plain.store.songStats("song", { onQueue: (q) => heard.push(q) }), null);
+  const failing = setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "error", reason: "unknown_song" } });
+  assert.equal(await failing.store.songStats("song", { onQueue: (q) => heard.push(q) }), null);
+  assert.deepEqual(heard, [queue, null, null]);
+});
+
 test("songStats gives null when the server has no numbers or the call fails", async () => {
   assert.equal(await setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "ok", stats: null } }).store.songStats("song"), null);
   assert.equal(await setup({ mewbeat_song_stats: { type: "mewbeat_song_stats", status: "error", reason: "unknown_song" } }).store.songStats("song"), null);
