@@ -8,6 +8,7 @@ import { createKeyRouter } from "./input.js";
 import { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { createTapTiming, nearestNote, runTimingOf } from "./calibration.js";
 import { createRun } from "./run.js";
+import { createEndWatch } from "./endWatch.js";
 import { speedOf } from "./modifiers.js";
 import { runRulesFor } from "./runSetup.js";
 import { quantizeHealth } from "./health.js";
@@ -362,6 +363,15 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       return "submitting";
     }
 
+    // A failing send (it can throw before it returns a promise) costs the player the ranking only, never the results.
+    function trySubmitRun(id, body) {
+      try {
+        return submitRun(id, body);
+      } catch {
+        return "error";
+      }
+    }
+
     // Drops the current run. A run that judged at least one note leaves its results. `finished`: it reached
     // the song's end, rather than being cut off. `discard`: the player abandoned it, so it leaves no results and
     // nothing is sent.
@@ -382,7 +392,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         const { events, fevers, presses, emptyPresses, modifiers, parts } = run.log();
         const id = ++summaryIdRef.current;
         const flags = { autoplay: runAutoplayRef.current, calibration: runCalibrationRef.current, difficultyChanged: run.flags.difficultyChanged };
-        const status = submitRun(id, { ...(submitExtraRef.current ?? {}), mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, presses, emptyPresses, modifiers, flags });
+        const status = trySubmitRun(id, { ...(submitExtraRef.current ?? {}), mode: modeRef.current, audioKey: meta.audioKey ?? null, difficulty: meta.difficulty, chartVersion: meta.chartVersion, events, fevers, presses, emptyPresses, modifiers, flags });
         setEndSummary({
           ...rest,
           id,
@@ -769,6 +779,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     let raf = 0;
     let lastPercent = -1;
     let lastTimeKey = "";
+    const endWatch = createEndWatch();
     const emptyFrame = { heardMs: 0, notes: [], lanesDown: [], flashes: [], feverActive: false };
     function frame() {
       raf = window.requestAnimationFrame(frame);
@@ -818,11 +829,18 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       if (run && current === "playing" && songMs !== null) {
         lastSongMsRef.current = songMs;
         const heardMs = run.heardTime(songMs);
-        const events = run.tick(songMs);
+        // The clock holds at the track's end: once it has stayed there the song is over, and the run settles
+        // whatever is left and finishes, even when its last note lies too close to the end to ever leave its window.
+        const over = endWatch.update(songClock.atEnd?.(now) === true, now);
+        const events = run.tick(songMs, { over });
         const outcome = events.length ? handleEvents(events, heardMs) : null;
         if (outcome === "end") {
-          endRun(true);
-          setPhase("ended");
+          // The phase moves on whatever the wrap-up does: a run dropped without it would leave the stage up for good.
+          try {
+            endRun(true);
+          } finally {
+            setPhase("ended");
+          }
           return;
         }
         if (outcome === "fail") {
@@ -832,6 +850,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         if (dirtyRef.current) flushHud(run, songMs);
         drawRun(heardMs);
       } else if (run && current === "paused") {
+        endWatch.reset();
         if (redrawRef.current && songMs !== null) drawRun(run.heardTime(songMs));
       } else {
         // A lost run's lanes keep their last frame while the CSS fades them out, then clear.

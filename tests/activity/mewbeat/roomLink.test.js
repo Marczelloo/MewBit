@@ -48,6 +48,7 @@ function setup({ loadFails = false } = {}) {
   const plays = [];
   const calls = [];
   const anchors = [];
+  let onEnded = () => {};
   const audio = {
     unlock: () => Promise.resolve(),
     stop: () => calls.push("stop"),
@@ -64,7 +65,10 @@ function setup({ loadFails = false } = {}) {
     align: (times) => calls.push(`align:${times.join(",")}`),
     durationMs: () => 200_000,
     songTimeAt: () => 0,
-    onEnded: () => () => {},
+    onEnded: (fn) => {
+      onEnded = fn;
+      return () => {};
+    },
   };
   const link = createRoomLink({
     send: (payload) => {
@@ -79,7 +83,7 @@ function setup({ loadFails = false } = {}) {
   });
   link.onAnchor((result) => anchors.push(result));
   link.start();
-  return { link, scheduler, sent, plays, calls, anchors };
+  return { link, scheduler, sent, plays, calls, anchors, fireEnded: () => onEnded() };
 }
 
 const member = (userId, extra = {}) => ({ userId, username: userId, avatarUrl: null, difficulty: "normal", ready: false, loaded: false, spectator: false, submitted: false, ...extra });
@@ -163,6 +167,19 @@ test("a round with silence starts its clock before the song and the sound after 
   env.scheduler.advance(5000);
   assert.equal(env.link.state().stage, "playing");
   assert.equal(env.link.songClock.paused(), false);
+});
+
+test("the audio ending in a round puts the song clock at its end, which the game finishes the run on", async () => {
+  const env = setup();
+  await loaded(env, { silenceMs: 2000 });
+  env.link.chartAccepted();
+  env.link.setRoom(snapshot({ phase: "countdown", silenceMs: 2000, members: loadedMe, startAt: 6000, serverNow: 1000 }), 0);
+  env.scheduler.advance(5000);
+  assert.equal(env.link.state().stage, "playing");
+  assert.equal(env.link.songClock.atEnd(0), false);
+  env.fireEnded();
+  assert.equal(env.link.state().stage, "ended");
+  assert.equal(env.link.songClock.atEnd(0), true);
 });
 
 test("a spectator who joins during the silence waits for the song with the others", async () => {

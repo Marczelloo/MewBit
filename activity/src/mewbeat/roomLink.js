@@ -216,7 +216,9 @@ export function createRoomLink({
   function start() {
     offEnded?.();
     offEnded = audio.onEnded?.(() => {
-      if (state.stage === "playing") setState({ stage: "ended" });
+      if (state.stage !== "playing") return;
+      soloClock.set({ ended: true });
+      setState({ stage: "ended" });
     });
     inner.start();
   }

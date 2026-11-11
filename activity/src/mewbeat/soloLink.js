@@ -17,14 +17,24 @@ export function createSoloClock(audio) {
   let paused = true;
   let positionMs = 0;
   let durationMs = 0;
+  let ended = false; // the audio said it played to its end
   const clamp = (ms) => (durationMs > 0 ? Math.min(ms, durationMs) : ms);
+  function songTimeAt(perfMs) {
+    if (!key) return null;
+    return clamp(paused ? positionMs : (audio.songTimeAt(perfMs) ?? positionMs));
+  }
+  // The song is playing and its audio is over: the audio said so, or the clock reached the end it is clamped to.
+  // The clock does not move on from there, so the game finishes the run on this (see run.tick's `over`).
+  function atEnd(perfMs) {
+    if (!key || paused) return false;
+    if (ended) return true;
+    return durationMs > 0 && songTimeAt(perfMs) >= durationMs;
+  }
   return {
     // Server anchors don't drive a solo run (the link still pings the server for status and charts).
     setAnchor: () => "ignore",
-    songTimeAt(perfMs) {
-      if (!key) return null;
-      return clamp(paused ? positionMs : (audio.songTimeAt(perfMs) ?? positionMs));
-    },
+    songTimeAt,
+    atEnd,
     audioKey: () => key,
     paused: () => paused,
     set(next) {
@@ -32,6 +42,8 @@ export function createSoloClock(audio) {
       if ("paused" in next) paused = next.paused;
       if ("positionMs" in next) positionMs = next.positionMs;
       if ("durationMs" in next) durationMs = next.durationMs;
+      // Any move of the clock starts a new stretch of song; only the audio's own report sets the flag.
+      ended = "ended" in next ? Boolean(next.ended) : false;
     },
   };
 }
@@ -251,7 +263,9 @@ export function createSoloLink({
     // Subscribed in start() and dropped in stop(): the audio outlives the link when the mode switches.
     offEnded?.();
     offEnded = audio.onEnded?.(() => {
-      if (state.stage === "playing") setState({ stage: "ended" });
+      if (state.stage !== "playing") return;
+      soloClock.set({ ended: true });
+      setState({ stage: "ended" });
     });
     inner.start();
   }

@@ -114,9 +114,14 @@ export function createRun({ chart, startSongMs, offsetMs = 0, autoplay = false, 
     return judge.release(lane, heardMs).map((result) => applyOutcome(result, heardMs));
   }
 
-  function tick(songMs) {
+  // `over`: the song's clock is held at the track's end and will never move on. Heard time then stands where it
+  // would be once every note was past its window, so what is still pending settles the way time passing would have
+  // settled it (an unpressed note is a miss, a held tail ends clean) and the run reaches its end. Without it a chart
+  // whose last note lies within the good window (plus the audio offset) of the track's end waits forever: the clock
+  // stops at the track's end, heard time stops short of the last note's window, and "end" is never reached.
+  function tick(songMs, { over = false } = {}) {
     lastSongMs = songMs;
-    const heardMs = heard(songMs);
+    const heardMs = over ? Math.max(heard(songMs), endAfterMs + 1) : heard(songMs);
     const events = [];
 
     // A lost run judges nothing more; whatever the judge has pending is left as it is.
