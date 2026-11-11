@@ -176,10 +176,13 @@ export function createSoloLink({
 
   // The game calls this once it accepted the chart and built its run (on the paused clock): only then does
   // the count-in start, so a chart the game ignored (another difficulty, a dropped song) never starts the audio.
-  function chartAccepted(chart) {
+  // `alignment.lagMs` is a measured per-song lag (audioAlignment.js; only when the player turned that setting on and the song's
+  // offset is known): it replaces the scan. Without it the scan runs as it always did.
+  function chartAccepted(chart, alignment = null) {
     if (state.stage !== "ready") return;
+    if (Number.isFinite(alignment?.lagMs) && audio.setLagMs) audio.setLagMs(alignment.lagMs);
     // In the background where the audio can: the scan of a whole song would stall the frames of the count-in.
-    if (chart?.notes) (audio.alignInBackground ?? audio.align)?.call(audio, chart.notes.map((note) => note.t));
+    else if (chart?.notes) (audio.alignInBackground ?? audio.align)?.call(audio, chart.notes.map((note) => note.t));
     countIn(-SONG_SILENCE_MS, true);
   }
 

@@ -74,6 +74,18 @@ describe("mewbeat settings validation", () => {
     }
   });
 
+  it("keeps per-song audio alignment off by default, accepts a boolean, and refuses anything else", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.audioAlign, false);
+    assert.strictEqual(normalizeSettings({}).audioAlign, false);
+    assert.strictEqual(validateSettingsPatch({ audioAlign: true }, DEFAULT_SETTINGS).audioAlign, true);
+    assert.strictEqual(validateSettingsPatch({ audioAlign: false }, DEFAULT_SETTINGS).audioAlign, false);
+    assert.strictEqual(normalizeSettings({ audioAlign: true }).audioAlign, true);
+    assert.strictEqual(normalizeSettings({ audioAlign: "on" }).audioAlign, false, "a bad stored value falls back");
+    for (const bad of ["on", 1, null]) {
+      assert.throws(() => validateSettingsPatch({ audioAlign: bad }, DEFAULT_SETTINGS), /alignment/);
+    }
+  });
+
   it("follows the tempo by default and accepts a fixed speed", () => {
     assert.strictEqual(DEFAULT_SETTINGS.tempoScroll, true);
     assert.strictEqual(validateSettingsPatch({ tempoScroll: false }, DEFAULT_SETTINGS).tempoScroll, false);

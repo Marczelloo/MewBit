@@ -75,6 +75,8 @@ function errorReply(message) {
 // song, seats, queue; or null); the channel only rate-limits it.
 // warmAudio(audioKey, track, node) starts rendering a room song's audio when it
 // is queued, so the round's loading window doesn't pay for a cold render.
+// audioOffset.lookup(audioKey) -> offset in ms or null (audioOffset.js) is added to the chart reply of a solo or room song as
+// `audioOffsetMs`; without it the field is absent.
 // tourSongs.state() (tourSongs.js) is what the first-run tour is told about its two songs: both warm, or null.
 // discover({ title, artist }, { anchor }) -> [song] finds new songs like one (recommendDiscover.js) for the suggestions
 // (recommendations.js); without it the suggestions are the player's own songs, the server's and the popular songs.
@@ -91,6 +93,7 @@ function createMewbeatChannel({
   postInvite,
   newInviteCode = () => randomBytes(8).toString("base64url"),
   warmAudio = () => {},
+  audioOffset = null,
   tourSongs = null,
   discover = null,
   listening = null,
@@ -129,6 +132,9 @@ function createMewbeatChannel({
     if (!DIFFICULTIES.includes(difficulty)) return errorReply("Unknown mewbeat difficulty.");
 
     let source = typeof audioKey === "string" ? soloTracks.get(audioKey) : null;
+    // Solo and room songs play the stored audio file, which is what an audio offset is measured against; a live song plays
+    // through Discord and has none.
+    const storedAudio = Boolean(source);
     if (!source) {
       const playback = readPlayback(guildId);
       if (!playback || !audioKey || audioKeyOf(playback.track) !== audioKey) {
@@ -163,8 +169,20 @@ function createMewbeatChannel({
       const chartKey = scoreStore ? chartKeyFor(audioKey, difficulty) : null;
       const best = chartKey ? scoreStore.bestOf(chartKey, userId) : null;
       if (best) reply.best = { score: best.score, grade: best.grade };
+      // How far the stored audio and the chart are apart (audioOffset.js; sign: chart time = audio position + offset), a number
+      // or null when unknown. A measurement that is still running is waited for briefly; never inside `chart`, so no chart changes.
+      if (storedAudio && audioOffset) reply.audioOffsetMs = await offsetOf(audioKey);
     }
     return reply;
+  }
+
+  async function offsetOf(audioKey) {
+    try {
+      const offset = await audioOffset.lookup(audioKey);
+      return Number.isFinite(offset) ? offset : null;
+    } catch {
+      return null;
+    }
   }
 
   function trackInfoOf(track) {

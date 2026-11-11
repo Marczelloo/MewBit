@@ -3,9 +3,12 @@
     python -I service.py
 
     POST /decode   body: the audio file         -> 200 { dur, notes, fg, short } (the text decode.py writes to its output file)
+    POST /offset   body: 4 bytes (big endian) N, N bytes of JSON { bands: { low, lowmid, highmid, high: [[t ms, strength], ...] },
+                   minConfidence? }, then the audio file          -> 200 { offsetMs, confidence, peak, margin, onsets, windowS, ms }
+                   (offset.py: how far the audio the player hears and the features the chart came from are apart; no model is loaded)
     GET  /health   -> 200 { ok, loaded, busy, queued, threads, idleUnloadS }
 
-Failures answer { error, permanent }: 400 audio that cannot be read (permanent: the same bytes fail again), 413 a body over
+Failures (of both) answer { error, permanent }: 400 audio that cannot be read or a body that is not what /offset takes (permanent: the same bytes fail again), 413 a body over
 MEWBEAT_DECODER_MAX_MB (permanent), 503 the queue is full or the request waited longer than its X-Timeout-Ms (transient), 500 any other
 error in the decode, a lack of memory among them (transient). A decode that is killed from outside (the container out of memory)
 shows to the caller as a closed connection.
@@ -25,6 +28,7 @@ import json
 import os
 import queue
 import signal
+import struct
 import sys
 import threading
 import time
@@ -35,6 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # -I leaves the 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 import bp
 import decode
+import offset
 
 PORT = int(os.environ.get("MEWBEAT_DECODER_PORT", "8090"))
 THREADS = max(1, int(os.environ.get("MEWBEAT_DECODER_THREADS", "2")))
@@ -57,7 +62,8 @@ def give_memory_back():
 
 
 class Job:
-    def __init__(self, body, expires):
+    def __init__(self, body, expires, kind="decode"):
+        self.kind = kind  # "decode" or "offset"
         self.body = body
         self.expires = expires  # monotonic time after which nobody waits for the answer, or None
         self.done = threading.Event()
@@ -115,6 +121,9 @@ class Decoder:
             return
         started = time.monotonic()
         try:
+            if job.kind == "offset":
+                self.run_offset(job, started)
+                return
             loaded_ms = 0
             if self.sess is None:
                 self.sess = bp.session(THREADS)
@@ -128,7 +137,8 @@ class Decoder:
             log(f"decoded {len(job.body)} bytes in {took} ms: notes {len(result['notes'])} fg {len(result['fg'])} short {len(result['short'])}")
         except (ValueError, RuntimeError, OSError) as error:
             # soundfile's LibsndfileError is a RuntimeError, the numpy and soxr checks raise ValueError: audio that cannot be read
-            self.fail(job, 400, f"the audio cannot be decoded: {str(error).split(': ', 1)[-1]}", True)  # drop the file object's repr
+            what = "the audio cannot be decoded" if job.kind == "decode" else "the offset request cannot be used"
+            self.fail(job, 400, f"{what}: {str(error).split(': ', 1)[-1]}", True)  # drop the file object's repr
         except MemoryError:
             self.sess = None
             give_memory_back()
@@ -140,8 +150,34 @@ class Decoder:
             gc.collect()
 
     @staticmethod
+    def run_offset(job, started):
+        """offset.estimate on the audio of the body; the Basic Pitch session is not touched (nor made)."""
+        body = job.body
+        if len(body) < 4:
+            raise ValueError("the body is too short")
+        (head,) = struct.unpack(">I", body[:4])
+        if head <= 0 or 4 + head >= len(body):
+            raise ValueError("the body holds no audio after its JSON")
+        request = json.loads(body[4:4 + head])
+        bands = request.get("bands")
+        if not isinstance(bands, dict):
+            raise ValueError("the JSON has no bands")
+        listed = [bands.get(name) for name in offset.BAND_NAMES]
+        if not all(isinstance(rows, list) for rows in listed):
+            raise ValueError("the bands must be lists of [t, strength]")
+        minimum = request.get("minConfidence", offset.MIN_CONFIDENCE)
+        if not isinstance(minimum, (int, float)):
+            raise ValueError("minConfidence must be a number")
+        result = offset.estimate(io.BytesIO(body[4 + head:]), listed, float(minimum))
+        job.status = 200
+        job.payload = json.dumps(result).encode()
+        took = round((time.monotonic() - started) * 1000)
+        job.headers = {"X-Offset-Ms": str(took)}
+        log(f"offset of {len(body) - 4 - head} bytes in {took} ms: {result['offsetMs']} ms, confidence {result['confidence']}")
+
+    @staticmethod
     def fail(job, status, message, permanent):
-        log(f"decode failed ({status}): {message}")
+        log(f"{job.kind} failed ({status}): {message}")
         job.status = status
         job.payload = json.dumps({"error": message, "permanent": permanent}).encode()
 
@@ -173,7 +209,8 @@ class Handler(BaseHTTPRequestHandler):
             self.error(404, "not found", True)
 
     def do_POST(self):
-        if self.path != "/decode":
+        kind = {"/decode": "decode", "/offset": "offset"}.get(self.path)
+        if kind is None:
             return self.error(404, "not found", True)
         try:
             length = int(self.headers.get("Content-Length", ""))
@@ -191,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
         if len(body) != length:
             return self.error(400, "the body ended early", False)
-        job = Job(body, expires)
+        job = Job(body, expires, kind)
         if not decoder.submit(job):
             return self.error(503, "the queue is full", False)
         job.done.wait()

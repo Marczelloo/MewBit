@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, GameController, SpeakerHigh, Timer } from "@phosphor-icons/react";
+import { formatSongOffset } from "./audioAlignment.js";
 import { MIN_TAPS } from "./calibration.js";
 import { HIT_SOUNDS as HIT_SOUND_OPTIONS } from "./hitSounds.js";
 import { keyLabel, keysProblem } from "./input.js";
@@ -117,7 +118,7 @@ function Group({ id, title, children }) {
 
 // The settings window. It renders from the `settings` prop (the server's echo) and keeps a local
 // draft per field only while a change is in flight; a refused patch therefore snaps back by itself.
-export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs", onBlockCalibration, forcedGroup = null, onReplayTour, replayTourBlocked = false }) {
+export default function SettingsPanel({ settings, onAction, onClose, timing = null, autoOffset = false, onAutoOffset, onResetTiming, onPreviewHit, onPreviewSfx, onPreviewMusic, liveCalibration = true, offsetField = "offsetMs", songOffsetMs, onBlockCalibration, forcedGroup = null, onReplayTour, replayTourBlocked = false }) {
   const current = useMemo(() => {
     const merged = { ...DEFAULT_SETTINGS, ...settings };
     if (!Array.isArray(merged.keys) || merged.keys.length !== 4) merged.keys = DEFAULT_SETTINGS.keys;
@@ -481,6 +482,16 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
                   <button type="button" className="mb-btn mb-step" aria-label="Offset plus 5 ms" disabled={offsetMs >= OFFSET_MAX} onClick={() => nudgeOffset(OFFSET_STEP)}>+5</button>
                 </div>
                 <p className="mb-row-help">Raise it if notes reach the line before you hear the beat. {liveCalibration ? "This one is for the bot's audio in Live; Solo and rooms have their own." : "This one is for Solo and rooms; the bot's audio in Live has its own."}</p>
+              </section>
+              <section className="mb-row mb-row-stack">
+                <div className="mb-row-head">
+                  <span className="mb-row-label">Per-song audio alignment (experimental)</span>
+                  <Segmented label="Per-song audio alignment" options={HIT_SOUNDS} value={valueOf("audioAlign") === true} onChange={(value) => send({ audioAlign: value })} />
+                </div>
+                <p className="mb-row-help">Moves each song's audio by the small offset measured against its chart, for songs where the beat sits a few milliseconds off. Solo and rooms only.</p>
+                {valueOf("audioAlign") === true && songOffsetMs !== undefined ? (
+                  <p className="mb-row-help" role="status">{songOffsetMs === null ? "This song: not measured, the usual alignment is used." : `This song: ${formatSongOffset(songOffsetMs)}`}</p>
+                ) : null}
               </section>
               <section className="mb-row mb-row-stack mb-calib">
                 <div className="mb-row-head">

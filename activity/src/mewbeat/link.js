@@ -178,7 +178,10 @@ export function createMewbeatLink({
       releaseChart(key);
     }
     // A pending reply carries where the song stands in line (`queue`), for the waiting screen.
-    emit(chartListeners, queue === undefined ? { audioKey, difficulty, status: chartStatus, reason, chart, best } : { audioKey, difficulty, status: chartStatus, reason, chart, best, queue });
+    const event = queue === undefined ? { audioKey, difficulty, status: chartStatus, reason, chart, best } : { audioKey, difficulty, status: chartStatus, reason, chart, best, queue };
+    // How far this song's stored audio and its chart are apart (solo and room only); absent on any other reply.
+    if ("audioOffsetMs" in payload) event.audioOffsetMs = payload.audioOffsetMs;
+    emit(chartListeners, event);
   }
 
   function handle(payload) {

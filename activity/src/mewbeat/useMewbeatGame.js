@@ -16,9 +16,10 @@ import { createLiveSender } from "./liveSender.js";
 import { missPose } from "./missPose.js";
 import { createStore } from "./hudStore.js";
 import { createChartWait } from "./chartWait.js";
+import { alignmentLagMs } from "./audioAlignment.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, normalizeLoudness: true, showMewbit: true, tempoScroll: true, modifiers: [], feverMode: "manual" };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, normalizeLoudness: true, audioAlign: false, showMewbit: true, tempoScroll: true, modifiers: [], feverMode: "manual" };
 const COMBO_BREAK_OVER = 20; // as in osu!: losing a short combo makes no sound
 const COMBO_BREAK_LEVEL = 0.5;
 
@@ -144,6 +145,8 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const flashesRef = useRef([]);
   const judgementRef = useRef(null);
   const bestRef = useRef(null); // the player's best on the chart being played, from the chart's reply
+  const audioOffsetRef = useRef(null); // the measured offset of the song's audio file, from the chart's reply (audioAlignment.js)
+  const [songOffsetMs, setSongOffsetMs] = useState(null); // the same, for the settings panel; null = unknown or not sent
   const judgementIdRef = useRef(0);
   const comboRef = useRef(0);
   const multiplierRef = useRef(1);
@@ -353,7 +356,10 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       setPhase(songClock.paused() ? "paused" : "playing");
       redrawRef.current = true; // a run that starts paused (the tour's standing song) is painted once
       // A solo link starts its count-in only now that the game took the chart (the live link has no such hook).
-      link.chartAccepted?.(chart);
+      // With the "Per-song audio alignment" setting on and an offset known for this song, the link shifts the song's audio by it
+      // instead of scanning for the lag; otherwise (off, unknown, Live, calibration) the link does what it always did.
+      const lagMs = alignmentLagMs({ enabled: cfgRef.current.audioAlign, mode: modeRef.current, calibration: Boolean(chart.calibration), audioOffsetMs: audioOffsetRef.current });
+      link.chartAccepted?.(chart, lagMs === null ? undefined : { lagMs });
     }
 
     // Sends the finished run for scoring and keeps the reply on the summary it belongs to. A calibration run
@@ -659,6 +665,12 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       if (event.status === "ready" && event.chart?.notes) {
         chartRef.current = event.chart;
         bestRef.current = event.chart.calibration ? null : event.best ?? null;
+        if (!event.chart.calibration) {
+          audioOffsetRef.current = typeof event.audioOffsetMs === "number" && Number.isFinite(event.audioOffsetMs) ? event.audioOffsetMs : null;
+          setSongOffsetMs(audioOffsetRef.current);
+        } else {
+          audioOffsetRef.current = null;
+        }
         // The clicks measure the offset on their own: taps from earlier songs would blur it.
         if (event.chart.calibration) {
           tapTiming.reset();
@@ -985,5 +997,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     if (!runRef.current && (current === "failed" || current === "uncharted")) beginChartingRef.current({ retry: true });
   }, []);
 
-  return { phase, chartWait, failed, failedHold, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
+  return { phase, chartWait, failed, failedHold, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, songOffsetMs, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
 }

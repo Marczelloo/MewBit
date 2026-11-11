@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   sfxVolume: 60,
   musicVolume: 80, // solo and room audio (the Activity's own playback); the bot's live audio is not touched
   normalizeLoudness: true, // solo and room audio: every song plays at the same loudness (activity loudness.js)
+  audioAlign: false, // solo and room audio: shift the song clock by the measured offset of this song's audio file (audioOffset.js)
   showMewbit: true,
   tempoScroll: true, // the song's tempo nudges the fall speed (activity highway.js tempoScrollFactor)
   modifiers: Object.freeze([]), // ids from activity modifiers.js, checked in full when a run is submitted
@@ -62,6 +63,7 @@ const FIELD_CHECKS = {
   sfxVolume: (value) => (isIntegerIn(value, LIMITS.sfxVolume) ? null : `Sound effects volume must be a whole number from ${LIMITS.sfxVolume[0]} to ${LIMITS.sfxVolume[1]}.`),
   musicVolume: (value) => (isIntegerIn(value, LIMITS.musicVolume) ? null : `Music volume must be a whole number from ${LIMITS.musicVolume[0]} to ${LIMITS.musicVolume[1]}.`),
   normalizeLoudness: (value) => (typeof value === "boolean" ? null : "Even out loudness must be on or off."),
+  audioAlign: (value) => (typeof value === "boolean" ? null : "Per-song audio alignment must be on or off."),
   showMewbit: (value) => (typeof value === "boolean" ? null : "Show Mewbit must be on or off."),
   tempoScroll: (value) => (typeof value === "boolean" ? null : "Speed by tempo must be on or off."),
   modifiers: (value) => (isModifierList(value) ? null : "Modifiers must be a list of modifier ids."),
