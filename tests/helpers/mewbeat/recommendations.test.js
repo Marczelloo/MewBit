@@ -650,8 +650,8 @@ describe("mewbeat suggestions: discovery with the player's taste", () => {
 });
 
 describe("mewbeat suggestions: rhythm game classics", () => {
-  it("has between forty and sixty entries with unique ids and keys", () => {
-    assert.ok(CLASSICS.length >= 40 && CLASSICS.length <= 60, `count ${CLASSICS.length}`);
+  it("has between fifty and seventy entries with unique ids and keys", () => {
+    assert.ok(CLASSICS.length >= 50 && CLASSICS.length <= 70, `count ${CLASSICS.length}`);
     assert.strictEqual(new Set(CLASSICS.map((entry) => entry.id)).size, CLASSICS.length);
     assert.strictEqual(new Set(CLASSICS.map((entry) => entry.audioKey)).size, CLASSICS.length);
     assert.strictEqual(new Set(CLASSICS.map((entry) => identityOf(entry.title, entry.artist))).size, CLASSICS.length);
