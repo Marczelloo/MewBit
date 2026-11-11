@@ -298,6 +298,19 @@ const PLUS_CALM = { below: 0.5, share: 0.5 };
 // and Hard added 4.7 moments/s there against Normal's 3.9, Hell 5.0; with the flag both play 3.9. 27 of the 98 songs end
 // quietly; all of Hard's moments fall by 0.2%, Hell's by 0.5%.
 const PLUS_CALM_END = { loud: FADE_OUT.loud, from: FADE_OUT.from, quiet: FADE_OUT.quiet, minSec: FADE_OUT.minSec };
+// generate.js finish, spots.js (flag calmSpots): where the song plays under `below` of its loud level, a stretch of
+// `windowBeats` holds at most `over` times what the denser of the `sideBeats` on each side of it plays, and never under `most`
+// moments. The user, 2026-11-11: on a large part of the maps the energy is fairly calm and suddenly there is a mini spam.
+// Probe: a second with 5+ moments at 1.6 times the 6 s on each side of it, counted a minute of quiet (under half the loud
+// level), middle and loud music. People on the 80 corpus songs, Normal 1.07 / 1.75 / 1.72 and Hard 1.23 / 1.90 / 2.10:
+// their sudden dense spots sit in the loud parts. Ours with the bot's flags: Normal 2.95 / 2.23 / 0.61, Hard 2.28 / 1.99 /
+// 1.26, Hell 2.90 / 1.58 / 0.52 (the same count with no flags at all). With the flag: Normal 1.21 / 1.92 / 0.61, Hard 0.90
+// / 1.52 / 1.23, Hell 1.72 / 1.06 / 0.55; on the bot's 98 songs Normal 2.50 / 3.04 -> 1.56 / 2.50. Normal loses 0.5% of its
+// moments and F1 against people goes .7913 -> .7924 (Hard .8089 -> .8091). The same probe over 2 s (6+ moments) puts the
+// quiet parts under people (.36 a minute against their .78, 6 spots against 11; without the flag 1.20): our spots are
+// short ones. Measured in bars because a rule over one second (1.4 times the denser side) cut MEGALOVANIA's opening riff
+// differently on each repeat, a figure being uneven inside its bar; over 1.4 leaves 1.45 / 1.92 on Normal, 1.5 1.81 / 2.07.
+const CALM_SPOTS = { below: 0.65, windowBeats: 4, sideBeats: 12, minSideBeats: 4, most: 6, over: 1.3 };
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -732,6 +745,7 @@ module.exports = {
   PACE_HOLES,
   NORMAL_HOLDS,
   PITCH_LANES,
+  CALM_SPOTS,
   PLUS_CALM,
   PLUS_CALM_END,
   PLUS_FIGURES,

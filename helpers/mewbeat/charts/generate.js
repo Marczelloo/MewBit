@@ -32,6 +32,7 @@ const { fadeOutOf, holdFadeOut, thinFadeOut } = require("./fades");
 const { extraMoments, isFlatLoud, openingLeadRates, phraseBudget, plusFigures, plusMoments, repeatPlan, scoreMoments, selectMoments, snappedMoments } = require("./selection");
 const { starsOf } = require("./stars");
 const { buildTiming, energyLookup } = require("./timing");
+const { evenSpots } = require("./spots");
 const { createTrace } = require("./trace");
 const { lowerBound, nearestIndex } = require("./util");
 const { offPitch, underLine, withLineRepeats } = require("./voices");
@@ -672,7 +673,10 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
-  const final = step("finalFloors", faded, enforceFloors(faded, diff, ctx.timing, burstGap));
+  // diff.calmSpots (a flag): in a quiet part no bar plays well above the bars on both sides of it (spots.js). With the
+  // lanes laid, like the fade-out; a level built on another gives only its own extras.
+  const evened = diff.calmSpots ? step("calmSpots", faded, evenSpots(faded, ctx, diff.calmSpots, quietOf(ctx, diff.calmSpots), protect)) : faded;
+  const final = step("finalFloors", evened, enforceFloors(evened, diff, ctx.timing, burstGap));
   if (!(diff.sameCuts && diff.cutFrom)) return final;
   const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);
   return step("sameCuts", final, sameCuts(final, above, ctx.timing, diff.sameCuts));

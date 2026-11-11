@@ -6,6 +6,7 @@
 const crypto = require("node:crypto");
 
 const {
+  CALM_SPOTS,
   COPY_MELODY,
   EASY_SAME_CUTS,
   FADE_FALLS,
@@ -47,6 +48,9 @@ const FLAGS_FILE_NAME = "generator-flags.json";
 // easyFigures, normalHolds and hellPlus became part of Easy, Hard and Hell in v44 (difficulty.js EASY_FROM_NORMAL,
 // EASY_FIGURES, HARD_PLUS, PLUS_FIGURES, NORMAL_HOLDS, HELL_PLUS).
 const FLAGS = {
+  // Normal, Hard, Hell: in a quiet part no bar plays well above the bars on both sides of it (spots.js evenSpots). Easy is
+  // cut from Normal and follows it.
+  calmSpots: { label: "Normal, Hard, Hell: w cichym fragmencie bez nagłych zagęszczeń (takt nie gra dużo gęściej niż takty przed nim i po nim)", levels: { normal: { calmSpots: CALM_SPOTS }, hard: { calmSpots: CALM_SPOTS }, hell: { calmSpots: CALM_SPOTS } } },
   // Normal: a repeat whose copy would miss the melody its source plays is charted fresh (generate.js copiedRepeat).
   copyMelody: { label: "Normal: powtórka bez kopii, gdy kopia gubi melodię", levels: { normal: { copyMelody: COPY_MELODY } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
