@@ -12,8 +12,8 @@ All secrets belong in `.env`, `.env.dev`, or `.env.prod`—never in this reposit
 | --- | --- |
 | `DISCORD_TOKEN` | Bot token from the Discord Developer Portal. |
 | `CLIENT_ID` | Discord application ID. |
-| `LAVALINK_HOST` | `127.0.0.1` locally; `lavalink` inside the production Compose network. |
-| `LAVALINK_PORT` | Lavalink port, normally `2333`. |
+| `LAVALINK_HOST` | `127.0.0.1` locally. The production Compose stack sets it to `lavalink` for the bot itself, so the value in `.env` is not used there. |
+| `LAVALINK_PORT` | Lavalink port, normally `2333`. Compose sets it to `2333` for the bot as well. |
 | `LAVALINK_PASSWORD` | Password shared by the bot and Lavalink. |
 
 ## Music providers and metadata
@@ -34,7 +34,7 @@ All secrets belong in `.env`, `.env.dev`, or `.env.prod`—never in this reposit
 
 Spotify links resolve their catalog metadata first, then play a verified YouTube mirror: ISRC search is preferred, followed by title and artist. Deezer is not used as Spotify's primary audio mirror because its media endpoint can reject otherwise valid recordings for licensing or regional-rights reasons. If the primary mirror fails, MewBit retries only a candidate with matching title, artist, requested version, duration, and (when both sources provide it) ISRC; it skips the track rather than silently playing a different song.
 
-If a provider requires browser cookies, obtain them from an account you control and store them only on the host. The production Compose file mounts `helpers/lavalink/youtube-cookies.txt` for Lavalink when that file exists. Do not commit it.
+If a provider requires browser cookies, obtain them from an account you control and store them only on the host. The production Compose file always mounts `helpers/lavalink/youtube-cookies.txt` into Lavalink, so the file must exist (empty is fine) before the first start; if it does not, Docker creates a directory in its place and the mount fails. Do not commit it.
 
 ## Playback and autoplay
 
@@ -123,6 +123,7 @@ tokens, or full Lavalink payloads.
 | --- | --- | --- |
 | `FAST_LOGS` | `1` | Compact console logging. |
 | `LOG_TO_FILE` | `1` | Writes bot logs to the local `logs/` directory. |
+| `TZ` | `UTC` in Compose | Compose only: the time zone of the bot's clock, used for log times and the AI DJ's time of day. Give a zone name such as `Europe/London`. |
 
 ## Activity gateway
 
@@ -136,8 +137,38 @@ The Activity gateway runs in the bot process and is responsible for authorizing 
 | `ACTIVITY_STATE_HEARTBEAT_MS` | `1500` | Background player-state safety heartbeat in milliseconds; event updates remain immediate. Lower values recover faster from a silent iframe/proxy at the cost of more snapshot work. |
 | `ACTIVITY_CLIENT_SECRET` | falls back to `DISCORD_CLIENT_SECRET` | Discord application client secret used for the OAuth token exchange. |
 | `ACTIVITY_REDIRECT_URI` | `https://127.0.0.1` | Exact OAuth redirect URI registered in the Developer Portal. |
-| `ACTIVITY_ALLOWED_ORIGINS` | `*` | Comma-separated allowed browser origins. Restrict this in production. |
+| `ACTIVITY_ALLOWED_ORIGINS` | `*` outside production, empty in production | Comma-separated allowed browser origins. With `NODE_ENV=production`, which the Compose stack sets, the default is empty and the Activity's realtime (websocket) connection is refused until you set it. For the Discord Activity use `https://<application id>.discordsays.com`. Outside production, unset means any origin. |
+| `ACTIVITY_PUBLIC_PORT` | `8788` | Compose only: the port on `127.0.0.1` the host publishes for the gateway, for a tunnel or reverse proxy to point at. |
 | `ACTIVITY_ARTWORK_HOSTS` | empty | Optional comma-separated allowlist for external artwork URLs. |
 | `ACTIVITY_ALLOW_DEV` | `false` | Enables local development identity. Never enable on public production. |
 | `ACTIVITY_DEV_GUILD_ID` / `ACTIVITY_DEV_USER_ID` | demo values | Local preview identity. Applies only to requests without a Discord token, so people opening the Activity in Discord on that server keep their own accounts. |
 | `ACTIVITY_DEV_TOKEN` | empty | Optional token protecting local gateway preview. |
+
+## mewbeat
+
+The rhythm game in the Activity needs no variable to run: with none of these set, charts are made without a melody and scores stay in local JSON files. Each one below turns on or tunes a part. How the pieces fit is in [mewbeat](mewbeat.md#for-operators).
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ATLASHUB_URL` / `ATLASHUB_SECRET_KEY` | empty | When both are set, scores, run history and player stats are kept in AtlasHub (a REST API over Postgres). Every change goes through a durable journal, `helpers/data/mewbeat/atlashub-outbox.jsonl`, and is sent in the background, so a slow or unreachable AtlasHub does not hold the game up. When either is empty they are kept in `helpers/data/mewbeat/scores.json`, `history.json` and `stats.json`. Treat the key as a secret. |
+| `MEWBEAT_REPORT_WEBHOOK_URL` | empty | Discord webhook of a private channel where players' bug, idea and map reports are posted. Anyone with the address can post there, so keep it secret. Empty turns reports off. |
+| `MEWBEAT_DECODER_URL` | empty | Address of the melody decoder service, for example `http://127.0.0.1:8090`. The Compose stack sets it to `http://mewbeat-decoder:8090` itself. When empty, the bot starts a throwaway container from the image named by `MEWBEAT_DECODER_IMAGE` for every song through the Docker CLI (no network, nothing pulled, the image must already be built). Where that is impossible too, the chart is made without a melody. |
+| `MEWBEAT_DECODER_IMAGE` | `mewbeat-decoder` | The image of that throwaway container. Only used when `MEWBEAT_DECODER_URL` is empty. |
+| `MEWBEAT_DECODER_THREADS` | `1` | Threads of the throwaway container. Only used when `MEWBEAT_DECODER_URL` is empty. The Compose decoder service has its own setting, below. |
+| `MEWBEAT_MELODY_DECODER` | on | Set to `off` to skip melody decoding altogether. Every chart is then made without a melody. |
+| `MEWBEAT_AUDIO_OFFSET` | on | Set to `off` to stop the per-song audio offset measurement. The measurement is done by the decoder service for the experimental "Per-song audio alignment" setting, so it also needs `MEWBEAT_DECODER_URL`. |
+| `MEWBEAT_AUDIO_LATENCY_MS` | `500` | In Live mode, how many milliseconds the bot's reported playback position runs ahead of what people hear in the voice channel (Lavalink's send queue plus Discord's transport). The game's Live clock allows for it. Must be a number; anything else uses the default. A player's own "Bot audio" calibration in the game's settings covers the remaining difference. |
+| `MEWBEAT_DEBUG_URL` | `http://localhost:5180` | Where the mewbeat debugger is reachable, used for the link in a map report. A trailing slash is fine. |
+
+The decoder service has its own variables, set in its `environment` block in `docker-compose.yml`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MEWBEAT_DECODER_PORT` | `8090` | Port the service listens on, inside its container. |
+| `MEWBEAT_DECODER_THREADS` | `2` | Threads one decode uses. Compose sets `2`. |
+| `MEWBEAT_DECODER_IDLE_MIN` | `5` | Minutes of silence after which the model is unloaded from memory. |
+| `MEWBEAT_DECODER_MAX_MB` | `200` | Largest request body accepted; bigger ones get 413. |
+| `MEWBEAT_DECODER_MAX_QUEUE` | `4` | Requests allowed to wait behind the running one; more get 503. |
+| `MEWBEAT_BP_MODEL` | the model in the image | Path of the Basic Pitch model file. The image sets it; leave it alone. |
+
+The Lavalink plugin that analyses songs is configured in `helpers/lavalink/application.yml` under `plugins.mewbeat`, not through `.env`: `maxQueue` (default `4`), `maxTrackMs` (default `1200000`, 20 minutes) and `debugRoutes` (default `false`). See [Deployment](deployment.md).
