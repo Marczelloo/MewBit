@@ -5,7 +5,8 @@
 import { audioKeyOf, MOCK_USER_ID, SONGS } from "./mockRequests.js";
 import { accuracyOf, applyJudgement, canFever, createScore, gradeOf, isFailed, startFever } from "./scoring.js";
 
-export const FINAL_COUNTDOWN_MS = 5000; // the final seconds after a vote passed or the host forced the start, as on the bot
+export const READY_WINDOW_MS = 60_000; // before the room's first round: the wait the first Ready opens, as on the bot
+export const FINAL_COUNTDOWN_MS = 5000; // the final seconds once everyone is ready, a vote passed or the host forced the start, as on the bot
 export const MAX_QUEUE = 20;
 
 const ME = { userId: MOCK_USER_ID, username: "Meowczelloo" };
@@ -47,20 +48,38 @@ export function startCountdown(room, clockMs = FINAL_COUNTDOWN_MS, now = Date.no
   return { ...room, serverNow: now, nextAt: now + clockMs, finalCountdown: true, forced };
 }
 
+// Before the room's first round (`voting: false`) the clock is the bot's ready wait: nothing runs until someone is ready,
+// the first Ready opens a long wait, and everyone being ready cuts it to the final seconds.
+function settleReady(room, now = Date.now()) {
+  const tallied = withTally(room);
+  const players = tallied.members.filter((m) => !m.spectator).length;
+  if (!tallied.queue.length || !players || !tallied.votes) {
+    return { ...tallied, serverNow: now, windowAt: null, nextAt: null, finalCountdown: false, forced: false };
+  }
+  const windowAt = tallied.windowAt ?? now + READY_WINDOW_MS;
+  if (tallied.votes === players) {
+    const finalAt = tallied.finalCountdown && tallied.nextAt != null ? tallied.nextAt : Math.min(windowAt, now + FINAL_COUNTDOWN_MS);
+    return { ...tallied, serverNow: now, windowAt, nextAt: finalAt, finalCountdown: true, forced: false };
+  }
+  return { ...tallied, serverNow: now, windowAt, nextAt: windowAt, finalCountdown: false, forced: false };
+}
+
 // The vote and its countdown cleared, which is the room right after a round has started; the preview puts the others'
 // votes back so it can be run again.
 export function clearCountdown(room, now = Date.now()) {
   const voted = new Set(PLAYERS.filter((p) => p.ready).map((p) => p.userId));
-  return withTally({ ...room, serverNow: now, nextAt: null, finalCountdown: false, forced: false, members: room.members.map((m) => ({ ...m, ready: voted.has(m.userId) && !m.spectator })) });
+  const reset = withTally({ ...room, serverNow: now, windowAt: null, nextAt: null, finalCountdown: false, forced: false, members: room.members.map((m) => ({ ...m, ready: voted.has(m.userId) && !m.spectator })) });
+  return reset.voting === false ? settleReady(reset, now) : reset;
 }
 
-// A lobby with four players, the owner among them and three songs queued. Two of the four have voted for the next
-// map, one short of the majority, so nothing counts down. clockMs: start with the final countdown running instead.
+// A lobby before the room's first round: four players, the owner among them and three songs queued. Two of the four are
+// ready, which opened the long wait (`clockMs` long, the bot's 60 s by default); the other two cut it short by readying.
 // hostId: who owns the room (the player themselves, or "kuba" to see it as a guest).
-export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = null, now = Date.now() } = {}) {
-  const room = withTally({
+export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = READY_WINDOW_MS, now = Date.now() } = {}) {
+  return withTally({
     hostId,
     phase: "lobby",
+    voting: false,
     round: 0,
     endedAt: null,
     members: PLAYERS.map(member),
@@ -68,16 +87,18 @@ export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = null, now = Da
     played: QUEUEABLE.filter((title) => !START_QUEUE.some(([queued]) => queued === title)).slice(0, 2).map((title) => mockTrack(title, "neko")),
     current: null,
     startAt: null,
-    nextAt: null,
+    windowAt: clockMs ? now + clockMs : null,
+    nextAt: clockMs ? now + clockMs : null,
     finalCountdown: false,
     forced: false,
     results: [],
     serverNow: now,
   });
-  return clockMs ? startCountdown(room, clockMs, now) : room;
 }
 
 // The same room one round later: Hopes and Dreams has just ended, the others wait in the queue, and the standings are in.
+// From here on Ready is the vote for the next map: two of the four have voted, one short of the majority, so nothing
+// counts down.
 export function createMockFinishedRoom({ hostId = MOCK_USER_ID, now = Date.now() } = {}) {
   const base = createMockRoom({ hostId, now });
   const [first, second, third] = base.queue;
@@ -91,10 +112,12 @@ export function createMockFinishedRoom({ hostId = MOCK_USER_ID, now = Date.now()
   return {
     ...base,
     phase: "lobby",
+    voting: true,
     round: 1,
     endedAt: now - 4000,
     current: second,
     queue: [third, first],
+    windowAt: null,
     nextAt: null,
     results: rows.map(([userId, difficulty, accuracy, score, grade, modifiers, failed]) => ({
       userId,
@@ -116,6 +139,7 @@ const patchMember = (room, userId, patch) => ({ ...room, members: room.members.m
 // The vote after a change, as the bot settles it: a majority starts the final countdown, and a vote that drops back
 // below one stops a countdown it started (a host's forced start stays).
 function settleVote(room, now) {
+  if (room.voting === false) return settleReady(room, now);
   const tallied = withTally(room);
   const passed = tallied.votesNeeded > 0 && tallied.votes >= tallied.votesNeeded && tallied.queue.length > 0;
   if (passed && !tallied.finalCountdown) return startCountdown(tallied, FINAL_COUNTDOWN_MS, now);
@@ -140,16 +164,18 @@ export function applyReady(room, userId, change, now = Date.now()) {
   }
   if ("ready" in change) {
     if (me.watching) return fail(room, "spectating");
-    if (change.ready && !room.queue.length) return fail(room, "empty_queue");
+    if (change.ready && room.voting !== false && !room.queue.length) return fail(room, "empty_queue");
     return ok(settleVote(patchMember(room, userId, { ready: Boolean(change.ready) }), now));
   }
   return fail(room, "bad_request");
 }
 
-// The host's start without the vote: the final countdown runs even with no majority.
+// The host's start. Before the first round it begins at once; after a round it needs no vote: the first press runs the
+// final countdown even with no majority, the second skips what is left of it.
 export function forceStart(room, userId, now = Date.now()) {
   if (room.hostId !== userId) return fail(room, "not_host");
   if (!room.queue.length) return fail(room, "empty_queue");
+  if (room.voting === false || room.finalCountdown) return ok(startCountdown(room, 0, now, room.forced === true));
   return ok(startCountdown(room, FINAL_COUNTDOWN_MS, now, true));
 }
 
@@ -157,6 +183,7 @@ export function forceStart(room, userId, now = Date.now()) {
 // are gone, and so is a countdown to the old head, as on the bot.
 function afterQueueChange(room, queue) {
   const next = { ...room, queue };
+  if (room.voting === false) return settleReady(next);
   if (queue[0]?.audioKey === room.queue[0]?.audioKey && queue.length) return next;
   return withTally({ ...next, nextAt: null, finalCountdown: false, forced: false, members: room.members.map((m) => ({ ...m, ready: false })) });
 }
