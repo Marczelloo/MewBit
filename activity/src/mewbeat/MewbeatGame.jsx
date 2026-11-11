@@ -39,6 +39,7 @@ import { countdownSounds, loadedCount, memberOf, roomErrorText, roomView, server
 import { useCountdownSounds } from "./useCountdownSounds.js";
 import { useMewbeatGame } from "./useMewbeatGame.js";
 import { useScreenExit } from "./useScreenExit.js";
+import ChartWaitLine from "./ChartWaitLine.jsx";
 import { PlainTile, RunTile, useSongFraction } from "./MinimizedTile.jsx";
 import { readyOf, shouldAutoPause, tileOf } from "./minimized.js";
 import { useMinimized } from "./useMinimized.js";
@@ -81,6 +82,7 @@ const RESTART_HOLD_MS = 600;
 const NOOP = () => {};
 const NOOP_ASYNC = () => Promise.resolve();
 const NO_MODIFIERS = [];
+const CHART_WAIT_SHOW_MS = 1500; // a chart that comes back at once never flashes a wait line
 const TOUR_ROOM_CLOCK_MS = 45 * 60_000; // the tour's sample room runs its clock this far, so the round never starts under it
 
 const PHASE_COPY = {
@@ -350,8 +352,9 @@ function MewbeatRoot(props) {
         room: { room: createMockRoom({ clockMs: TOUR_ROOM_CLOCK_MS, now }), receivedAt: performance.now() },
         roomStore: {
           ready: refused, start: refused, queueAdd: refused, queueRemove: refused, queueMove: refused, invite: refused,
-          songStats: async (audioKey) => {
+          songStats: async (audioKey, { onQueue } = {}) => {
             const reply = await request("mewbeat_song_stats", { audioKey });
+            onQueue?.(reply.status === "ok" ? reply.queue ?? null : null);
             return reply.status === "ok" ? reply.stats ?? null : null;
           },
         },
@@ -654,7 +657,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, failed, failedHold, autoplay, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
+  const { phase, chartWait, failed, failedHold, autoplay, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
 
   // The trap, one phase at a time. The notes run on the still link (an autoplay: nothing is scored, sent or left in a
   // summary) and the sound on the trap's own player, from the same moment. Heavy: the chart plays for HEAVY_MS and the
@@ -1204,6 +1207,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     return () => audio.stopClip();
   }, [audio, clipId, clipAudioKey, clipFromMs]);
   const chartFailed = phase === "failed" || phase === "uncharted";
+  // The detail line of a waiting card: while this player waits for a chart it says where the song stands and for how long
+  // (ChartWaitLine); until then, and when nothing is waited for, it keeps the plain `text`.
+  const waitingDetail = (text) => <ChartWaitLine store={chartWait} fallback={text} showAfterMs={CHART_WAIT_SHOW_MS} />;
   const sitOutToLobby = () => {
     setSatOutRound(room?.round ?? null);
     link.sitOut?.();
@@ -1225,7 +1231,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           ],
         };
       }
-      else stateCopy = { title: "Getting ready…", detail: "Loading the song and your chart." };
+      else stateCopy = { title: "Getting ready…", detail: waitingDetail("Loading the song and your chart.") };
     } else if (view === "playing" && phase === "ended") stateCopy = { title: "Song finished", detail: "Waiting for the others…" };
     else stateCopy = null;
   } else if (solo) {
@@ -1236,6 +1242,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     else if (phase === "paused") stateCopy = null;
     else {
       stateCopy = SOLO_PHASE_COPY[phase] ?? PHASE_COPY[phase];
+      if (phase === "charting" && stateCopy) stateCopy = { ...stateCopy, detail: waitingDetail(stateCopy.detail) };
       if (chartFailed && stateCopy) {
         stateCopy = {
           ...stateCopy,
@@ -1249,6 +1256,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   } else {
     // A run that ended with no card (joined in its last second) just waits.
     stateCopy = showCard ? null : phase === "ended" ? { title: "Waiting for the next track…" } : PHASE_COPY[phase];
+    if (phase === "charting" && stateCopy) stateCopy = { ...stateCopy, detail: waitingDetail(stateCopy.detail) };
     // Live follows the bot's song and has no screen to go back to (Esc opens the menu with Quit), so only a retry.
     if (chartFailed && stateCopy) stateCopy = { ...stateCopy, actions: [{ label: "Try again", icon: ArrowCounterClockwise, primary: true, onClick: retryCharting }] };
   }

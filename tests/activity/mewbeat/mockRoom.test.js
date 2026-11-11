@@ -16,6 +16,13 @@ test.before(async () => {
 
 const ME = "mock-me";
 
+test("the charting option puts the uncharted song at the head of the queue", () => {
+  const room = mockRoom.createMockRoom({ charting: true });
+  assert.equal(room.queue.length, mockRoom.createMockRoom().queue.length + 1);
+  assert.equal(room.queue[0].title, "Bad Apple!! (live cut)");
+  assert.equal(mockRoom.createMockRoom().queue.some((track) => track.title === "Bad Apple!! (live cut)"), false);
+});
+
 test("the mock lobby has four players with an owner, three queued songs and a vote one short of the majority", () => {
   const snapshot = mockRoom.createMockRoom({ now: 1000 });
   assert.equal(snapshot.members.length, 4);

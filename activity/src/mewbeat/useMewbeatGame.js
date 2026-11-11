@@ -15,6 +15,7 @@ import { quantizeHealth } from "./health.js";
 import { createLiveSender } from "./liveSender.js";
 import { missPose } from "./missPose.js";
 import { createStore } from "./hudStore.js";
+import { createChartWait } from "./chartWait.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
 export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, normalizeLoudness: true, showMewbit: true, tempoScroll: true, modifiers: [], feverMode: "manual" };
@@ -201,10 +202,17 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
   const releaseHeldRef = useRef(() => {}); // set by the link effect: releases every held lane into the run
   const beginChartingRef = useRef(() => {}); // set by the link effect: (re)requests the chart for the current song
 
+  // How long this player has waited for the song's chart and where it stands in line; ChartWaitLine draws it on the waiting card.
+  const chartWaitRef = useRef(null);
+  if (chartWaitRef.current === null) chartWaitRef.current = createChartWait();
+  const chartWait = chartWaitRef.current;
+
   const setPhase = useCallback((next) => {
     phaseRef.current = next;
     setPhaseState(next);
-  }, []);
+    // Going offline or back to connecting keeps the clock (the request goes out again); any other phase ends the wait.
+    if (next !== "charting" && next !== "offline" && next !== "connecting") chartWait.end();
+  }, [chartWait]);
 
   useEffect(() => {
     link.setTrackInfo?.(trackInfo);
@@ -437,6 +445,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
         return;
       }
       setPhase("charting");
+      chartWait.begin(key, retry ? { restart: true } : undefined); // asking again for the same song keeps the clock
       link.requestChart(key, cfgRef.current.liveDifficulty, retry ? { retry } : undefined);
     }
     beginChartingRef.current = beginCharting;
@@ -646,6 +655,7 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
       }
       if (phaseRef.current !== "charting") return;
       if (event.audioKey !== songClock.audioKey() || event.difficulty !== cfgRef.current.liveDifficulty) return;
+      if (event.status === "pending") chartWait.report(event.audioKey, event.queue);
       if (event.status === "ready" && event.chart?.notes) {
         chartRef.current = event.chart;
         bestRef.current = event.chart.calibration ? null : event.best ?? null;
@@ -975,5 +985,5 @@ export function useMewbeatGame({ link, mode = "live", requests = null, settings,
     if (!runRef.current && (current === "failed" || current === "uncharted")) beginChartingRef.current({ retry: true });
   }, []);
 
-  return { phase, failed, failedHold, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
+  return { phase, chartWait, failed, failedHold, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track: trackInfo, canvasRef, progressRef, progressTimeRef, autoplay, setAutoplay, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes: calibrating ? chartRef.current?.notes ?? null : null };
 }

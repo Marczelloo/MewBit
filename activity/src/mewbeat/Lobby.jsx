@@ -28,6 +28,8 @@ import {
   voteOf,
 } from "./room.js";
 import { sendRoomInvite } from "./roomInvite.js";
+import ChartWaitLine from "./ChartWaitLine.jsx";
+import { createChartWait } from "./chartWait.js";
 import "./lobby.css";
 
 // A queue or hero cover. A missing or broken image falls back to the empty gradient (the -empty class of the same
@@ -250,6 +252,8 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   // Fetched again when the song changes and when a round ends (my best may have moved). A failed fetch
   // answers null, which leaves the tiles with dashes.
   const heroKey = heroTrack?.audioKey ?? null;
+  // How long the hero song has been waiting for its charts and where it stands in the bot's line; drawn beside the levels.
+  const [chartWait] = useState(createChartWait);
   // While the song's charts are still being made (no stars yet) it asks again every few seconds, for a few minutes at
   // most, and stops when the numbers arrive, the song changes or the round starts.
   useEffect(() => {
@@ -257,21 +261,24 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
     let cancelled = false;
     let timer = null;
     let tries = 0;
+    chartWait.begin(heroKey);
     const fetchStats = () => {
-      store.songStats(heroKey).then((stats) => {
+      store.songStats(heroKey, { onQueue: (queue) => { if (!cancelled) chartWait.report(heroKey, queue); } }).then((stats) => {
         if (cancelled || !mounted.current) return;
         setSongStats({ key: heroKey, stats });
         const charted = stats && Object.values(stats).some((level) => Number.isFinite(level?.stars));
         tries += 1;
-        if (!charted && tries < STATS_POLL_MAX) timer = window.setTimeout(fetchStats, STATS_POLL_MS);
+        if (charted) chartWait.end();
+        else if (tries < STATS_POLL_MAX) timer = window.setTimeout(fetchStats, STATS_POLL_MS);
       });
     };
     fetchStats();
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      chartWait.end();
     };
-  }, [heroKey, active, room.round, store]);
+  }, [heroKey, active, room.round, store, chartWait]);
   const stats = songStats.key === heroKey ? songStats.stats : null;
 
   // The clock's whole second and, in the final seconds, its digit (0 is "GO!"). It reads the start time mapped
@@ -390,7 +397,10 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
 
         {!watching && heroKey ? (
           <section className="mb-lobby-levels" aria-label="Levels" data-tour="lobby-levels">
-            <span className="mb-ss-label mb-lobby-lvhead">{picksLevel ? "Pick your level" : "Levels of this song · tap one to see its board"}</span>
+            <div className="mb-lobby-lvtop">
+              <span className="mb-ss-label mb-lobby-lvhead">{picksLevel ? "Pick your level" : "Levels of this song · tap one to see its board"}</span>
+              <ChartWaitLine store={chartWait} className="mb-lobby-wait" requireQueue />
+            </div>
             <div className="mb-ss-diffs">
               {DIFFICULTIES.map(({ id, label }) => {
                 const stat = stats?.[id];

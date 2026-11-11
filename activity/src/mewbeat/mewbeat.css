@@ -431,6 +431,8 @@
 }
 .mb-state b { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
 .mb-state span { color: var(--mb-muted); font-size: 14px; }
+/* "Listening to the song… 0:07": the seconds tick in place, so the digits keep one width */
+.mb-wait { font-variant-numeric: tabular-nums; }
 /* "Try again" and where else to go, under a charting failure */
 .mb-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .mb-state-actions .mb-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px; font-size: 14px; font-weight: 800; }

@@ -87,8 +87,10 @@ export function createRoomStore({ requests, now = () => performance.now(), onRoo
     invite: () => act("mewbeat_room_invite"),
     inviteLink: () => act("mewbeat_room_invite", { link: true }),
     // Per-difficulty stars, note counts and my best for a song; null when the bot can't tell (never throws).
-    songStats: async (audioKey) => {
+    // `onQueue` hears where the song stands in the bot's chart line when the reply says (see chartWait.js).
+    songStats: async (audioKey, { onQueue } = {}) => {
       const reply = await act("mewbeat_song_stats", { audioKey });
+      onQueue?.(reply?.status === "ok" ? reply.queue ?? null : null);
       return reply?.status === "ok" ? reply.stats ?? null : null;
     },
   };

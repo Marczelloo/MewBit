@@ -17,6 +17,7 @@ const PLAYERS = [
 ];
 // Songs with a chart, in the order they join the queue; the first three are queued from the start.
 const QUEUEABLE = SONGS.filter((song) => song.stars).map((song) => song.title);
+const UNCHARTED_TITLE = SONGS.find((song) => !song.stars).title;
 const START_QUEUE = [["MEGALOVANIA", "kuba"], ["Hopes and Dreams", MOCK_USER_ID], ["Rude Buster", "neko"]];
 
 export function mockTrack(title, addedBy) {
@@ -57,14 +58,15 @@ export function clearCountdown(room, now = Date.now()) {
 // A lobby with four players, the owner among them and three songs queued. Two of the four have voted for the next
 // map, one short of the majority, so nothing counts down. clockMs: start with the final countdown running instead.
 // hostId: who owns the room (the player themselves, or "kuba" to see it as a guest).
-export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = null, now = Date.now() } = {}) {
+// charting: the uncharted song heads the queue, so the lobby shows it waiting for its charts (place in line, time).
+export function createMockRoom({ hostId = MOCK_USER_ID, clockMs = null, charting = false, now = Date.now() } = {}) {
   const room = withTally({
     hostId,
     phase: "lobby",
     round: 0,
     endedAt: null,
     members: PLAYERS.map(member),
-    queue: START_QUEUE.map(([title, addedBy]) => mockTrack(title, addedBy)),
+    queue: (charting ? [[UNCHARTED_TITLE, MOCK_USER_ID], ...START_QUEUE] : START_QUEUE).map(([title, addedBy]) => mockTrack(title, addedBy)),
     played: QUEUEABLE.filter((title) => !START_QUEUE.some(([queued]) => queued === title)).slice(0, 2).map((title) => mockTrack(title, "neko")),
     current: null,
     startAt: null,

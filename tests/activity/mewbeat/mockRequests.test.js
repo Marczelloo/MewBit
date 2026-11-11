@@ -71,6 +71,7 @@ test("gives a level its board, with your pinned best on the global one", async (
 });
 
 test("gives the room lobby the four levels of a song, and nothing for an uncharted one", async () => {
+  mock.resetMockCharting();
   const { tracks } = await request("mewbeat_played", { scope: "server" });
   const song = tracks.find((track) => track.bests.normal);
   const reply = await request("mewbeat_song_stats", { audioKey: song.audioKey });
@@ -80,6 +81,31 @@ test("gives the room lobby the four levels of a song, and nothing for an unchart
   assert.ok(reply.stats.normal.best.grade && reply.stats.normal.best.score > 0);
   const uncharted = tracks.find((track) => track.stars === null);
   assert.equal((await request("mewbeat_song_stats", { audioKey: uncharted.audioKey })).stats, null);
+  mock.resetMockCharting();
+});
+
+test("the stats of the uncharted song carry its place in line until the charts are there", async (t) => {
+  mock.resetMockCharting();
+  let clock = 5_000_000;
+  t.mock.method(Date, "now", () => clock);
+  const { tracks } = await request("mewbeat_played", { scope: "server" });
+  const uncharted = tracks.find((track) => track.stars === null);
+  const ask = () => request("mewbeat_song_stats", { audioKey: uncharted.audioKey });
+  const first = await ask();
+  assert.equal(first.stats, null);
+  assert.deepEqual(first.queue, { step: "analysis", ahead: 2, running: false });
+  clock += 18000;
+  const late = await ask();
+  assert.equal(late.stats, null);
+  assert.equal(late.queue.step, "charts");
+  clock += 2000;
+  const done = await ask();
+  assert.equal(done.queue, undefined);
+  assert.ok(["easy", "normal", "hard", "hell"].every((level) => Number.isFinite(done.stats[level].stars)));
+  // A charted song never carries a queue.
+  const charted = tracks.find((track) => track.stars);
+  assert.equal((await request("mewbeat_song_stats", { audioKey: charted.audioKey })).queue, undefined);
+  mock.resetMockCharting();
 });
 
 test("answers an unknown type with an error", async () => {
@@ -108,9 +134,21 @@ test("charts the uncharted song on request: queued first, ready with stars after
 
   const first = await ask();
   assert.deepEqual([first.status, first.state, first.audioKey], ["ok", "queued", song.audioKey]);
+  assert.deepEqual(first.queue, { step: "analysis", ahead: 2, running: false });
   clock += 4000;
-  assert.equal((await ask()).state, "queued");
-  clock += 6000;
+  const second = await ask();
+  assert.equal(second.state, "queued");
+  assert.deepEqual(second.queue, { step: "analysis", ahead: 1, running: false });
+  // Every 4 s poll of song select sees the next step: the place in line first, then the three steps of its own job.
+  const steps = [];
+  for (let i = 0; i < 3; i += 1) {
+    clock += 4000;
+    const reply = await ask();
+    assert.equal(reply.state, "queued");
+    steps.push(reply.queue);
+  }
+  assert.deepEqual(steps.map((queue) => [queue.step, queue.ahead, queue.running]), [["analysis", 0, true], ["melody", 0, true], ["charts", 0, true]]);
+  clock += 4000;
   const ready = await ask();
   assert.equal(ready.state, "ready");
   assert.ok(["easy", "normal", "hard", "hell"].every((level) => Number.isFinite(ready.stats[level].stars)));

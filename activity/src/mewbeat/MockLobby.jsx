@@ -13,6 +13,7 @@ import { standingsOf, upNextOf, voteOf } from "./room.js";
 //
 //   &clock=8       seconds on the final countdown to begin with (the last five show the digits and Mewbit's hype)
 //   &host=kuba     see the room as a guest instead of its owner
+//   &charting=1    an uncharted song heads the queue: the levels row shows where it stands in line and the time it has waited
 //   &last=1        the lobby after a finished round (the finished song in the queue; "Last round" standings for a spectator)
 //
 // The room starts with two of four players voted for the next map, so nothing counts down. The controls work on the
@@ -88,8 +89,9 @@ function MockLobbyScreen({ options }) {
         await wait(LATENCY_MS);
         return { status: "ok" };
       },
-      songStats: async (audioKey) => {
+      songStats: async (audioKey, { onQueue } = {}) => {
         const reply = await request("mewbeat_song_stats", { audioKey });
+        onQueue?.(reply.status === "ok" ? reply.queue ?? null : null);
         return reply.status === "ok" ? reply.stats ?? null : null;
       },
     };
@@ -187,6 +189,7 @@ export default function MockLobby({ search }) {
   // &failed=1: the results of a lost run; &nf=1: a No Fail run whose health ran out.
   const failed = params.has("failed");
   const nf = params.has("nf");
-  const options = useMemo(() => ({ hostId, clockMs, last, failed, nf }), [hostId, clockMs, last, failed, nf]);
+  const charting = params.has("charting");
+  const options = useMemo(() => ({ hostId, clockMs, last, failed, nf, charting }), [hostId, clockMs, last, failed, nf, charting]);
   return params.has("results") ? <MockResultsScreen options={options} /> : <MockLobbyScreen options={options} />;
 }
