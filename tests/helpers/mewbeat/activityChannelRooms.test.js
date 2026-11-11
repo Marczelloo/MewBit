@@ -125,6 +125,7 @@ describe("mewbeat channel rooms", () => {
       assert.strictEqual(session.roomScope, "g1");
       assert.deepStrictEqual(pushes.filter((push) => push.guildId === "g1").at(-1).userIds, ["ann", "bo"]);
 
+      await send(ANN, { type: "mewbeat_room_queue_add", id: "3a", uri: "abc", source: "youtube" }); // a vote needs a song up next
       await channel.handle(DM, BO.id, { type: "mewbeat_room_ready", id: "4", ready: true }, BO, session);
       const member = pushes.filter((push) => push.guildId === "g1").at(-1).payload.room.members.find((m) => m.userId === "bo");
       assert.strictEqual(member.ready, true);
@@ -194,6 +195,7 @@ describe("mewbeat channel rooms", () => {
       await send(ANN, { type: "mewbeat_room_ready", id: "4", difficulty: "hard" });
       await channel.handle(DM, BO.id, { type: "mewbeat_room_ready", id: "5", difficulty: "hard" }, BO, session);
       await send(ANN, { type: "mewbeat_room_start", id: "6" });
+      advance(5000); // the host's start runs the final 5 s first
       await send(ANN, { type: "mewbeat_room_loaded", id: "7", audioKey: KEY });
       await channel.handle(DM, BO.id, { type: "mewbeat_room_loaded", id: "8", audioKey: KEY }, BO, session);
       advance(5000);
@@ -264,6 +266,10 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "1", ready: true })).reason, "not_in_room");
     await send(ANN, { type: "mewbeat_room_join", id: "2" });
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "3", ready: "yes" })).reason, "bad_request");
+    // Nothing to vote for, nothing to start.
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "3c", ready: true })).reason, "empty_queue");
+    assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "3d" })).reason, "empty_queue");
+    await send(ANN, { type: "mewbeat_room_queue_add", id: "3e", uri: "abc", source: "youtube" });
     // A difficulty-only change keeps the ready state.
     await send(ANN, { type: "mewbeat_room_ready", id: "3a", ready: true });
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "3b", difficulty: "easy" })).status, "ok");
@@ -272,7 +278,6 @@ describe("mewbeat channel rooms", () => {
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "4", ready: true, difficulty: "nope" })).reason, "bad_difficulty");
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "5", ready: true, difficulty: "hell" })).status, "ok");
     assert.strictEqual((await send(BO, { type: "mewbeat_room_start", id: "6" })).reason, "not_in_room");
-    assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "7" })).reason, "empty_queue");
   });
 
   it("shows the room the modifiers a player picked, and refuses a tempo or a clash", async () => {
@@ -280,6 +285,7 @@ describe("mewbeat channel rooms", () => {
     await send(ANN, { type: "mewbeat_room_join", id: "1" });
     const annOf = () => lastRoom().members.find((member) => member.userId === "ann");
     assert.deepStrictEqual(annOf().modifiers, []);
+    await send(ANN, { type: "mewbeat_room_queue_add", id: "1a", uri: "abc", source: "youtube" });
     await send(ANN, { type: "mewbeat_room_ready", id: "2", ready: true });
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_ready", id: "3", modifiers: ["mr", "gn"] })).status, "ok");
     assert.deepStrictEqual([annOf().modifiers, annOf().ready], [["gn", "mr"], true], "in the list's order, the ready state kept");
@@ -308,8 +314,8 @@ describe("mewbeat channel rooms", () => {
 
     await send(ANN, { type: "mewbeat_room_queue_add", id: "6", uri: "abc", source: "youtube" });
     await send(ANN, { type: "mewbeat_room_ready", id: "7", ready: true });
-    assert.strictEqual(lastRoom().finalCountdown, true);
-    await send(ANN, { type: "mewbeat_room_start", id: "8" });
+    assert.strictEqual(lastRoom().finalCountdown, true); // one player, one vote: the majority
+    await send(ANN, { type: "mewbeat_room_start", id: "8" }); // the host skips what is left of the 5 s
     assert.strictEqual(lastRoom().phase, "loading");
     assert.deepStrictEqual(
       await send(ANN, { type: "mewbeat_room_ready", id: "9", spectate: true }),
@@ -385,6 +391,7 @@ describe("mewbeat channel rooms", () => {
 
       advance(60_000);
       await send(ANN, { type: "mewbeat_room_start", id: "6" });
+      advance(5000); // the final seconds of the host's start
       await invite(send, BO, "7");
       assert.deepStrictEqual(posts[1].room, {
         title: "Song abc", artist: "Artist", artworkUrl: null, players: 2, maxPlayers: 10, queued: 1, inRound: true,
@@ -406,6 +413,8 @@ describe("mewbeat channel rooms", () => {
     await send(ANN, { type: "mewbeat_room_ready", id: "3a", difficulty: "hard" });
     await send(BO, { type: "mewbeat_room_ready", id: "3b", difficulty: "easy" });
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_start", id: "4" })).status, "ok");
+    assert.strictEqual(lastRoom().phase, "lobby"); // the final 5 s first
+    advance(5000);
     assert.strictEqual(lastRoom().phase, "loading");
     assert.strictEqual(lastRoom().round, 1);
     assert.strictEqual((await send(ANN, { type: "mewbeat_room_loaded", id: "5", audioKey: "nope" })).reason, "wrong_track");
@@ -437,7 +446,7 @@ describe("mewbeat channel rooms", () => {
     await submit(BO, "9", { events: perfectEvents().slice(0, 4), difficulty: "easy" });
     const room = lastRoom();
     assert.strictEqual(room.phase, "lobby");
-    assert.strictEqual(room.endedAt, 1_005_000);
+    assert.strictEqual(room.endedAt, 1_010_000); // the 5 s of the host's start, then 5 s of countdown
     // Different difficulties, so the standings go by accuracy: Bo's four hits were cleaner.
     assert.deepStrictEqual(room.results.map((entry) => [entry.userId, entry.score, entry.difficulty]), [
       ["bo", 1100, "easy"],
@@ -451,6 +460,7 @@ describe("mewbeat channel rooms", () => {
     await send(ANN, { type: "mewbeat_room_join", id: "1" });
     await send(ANN, { type: "mewbeat_room_queue_add", id: "2", uri: "abc", source: "youtube" });
     await send(ANN, { type: "mewbeat_room_start", id: "3" });
+    advance(5000);
     await send(ANN, { type: "mewbeat_room_loaded", id: "4", audioKey: KEY });
     advance(5000);
     // A solo run of the same song during the round doesn't finish the room's round.
@@ -471,6 +481,7 @@ describe("mewbeat channel rooms", () => {
     await send(ANN, { type: "mewbeat_room_ready", id: "5", difficulty: "hard" });
     await send(BO, { type: "mewbeat_room_ready", id: "6", difficulty: "hard" });
     await send(ANN, { type: "mewbeat_room_start", id: "7" });
+    advance(5000);
     await send(ANN, { type: "mewbeat_room_loaded", id: "8", audioKey: KEY });
     await send(BO, { type: "mewbeat_room_loaded", id: "9", audioKey: KEY });
     const submit = (profile, id, extra) => send(profile, {
@@ -516,8 +527,12 @@ describe("mewbeat channel rooms", () => {
     advance(5000);
     await submit(ANN, "10");
     await submit(BO, "11");
-    assert.strictEqual(lastRoom().phase, "intermission");
-    advance(20_000);
+    assert.strictEqual(lastRoom().phase, "lobby");
+    advance(60_000);
+    assert.strictEqual(lastRoom().round, 1); // nobody voted, so nothing starts
+    await send(ANN, { type: "mewbeat_room_ready", id: "11a", ready: true });
+    await send(BO, { type: "mewbeat_room_ready", id: "11b", ready: true });
+    advance(5000);
     assert.strictEqual(lastRoom().round, 2);
     await send(ANN, { type: "mewbeat_room_loaded", id: "12", audioKey: KEY });
     await send(BO, { type: "mewbeat_room_loaded", id: "13", audioKey: KEY });

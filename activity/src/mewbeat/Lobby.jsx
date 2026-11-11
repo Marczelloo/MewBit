@@ -25,6 +25,7 @@ import {
   serverToPerf,
   songProgress,
   timelineOf,
+  voteOf,
 } from "./room.js";
 import { sendRoomInvite } from "./roomInvite.js";
 import "./lobby.css";
@@ -193,7 +194,7 @@ function Timeline({ room, userId, nowPerf, mapping, busy, onRemove, onMove }) {
   );
 }
 
-// The room lobby: the song on deck with the round clock, the queue, the levels and their leaderboard on the left;
+// The room lobby: the song on deck with the vote for it (and the final 5 s once it passed), the queue, the levels and their leaderboard on the left;
 // Mewbit, who is here and what each of them plays, invite, keys and my own controls on the right.
 // `view` is "lobby" (between rounds) or "watching" (a round is running without this player).
 export default function Lobby({ room, userId, view, receivedAt, serverClock, store, request, board, effects, showMewbit = true, keys, offsetMs, notice, sdk = null, standings = [], modifiers = [], onModifiers, onModifiersOpen, onAddSongs, onCalibrate }) {
@@ -291,10 +292,12 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   const picksLevel = Boolean(me) && !spectating;
   const viewed = !picksLevel && viewedLevel.key === heroKey && viewedLevel.id ? viewedLevel.id : myLevel;
 
-  const players = room.members.filter((member) => !member.spectator);
-  const readyCount = players.filter((member) => member.ready).length;
+  // The vote for the next map: more than half of the players start it, the host can force it. The clock only runs for
+  // the final 5 s after that; with no vote nothing counts down.
+  const vote = voteOf(room);
   const loading = room.phase === "loading";
   const loaded = loadedCount(room);
+  const voteList = vote.voters.map((member) => member.username).join(", ");
 
   let clockLabel;
   let clock;
@@ -302,25 +305,34 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   if (left != null) {
     clockLabel = "Round starts in";
     clock = formatClock(left);
-    clockText = (
+    clockText = vote.forced ? (
       <>
-        <strong>{readyCount} of {players.length}</strong> ready.{" "}
-        <span className="mb-lobby-long">The round starts when the clock runs out, or 5 seconds after everyone is ready.</span>
-        <span className="mb-lobby-short">Starts at 0:00, or 5 s after all are ready.</span>
+        <strong>The host started the round.</strong>{" "}
+        <span className="mb-lobby-long">The countdown can be skipped with Start now.</span>
+      </>
+    ) : (
+      <>
+        <strong>{vote.votes}/{vote.needed}</strong> voted to play next.{" "}
+        <span className="mb-lobby-long">Take your vote back to stop the countdown.</span>
       </>
     );
   } else if (!queue.length) {
     clockLabel = "The queue is empty";
-    clock = "–:––";
-    clockText = <>Add a song and press Ready to start the clock.</>;
-  } else if (room.members.every((member) => member.watching)) {
+    clock = "–/–";
+    clockText = <>Add a song, then vote to play it.</>;
+  } else if (!vote.players) {
     clockLabel = "Nobody is playing";
-    clock = "–:––";
+    clock = "–/–";
     clockText = <>A round needs at least one player. Everyone here is watching.</>;
   } else {
-    clockLabel = "Waiting for Ready";
-    clock = "–:––";
-    clockText = <>The clock starts when someone presses <strong>Ready</strong>.</>;
+    clockLabel = "Votes to play next";
+    clock = `${vote.votes}/${vote.needed}`;
+    clockText = (
+      <>
+        <strong>{vote.needed} of {vote.players}</strong> players have to vote before the round starts.{" "}
+        <span className="mb-lobby-long">{voteList ? `Voted: ${voteList}.` : "Nobody has voted yet."} The host can also start it.</span>
+      </>
+    );
   }
   if (watching) {
     clockLabel = loading ? "Players loaded" : "Round in progress";
@@ -333,7 +345,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   }
 
   const levelLabel = (id) => DIFFICULTIES.find((d) => d.id === id)?.label ?? id;
-  const readyLabel = active ? (loading ? "Loading…" : "Round in progress") : me?.ready ? "Ready ✓" : "Ready";
+  const readyLabel = active ? (loading ? "Loading…" : "Round in progress") : me?.ready ? "Voted ✓ (take back)" : "Play next";
 
   return (
     <section className="mb-lobby" aria-label="Room lobby">
@@ -359,8 +371,15 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               <div className="mb-lobby-crow">
                 <b key={watching ? "watch" : second ?? "idle"} className={`mb-lobby-time${watching ? "" : digit != null ? " mb-lobby-time-final" : second != null ? " mb-lobby-time-tick" : ""}`}>{digit === 0 ? "GO!" : clock}</b>
                 {host && !watching ? (
-                  <button type="button" className="mb-btn mb-lobby-start" disabled={!canStart || busy === "start"} onClick={() => run("start", () => store.start())}>
-                    {busy === "start" ? "Starting…" : left != null ? "Start now" : "Start round"}
+                  <button
+                    type="button"
+                    className="mb-btn mb-lobby-start"
+                    data-tour="lobby-force"
+                    title={left != null ? "Skip the rest of the countdown and start the round now" : "Host only: start the round without waiting for the vote"}
+                    disabled={!canStart || busy === "start"}
+                    onClick={() => run("start", () => store.start())}
+                  >
+                    {busy === "start" ? "Starting…" : left != null ? "Start now" : "Force start"}
                   </button>
                 ) : null}
               </div>
@@ -441,7 +460,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
         <section className="mb-lobby-plist" aria-label="Players" data-tour="lobby-players">
           <h3 className="mb-lobby-shead">
             <span>Players <small>{room.members.length}</small></span>
-            <em>{watching && loading ? <><strong>{loaded.loaded} of {loaded.total}</strong> loaded</> : <><strong>{readyCount} of {players.length}</strong> ready</>}</em>
+            <em>{watching && loading ? <><strong>{loaded.loaded} of {loaded.total}</strong> loaded</> : active ? <>round in progress</> : <><strong>{vote.votes}/{vote.needed}</strong> voted</>}</em>
           </h3>
           <ul className="mb-lobby-players">
             {ownerFirst(room).map((member) => {
@@ -541,7 +560,8 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               className={`mb-lobby-ready${me?.ready && !active ? " mb-lobby-ready-on" : ""}`}
               data-tour="lobby-ready"
               aria-pressed={Boolean(me?.ready)}
-              disabled={!canChange || busy === "ready"}
+              title={me?.ready ? "Click to take your vote back" : "Vote to play the next song. It starts once more than half of the players voted."}
+              disabled={!canChange || busy === "ready" || (!me?.ready && !queue.length)}
               onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}
             >
               {readyLabel}

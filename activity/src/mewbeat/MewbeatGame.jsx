@@ -35,7 +35,7 @@ import SongSelect, { DIFFICULTIES } from "./SongSelect.jsx";
 import SpectateCard from "./SpectateCard.jsx";
 import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { useHud } from "./useHud.js";
-import { countdownSounds, loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf } from "./room.js";
+import { countdownSounds, loadedCount, memberOf, roomErrorText, roomView, serverToPerf, standingsOf, upNextOf, voteOf } from "./room.js";
 import { useCountdownSounds } from "./useCountdownSounds.js";
 import { useMewbeatGame } from "./useMewbeatGame.js";
 import { useScreenExit } from "./useScreenExit.js";
@@ -863,6 +863,12 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     const reply = await store.start();
     if (reply?.status !== "ok") setActionNotice(roomErrorText(reply));
   };
+  // The vote for the next map: casts it, or takes it back. The results stay open, the round only starts once the
+  // server counts more than half of the players (or the host forced it).
+  const voteNext = async () => {
+    const reply = await store.ready({ ready: !me?.ready });
+    if (reply?.status !== "ok") setActionNotice(roomErrorText(reply));
+  };
   // The room's add-songs picker: the bot prepares the song, so this can take a while; a refusal is shown there.
   const addToRoom = useCallback(async (picked) => {
     const reply = await store.queueAdd({ uri: picked.uri, source: picked.source });
@@ -1150,6 +1156,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     ? serverToPerf(room.nextAt, { offsetMs: link.serverClock?.offsetMs?.() ?? null, serverNow: room.serverNow, receivedAtMs: roomStoreView.receivedAt })
     : null;
   useCountdownSounds({ startPerf: roomStartPerf, started: inRound, calm: showCard || holdingCard, play: playSfx });
+  // What Results shows of the room's vote; its seconds only run once the vote passed or the host forced the start.
+  const roomVote = roomMode && room
+    ? (() => {
+      const tally = voteOf(room);
+      return { votes: tally.votes, needed: tally.needed, names: tally.voters.map((m) => m.username ?? m.name ?? "Player"), forced: tally.forced, startPerf: tally.counting ? roomStartPerf : null };
+    })()
+    : null;
   const soloCount = soloStage === "countin" ? soloState.count : null;
   const lastSoloCount = useRef(null);
   const [soloWent, setSoloWent] = useState(false); // the moment after a run's count, when Mewbit calls GO
@@ -1309,8 +1322,13 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       standings={roomMode ? standingsOf(room, userId) : null}
       request={requests.request}
       userId={userId}
-      onNext={roomMode && view === "lobby" && room?.hostId === userId && (room?.queue?.length ?? 0) > 0 ? startNext : undefined}
-      nextLabel="Start next round"
+      onNext={roomMode && view === "lobby" && me && !me.spectator && (room?.queue?.length ?? 0) > 0 ? voteNext : undefined}
+      nextOn={Boolean(me?.ready)}
+      nextLabel="Play next"
+      nextCount={roomVote ? `${roomVote.votes}/${roomVote.needed}` : null}
+      vote={roomVote}
+      onForce={roomMode && view === "lobby" && room?.hostId === userId && (room?.queue?.length ?? 0) > 0 ? startNext : undefined}
+      forceLabel={room?.finalCountdown ? "Start now" : "Force start"}
       timing={timing}
       savedOffset={savedOffset}
       onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { [offsetField]: offsetMs } })}

@@ -3,24 +3,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Lobby, { LeaveConfirm } from "./Lobby.jsx";
 import Results from "./Results.jsx";
 import { createMockRequest, MOCK_USER_ID } from "./mockRequests.js";
-import { addNextSong, applyReady, createMockFinishedRoom, createMockRoom, createMockSummary, mockTrack, moveInQueue, removeFromQueue, restartClock, ROUND_CLOCK_MS } from "./mockRoom.js";
+import { addNextSong, applyReady, clearCountdown, createMockFinishedRoom, createMockRoom, createMockSummary, forceStart, mockTrack, moveInQueue, removeFromQueue, startCountdown } from "./mockRoom.js";
 import Stage from "./Stage.jsx";
-import { standingsOf, upNextOf } from "./room.js";
+import { standingsOf, upNextOf, voteOf } from "./room.js";
 
 // The room lobby (?mock=1&lobby=1) and the end-of-run Results with room standings (&results=1) on fake data, in the
 // game's frame. Dev server only: MewbeatGame.jsx loads this file through a dynamic import behind import.meta.env.DEV,
 // so none of it, nor the fake names, reaches the production build.
 //
-//   &clock=8       seconds on the round clock to begin with (the last five show the countdown and Mewbit's hype)
+//   &clock=8       seconds on the final countdown to begin with (the last five show the digits and Mewbit's hype)
 //   &host=kuba     see the room as a guest instead of its owner
 //   &last=1        the lobby after a finished round (the finished song in the queue; "Last round" standings for a spectator)
 //
-// The controls work on the fake room: Ready, level, Player / Spectator, Add songs, moving and removing queued songs, Send invite and
-// Start now. Nothing leaves the page.
+// The room starts with two of four players voted for the next map, so nothing counts down. The controls work on the
+// fake room: the vote (a majority starts the final seconds, as on the bot), level, Player / Spectator, Add songs, moving
+// and removing queued songs, Send invite and the host's Force start. Nothing leaves the page.
 
 const LATENCY_MS = 120; // long enough to see a control's busy state
-const START_NOW_CLOCK_MS = 5000; // "Start now" jumps the clock to the countdown
-const AFTER_START_MS = 1600; // "GO!" stays up this long, then the clock starts over
+const AFTER_START_MS = 1600; // "GO!" stays up this long, then the vote starts over
 const KEYS = ["KeyD", "KeyF", "KeyJ", "KeyK"];
 const MODES = [{ id: "live", label: "Live" }, { id: "solo", label: "Solo" }, { id: "room", label: "Room" }];
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,7 +56,9 @@ function Frame({ children, onLeave, stage = null }) {
 function MockLobbyScreen({ options }) {
   const [request] = useState(createMockRequest);
   const [snap, setSnap] = useState(() => ({
-    room: options.last ? restartClock(createMockFinishedRoom(options), options.clockMs) : createMockRoom(options),
+    room: options.last
+      ? (options.clockMs ? startCountdown(createMockFinishedRoom(options), options.clockMs) : createMockFinishedRoom(options))
+      : createMockRoom(options),
     receivedAt: performance.now(),
   }));
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -81,7 +83,7 @@ function MockLobbyScreen({ options }) {
       queueRemove: change((room, index) => removeFromQueue(room, MOCK_USER_ID, index)),
       queueMove: change((room, from, to) => moveInQueue(room, MOCK_USER_ID, from, to)),
       queueAdd: change((room) => addNextSong(room, MOCK_USER_ID)),
-      start: change((room) => ({ room: restartClock(room, START_NOW_CLOCK_MS), reply: { status: "ok" } })),
+      start: change((room) => forceStart(room, MOCK_USER_ID)),
       invite: async () => {
         await wait(LATENCY_MS);
         return { status: "ok" };
@@ -93,12 +95,12 @@ function MockLobbyScreen({ options }) {
     };
   }, [request]);
 
-  // The clock starts over a moment after it runs out, so the preview never sits at 0:00.
+  // The vote starts over a moment after the countdown runs out (the round would have begun), so the preview can be run again.
   const nextAt = snap.room.nextAt;
   useEffect(() => {
     if (nextAt == null) return undefined;
     const id = setTimeout(() => {
-      const room = restartClock(roomRef.current, ROUND_CLOCK_MS);
+      const room = clearCountdown(roomRef.current);
       roomRef.current = room;
       setSnap({ room, receivedAt: performance.now() });
     }, Math.max(0, nextAt - Date.now()) + AFTER_START_MS);
@@ -137,9 +139,15 @@ function MockLobbyScreen({ options }) {
 
 function MockResultsScreen({ options }) {
   const [request] = useState(createMockRequest);
-  const room = useMemo(() => createMockFinishedRoom(options), [options]);
+  // The vote works on the fake room, so the toggle, the count and the countdown can be tried.
+  const [room, setRoom] = useState(() => createMockFinishedRoom(options));
+  const [receivedAt, setReceivedAt] = useState(() => performance.now());
   const summary = useMemo(() => createMockSummary({ failed: options.failed, nf: options.nf }), [options.failed, options.nf]);
   const standings = useMemo(() => standingsOf(room, MOCK_USER_ID), [room]);
+  const tally = voteOf(room);
+  const me = room.members.find((m) => m.userId === MOCK_USER_ID);
+  const commit = (next) => { setRoom(next); setReceivedAt(performance.now()); };
+  const startPerf = room.nextAt != null ? receivedAt + (room.nextAt - room.serverNow) : null;
   const stage = useMemo(() => mockTrack(summary.title, MOCK_USER_ID), [summary.title]);
   return (
     <Frame onLeave={() => {}} stage={stage}>
@@ -153,8 +161,12 @@ function MockResultsScreen({ options }) {
         request={request}
         userId={MOCK_USER_ID}
         onRestart={() => {}}
-        onNext={room.hostId === MOCK_USER_ID ? () => {} : undefined}
-        nextLabel="Start next round"
+        onNext={() => { const { room: next, reply } = applyReady(room, MOCK_USER_ID, { ready: !me.ready }); if (reply.status === "ok") commit(next); }}
+        nextOn={Boolean(me?.ready)}
+        nextLabel="Play next"
+        nextCount={`${tally.votes}/${tally.needed}`}
+        vote={{ votes: tally.votes, needed: tally.needed, names: tally.voters.map((m) => m.username), forced: tally.forced, startPerf: tally.counting ? startPerf : null }}
+        onForce={room.hostId === MOCK_USER_ID ? () => { const { room: next, reply } = forceStart(room, MOCK_USER_ID); if (reply.status === "ok") commit(next); } : undefined}
         savedOffset={12}
         onApplyOffset={() => {}}
         onBack={() => {}}
@@ -167,7 +179,7 @@ export default function MockLobby({ search }) {
   const params = new URLSearchParams(search);
   const clock = Number(params.get("clock"));
   const hostId = params.get("host") === "kuba" ? "kuba" : MOCK_USER_ID;
-  const clockMs = Number.isFinite(clock) && clock > 0 ? clock * 1000 : ROUND_CLOCK_MS;
+  const clockMs = Number.isFinite(clock) && clock > 0 ? clock * 1000 : null;
   const last = params.has("last");
   // &failed=1: the results of a lost run; &nf=1: a No Fail run whose health ran out.
   const failed = params.has("failed");

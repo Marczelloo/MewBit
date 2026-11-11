@@ -207,7 +207,34 @@ function Avatar({ name, url }) {
   return src ? <img className="mb-res-av" src={src} alt="" draggable="false" /> : <span className="mb-res-av mb-res-av-text" aria-hidden="true">{initials}</span>;
 }
 
-// One player's line, shared by the room's standings and the server's best list. vote: they are ready for the next round.
+// The room's vote for the next map under the results: the tally and who voted, then the final seconds once it passed
+// (or the host forced the start). `vote.startPerf` is the start on the local clock, null while nothing counts down.
+function VoteLine({ vote }) {
+  const counting = vote.startPerf != null;
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    if (!counting) return undefined;
+    setNow(performance.now());
+    const id = window.setInterval(() => setNow(performance.now()), 200);
+    return () => window.clearInterval(id);
+  }, [counting]);
+  if (counting) {
+    const seconds = Math.max(0, Math.ceil((vote.startPerf - now) / 1000));
+    return (
+      <p className="mb-res-next" role="status">
+        {vote.forced ? <b>The host started the next round</b> : <><b>{vote.votes}/{vote.needed}</b> voted to play next</>}
+        {" · starting in "}<b>{seconds} s</b>
+      </p>
+    );
+  }
+  return (
+    <p className="mb-res-next" role="status">
+      <b>{vote.votes}/{vote.needed}</b> voted to play next{vote.names.length ? ` · ${vote.names.join(", ")}` : ""}
+    </p>
+  );
+}
+
+// One player's line, shared by the room's standings and the server's best list. vote: they voted to play the next song.
 function PlayerRow({ position, me, name, avatarUrl, sub, score, grade, vote, style }) {
   return (
     <li className={me ? "mb-res-me" : undefined} style={style}>
@@ -226,7 +253,7 @@ function PlayerRow({ position, me, name, avatarUrl, sub, score, grade, vote, sty
   );
 }
 
-// A room's standings after the round (only given in rooms): one row per player, with who is ready for the next round.
+// A room's standings after the round (only given in rooms): one row per player, with who voted for the next song.
 function Standings({ rows }) {
   return (
     <section className="mb-res-standings" aria-label="Standings">
@@ -284,8 +311,12 @@ export default function Results({
   onSongSelect,
   onRestart,
   onNext = null,
-  nextLabel = "Next round",
+  nextLabel = "Play next",
   nextCount = null,
+  nextOn = false,
+  vote = null,
+  onForce = null,
+  forceLabel = "Force start",
   onSound = null,
 }) {
   const prefersReduced = usePrefersReducedMotion();
@@ -330,11 +361,12 @@ export default function Results({
   const note = mode === "live" ? PHASE_NOTES[phase] ?? (queued ? "Waiting for the next track…" : null) : null;
   const cover = resolveArtworkUrl(summary.artworkUrl);
 
-  // Primary action: what Enter does. A room's next round, else leaving for the next thing to play. A lost solo run
-  // offers the same song again first.
+  // Primary action: what Enter does. A room's vote for the next song, else leaving for the next thing to play. A lost
+  // solo run offers the same song again first. Enter only casts the vote: taking it back is a click, so a held or
+  // repeated Enter can't flip it.
   const primary = onNext ? "next" : mode === "solo" ? (lost && onRestart ? "restart" : "songs") : "back";
   const runPrimary = () => {
-    if (primary === "next") onNext();
+    if (primary === "next") { if (!nextOn) onNext(); }
     else if (primary === "restart") onRestart();
     else if (primary === "songs") onSongSelect?.();
     else onBack?.();
@@ -476,6 +508,7 @@ export default function Results({
           {mode !== "solo" && upNext?.title ? (
             <p className="mb-res-next">Up next: <b>{upNext.title}</b>{upNext.ready ? " · chart ready" : ""}</p>
           ) : null}
+          {vote && upNext?.title ? <VoteLine vote={vote} /> : null}
           <div className="mb-res-actions">
             {onRestart ? (
               <button type="button" className={`mb-btn${primary === "restart" ? " mb-btn-primary" : ""}`} onClick={onRestart}>
@@ -493,8 +526,19 @@ export default function Results({
               </button>
             ) : null}
             {onNext ? (
-              <button type="button" className="mb-btn mb-btn-primary" onClick={onNext}>
-                {nextLabel} {nextCount ? <span className="mb-res-count">{nextCount}</span> : null}<ArrowRight size={16} weight="bold" aria-hidden="true" /><kbd className="mb-kbd">Enter</kbd>
+              <button
+                type="button"
+                className={`mb-btn${nextOn ? "" : " mb-btn-primary"}`}
+                aria-pressed={nextOn}
+                title={nextOn ? "Click to take your vote back" : "Vote to play the next song. It starts once more than half of the players voted."}
+                onClick={onNext}
+              >
+                {nextOn ? "Voted ✓ (take back)" : nextLabel} {nextCount ? <span className="mb-res-count">{nextCount}</span> : null}{nextOn ? null : <><ArrowRight size={16} weight="bold" aria-hidden="true" /><kbd className="mb-kbd">Enter</kbd></>}
+              </button>
+            ) : null}
+            {onForce ? (
+              <button type="button" className="mb-btn" title="Host only: start the next round without waiting for the vote" onClick={onForce}>
+                {forceLabel}
               </button>
             ) : null}
           </div>

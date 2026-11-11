@@ -14,16 +14,13 @@ const LOADING_LATE_MS = 120_000;
 const ROUND_LEAD_MS = 3_000;
 // Silence added between that start and the song's first sound, so the first notes can lie on it.
 const SONG_SILENCE_MS = 2_000;
-// The first Ready opens this long a wait for the others...
-const READY_WINDOW_MS = 60_000;
-// ...and everyone being ready cuts it down to this.
+// The last seconds before a round: they run once the vote for the next map passes or the host forces the start.
 const FINAL_COUNTDOWN_MS = 5_000;
 // A round that nobody finishes ends this long after the song would have; the
 // slack also covers a slow client or a long server-side recompute.
 const RESULTS_GRACE_MS = 10_000;
-const INTERMISSION_MS = 20_000;
-// Between rounds, spectators can take free player seats.
-const IDLE_PHASES = ["lobby", "intermission"];
+// Between rounds (the lobby also shows the last round's results), spectators can take free player seats.
+const IDLE_PHASES = ["lobby"];
 const ROUND_PHASES = ["loading", "countdown", "playing"];
 
 const ok = () => ({ ok: true });
@@ -34,12 +31,38 @@ const fail = (reason) => ({ ok: false, reason });
 // the clients join again. Time and timers are injected so the phase machine
 // can be tested with a fake clock.
 //
-// Phases: lobby, loading, countdown, playing, intermission. There is no
-// separate results phase. The snapshot carries `round` (0 before the first
-// round, +1 for every round started) and `endedAt` (server ms when the last
-// round ended, null while a round is on, after an aborted round and before
-// the first one). The client shows a round's results while `results`/`current`
-// are set and `endedAt != null`, in the lobby or the intermission phase.
+// Phases: lobby, loading, countdown, playing. There is no separate results
+// phase. The snapshot carries `round` (0 before the first round, +1 for every
+// round started) and `endedAt` (server ms when the last round ended, null while
+// a round is on, after an aborted round and before the first one). The client
+// shows a round's results while `results`/`current` are set and `endedAt != null`,
+// in the lobby phase.
+//
+// The next round never starts by itself. A member's `ready` flag is their vote
+// for "play the next map" (the Activity words it "Play next"). The map starts,
+// after FINAL_COUNTDOWN_MS, once MORE THAN HALF of the players have voted (1 of
+// 1, 2 of 2, 2 of 3, 3 of 4, 3 of 5...), or when the host forces it. Without
+// votes the room stays in the lobby for as long as it takes.
+//
+// Who counts as "a player in the room" (the electorate): the members that are
+// not spectators, `playersOf`. That means
+//   - someone who only watches (chose Spectator, or joined while a round was on
+//     and has not been seated yet) does not count and cannot vote, so a pure
+//     audience can neither hold up a room nor start it;
+//   - someone still reading the results screen does count: they are a player
+//     and may vote from there, and the room waits for a majority, not for all;
+//   - someone who closed the Activity is no longer a member at all (the socket
+//     closing removes them, see `leave`), so they stop counting at once and the
+//     vote is recounted;
+//   - someone who stays in the Activity but walks away does count. Being just
+//     under the majority is what the host's force start is for; it is the escape
+//     hatch for an absent player and needs no vote.
+// The tally is recounted whenever a member comes, leaves, switches between
+// Player and Spectator, votes or takes the vote back, and whenever the queue
+// changes under it. Votes are cleared when a round starts, when one ends (a vote
+// cast against the old round must not carry over into the next wait), and when
+// the song at the head of the queue changes, since the voters agreed to play a
+// different map.
 //
 // prepareTrack({ guildId, uri, source }) -> Promise<{ audioKey, track }>
 // rejects with an error carrying `reason` when the song can't be used.
@@ -56,8 +79,18 @@ function createRooms({
 
   const playersOf = (room) => room.members.filter((member) => !member.spectator);
   const findMember = (room, userId) => room.members.find((member) => member.userId === userId);
+  // The vote: how many of the players want the next map, and how many are needed (more than half of them).
+  function tallyOf(room) {
+    const players = playersOf(room);
+    return {
+      players,
+      votes: players.filter((member) => member.ready).length,
+      needed: players.length ? Math.floor(players.length / 2) + 1 : 0,
+    };
+  }
 
   function snapshotOf(room) {
+    const { votes, needed } = tallyOf(room);
     return {
       hostId: room.hostId,
       phase: room.phase,
@@ -82,6 +115,11 @@ function createRooms({
       silenceMs: SONG_SILENCE_MS,
       nextAt: room.nextAt,
       finalCountdown: room.finalAt != null,
+      // The vote for the next map: a member's `ready` is their vote, `votes` how many there are and `votesNeeded` the
+      // majority. `forced`: the countdown runs because the host forced the start, not because the vote passed.
+      votes,
+      votesNeeded: needed,
+      forced: room.forced,
       results: room.results.map((entry) => ({ ...entry })),
       serverNow: now(),
     };
@@ -130,34 +168,47 @@ function createRooms({
     }
   }
 
+  // Ends the final seconds before a round (a vote that fell below the majority, a changed queue, a lost host force).
   function stopCountdown(room) {
     if (room.timers.next !== undefined) clearTimer(room.timers.next);
     delete room.timers.next;
-    room.windowAt = null;
     room.finalAt = null;
     room.nextAt = null;
+    room.forced = false;
   }
 
-  // Brings the clock of a waiting room in line with who is ready. The long wait
-  // (`windowAt`) keeps running through every change; the final seconds (`finalAt`)
-  // only last while everyone is ready and never go past the end of the long wait.
+  // Everybody's "play next" vote is withdrawn (they are asked again for the next map).
+  function clearVotes(room) {
+    for (const member of room.members) member.ready = false;
+  }
+
+  // Brings the clock of a waiting room in line with the vote. The ONLY thing that starts a round without a click
+  // from the host is the final countdown (`finalAt`), and it exists only while more than half of the players have
+  // voted (or the host forced the start). It is recounted on every change, so it also ends when a vote is taken
+  // back or someone new makes the majority bigger. A room that is waiting for votes has no clock at all.
   function syncCountdown(room) {
     if (!IDLE_PHASES.includes(room.phase)) return;
-    const players = playersOf(room);
-    const readyCount = players.filter((member) => member.ready).length;
-    const between = room.phase === "intermission"; // runs without anyone pressing Ready
-    if (!room.queue.length || !players.length || (!between && !readyCount)) {
+    const head = room.queue[0] ?? null;
+    if (room.voteHead !== head) {
+      // The voters agreed to play a different map than the one that is now up next: the vote starts over.
+      room.voteHead = head;
+      clearVotes(room);
       stopCountdown(room);
-      room.phase = "lobby";
+    }
+    const { players, votes, needed } = tallyOf(room);
+    if (!head || !players.length) {
+      clearVotes(room);
+      stopCountdown(room);
       return;
     }
-    room.windowAt ??= now() + READY_WINDOW_MS;
-    if (readyCount === players.length) room.finalAt ??= Math.min(room.windowAt, now() + FINAL_COUNTDOWN_MS);
-    else room.finalAt = null;
-    const nextAt = room.finalAt ?? room.windowAt;
-    if (nextAt === room.nextAt) return;
-    room.nextAt = nextAt;
-    after(room, "next", nextAt - now(), IDLE_PHASES, () => startRound(room));
+    if (votes < needed && !room.forced) {
+      stopCountdown(room);
+      return;
+    }
+    if (room.finalAt != null) return; // already counting down
+    room.finalAt = now() + FINAL_COUNTDOWN_MS;
+    room.nextAt = room.finalAt;
+    after(room, "next", FINAL_COUNTDOWN_MS, IDLE_PHASES, () => startRound(room));
   }
 
   // Someone came, left or switched to watching in a waiting phase: free seats
@@ -178,21 +229,17 @@ function createRooms({
       : b.score - a.score || b.accuracy - a.accuracy));
   }
 
-  // Back to a waiting phase: the next song is queued -> intermission with a
-  // shorter wait that starts by itself, else the lobby. `current` and `results` stay for the
-  // results screen until the next round starts.
-  function settle(room, { auto = true } = {}) {
+  // Back to the lobby, with no clock running and nobody having voted: the next map has to be asked for (voted or
+  // forced), whatever is queued. `current` and `results` stay for the results screen until the next round starts.
+  function settle(room) {
     clearTimers(room);
     stopCountdown(room);
     room.startAt = null;
     promoteSpectators(room);
-    if (auto && room.queue.length && playersOf(room).length) {
-      room.phase = "intermission";
-      room.windowAt = now() + INTERMISSION_MS;
-      syncCountdown(room);
-    } else {
-      room.phase = "lobby";
-    }
+    room.phase = "lobby";
+    // A vote cast before or during the round belongs to that round, not to the wait that begins now.
+    clearVotes(room);
+    room.voteHead = room.queue[0] ?? null;
   }
 
   function endRound(room) {
@@ -210,8 +257,7 @@ function createRooms({
     room.current = null;
     room.results = [];
     room.endedAt = null;
-    // No auto-start: that would loop straight into the same failing song.
-    settle(room, { auto: false });
+    settle(room);
   }
 
   function startRound(room) {
@@ -234,9 +280,9 @@ function createRooms({
     for (const member of room.members) {
       member.loaded = false;
       member.submitted = false;
-      // Ready is for the round that is about to start, not the next one.
-      member.ready = false;
     }
+    // The votes were for the round that is starting, not for the next one.
+    clearVotes(room);
     after(room, "loading", LOADING_MS, ["loading"], () => {
       if (playersOf(room).some((member) => member.loaded)) return beginCountdown(room);
       room.loadingLate = true;
@@ -261,10 +307,10 @@ function createRooms({
     if (rooms.get(room.guildId) !== room || room.round !== round || room.phase !== "loading") return;
     if (prepared?.audioKey && prepared.track) return;
 
+    // The song is dropped. The next one in the queue was not voted for, so the room goes back to waiting for votes.
     room.current = null;
     room.results = [];
-    if (room.queue.length && playersOf(room).length) startRound(room);
-    else settle(room, { auto: false });
+    settle(room);
     push(room);
   }
 
@@ -319,8 +365,9 @@ function createRooms({
         pending: new Map(), // userId -> queue adds in flight
         startAt: null,
         nextAt: null,
-        windowAt: null, // when the wait for the next round runs out
-        finalAt: null, // when the final seconds run out, once everyone is ready
+        finalAt: null, // when the final seconds run out, once the vote passed or the host forced the start
+        forced: false, // the host forced the start (the countdown does not need the vote)
+        voteHead: null, // the queue entry the votes are for (the song up next)
         results: [],
         roundResults: new Map(), // userId -> result of the round in progress
         timers: {},
@@ -417,7 +464,7 @@ function createRooms({
       source: track.source ?? source ?? "",
       addedBy: userId,
     });
-    // A lobby that was waiting only for a song starts its clock now.
+    // A vote can't exist without a song; with the first one queued the room starts waiting for votes.
     syncCountdown(room);
     push(room);
     return ok();
@@ -433,7 +480,7 @@ function createRooms({
     if (room.hostId !== userId && room.queue[index].addedBy !== userId) return fail("forbidden");
 
     room.queue.splice(index, 1);
-    // A wait with nothing left to start ends.
+    // Removing the song up next voids the votes (or ends the wait when nothing is left to start).
     syncCountdown(room);
     push(room);
     return ok();
@@ -449,6 +496,8 @@ function createRooms({
     if (audioKey != null && room.queue[from].audioKey !== audioKey) return fail("queue_changed");
 
     room.queue.splice(to, 0, room.queue.splice(from, 1)[0]);
+    // Another song may be up next now: the votes were for the old one.
+    syncCountdown(room);
     push(room);
     return ok();
   }
@@ -467,6 +516,10 @@ function createRooms({
     if (spectate === true) spectatorAfter = true;
     else if (spectate === false && !ROUND_PHASES.includes(room.phase) && playersOf(room).length < MAX_PLAYERS) spectatorAfter = false;
     if (isReady === true && spectatorAfter) return fail("spectating");
+    // A vote is for the next map: none while a round runs (it would still be there when the round ends and start
+    // the next one by itself), and none without a song to vote for.
+    if (isReady === true && ROUND_PHASES.includes(room.phase)) return fail("wrong_phase");
+    if (isReady === true && !room.queue.length) return fail("empty_queue");
 
     if (difficulty !== undefined) member.difficulty = difficulty;
     if (Array.isArray(modifiers)) member.modifiers = [...modifiers];
@@ -489,7 +542,15 @@ function createRooms({
     promoteSpectators(room);
     if (!playersOf(room).length) return fail("no_players");
 
-    startRound(room);
+    // The host's escape hatch: it needs no vote. It runs the same final countdown a passed vote does, and when that
+    // is already running (the vote passed first) it skips what is left of it.
+    syncCountdown(room);
+    if (room.finalAt != null) {
+      startRound(room);
+    } else {
+      room.forced = true;
+      syncCountdown(room);
+    }
     push(room);
     return ok();
   }
@@ -555,7 +616,5 @@ module.exports = {
   LOADING_MS,
   ROUND_LEAD_MS,
   SONG_SILENCE_MS,
-  READY_WINDOW_MS,
   FINAL_COUNTDOWN_MS,
-  INTERMISSION_MS,
 };

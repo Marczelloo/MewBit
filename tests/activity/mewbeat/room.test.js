@@ -3,10 +3,10 @@ const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
-let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator, ownerFirst;
+let serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator, ownerFirst, voteOf;
 
 test.before(async () => {
-  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator, ownerFirst } = await import(
+  ({ serverNowMs, songProgress, memberStatus, roomView, serverToPerf, startPerfMs, remainingMs, countdownDigit, nextCountdownSecond, countdownSounds, formatClock, lobbyPose, timelineOf, standingsOf, upNextOf, loadedCount, inviteMessage, roomErrorText, isHost, isSpectator, ownerFirst, voteOf } = await import(
     pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/room.js")).href
   ));
 });
@@ -241,10 +241,26 @@ test("countdownSounds: GO on a kick at zero, full ticks for the last five, quiet
   assert.deepEqual(rest, []);
 });
 
+test("voteOf uses the server's tally, and counts the players by the same rule when a snapshot has none", () => {
+  const members = [member("h", { ready: true }), member("u1"), member("u2", { ready: true }), member("w", { spectator: true, ready: true })];
+  // No tally in the snapshot: three players (the watcher is not one), two voted, two needed.
+  const counted = voteOf(room({ members }));
+  assert.deepEqual([counted.votes, counted.needed, counted.players], [2, 2, 3]);
+  assert.deepEqual(counted.voters.map((m) => m.userId), ["h", "u2"]);
+  assert.deepEqual(counted.waiting.map((m) => m.userId), ["u1"]);
+  assert.equal(counted.counting, false);
+  // The server's own numbers win.
+  const served = voteOf(room({ members, votes: 1, votesNeeded: 3, finalCountdown: true, nextAt: 6000, forced: true }));
+  assert.deepEqual([served.votes, served.needed, served.counting, served.forced], [1, 3, true, true]);
+  // Nobody to vote: nothing is needed.
+  assert.equal(voteOf(room({ members: [member("w", { spectator: true })] })).needed, 0);
+  assert.equal(voteOf(null).needed, 0);
+});
+
 test("memberStatus follows the phase", () => {
   const m = (extra) => member("u1", extra);
-  assert.deepEqual(memberStatus(room(), m({ ready: true })), { text: "Ready", tone: "ok" });
-  assert.deepEqual(memberStatus(room(), m()), { text: "Picking…", tone: "wait" });
+  assert.deepEqual(memberStatus(room(), m({ ready: true })), { text: "Voted", tone: "ok" });
+  assert.deepEqual(memberStatus(room(), m()), { text: "Not voted", tone: "wait" });
   assert.deepEqual(memberStatus(room({ phase: "loading" }), m()), { text: "Loading…", tone: "wait" });
   assert.deepEqual(memberStatus(room({ phase: "loading" }), m({ loaded: true })), { text: "Loaded", tone: "ok" });
   assert.deepEqual(memberStatus(room({ phase: "playing" }), m({ loaded: true })), { text: "Playing", tone: "ok" });
