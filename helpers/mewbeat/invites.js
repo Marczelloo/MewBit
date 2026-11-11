@@ -80,7 +80,13 @@ async function handleJoinButton(interaction) {
       if (interaction.replied || interaction.deferred) return;
     }
   }
-  await interaction.reply({ content: FALLBACK_HINT, flags: MessageFlags.Ephemeral });
+  // The hint is a courtesy: an interaction that expired or was answered elsewhere (40060, 10062) must not
+  // become an unhandled rejection, which takes the whole bot down.
+  try {
+    await interaction.reply({ content: FALLBACK_HINT, flags: MessageFlags.Ephemeral });
+  } catch {
+    // Nothing left to tell this player.
+  }
 }
 
 module.exports = { FALLBACK_HINT, JOIN_CUSTOM_ID, createInvitePoster, handleJoinButton, inviteMessage };

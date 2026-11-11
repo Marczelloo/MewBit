@@ -127,4 +127,13 @@ describe("mewbeat invites", () => {
     assert.ok(replies[0].flags);
     assert.doesNotMatch(FALLBACK_HINT, /konami|↑|up up|arrow/i);
   });
+
+  it("does not throw when the hint cannot be sent (interaction already acknowledged)", async () => {
+    await handleJoinButton({
+      launchActivity: async () => { throw new Error("no activity"); },
+      replied: false,
+      deferred: false,
+      reply: async () => { throw Object.assign(new Error("Interaction has already been acknowledged."), { code: 40060 }); },
+    });
+  });
 });
