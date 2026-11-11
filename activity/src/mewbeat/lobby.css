@@ -221,8 +221,15 @@
 .mb-lobby-toast { position: absolute; left: 50%; bottom: 20px; z-index: 3; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid var(--mb-line); border-radius: 12px; background: var(--mb-raised); color: var(--mb-text); font-size: 13px; font-weight: 700; transform: translateX(-50%); animation: mb-fade-in 160ms ease-out both; }
 .mb-lobby-toast-error { border-color: rgb(255 128 152 / 0.5); color: var(--mb-danger); }
 
-/* ---------- compact: 800x480 ---------- */
-@media (max-width: 1000px), (max-height: 560px) {
+/* ---------- a window under 720 px tall: the lists give up height before the whole column has to scroll ---------- */
+@media (max-height: 719px) {
+  .mb-lobby-main { gap: 8px; padding: 10px 20px; }
+  .mb-lobby-main > .mb-lobby-queue { min-height: 120px; }
+  .mb-lobby-main > .mb-ss-board { min-height: 96px; }
+}
+
+/* ---------- compact: 800x480, and any window too short for the layout above ---------- */
+@media (max-width: 1000px), (max-height: 640px) {
   .mb-lobby { grid-template-columns: minmax(0, 1fr) 300px; }
   .mb-lobby-main { gap: 6px; padding: 8px 12px; }
   .mb-lobby-main > .mb-lobby-levels,
