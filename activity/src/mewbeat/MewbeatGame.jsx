@@ -838,6 +838,10 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     const { audioKey, track: prepared } = await link.prepare({ uri: picked.uri, source: picked.source });
     link.begin(audioKey, prepared);
   }, [link, saveLevel, savedDifficulty]);
+  // The results' "Suggested next": a solo player starts the song on the level it suggests (the saved one when the song
+  // has no charts yet), through the same path as song select's Play. In a room it goes into the queue (addToRoom).
+  const suggestSolo = useCallback((row) => pickSong(row, row.level && row.levelStars !== null ? row.level : undefined), [pickSong]);
+  const suggestMock = useCallback(() => Promise.resolve(), []); // the dev preview has no bot to start anything
   // Song select's preview. The song is resolved without charting it, so browsing costs no analysis.
   const previewTokenRef = useRef(0);
   const previewSong = useCallback(async (row) => {
@@ -1334,6 +1338,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
       vote={roomVote}
       onForce={roomMode && view === "lobby" && room?.hostId === userId && (room?.queue?.length ?? 0) > 0 ? startNext : undefined}
       forceLabel={room?.finalCountdown ? "Start now" : "Force start"}
+      onSuggest={solo ? suggestSolo : roomMode && view === "lobby" ? addToRoom : MOCK_PREVIEW ? suggestMock : undefined}
+      suggestLabel={roomMode ? "Add" : "Play"}
+      suggestDoneLabel={roomMode ? "Added" : null}
       timing={timing}
       savedOffset={savedOffset}
       onApplyOffset={(offsetMs) => onAction?.("mewbeat_settings", { settings: { [offsetField]: offsetMs } })}

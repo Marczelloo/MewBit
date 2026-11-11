@@ -167,6 +167,9 @@ function MockResultsScreen({ options }) {
         nextCount={`${tally.votes}/${tally.needed}`}
         vote={{ votes: tally.votes, needed: tally.needed, names: tally.voters.map((m) => m.username), forced: tally.forced, startPerf: tally.counting ? startPerf : null }}
         onForce={room.hostId === MOCK_USER_ID ? () => { const { room: next, reply } = forceStart(room, MOCK_USER_ID); if (reply.status === "ok") commit(next); } : undefined}
+        onSuggest={() => Promise.resolve()}
+        suggestLabel="Add"
+        suggestDoneLabel="Added"
         savedOffset={12}
         onApplyOffset={() => {}}
         onBack={() => {}}
