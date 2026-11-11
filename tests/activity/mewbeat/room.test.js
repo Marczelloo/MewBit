@@ -272,8 +272,8 @@ test("memberStatus follows the phase", () => {
   // Before the room's first round it is the lobby's Ready, after a round it is the vote.
   assert.deepEqual(memberStatus(room(), m({ ready: true })), { text: "Ready", tone: "ok" });
   assert.deepEqual(memberStatus(room(), m()), { text: "Picking…", tone: "wait" });
-  assert.deepEqual(memberStatus(room({ voting: true }), m({ ready: true })), { text: "Voted", tone: "ok" });
-  assert.deepEqual(memberStatus(room({ voting: true }), m()), { text: "Not voted", tone: "wait" });
+  assert.deepEqual(memberStatus(room({ voting: true }), m({ ready: true })), { text: "Ready", tone: "ok" });
+  assert.deepEqual(memberStatus(room({ voting: true }), m()), { text: "Not ready", tone: "wait" });
   assert.deepEqual(memberStatus(room({ phase: "loading" }), m()), { text: "Loading…", tone: "wait" });
   assert.deepEqual(memberStatus(room({ phase: "loading" }), m({ loaded: true })), { text: "Loaded", tone: "ok" });
   assert.deepEqual(memberStatus(room({ phase: "playing" }), m({ loaded: true })), { text: "Playing", tone: "ok" });

@@ -1265,7 +1265,9 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // (effects off and reduced motion skip that). The scene they cover stays laid out under them while one fades in or out.
   const reducedMotion = usePrefersReducedMotion();
   const screenOutMs = effectsLevel === "off" || reducedMotion ? 0 : SCREEN_OUT_MS;
-  const lobbyEl = roomMode && room && (view === "lobby" || view === "watching") && !watchingLive && !holdingCard ? (
+  // The lobby is not mounted while a round's results are up: the results let the song's scene show through, so a lobby
+  // in the same cell showed through them too.
+  const lobbyEl = roomMode && room && (view === "lobby" || view === "watching") && !watchingLive && !holdingCard && !showCard ? (
     <Lobby
       room={room}
       userId={userId}

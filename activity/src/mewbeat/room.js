@@ -192,8 +192,8 @@ export function voteOf(room) {
   };
 }
 
-// The status line of a player in the list: Ready before the room's first round, the vote after one, loading/playing/done
-// during a round.
+// The status line of a player in the list: Ready before the room's first round and after one (where it is the vote for
+// the next map, worded as Ready in the lobby), loading/playing/done during a round.
 export function memberStatus(room, member) {
   if (!member) return { text: "", tone: "wait" };
   if (member.spectator) return { text: "Watching", tone: "wait" };
@@ -202,7 +202,7 @@ export function memberStatus(room, member) {
     if (room.phase === "loading") return member.loaded ? { text: "Loaded", tone: "ok" } : { text: "Loading…", tone: "wait" };
     return { text: "Playing", tone: "ok" };
   }
-  if (isVoting(room)) return member.ready ? { text: "Voted", tone: "ok" } : { text: "Not voted", tone: "wait" };
+  if (isVoting(room)) return member.ready ? { text: "Ready", tone: "ok" } : { text: "Not ready", tone: "wait" };
   return member.ready ? { text: "Ready", tone: "ok" } : { text: "Picking…", tone: "wait" };
 }
 

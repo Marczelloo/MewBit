@@ -331,15 +331,15 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
     } else {
       clockText = (
         <>
-          <strong>{vote.votes}/{vote.needed}</strong> voted to play next.{" "}
-          <span className="mb-lobby-long">Take your vote back to stop the countdown.</span>
+          <strong>{vote.votes} of {vote.players}</strong> ready.{" "}
+          <span className="mb-lobby-long">Press Ready again to stop the countdown.</span>
         </>
       );
     }
   } else if (!queue.length) {
     clockLabel = "The queue is empty";
     clock = voting ? "–/–" : "–:––";
-    clockText = voting ? <>Add a song, then vote to play it.</> : <>Add a song and press Ready to start the clock.</>;
+    clockText = voting ? <>Add a song, then press Ready.</> : <>Add a song and press Ready to start the clock.</>;
   } else if (!vote.players) {
     clockLabel = "Nobody is playing";
     clock = voting ? "–/–" : "–:––";
@@ -349,12 +349,12 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
     clock = "–:––";
     clockText = <>The clock starts when someone presses <strong>Ready</strong>.</>;
   } else {
-    clockLabel = "Votes to play next";
+    clockLabel = "Players ready";
     clock = `${vote.votes}/${vote.needed}`;
     clockText = (
       <>
-        <strong>{vote.needed} of {vote.players}</strong> players have to vote before the round starts.{" "}
-        <span className="mb-lobby-long">{voteList ? `Voted: ${voteList}.` : "Nobody has voted yet."} The host can also start it.</span>
+        <strong>{vote.needed} of {vote.players}</strong> players have to be ready before the round starts.{" "}
+        <span className="mb-lobby-long">{voteList ? `Ready: ${voteList}.` : "Nobody is ready yet."} The host can also start it.</span>
       </>
     );
   }
@@ -369,10 +369,10 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
   }
 
   const levelLabel = (id) => DIFFICULTIES.find((d) => d.id === id)?.label ?? id;
+  // The lobby says Ready in both regimes; "Play next" is the results screen's name for the same flag.
   const readyLabel = active
     ? (loading ? "Loading…" : "Round in progress")
-    : voting ? (me?.ready ? "Voted ✓ (take back)" : "Play next")
-      : me?.ready ? "Ready ✓" : "Ready";
+    : me?.ready ? "Ready ✓" : "Ready";
 
   return (
     <section className="mb-lobby" aria-label="Room lobby">
@@ -402,7 +402,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
                     type="button"
                     className="mb-btn mb-lobby-start"
                     data-tour="lobby-force"
-                    title={left != null ? "Skip the rest of the countdown and start the round now" : voting ? "Host only: start the round without waiting for the vote" : "Host only: start the round without waiting for Ready"}
+                    title={left != null ? "Skip the rest of the countdown and start the round now" : "Host only: start the round without waiting for Ready"}
                     disabled={!canStart || busy === "start"}
                     onClick={() => run("start", () => store.start())}
                   >
@@ -590,7 +590,7 @@ export default function Lobby({ room, userId, view, receivedAt, serverClock, sto
               className={`mb-lobby-ready${me?.ready && !active ? " mb-lobby-ready-on" : ""}`}
               data-tour="lobby-ready"
               aria-pressed={Boolean(me?.ready)}
-              title={voting ? (me?.ready ? "Click to take your vote back" : "Vote to play the next song. It starts once more than half of the players voted.") : undefined}
+              title={voting ? (me?.ready ? "Click to take it back" : "The next song starts once more than half of the players are ready.") : undefined}
               disabled={!canChange || busy === "ready" || (voting && !me?.ready && !queue.length)}
               onClick={() => run("ready", () => store.ready({ ready: !me?.ready }))}
             >

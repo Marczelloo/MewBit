@@ -103,6 +103,14 @@ function createRooms({
     };
   }
 
+  // One log line for everything that decides when a round starts (who is ready, which clock opened, what started the
+  // round), so a start nobody expected can be traced afterwards.
+  function note(room, event, detail = "") {
+    const { players, votes, needed } = tallyOf(room);
+    const mode = room.roundEnded ? `vote ${votes}/${needed}` : `ready ${votes}`;
+    log.info?.(`mewbeat room ${event}`, `room=${room.guildId} round=${room.round} ${mode} of ${players.length} players${detail ? ` ${detail}` : ""}`);
+  }
+
   function snapshotOf(room) {
     const { votes, needed } = tallyOf(room);
     return {
@@ -222,7 +230,8 @@ function createRooms({
     const nextAt = room.finalAt ?? room.windowAt;
     if (nextAt === room.nextAt) return;
     room.nextAt = nextAt;
-    after(room, "next", nextAt - now(), IDLE_PHASES, () => startRound(room));
+    note(room, "clock", `${room.finalAt != null ? "everyone ready" : "ready wait"} startsInMs=${nextAt - now()}`);
+    after(room, "next", nextAt - now(), IDLE_PHASES, () => startRound(room, "the Ready clock ran out"));
   }
 
   // After a round. The ONLY thing that starts a round without a click from the host is the final countdown
@@ -250,7 +259,9 @@ function createRooms({
     if (room.finalAt != null) return; // already counting down
     room.finalAt = now() + FINAL_COUNTDOWN_MS;
     room.nextAt = room.finalAt;
-    after(room, "next", FINAL_COUNTDOWN_MS, IDLE_PHASES, () => startRound(room));
+    const why = room.forced && votes < needed ? "host forced" : `vote passed (${players.filter((member) => member.ready).map((member) => member.username).join(", ")})`;
+    note(room, "clock", `${why} startsInMs=${FINAL_COUNTDOWN_MS}`);
+    after(room, "next", FINAL_COUNTDOWN_MS, IDLE_PHASES, () => startRound(room, why));
   }
 
   // Someone came, left or switched to watching in a waiting phase: free seats
@@ -291,6 +302,7 @@ function createRooms({
     // From here on Ready is the vote for the next map.
     room.roundEnded = true;
     settle(room);
+    note(room, "round ended", `results=${room.results.length} queued=${room.queue.length}`);
   }
 
   // The song never got going (nobody loaded it, everybody left): it goes back
@@ -303,10 +315,13 @@ function createRooms({
     room.results = [];
     room.endedAt = null;
     settle(room);
+    note(room, "round aborted");
   }
 
-  function startRound(room) {
+  // `why` is only for the log: what started this round.
+  function startRound(room, why = "") {
     if (!room.queue.length || !playersOf(room).length) return settle(room);
+    note(room, "round starts", `why=${why || "?"} song=${JSON.stringify(room.queue[0].title ?? "")}`);
     clearTimers(room);
     // Only a round that ended is a song played; an aborted one went back to the queue.
     if (room.current && room.endedAt != null) {
@@ -356,7 +371,7 @@ function createRooms({
     // one was not voted for, so the room goes back to waiting for the vote.
     room.current = null;
     room.results = [];
-    if (!room.roundEnded && room.queue.length && playersOf(room).length) startRound(room);
+    if (!room.roundEnded && room.queue.length && playersOf(room).length) startRound(room, "the song before it could not be prepared");
     else settle(room);
     push(room);
   }
@@ -445,6 +460,7 @@ function createRooms({
         watching: false,
         submitted: false,
       });
+      note(room, "member", `${profile.username || userId} joined`);
     }
     rosterChanged(room);
     push(room);
@@ -456,7 +472,8 @@ function createRooms({
     const index = room ? room.members.findIndex((member) => member.userId === userId) : -1;
     if (index < 0) return fail("not_in_room");
 
-    room.members.splice(index, 1);
+    const [gone] = room.members.splice(index, 1);
+    note(room, "member", `${gone.username} left`);
     pushGone(guildId, userId);
     if (!room.members.length) {
       destroy(room);
@@ -577,6 +594,9 @@ function createRooms({
     member.spectator = spectatorAfter;
     if (typeof isReady === "boolean") member.ready = isReady;
     if (member.spectator) member.ready = false;
+    if (typeof isReady === "boolean" || typeof spectate === "boolean") {
+      note(room, "member", `${member.username} ${typeof isReady === "boolean" ? `ready=${isReady}` : `spectate=${spectate}`}`);
+    }
     rosterChanged(room);
     push(room);
     return ok();
@@ -593,7 +613,7 @@ function createRooms({
 
     if (!room.roundEnded) {
       // Before the first round the host's start begins at once, as it always did.
-      startRound(room);
+      startRound(room, "host pressed Start round");
       push(room);
       return ok();
     }
@@ -602,7 +622,7 @@ function createRooms({
     // when that is already running (the vote passed first, or this is the second press) it skips what is left of it.
     syncCountdown(room);
     if (room.finalAt != null) {
-      startRound(room);
+      startRound(room, "host pressed Start now");
     } else {
       room.forced = true;
       syncCountdown(room);
