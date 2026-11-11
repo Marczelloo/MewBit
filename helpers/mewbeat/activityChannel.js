@@ -1,10 +1,12 @@
 const { randomBytes } = require("node:crypto");
 const Log = require("../logs/log");
 const { audioKeyOf, trackFromAudioKey } = require("./audioKey");
+const { starsOf } = require("./charts/stars");
 const { summarizeCharts } = require("./chartSummary");
 const { createLiveBoard } = require("./liveBoard");
 const { isPrivatePlace } = require("./places");
-const { createRanking } = require("./ranking");
+const { LOCAL_USER, createRanking } = require("./ranking");
+const { runPp } = require("./rating");
 const { createRecommender } = require("./recommendations");
 const { readTaste } = require("./listeningTaste");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
@@ -656,8 +658,9 @@ function createMewbeatChannel({
     const completion = parts > 0 ? Math.min(1, Math.round((run.judged / parts) * 10000) / 10000) : 1;
     const chartKey = boardKeyOf(audioKey, difficulty, stored.version);
     let newBest = false;
+    let previousBest; // the player's best before this run: null on a first play, undefined while unknown
     if (ranked) {
-      newBest = scoreStore.submit({
+      const saved = scoreStore.submit({
         chartKey,
         userId,
         guildId: place,
@@ -670,9 +673,16 @@ function createMewbeatChannel({
         track: { title: source.info.title, artist: source.info.artist ?? "", artworkUrl: source.info.artworkUrl ?? null },
         completion,
         modifiers,
-      }).newBest;
+      });
+      ({ newBest, previous: previousBest } = saved);
       if (newBest) ranking.invalidate();
     }
+    // What the run is worth in the rating, by the function the ranking rates every stored play with. Only a ranked run
+    // is rated, and only for a player the ranking counts; and while the score store cannot tell whether the run beat
+    // the best (the remote one before it is loaded) the reply cannot say that it counts.
+    const pp = ranked && previousBest !== undefined && userId !== LOCAL_USER
+      ? runPp({ stars: stored.stars ?? starsOf(stored), accuracy: run.accuracy, completion })
+      : undefined;
     // A room round counts for the room only when it is the round being played
     // now, for the song in it, and the run was a real one. Anything else is
     // scored and stored like a solo run.
@@ -743,6 +753,10 @@ function createMewbeatChannel({
         modifiers,
         newBest,
         best: scoreStore.bestOf(chartKey, userId),
+        // For a ranked run only: what it is worth in the rating (it counts there when newBest), and the player's best
+        // from before it, which is what newBest was decided against (null on a first play).
+        ...(pp === undefined ? {} : { pp }),
+        ...(previousBest === undefined ? {} : { previousBest: previousBest && { score: previousBest.score, accuracy: previousBest.accuracy } }),
         rank: {
           server: scoreStore.rankOf({ chartKey, userId, guildId: place }),
           global: scoreStore.rankOf({ chartKey, userId, guildId: null }),

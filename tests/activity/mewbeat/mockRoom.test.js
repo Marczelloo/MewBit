@@ -190,3 +190,20 @@ test("the mock variants: a lost run stops where it was lost, a No Fail run plays
   assert.equal(nf.depleted, true);
   assert.equal(nf.events.length, nf.parts);
 });
+
+test("the mock score reply carries the pp and the best before the run, in the variants the screen has to show", () => {
+  const better = mockRoom.createMockSummary().submit.result;
+  assert.equal(better.newBest, true);
+  assert.ok(better.pp > 0 && better.score > better.previousBest.score && better.accuracy > better.previousBest.accuracy);
+  const worse = mockRoom.createMockSummary({ versus: "worse" }).submit.result;
+  assert.equal(worse.newBest, false);
+  assert.ok(worse.score < worse.previousBest.score && worse.accuracy < worse.previousBest.accuracy);
+  assert.equal(worse.best.score, worse.previousBest.score);
+  const first = mockRoom.createMockSummary({ versus: "first" }).submit.result;
+  assert.equal(first.previousBest, null);
+  assert.ok(first.pp > 0);
+  const none = mockRoom.createMockSummary({ versus: "none" }).submit.result;
+  assert.equal("pp" in none || "previousBest" in none, false);
+  assert.equal(mockRoom.createMockSummary({ nf: true }).submit.result.newBest, false);
+  assert.deepEqual(mockRoom.MOCK_VERSUS, ["better", "worse", "first", "none"]);
+});
