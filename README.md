@@ -34,9 +34,26 @@ cannot take over the room. Autoplay picks stay marked in the queue.
 transport for everyone, with search, playlists, synced lyrics, thirteen effects and the
 equalizer. There is no host who sees more than the rest.
 
+**mewbeat.** A four-key rhythm game inside the Activity. Any song — the one playing in voice,
+or one you search for or paste — is analysed on your own hardware and turned into four
+levels, Easy to Hell, each with its own leaderboard. Play along with the bot (Live), alone
+(Solo) or with the room (Room), with modifiers, a profile, ranking and rooms with a shared
+queue. The charts are generated, not hand-made, so not every map is perfect. Guide:
+[mewbeat](docs/mewbeat.md).
+
 **Running a server.** DJ roles and vote-to-skip, player and announcement channels, per-server
 logging, tickets, moderation commands, custom embeds, health metrics and listening
 statistics — configurable from Discord or from the dashboard.
+
+| ![The Activity's music player: library on the left, now playing in the middle, queue on the right](docs/images/activity-player.webp) | ![mewbeat song select: the four levels of a song with stars, best grades and a leaderboard, and the song list on the right](docs/images/mewbeat/song-select.webp) |
+| :-- | :-- |
+| The Activity's player | mewbeat: picking a song and a level |
+
+| ![mewbeat run in progress: four falling lanes, combo, score and grade](docs/images/mewbeat/run.webp) | ![mewbeat results of a room round: score, accuracy, hit timing, health graph and standings](docs/images/mewbeat/results.webp) |
+| :-- | :-- |
+| mewbeat: a run | mewbeat: results in a room |
+
+The screenshots come from the Activity's mock mode: made-up songs and players, no Discord.
 
 ## Commands
 
@@ -96,6 +113,7 @@ Which values are required, and what every optional one does, is in
 | [Discord setup](docs/discord-setup.md) | Creating the application, first-server setup, and putting the Activity live. |
 | [Dashboard setup](docs/dashboard-setup.md) | The web surface: OAuth, access control, what it can change, and request hardening. |
 | [Music, queue and autoplay](docs/music.md) | How search ranks, how the queue orders itself, and how autoplay decides. |
+| [mewbeat](docs/mewbeat.md) | The rhythm game in the Activity: how to play, and how a chart is made, stored and run. |
 | [Deployment](docs/deployment.md) | Docker Compose, the Raspberry Pi / ARM image, and updating safely. |
 | [Testing and diagnostics](docs/troubleshooting.md) | The test suite, the autoplay soak runner, runtime checks and common failures. |
 | [Project layout](docs/project-layout.md) | Where things live, and the provider responsibility that comes with running this. |
@@ -107,9 +125,9 @@ Which values are required, and what every optional one does, is in
 docker compose up -d --build
 ```
 
-The stack brings up the bot, a Lavalink node and a private `yt-cipher` service together, and
-persists bot data in `helpers/data` and file logs in `logs` — back both up before rebuilding a
-host. The full sequence, including the pinned YouTube source patch, is in
+The stack brings up the bot, a Lavalink node, a private `yt-cipher` service and the mewbeat
+melody decoder together, and persists bot data in `helpers/data` and file logs in `logs` —
+back both up before rebuilding a host. The full sequence, including the pinned YouTube source patch, is in
 [Deployment](docs/deployment.md).
 
 ## Licence

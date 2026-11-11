@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 370" width="1100" height="370" role="img" aria-labelledby="t d" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title id="t">How a mewbeat chart is made</title>
+  <desc id="d">A song goes to the Lavalink mewbeat plugin for analysis and an audio render, then to the decoder service for the melody, then to the generator, which writes four levels for the game. Each stage stores its result on disk.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#7fe3ee"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1100" height="370" rx="16" fill="#12161d" stroke="#2a3140"/>
+
+  <text x="20" y="38" font-size="18" font-weight="700" fill="#e6e9ef">How a chart is made</text>
+  <text x="20" y="60" font-size="12.5" fill="#98a2b3">The bot drives every step: it asks the plugin, hands the audio to the decoder and runs the generator.</text>
+
+  <!-- stages -->
+  <g font-size="13" fill="#c8cfdb">
+    <rect x="20" y="82" width="180" height="108" rx="10" fill="#1b2230" stroke="#34405a"/>
+    <text x="36" y="108" font-size="15" font-weight="700" fill="#7fe3ee">Song</text>
+    <text x="36" y="131">A track playing in voice,</text>
+    <text x="36" y="150">or one searched for or</text>
+    <text x="36" y="169">pasted in the Activity</text>
+
+    <rect x="240" y="82" width="180" height="108" rx="10" fill="#1b2230" stroke="#34405a"/>
+    <text x="256" y="108" font-size="15" font-weight="700" fill="#7fe3ee">Lavalink plugin</text>
+    <text x="256" y="131">Analysis: onsets,</text>
+    <text x="256" y="150">tempo, energy</text>
+    <text x="256" y="169">Audio render: Ogg Opus</text>
+
+    <rect x="460" y="82" width="180" height="108" rx="10" fill="#1b2230" stroke="#34405a"/>
+    <text x="476" y="108" font-size="15" font-weight="700" fill="#7fe3ee">Decoder service</text>
+    <text x="476" y="131">Basic Pitch follows the</text>
+    <text x="476" y="150">melody. Its own</text>
+    <text x="476" y="169">container</text>
+
+    <rect x="680" y="82" width="180" height="108" rx="10" fill="#1b2230" stroke="#34405a"/>
+    <text x="696" y="108" font-size="15" font-weight="700" fill="#7fe3ee">Generator</text>
+    <text x="696" y="131">Four levels: Easy,</text>
+    <text x="696" y="150">Normal, Hard, Hell.</text>
+    <text x="696" y="169">Bot worker thread</text>
+
+    <rect x="900" y="82" width="180" height="108" rx="10" fill="#241f3a" stroke="#5a4b91"/>
+    <text x="916" y="108" font-size="15" font-weight="700" fill="#c3b1ff">Game</text>
+    <text x="916" y="131">Live, Solo and Room</text>
+    <text x="916" y="150">in the Activity, with</text>
+    <text x="916" y="169">boards and results</text>
+  </g>
+
+  <!-- arrows between stages -->
+  <g stroke="#7fe3ee" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <line x1="203" y1="136" x2="236" y2="136"/>
+    <line x1="423" y1="136" x2="456" y2="136"/>
+    <line x1="643" y1="136" x2="676" y2="136"/>
+    <line x1="863" y1="136" x2="896" y2="136"/>
+  </g>
+
+  <!-- connectors down to what is stored -->
+  <g stroke="#4a566e" stroke-width="1.5" stroke-dasharray="4 4" fill="none">
+    <line x1="330" y1="192" x2="330" y2="256"/>
+    <line x1="550" y1="192" x2="550" y2="256"/>
+    <line x1="770" y1="192" x2="770" y2="256"/>
+    <line x1="990" y1="192" x2="990" y2="256"/>
+  </g>
+
+  <!-- storage -->
+  <text x="20" y="284" font-size="12.5" font-weight="700" fill="#98a2b3">Stored on disk</text>
+  <text x="20" y="304" font-size="12.5" fill="#98a2b3">helpers/data/mewbeat/</text>
+  <g font-size="12.5" fill="#c8cfdb">
+    <rect x="240" y="258" width="180" height="84" rx="10" fill="#171c26" stroke="#3a4558" stroke-dasharray="5 4"/>
+    <text x="256" y="282" font-weight="700" fill="#e6e9ef">features/ and audio/</text>
+    <text x="256" y="303">analysis JSON and the</text>
+    <text x="256" y="322">Ogg files (last 40 kept)</text>
+
+    <rect x="460" y="258" width="180" height="84" rx="10" fill="#171c26" stroke="#3a4558" stroke-dasharray="5 4"/>
+    <text x="476" y="282" font-weight="700" fill="#e6e9ef">melody/</text>
+    <text x="476" y="303">one melody JSON per</text>
+    <text x="476" y="322">song</text>
+
+    <rect x="680" y="258" width="180" height="84" rx="10" fill="#171c26" stroke="#3a4558" stroke-dasharray="5 4"/>
+    <text x="696" y="282" font-weight="700" fill="#e6e9ef">charts/</text>
+    <text x="696" y="303">the four levels, named</text>
+    <text x="696" y="322">by generator version</text>
+
+    <rect x="900" y="258" width="180" height="84" rx="10" fill="#171c26" stroke="#3a4558" stroke-dasharray="5 4"/>
+    <text x="916" y="282" font-weight="700" fill="#e6e9ef">Scores</text>
+    <text x="916" y="303">scores, history, stats:</text>
+    <text x="916" y="322">AtlasHub or local JSON</text>
+  </g>
+</svg>

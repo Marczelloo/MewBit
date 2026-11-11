@@ -18,7 +18,17 @@ helpers/announcements/    Patch notes and the release announcer
 helpers/lavalink/         Lavalink integration, autoplay, provider logic, filters
 helpers/playlists/        Playlist storage and operations
 helpers/data/             Persisted local bot data (runtime)
-helpers/lavalink/plugins/ Optional Lavalink plugins used by the local node
+helpers/lavalink/plugins/ Lavalink plugins used by the node, including the built mewbeat plugin jar
+helpers/mewbeat/          mewbeat server side: chart store and worker, rooms, ranking, scores, reports
+helpers/mewbeat/charts/   The chart generator: four levels from one analysis, plus the star rating
+helpers/data/mewbeat/     mewbeat's runtime data: analysis, audio, melodies, charts, scores (runtime)
+activity/src/mewbeat/     The mewbeat game: song select, play field, rooms, results, settings, tour
+lavalink-plugins/mewbeat/ Source of the Lavalink plugin that analyses songs and renders their audio
+scripts/mewbeat-melody/   Melody decoder: the decoder service (Docker) and its build and measuring tools
+scripts/mewbeat-debug/    The chart debugger, a local web page for looking at a generated chart
+scripts/mewbeat-docs/     Takes the screenshots in docs/images from the Activity's mock mode
+docs/mewbeat/             Working notes on mewbeat (Polish); docs/mewbeat.md is the guide
+docs/images/              Screenshots and the pipeline diagram used by the guides
 tests/                    Node test suite
 docker-compose.yml        Production bot + Lavalink stack
 docker-compose.local.yml  Development overlay that builds the bot from this checkout
