@@ -24,6 +24,9 @@ const MIN_AUDIO_BYTES = 4096;
 // the 3rd is final until the process restarts. A failure that comes from the audio itself is final at once.
 const RETRY_AFTER_MS = [10 * 60_000, 30 * 60_000];
 const MAX_TRIES = 3;
+// Decodes nobody waits for (a song chosen from a list, charts replaced when the melody is there) that may wait in line; past
+// this a request is refused for now (ensure answers "failed" and nothing is counted against the key).
+const MAX_BACKGROUND_DECODES = 50;
 // A decoder that could not be reached (no Docker, no image, the service down) is asked again after this long.
 const REPROBE_MS = 5 * 60_000;
 const UNAVAILABLE = /unable to find image|no such image|pull access denied|cannot connect to the docker daemon|error during connect|failed to connect to the docker api|is the docker daemon running/i;
@@ -152,7 +155,7 @@ function createMelodyDecoder({ dir, audio, run = runDefault, log = Log, timeoutM
   const shortKeys = new Set(); // keys whose audio is too short to decode
   const pendingByKey = new Map();
   // Decodes (the audio render and the decode step) run one at a time across keys.
-  const gate = createPriorityGate({ concurrency: 1 });
+  const gate = createPriorityGate({ concurrency: 1, backgroundCap: MAX_BACKGROUND_DECODES });
   let unavailableUntil = 0;
   let warnedUnavailable = false;
 
@@ -182,9 +185,10 @@ function createMelodyDecoder({ dir, audio, run = runDefault, log = Log, timeoutM
     const length = Number(track?.info?.length);
     if (length > MAX_TRACK_MS) throw failure(`the track is ${Math.round(length / 60000)} minutes long`, { permanent: true });
     if (length > 0 && length < MIN_TRACK_MS) throw failure(`the track is ${length} ms long`, { short: true });
-    const decoded = await gate.run(async () => {
+    const decoded = await gate.run(async (runningAs) => {
       if (isUnavailable()) throw failure("the decoder is unavailable", { unavailable: true });
-      const audioFile = await audio.get(key, track, node);
+      // The audio is asked for as the decode runs: a player's decode is a player's audio, queued ahead of warm-ups.
+      const audioFile = await audio.get(key, track, node, { priority: runningAs });
       // A file that cannot be measured is left to the decoder to complain about.
       const size = await fsPromises.stat(audioFile).then((stat) => stat.size, () => null);
       if (size !== null && size < MIN_AUDIO_BYTES) throw failure(`the audio is ${size} bytes`, { short: true });
@@ -212,6 +216,8 @@ function createMelodyDecoder({ dir, audio, run = runDefault, log = Log, timeoutM
         shortKeys.add(key);
         return "short";
       }
+      // A full line (here or in the audio store) is nothing the key did: it is asked for again when something asks next.
+      if (error?.code === "QUEUE_FULL") return "failed";
       const tries = (failedKeys.get(key)?.tries ?? 0) + 1;
       const permanent = error?.permanent === true;
       failedKeys.set(key, { tries, permanent, retryAt: now() + (RETRY_AFTER_MS[tries - 1] ?? Infinity) });
@@ -245,7 +251,10 @@ function createMelodyDecoder({ dir, audio, run = runDefault, log = Log, timeoutM
 
   const promote = (key) => gate.promote(key);
 
-  return { ensure, has, promote, wants, isEnabled: () => enabled && !isUnavailable() };
+  // Where the key's decode stands: { running: true }, { ahead: n } decodes before it, or null.
+  const queueOf = (key) => gate.place(key);
+
+  return { ensure, has, promote, queueOf, wants, isEnabled: () => enabled && !isUnavailable() };
 }
 
 module.exports = { createMelodyDecoder, runDocker, runService };

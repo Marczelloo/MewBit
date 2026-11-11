@@ -160,12 +160,47 @@ describe("mewbeat activity channel", () => {
     assert.deepStrictEqual(reply, { type: "error", error: "Unknown mewbeat message." });
   });
 
-  it("lets a failing chart store reject so the socket can report it", async () => {
+  it("answers a failing chart store with a failed chart, not an id-less error", async () => {
     const channel = createMewbeatChannel({
       readPlayback: () => ({ track: fakeTrack(), node: null, positionMs: 0, paused: false, durationMs: 200000 }),
       chartStore: { getCharts: async () => { throw new Error("disk gone"); } },
+      log: { warning() {} },
     });
-    await assert.rejects(channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "easy" }), /disk gone/);
+    const reply = await channel.handle("g", "u", { type: "mewbeat_chart", id: "r1", audioKey: KEY, difficulty: "easy" });
+    assert.deepEqual(reply, { type: "mewbeat_chart", id: "r1", audioKey: KEY, difficulty: "easy", status: "failed" });
+  });
+  it("answers pending with the queue position when the charts take longer than the pending limit", async () => {
+    const timers = [];
+    let finish;
+    const channel = createMewbeatChannel({
+      readPlayback: () => ({ track: fakeTrack(), node: null, positionMs: 0, paused: false, durationMs: 200000 }),
+      chartStore: {
+        getCharts: () => new Promise((resolve) => { finish = resolve; }),
+        queueOf: () => ({ step: "analysis", ahead: 3, running: false }),
+      },
+      setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+      clearTimer: () => {},
+    });
+    const answer = channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "easy" });
+    await Promise.resolve();
+    assert.equal(timers.length, 1);
+    assert.ok(timers[0].ms < 15_000, "the player is told before the client gives up");
+    timers[0].fn();
+    const reply = await answer;
+    assert.equal(reply.status, "pending");
+    assert.deepEqual(reply.queue, { step: "analysis", ahead: 3, running: false });
+    finish({ status: "ready", charts: {} });
+  });
+  it("answers the charts at once when they are ready before the pending limit", async () => {
+    const channel = createMewbeatChannel({
+      readPlayback: () => ({ track: fakeTrack(), node: null, positionMs: 0, paused: false, durationMs: 200000 }),
+      chartStore: { getCharts: async () => ({ status: "ready", charts: { easy: { id: "e" } } }) },
+      setTimer: () => 1,
+      clearTimer: () => {},
+    });
+    const reply = await channel.handle("g", "u", { type: "mewbeat_chart", audioKey: KEY, difficulty: "easy" });
+    assert.equal(reply.status, "ready");
+    assert.deepEqual(reply.chart, { id: "e" });
   });
   describe("solo prepare", () => {
     const SOLO_KEY = "spotify:xyz:180000";
@@ -192,6 +227,26 @@ describe("mewbeat activity channel", () => {
       });
       return { channel, soloTracks, resolveCalls, chartCalls };
     }
+
+    it("charts a solo song as a player's wait, and a room's later songs behind other servers' players", async () => {
+      const soloTracks = createSoloTracks();
+      const priorities = [];
+      const trackOf = (id) => ({ track: `enc-${id}`, info: { ...soloTrack.info, identifier: id } });
+      const channel = createMewbeatChannel({
+        readPlayback: () => null,
+        chartStore: {
+          getCharts: async (track, node, options) => { priorities.push([track.info.identifier, options?.priority]); return { status: "pending" }; },
+        },
+        resolveTrack: async (guildId, query) => ({ track: trackOf(query.uri.split("/").pop()), node: "n" }),
+        soloTracks,
+        log: { warning() {} },
+      });
+      await channel.handle("g", "u", { type: "mewbeat_solo_prepare", id: "p1", uri: "https://open.spotify.com/track/solo", source: "spotify" });
+      await channel.handle("g", "u", { type: "mewbeat_room_join", id: "j1" });
+      await channel.handle("g", "u", { type: "mewbeat_room_queue_add", id: "q1", uri: "https://open.spotify.com/track/first", source: "spotify" });
+      await channel.handle("g", "u", { type: "mewbeat_room_queue_add", id: "q2", uri: "https://open.spotify.com/track/second", source: "spotify" });
+      assert.deepStrictEqual(priorities, [["solo", "play"], ["first", "play"], ["second", "background"]]);
+    });
 
     it("a preview registers the song without charting it", async () => {
       const { channel, soloTracks, chartCalls } = soloSetup();

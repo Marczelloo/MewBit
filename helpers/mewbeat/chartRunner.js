@@ -94,7 +94,10 @@ function createChartRunner({ workerFile = path.join(__dirname, "chartWorker.js")
     return gate.promote(keyOf(audioKey, flags));
   }
 
-  return { run, promote, size: gate.size };
+  // Where the job for this audio and flags stands (priorityGate.js place), or null.
+  const place = (audioKey, flags) => gate.place(keyOf(audioKey, flags));
+
+  return { run, promote, place, size: gate.size };
 }
 
 module.exports = { createChartRunner };

@@ -47,7 +47,8 @@ describe("mewbeat analysis client", () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "mewbeat-analysis-"));
     clock = 1_000_000;
-    client = createAnalysisClient({ dir, now: () => clock, log: silentLog });
+    // No waiting for a busy plugin here (the tests of that are below), so a busy answer is final at once.
+    client = createAnalysisClient({ dir, now: () => clock, log: silentLog, busyRetries: 0 });
   });
 
   afterEach(() => {
@@ -441,6 +442,91 @@ describe("mewbeat analysis client", () => {
       fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
       fs.writeFileSync(cacheFileOf(track), "{not json");
       assert.strictEqual(await client.peek(track), null);
+    });
+  });
+
+  describe("a busy plugin and the line of songs", () => {
+    function patient() {
+      return createAnalysisClient({ dir, now: () => clock, log: silentLog, busyRetryMs: 1, busyRetries: 10 });
+    }
+
+    it("makes a player's analysis wait for the busy plugin in its place instead of failing", async () => {
+      const track = makeTrack();
+      let busyLeft = 3;
+      const node = fakeNode(() => (busyLeft-- > 0 ? { error: "busy" } : featuresFor(track)));
+      const features = await patient().getFeatures(track, node);
+      assert.strictEqual(features.featuresVersion, 4);
+      assert.strictEqual(node.calls.length, 4);
+    });
+
+    it("gives up after the retries and blocks only background work, not another player", async () => {
+      const track = makeTrack();
+      const busyClient = createAnalysisClient({ dir, now: () => clock, log: silentLog, busyRetryMs: 1, busyRetries: 2 });
+      const node = fakeNode(() => ({ error: "busy" }));
+      assert.strictEqual(await busyClient.getFeatures(track, node), null);
+      assert.strictEqual(node.calls.length, 3);
+      assert.deepStrictEqual(busyClient.statusOf(track), { status: "busy" });
+    });
+
+    it("lets a player through the busy block a background analysis left behind", async () => {
+      const track = makeTrack();
+      let busy = true;
+      const node = fakeNode(() => (busy ? { error: "busy" } : featuresFor(track)));
+      const own = patient();
+      assert.strictEqual(await own.getFeatures(track, node, { priority: "background" }), null);
+      assert.strictEqual(node.calls.length, 1, "background work does not wait for a busy plugin");
+      assert.deepStrictEqual(own.statusOf(track), { status: "busy" });
+      assert.strictEqual(await own.getFeatures(track, node, { priority: "background" }), null, "another background ask honours the block");
+      assert.strictEqual(node.calls.length, 1);
+      busy = false;
+      const features = await own.getFeatures(track, node);
+      assert.strictEqual(features.featuresVersion, 4, "a player is not held back by it");
+    });
+
+    it("asks the plugin for one song at a time, in the order they were asked, and a player jumps the background ones", async () => {
+      const releases = new Map();
+      const order = [];
+      let running = 0;
+      let most = 0;
+      const distinct = [1, 2, 3, 4].map((n) => ({ ...makeTrack({ identifier: `s${n}` }), track: `E${n}` }));
+      const real = {
+        rest: {
+          post: async (route, { encodedTrack }) => {
+            order.push(encodedTrack);
+            running += 1;
+            most = Math.max(most, running);
+            await new Promise((resolve) => releases.set(encodedTrack, resolve));
+            running -= 1;
+            return featuresFor(distinct[Number(encodedTrack.slice(1)) - 1]);
+          },
+        },
+      };
+      const tick = () => new Promise((resolve) => setImmediate(resolve));
+      const until = async (condition) => {
+        const deadline = Date.now() + 4000;
+        while (!condition() && Date.now() < deadline) await tick();
+        assert.ok(condition(), "condition not reached");
+      };
+      const asks = [client.getFeatures(distinct[0], real, { priority: "background" })];
+      await until(() => releases.has("E1"));
+      asks.push(client.getFeatures(distinct[1], real, { priority: "background" }));
+      await until(() => client.queueOf(distinct[1]) !== null);
+      asks.push(client.getFeatures(distinct[2], real, { priority: "background" }));
+      await until(() => client.queueOf(distinct[2]) !== null);
+      asks.push(client.getFeatures(distinct[3], real)); // a player
+      await until(() => client.queueOf(distinct[3]) !== null);
+      assert.deepStrictEqual(client.queueOf(distinct[0]), { running: true });
+      assert.deepStrictEqual(client.queueOf(distinct[3]), { ahead: 1 });
+      assert.deepStrictEqual(client.queueOf(distinct[1]), { ahead: 2 });
+      assert.deepStrictEqual(client.queueOf(distinct[2]), { ahead: 3 });
+      for (const id of ["E1", "E4", "E2", "E3"]) {
+        await until(() => releases.has(id));
+        releases.get(id)();
+      }
+      await Promise.all(asks);
+      assert.deepStrictEqual(order, ["E1", "E4", "E2", "E3"]);
+      assert.strictEqual(most, 1);
+      assert.strictEqual(client.queueOf(distinct[0]), null);
     });
   });
 

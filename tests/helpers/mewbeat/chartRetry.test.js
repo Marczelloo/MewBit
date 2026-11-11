@@ -50,7 +50,7 @@ describe("mewbeat explicit chart retry", () => {
   const chartsFile = () => path.join(dir, "charts", `${audioKeyFile(key)}.v${GENERATOR_VERSION}-nm.json`);
 
   function build(generate = generateAll) {
-    analysis = createAnalysisClient({ dir, now: () => clock, log: silentLog });
+    analysis = createAnalysisClient({ dir, now: () => clock, log: silentLog, busyRetries: 0 });
     store = createChartStore({ dir, analysis, generate, log: silentLog, now: () => clock });
   }
 

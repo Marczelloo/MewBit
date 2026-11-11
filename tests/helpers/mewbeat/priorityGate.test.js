@@ -144,4 +144,58 @@ describe("priority gate", () => {
     await tick();
     assert.strictEqual(idle, 1);
   });
+
+  it("runs the same key once for play jobs too, the later caller joins the earlier one", async () => {
+    const gate = createPriorityGate({ concurrency: 1 });
+    const log = [];
+    const job = controlled(log, "a");
+    const first = gate.run(job.task, { key: "same" });
+    const second = gate.run(controlled(log, "again").task, { key: "same" });
+    await tick();
+    job.release();
+    assert.deepStrictEqual(await Promise.all([first, second]), ["a", "a"]);
+    assert.deepStrictEqual(log, ["a"]);
+    // Once it is done the key is free for a new job.
+    const later = controlled(log, "b");
+    const third = gate.run(later.task, { key: "same" });
+    later.release();
+    assert.strictEqual(await third, "b");
+  });
+
+  it("tells the task the priority it runs under, a promoted job runs as play", async () => {
+    const gate = createPriorityGate({ concurrency: 1 });
+    const seen = [];
+    const blocker = controlled([], "x");
+    const results = [gate.run(blocker.task, { priority: "background", key: "x" })];
+    results.push(gate.run(async (priority) => { seen.push(priority); }, { priority: "background", key: "y" }));
+    results.push(gate.run(async (priority) => { seen.push(priority); }, { priority: "background", key: "z" }));
+    await tick();
+    gate.promote("y");
+    blocker.release();
+    await Promise.all(results);
+    assert.deepStrictEqual(seen, ["play", "background"]);
+  });
+
+  it("says where a keyed job stands: running, or how many jobs start before it", async () => {
+    const gate = createPriorityGate({ concurrency: 1 });
+    const blocker = controlled([], "x");
+    const results = [
+      gate.run(blocker.task, { priority: "background", key: "x" }),
+      gate.run(async () => {}, { priority: "background", key: "b1" }),
+      gate.run(async () => {}, { priority: "background", key: "b2" }),
+      gate.run(async () => {}, { priority: "play", key: "p1" }),
+    ];
+    await tick();
+    assert.deepStrictEqual(gate.place("x"), { running: true });
+    assert.deepStrictEqual(gate.place("p1"), { ahead: 1 }, "behind the job that runs");
+    assert.deepStrictEqual(gate.place("b1"), { ahead: 2 }, "behind the running job and the play job");
+    assert.deepStrictEqual(gate.place("b2"), { ahead: 3 });
+    assert.strictEqual(gate.place("nope"), null);
+    assert.strictEqual(gate.place(null), null);
+    gate.promote("b2");
+    assert.deepStrictEqual(gate.place("b2"), { ahead: 2 }, "promoted to the end of the play line");
+    blocker.release();
+    await Promise.all(results);
+    assert.strictEqual(gate.place("b2"), null);
+  });
 });

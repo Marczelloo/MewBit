@@ -10,6 +10,10 @@ const { createPriorityGate } = require("./priorityGate");
 const ANALYZE_ROUTE = "/v4/mewbeat/analyze";
 const FAILURE_TTL_MS = 10 * 60 * 1000;
 const BUSY_TTL_MS = 30 * 1000;
+// The plugin answers "busy" when its own line (maxQueue) is full. An analysis a player waits for asks again this often, up to
+// BUSY_RETRIES times (about two minutes), before the song is marked busy; a background one is marked at the first answer.
+const BUSY_RETRY_MS = 5000;
+const BUSY_RETRIES = 24;
 const FEATURES_VERSION = 4; // must match the plugin
 const MEMORY_CAPACITY = 32;
 // Poru's post is a bare fetch (about 5 minutes before it gives up) while the
@@ -78,14 +82,15 @@ function withTimeout(promise, timeoutMs) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs = REQUEST_TIMEOUT_MS }) {
+function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs = REQUEST_TIMEOUT_MS, busyRetryMs = BUSY_RETRY_MS, busyRetries = BUSY_RETRIES }) {
   const featuresByKey = new Map();
   const unchartedKeys = new Map(); // key -> reason
-  const blockedByKey = new Map(); // key -> { retryAfter, kind: "busy" | "failed" }
+  const blockedByKey = new Map(); // key -> { retryAfter, kind: "busy" | "failed", soft }
   const pendingByKey = new Map();
-  // Where analyses wait for the plugin: a play analysis goes at once (the plugin queues those itself), a background one only
-  // starts while nothing else runs, one at a time, and a play request takes over a background one that still waits.
-  const gate = createPriorityGate({ concurrency: 1, playBypass: true });
+  // Where analyses wait for the plugin: one at a time, so the plugin's own line (four jobs, then "busy") is never what the
+  // rooms queue in. Play analyses go first in the order they came, a background one only starts when no play analysis waits,
+  // and a play request takes over a background one that still waits.
+  const gate = createPriorityGate({ concurrency: 1 });
 
   // Small LRU over full feature documents; disk is the backing store.
   function readMemory(key) {
@@ -117,27 +122,39 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     return null;
   }
 
-  function failFor(key, ttlMs, kind = "failed") {
-    blockedByKey.set(key, { retryAfter: now() + ttlMs, kind });
+  // A soft block does not stop a player's request (a background analysis that met a busy plugin says nothing about a play one).
+  function failFor(key, ttlMs, kind = "failed", soft = false) {
+    blockedByKey.set(key, { retryAfter: now() + ttlMs, kind, soft });
     return null;
   }
 
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   // poru's rest.post drops the HTTP status and returns the parsed body, or
   // null on a network error, so the outcome is classified by the body alone.
-  async function analyse(track, key, node) {
+  async function analyse(track, key, node, priority) {
     // No Lavalink node (an offline pass over cached features): nothing to ask, and nothing to remember as a failure.
     if (!node?.rest) return null;
     let body;
-    try {
-      body = await withTimeout(node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track }), requestTimeoutFor(track, requestTimeoutMs));
-    } catch (error) {
-      if (error instanceof RequestTimeout) {
-        // The plugin may still be working on it, so retry soon rather than in 10 minutes.
-        log.warning("mewbeat analysis request timed out", key);
-        return failFor(key, BUSY_TTL_MS, "busy");
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        body = await withTimeout(node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track }), requestTimeoutFor(track, requestTimeoutMs));
+      } catch (error) {
+        if (error instanceof RequestTimeout) {
+          // The plugin may still be working on it, so retry soon rather than in 10 minutes.
+          log.warning("mewbeat analysis request timed out", key);
+          return failFor(key, BUSY_TTL_MS, "busy");
+        }
+        log.warning("mewbeat analysis request failed", error?.message);
+        return failFor(key, FAILURE_TTL_MS);
       }
-      log.warning("mewbeat analysis request failed", error?.message);
-      return failFor(key, FAILURE_TTL_MS);
+      // A busy plugin is someone else's work (another bot, the debugger): a player's analysis waits for it in its place in
+      // line instead of failing, and so does everything behind it.
+      if (body?.error === "busy" && priority === "play" && attempt < busyRetries) {
+        await sleep(busyRetryMs);
+        continue;
+      }
+      break;
     }
 
     if (body?.featuresVersion != null) {
@@ -172,7 +189,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
       return null;
     }
 
-    if (body?.error === "busy") return failFor(key, BUSY_TTL_MS, "busy");
+    if (body?.error === "busy") return failFor(key, BUSY_TTL_MS, "busy", priority !== "play");
 
     log.warning("mewbeat analysis failed", body?.error ?? "no response", body?.message);
     return failFor(key, FAILURE_TTL_MS);
@@ -189,7 +206,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     } catch {
       // no file yet
     }
-    return gate.run(() => analyse(track, key, node), { priority, key });
+    return gate.run((runningAs) => analyse(track, key, node, runningAs), { priority, key });
   }
 
   // priority: "play" (default; a player waits) or "background" (see priorityGate.js). A play request for a song that is
@@ -199,7 +216,8 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     if (!key || unchartedKeys.has(key)) return Promise.resolve(null);
     const cached = readMemory(key);
     if (cached) return Promise.resolve(cached);
-    if (blockOf(key)) return Promise.resolve(null);
+    const block = blockOf(key);
+    if (block && !(block.soft && priority === "play")) return Promise.resolve(null);
     const pending = pendingByKey.get(key);
     if (pending) {
       if (priority === "play") gate.promote(key);
@@ -287,7 +305,13 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     return key ? gate.promote(key) : false;
   }
 
-  return { getFeatures, peek, hasFeatures, promote, statusOf, forget };
+  // Where the song's analysis stands for a waiting player: { running: true }, { ahead: n } analyses before it, or null.
+  function queueOf(track) {
+    const key = audioKeyOf(track);
+    return key ? gate.place(key) : null;
+  }
+
+  return { getFeatures, peek, hasFeatures, promote, queueOf, statusOf, forget };
 }
 
 module.exports = {

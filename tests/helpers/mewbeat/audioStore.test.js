@@ -83,13 +83,15 @@ describe("mewbeat audio store", () => {
     const second = store.get("kb", "b", "n");
     await waitFor(() => started.length > 0);
     await new Promise((resolve) => setTimeout(resolve, 30));
-    assert.deepStrictEqual(started, ["a"]);
-    gates.a.resolve();
-    await first;
+    // Which of the two gets to the line first is up to the disk checks before it; the other waits for it either way.
+    assert.strictEqual(started.length, 1);
+    const [early, late] = started[0] === "a" ? ["a", "b"] : ["b", "a"];
+    gates[early].resolve();
+    await (early === "a" ? first : second);
     await waitFor(() => started.length > 1);
-    assert.deepStrictEqual(started, ["a", "b"]);
-    gates.b.resolve();
-    await second;
+    assert.deepStrictEqual(started, [early, late]);
+    gates[late].resolve();
+    await (late === "a" ? first : second);
   });
 
   it("evicts the oldest files beyond maxFiles", async () => {
@@ -194,6 +196,58 @@ describe("mewbeat audio store", () => {
       const controller = new AbortController();
       controller.abort(new Error("already"));
       await assert.rejects(store.get("ka", "a", "n", { signal: controller.signal }), /already/);
+    });
+  });
+
+  describe("the line of renders", () => {
+    function lineStore(options = {}) {
+      const gates = {};
+      const started = [];
+      const store = createAudioStore({
+        dir,
+        log: silentLog,
+        fetchAudio: async (track) => { started.push(track); gates[track] ??= deferred(); await gates[track].promise; return Buffer.from(track); },
+        ...options,
+      });
+      const release = async (track) => { await waitFor(() => gates[track]); gates[track].resolve(); };
+      return { release, started, store };
+    }
+
+    it("renders a player's song before the warm-ups that wait, behind the one that runs", async () => {
+      const { release, started, store } = lineStore();
+      const jobs = [store.get("k1", "s1", "n")];
+      await waitFor(() => started.length === 1);
+      jobs.push(store.get("k2", "s2", "n"), store.get("k3", "s3", "n")); // warm-ups
+      await waitFor(() => store.size().background === 2);
+      jobs.push(store.get("k4", "s4", "n", { signal: new AbortController().signal })); // a player
+      for (const track of ["s1", "s4", "s2", "s3"]) await release(track);
+      await Promise.all(jobs);
+      assert.deepStrictEqual(started, ["s1", "s4", "s2", "s3"]);
+    });
+
+    it("moves a warm-up that waits up the line when a player asks for the same song", async () => {
+      const { release, started, store } = lineStore();
+      const jobs = [store.get("k1", "s1", "n")];
+      await waitFor(() => started.length === 1);
+      jobs.push(store.get("k2", "s2", "n"), store.get("k3", "s3", "n"));
+      await waitFor(() => store.size().background === 2);
+      jobs.push(store.get("k3", "s3", "n", { signal: new AbortController().signal }));
+      for (const track of ["s1", "s3", "s2"]) await release(track);
+      await Promise.all(jobs);
+      assert.deepStrictEqual(started, ["s1", "s3", "s2"]);
+    });
+
+    it("refuses warm-ups beyond the cap with QUEUE_FULL and still takes a player", async () => {
+      const { release, started, store } = lineStore({ maxBackground: 2 });
+      const jobs = [store.get("k1", "s1", "n")];
+      await waitFor(() => started.length === 1);
+      jobs.push(store.get("k2", "s2", "n"), store.get("k3", "s3", "n"));
+      await waitFor(() => store.size().background === 2);
+      await assert.rejects(store.get("k4", "s4", "n"), { code: "QUEUE_FULL" });
+      jobs.push(store.get("k5", "s5", "n", { signal: new AbortController().signal }));
+      for (const track of ["s1", "s5", "s2", "s3"]) await release(track);
+      await Promise.all(jobs);
+      assert.deepStrictEqual(started, ["s1", "s5", "s2", "s3"]);
     });
   });
 });
