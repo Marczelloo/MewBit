@@ -21,8 +21,9 @@ const { createPriorityGate } = require("./priorityGate");
 //
 // Files: <dir>/offset/<audio key file>.json next to <dir>/audio/<same>.ogg and <dir>/features/<same>.json. The record is tied to
 // the two files it was measured from (a fingerprint of each): a re-rendered audio file or new features make it stale, and it is
-// measured again. The audio store touches a file's mtime on every use, so the audio fingerprint is its size plus a hash of its
-// first and last 64 KB, never its mtime.
+// measured again. The audio store touches a file's mtime on every use, and a plain copy of the folder gives every file a new one,
+// so neither fingerprint holds an mtime: the audio fingerprint is its size plus a hash of its first and last 64 KB, the features
+// fingerprint its size plus a hash of the whole file.
 //
 // Nothing here ever fails a song: every method resolves (never rejects), a service that is not configured (no
 // MEWBEAT_DECODER_URL, the case on the Pi today) or not reachable gives null offsets without a line in the log past the first
@@ -130,11 +131,14 @@ async function audioFingerprint(file) {
   }
 }
 
-// Features files are written once and replaced whole, so size and mtime say whether they are the ones a record was made from.
+// Size and a hash of the whole file (a few hundred KB of JSON). Never the mtime: a plain copy of the data folder gives every file a
+// new one, and the records would all be measured again. Null for a marker or a file that cannot be read.
 async function featuresFingerprint(file) {
   try {
-    const stat = await fsPromises.stat(file);
-    return stat.size > FEATURES_MIN_BYTES ? `${stat.size}:${Math.round(stat.mtimeMs)}` : null;
+    const { size } = await fsPromises.stat(file);
+    if (size <= FEATURES_MIN_BYTES) return null;
+    const bytes = await fsPromises.readFile(file);
+    return `${bytes.length}:${createHash("sha1").update(bytes).digest("hex").slice(0, 16)}`;
   } catch {
     return null;
   }
