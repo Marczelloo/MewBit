@@ -157,6 +157,38 @@ class AnalysisWorkerTest {
     }
 
     @Test
+    void timeoutGrowsWithTheTrackLength() {
+        // Short tracks keep the flat floor, long ones get the factor times their length.
+        assertEquals(120_000, AnalysisWorker.timeoutFor(120_000, 0.3, 240_000));
+        assertEquals(120_000, AnalysisWorker.timeoutFor(120_000, 0.3, 400_000));
+        assertEquals(360_000, AnalysisWorker.timeoutFor(120_000, 0.3, 20 * 60_000));
+        assertEquals(540_000, AnalysisWorker.timeoutFor(120_000, 0.3, 30 * 60_000));
+        // No factor, or no known length: the flat timeout.
+        assertEquals(120_000, AnalysisWorker.timeoutFor(120_000, 0, 20 * 60_000));
+        assertEquals(120_000, AnalysisWorker.timeoutFor(120_000, 0.3, 0));
+        assertEquals(120_000, AnalysisWorker.timeoutFor(120_000, -1, 20 * 60_000));
+    }
+
+    @Test
+    void longTrackIsGivenMoreTimeThanTheFloor() throws Exception {
+        // 100 ms floor, factor 10: a 200 ms track may run 2 s, so a 700 ms decode is not cut off ...
+        decoder.meta = new TrackMeta("slow1", "youtube", 200, false);
+        decoder.decode = sink -> Thread.sleep(700);
+        AnalysisWorker slow = new AnalysisWorker(
+                decoder, new MetricsLog(metricLines::add), 2, 1_200_000, 100, dev.mewbit.mewbeat.dsp.AnalysisTier.FULL, 10);
+        workers.add(slow);
+        assertEquals(200, slow.analyze("x").status());
+        assertTrue(metricLines.get(0).contains("result=ok"), metricLines.get(0));
+
+        // ... while one that outlasts even that is still interrupted, and the message names its own timeout.
+        decoder.decode = sink -> Thread.sleep(60_000);
+        AnalysisWorker.Outcome outcome = slow.analyze("x");
+        assertEquals(502, outcome.status());
+        assertTrue(json(outcome).get("message").asText().contains("timed out after 2.0 s"), json(outcome).toString());
+        assertTrue(metricLines.get(1).contains("result=timeout"), metricLines.get(1));
+    }
+
+    @Test
     void workerThreadIsMinPriority() throws Exception {
         AtomicReference<Thread> seen = new AtomicReference<>();
         decoder.decode = sink -> seen.set(Thread.currentThread());

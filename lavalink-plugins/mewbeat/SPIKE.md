@@ -46,8 +46,9 @@ connection is involved, so a running analysis cannot disturb playback state.
 `AnalysisWorker` runs jobs on a single thread named `mewbeat-analysis` at
 MIN_PRIORITY, behind a bounded queue of `plugins.mewbeat.maxQueue` jobs (default 4).
 When the queue is full the request is answered `503 {"error":"busy"}` immediately.
-A watchdog arms a 120 s timeout per job and interrupts the worker, which cancels
-the decode (it shows in the log as `result=timeout`). Streams and tracks longer
+A watchdog arms a timeout per job, the larger of 120 s and `plugins.mewbeat.timeoutFactor`
+(default 0.3) times the track's length, and interrupts the worker, which cancels
+the decode (it shows in the log as `result=timeout`); a 20-minute track gets 6 minutes. Streams and tracks longer
 than `maxTrackMs` (default 20 min) are refused before any audio is fetched:
 `422 {"error":"uncharted","reason":"stream"|"too_long"}`.
 
