@@ -63,7 +63,8 @@ const { playIssueOf, searchGameSongs, searchSongLink } = require("../mewbeat/son
 const { isPrivatePlace, isValidPrivatePlace } = require("../mewbeat/places");
 const { SOURCE_NAME: MEWBEAT_SOURCE, calibrationQuery, isCalibrationTrack } = require("../mewbeat/calibrationTrack");
 const { chartStore } = require("../mewbeat/chartStore");
-const { audioStore } = require("../mewbeat/sharedAudio");
+const { audioOffset, audioStore } = require("../mewbeat/sharedAudio");
+const { createOffsetBackfill } = require("../mewbeat/offsetBackfill");
 const { sliceOpusOgg } = require("../mewbeat/oggClip");
 const { createArtworkProxy } = require("./artworkProxy");
 const { getClient } = require("../clientRegistry");
@@ -757,7 +758,7 @@ const tourSongs = createTourSongs({
   resolveTrack: resolveMewbeatTrack,
   soloTracks,
   chartStore,
-  warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
+  warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node).then((file) => { measureOffsetLater(audioKey); return file; }),
 });
 
 const mewbeatChannel = createMewbeatChannel({
@@ -770,8 +771,9 @@ const mewbeatChannel = createMewbeatChannel({
   historyStore: mewbeatHistoryStore,
   statsStore: mewbeatStatsStore,
   postInvite: createInvitePoster({ getClient }),
-  warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
+  warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node).then((file) => { measureOffsetLater(audioKey); return file; }),
   tourSongs,
+  audioOffset,
   // New songs like a player's own for the suggestions: autoplay's candidate search, in the background and budgeted.
   discover: createMewbeatDiscoverer({ log: Log }),
   // What a player listens to through the bot, as more seeds for them (read only: nothing is created or changed).
@@ -790,6 +792,14 @@ const mewbeatChannel = createMewbeatChannel({
 
 // Background charting (mewbeat): the play history is re-charted once per start, and a track the bot starts in voice is charted too.
 const rechart = createRechart({ historyStore: mewbeatHistoryStore, chartStore });
+// The audio offset of the stored files that have none yet (audioOffset.js), once per start; nothing happens without a decoder service.
+const offsetBackfill = createOffsetBackfill({ audioOffset });
+
+// A song's audio has just been rendered or found on disk: measure its offset in the background when it has features (a no-op
+// without a decoder service). Never waited for and never fails the caller.
+function measureOffsetLater(audioKey) {
+  if (audioOffset.configured()) audioOffset.ensure(audioKey, { priority: "background" });
+}
 const voiceCharting = createVoiceCharting({ events: activityStateEvents, readPlayback: readMewbeatPlayback, chartStore });
 
 // A map report names its run; the reporter finds it in the player's own history and the chart store.
@@ -837,6 +847,7 @@ async function sendMewbeatAudio(response, config, guildId, audioKey, { clip = fa
   let size;
   try {
     file = await audioStore.get(audioKey, entry.track, entry.node, { signal: gone.signal });
+    measureOffsetLater(audioKey);
     size = (await fs.promises.stat(file)).size;
   } catch (error) {
     if (gone.signal.aborted) return undefined; // nobody is listening any more
@@ -2002,6 +2013,7 @@ function createActivityServer(client) {
       if (process.env.NODE_ENV !== "test") {
         tourSongs.start();
         rechart.start();
+        offsetBackfill.start();
         voiceCharting.start();
       }
       return server;
@@ -2013,6 +2025,7 @@ function createActivityServer(client) {
       heartbeat = null;
       tourSongs.stop();
       rechart.stop();
+      offsetBackfill.stop();
       voiceCharting.stop();
       if (listeningForPlayerChanges) {
         activityStateEvents.off("change", handlePlayerStateChange);

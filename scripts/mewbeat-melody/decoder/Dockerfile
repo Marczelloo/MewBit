@@ -32,7 +32,7 @@ FROM python:3.12-slim-bookworm
 # `python -I` (as the old image ran decode.py) ignores PYTHONPATH, so the packages go where the interpreter looks anyway.
 COPY --from=build /site /usr/local/lib/python3.12/site-packages
 COPY --from=build /nmp.onnx /opt/mewbeat/nmp.onnx
-COPY bp.py decode.py notes.py service.py /opt/mewbeat/
+COPY bp.py decode.py notes.py offset.py service.py /opt/mewbeat/
 ENV MEWBEAT_BP_MODEL=/opt/mewbeat/nmp.onnx \
     OMP_NUM_THREADS=1 \
     PYTHONUNBUFFERED=1 \

@@ -68,6 +68,7 @@ export function createSoloAudio({
   let loadAbort = null; // aborts the download of the load in flight (superseded or closed)
   let rise = null; // the loaded song's riseEnvelope, made the first time a chart asks
   let lagMs = 0; // the loaded song's sounds come this long after its chart: song time t is buffer time t + lagMs
+  let lagExplicit = false; // lagMs came from setLagMs (a measured per-song offset), not from the scan below
   let alignSeq = 0; // bumps on every background alignment and every new song, so an older answer is dropped
   let aligning = null; // the background alignment in flight, which play() waits for
   // Playback state. source is non-null only while a source node is scheduled or playing.
@@ -198,6 +199,7 @@ export function createSoloAudio({
       if (previewBuffer && !previewBuffer.clipped) previewBuffer = null;
       rise = null;
       lagMs = 0;
+      lagExplicit = false;
       alignSeq += 1;
       aligning = null;
       measuring = null;
@@ -254,9 +256,28 @@ export function createSoloAudio({
     try { old.disconnect(); } catch { /* already disconnected */ }
   }
 
+  // Sets the lag from a measured per-song offset (audioAlignment.js: lag = -offset) instead of scanning the song, and stops a
+  // scan still running for it. Applies to every play() from here on, like align(); a later align() drops it again.
+  function setLagMs(ms) {
+    if (!buffer || !Number.isFinite(ms)) return lagMs;
+    alignSeq += 1;
+    aligning = null;
+    lagMs = ms;
+    lagExplicit = true;
+    return lagMs;
+  }
+
+  // The scan takes over from a measured lag set earlier for this song (the setting went off, or the offset is unknown now).
+  function dropExplicitLag() {
+    if (!lagExplicit) return;
+    lagMs = 0;
+    lagExplicit = false;
+  }
+
   // Lines the loaded song up with a chart's note times (audioAlign.js), for every play() from here on.
   function align(noteTimesMs) {
     if (!buffer) return 0;
+    dropExplicitLag();
     if (!rise) {
       const channels = [buffer.getChannelData(0)];
       if (buffer.numberOfChannels > 1) channels.push(buffer.getChannelData(1));
@@ -270,6 +291,7 @@ export function createSoloAudio({
   // set before the source starts (the count-in is longer than the scan). Resolves when the lag is known.
   function alignInBackground(noteTimesMs) {
     if (!buffer) return Promise.resolve(0);
+    dropExplicitLag();
     if (!aligner || rise) return Promise.resolve(align(noteTimesMs));
     const seq = ++alignSeq;
     const songBuffer = buffer;
@@ -618,6 +640,7 @@ export function createSoloAudio({
     measuring = null;
     rise = null;
     lagMs = 0;
+    lagExplicit = false;
     alignSeq += 1;
     aligning = null;
     aligner?.close?.();
@@ -651,6 +674,7 @@ export function createSoloAudio({
     load,
     align,
     alignInBackground,
+    setLagMs,
     play,
     pause,
     resume,

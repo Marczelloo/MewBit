@@ -657,7 +657,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     submitExtra,
     onExit: () => exitRef.current(),
   });
-  const { phase, chartWait, failed, failedHold, autoplay, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, calibrating, calibrationNotes } = game;
+  const { phase, chartWait, failed, failedHold, autoplay, retryCharting, hudStore, runDifficulty, swap, changeDifficulty, runSession, endSummary, poseStore, track, canvasRef, progressRef, progressTimeRef, effectsLevel, unlockAudio, soundReady, previewHit, previewSfx, playSfx, timing, resetTiming, songOffsetMs, calibrating, calibrationNotes } = game;
 
   // The trap, one phase at a time. The notes run on the still link (an autoplay: nothing is scored, sent or left in a
   // summary) and the sound on the trap's own player, from the same moment. Heavy: the chart plays for HEAVY_MS and the
@@ -1613,6 +1613,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
           onPreviewMusic={previewMusic}
           liveCalibration={mode === "live"}
           offsetField={offsetField}
+          songOffsetMs={mode === "live" ? undefined : songOffsetMs}
         /> : null}
       {reportOpen ? <ReportPanel onSend={sendReport} onClose={closeReport} request={mockRequest ?? requests.request} /> : null}
       {touring ? <TourLayer step={tourStep} keys={keys.map(keyLabel)} effects={effectsLevel} onNext={tourPrimary} onSkip={onTourSkip} playSfx={playSfx} unlockAudio={unlockTourAudio} soundReady={soundReady} trap={trapScreen ? { screen: trapScreen, line: trapState.line, onRude: trapRude } : null} /> : null}

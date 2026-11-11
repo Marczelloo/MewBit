@@ -97,9 +97,11 @@ export function createRoomLink({
 
   // The game calls this once it accepted my chart and built its run on the paused clock. Only then is this
   // client ready for the countdown, and only a round still in its loading phase can take the report.
-  function chartAccepted(chart) {
+  // `alignment.lagMs`: a measured per-song lag that replaces the scan (see soloLink.js).
+  function chartAccepted(chart, alignment = null) {
     if (state.stage !== "ready") return;
-    if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
+    if (Number.isFinite(alignment?.lagMs) && audio.setLagMs) audio.setLagMs(alignment.lagMs);
+    else if (chart?.notes) audio.align?.(chart.notes.map((note) => note.t));
     if (state.spectating) {
       // A spectator is never counted as loaded: just wait for the start to join the audio.
       setState({ stage: "waiting", prepared: false });
