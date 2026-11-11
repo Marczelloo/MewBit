@@ -86,6 +86,11 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      # The Lavalink service above, whatever .env says: inside this stack it has no other address.
+      LAVALINK_HOST: lavalink
+      LAVALINK_PORT: 2333
+      # The clock the logs and the AI DJ's time of day use.
+      TZ: ${TZ:-UTC}
       ACTIVITY_HOST: ${ACTIVITY_HOST:-0.0.0.0}
       ACTIVITY_PORT: ${ACTIVITY_PORT:-8787}
       # The melody decoder service above. Not in depends_on on purpose: the bot retries a decode later when the service is down.

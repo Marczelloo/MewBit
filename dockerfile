@@ -16,4 +16,5 @@ ENV NODE_ENV=production
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node . .
 USER node
-CMD ["pnpm", "start"]
+# node directly, not `pnpm start`: corepack would fetch pnpm from the npm registry on every new container's first start.
+CMD ["node", "index.js"]
