@@ -100,6 +100,8 @@ describe("mewbeat melody decoder", () => {
 
     const first = [decoder.ensure(KEY, track, "node", fixture.features), decoder.ensure(KEY, track, "node", fixture.features)];
     const second = decoder.ensure(OTHER, track, "node", fixture.features);
+    // The first run starts after a look at the audio file, however long the disk takes; then the others get time to start too.
+    for (let waited = 0; run.calls.length === 0 && waited < 5000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.strictEqual(run.calls.length, 1);
     gate.resolve();
