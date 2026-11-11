@@ -15,8 +15,8 @@ import bp
 import notes
 
 
-def decode(path, threads=1):
-    note, onset, contour, dur = bp.posteriors(path, threads)
+def decode(source, threads=1, sess=None):
+    note, onset, contour, dur = bp.posteriors(source, threads, sess)
     rows = notes.notes_of(note, onset, contour, notes.P, 0)
     fg = notes.foreground(rows)
     low = notes.notes_of(note, onset, contour, notes.P_LOW, 0)

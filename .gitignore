@@ -11,6 +11,8 @@ helpers/lavalink/youtube-cookies.txt
 # The blanket *.txt above exists to keep cookie and token dumps out. This
 # one is a published file the site needs, so it is named back in.
 !web/public/robots.txt
+# The pinned package list the decoder service image is built from.
+!scripts/mewbeat-melody/decoder/requirements.txt
 data
 helpers/data/*
 !helpers/data/patchNotes.json
