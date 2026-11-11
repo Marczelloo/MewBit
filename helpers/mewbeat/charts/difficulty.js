@@ -344,6 +344,19 @@ const EASY_SAME_CUTS = { sameCuts: { keep: 0.4 }, keepShare: [[145, 0.72], [190,
 // .25 / .4 went past people (.19 holds), without "free" .12 holds but shorter.
 const HARD_HOLDS = { plusHolds: { gaps: true }, holdRelease: "free", holdsByCalm: holdsByCalm({ loud: 0.18, quiet: 0.3 }, { loud: 0.2, quiet: 0.4 }) };
 
+// generate.js plusNotes, holds.js keptHolds (flag hellHolds): Hell built on Hard played only half of Hard's holds (bot's 80 songs
+// 50.7%, held for 80% of their length 32.6%; the corpus 55.7%), 95% of the lost ones because the hold let go on the next moment,
+// usually an extra of Hell's, and 3.4% of Hell's notes were holds against Hard's 9.9%. Now every hold of Hard stays one: "free"
+// release lets it go with its sound, no extra lands under it (minBeats 0, down to the level's shortest hold) and the phrase's room
+// does not shrink by that time (fullRoom: the extras go where a hold is not), and where the lanes cannot place a moment of Hard
+// for a hold the newest hold in the way plays as a tap (holdYield: without it nesting broke, 131 moments of Hard in 32 songs).
+// Bot's songs: holds kept 96.3% (80%+ of the length 95.9%), 6.6% of Hell's notes, Hell moments 115516 -> 108401 (-6.2%), notes
+// 176193 -> 172872, median Hell/Hard moments 1.311 -> 1.218; corpus 95.3%, -4.2%, 1.316 -> 1.267. The cost sits in the holds of
+// under 1.1 beats (78% of Hard's holds), which leave no room for an extra: "free" release and holdYield alone (minBeats 2) keep
+// 58% and the holds from 1.1 beats up (92-94%) for 0.1% of the moments, minBeats 0.6 keeps 71% (1.260), a minBeats between 1.1 and 2
+// kept nothing more and cost 1.9%. There are no people's Hell maps to hold this against.
+const HELL_HOLDS = { holdRelease: "free", holdYield: true, keepNormalHolds: { minBeats: 0, shortest: true, fullRoom: true } };
+
 // generate.js plusNotes (flag hellPlus): Hell starts from the moments of Hard and adds its own, as Hard does on Normal. There are
 // no people's Hell maps, so the targets are the user's: about Hard x1.4 moments in the median, only +15-20% on dense songs, and
 // where the room runs out half the extra notes as sixteenth bursts, half as chords of 2-3 keys on strong hits.
@@ -686,6 +699,7 @@ module.exports = {
   HARD_HOLDS,
   HEARD_CHORDS,
   HARD_PLUS,
+  HELL_HOLDS,
   HELL_PLUS,
   HOLD_SLOW,
   LEAD_VOICE_BOTH,

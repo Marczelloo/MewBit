@@ -256,6 +256,13 @@ function searchLanes(notes, ctx, diff, upper = null) {
           const { len, ...tap } = kept[0];
           kept = [tap];
           lostCost += LOST_HOLD;
+        } else if (diff.holdYield?.has(t) && active.length > 0) {
+          // A moment the level is built on is not lost to a hold: the newest hold in its way plays as a tap.
+          const newest = active.reduce((a, b) => (b.t > a.t ? b : a));
+          (broke ??= []).push({ t: newest.t, lane: newest.lane });
+          laneFree[newest.lane] = newest.t;
+          active = active.filter((x) => x !== newest);
+          lostCost += LOST_HOLD;
         } else {
           kept = [];
         }

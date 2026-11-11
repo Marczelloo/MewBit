@@ -199,6 +199,12 @@ function assignLanes(notes, ctx, diff, upper = null) {
       } else if (kept[0].len > 0) {
         const { len, ...tap } = kept[0];
         kept = [tap];
+      } else if (diff.holdYield?.has(t) && active.length > 0) {
+        // A moment the level is built on is not lost to a hold: the newest hold in its way plays as a tap.
+        const newest = active.reduce((a, b) => (b.t > a.t ? b : a));
+        delete newest.len;
+        laneFree[newest.lane] = newest.t;
+        active = active.filter((h) => h !== newest);
       } else {
         kept = [];
       }
