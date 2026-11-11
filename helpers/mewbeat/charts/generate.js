@@ -21,6 +21,7 @@ const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { localKeep, thinned } = require("./localThin");
 const { flagsKey, noMelodyKey, normalFlags, withFlags } = require("./flags");
+const { noiseLookup, withoutNoise } = require("./noise");
 const { quietLookup } = require("./quiet");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sameCuts, sortedOnsets, withBeats } = require("./rhythm");
@@ -79,6 +80,7 @@ function analyse(raw, flags) {
     localKeep: null, // the share of moments each second keeps (keptShare)
     calm: undefined, // t -> how calm the music is, null with nothing to tell it from (calmOf)
     quiet: new Map(), // threshold -> t -> whether the song plays quietly there (quietOf)
+    noise: undefined, // t -> whether the sounds there are no music, null with nothing to tell it by (noiseOf)
     rhythms: {}, // difficulty -> the moments the level below it is cut from (upperRhythm)
     oddsMemo: new Map(), // lane grammar table -> the cost of each mask by (gap, size, last masks) (laneSearch.js)
   };
@@ -343,6 +345,12 @@ function calmOf(ctx, diff) {
 function quietOf(ctx, rule) {
   if (!ctx.quiet.has(rule.below)) ctx.quiet.set(rule.below, quietLookup(ctx.features, rule));
   return ctx.quiet.get(rule.below);
+}
+
+// Where the sounds of the song are no music (noise.js), once a song: t -> boolean, or null with nothing to tell it by.
+function noiseOf(ctx, rule) {
+  if (ctx.noise === undefined) ctx.noise = noiseLookup(ctx.raw, ctx.features, ctx.timing, rule);
+  return ctx.noise;
 }
 
 // Moments selection.js chose as notes, each with a lane to hold its place (finish lays the lanes over the finished moments).
@@ -735,6 +743,17 @@ function finalNotes(ctx, difficulty) {
   return ctx.final[difficulty];
 }
 
+// What the player gets of a level: its finished notes without the ones on sounds that are no music (diff.noNoise, a flag;
+// noise.js). Taken off at the very end and from every level alike: a level built on another is built on the whole of it,
+// so away from the noise each level is note for note what it was (with Normal's opening emptied first, the fixture's Easy
+// and Hell chose other figures for the whole song).
+function playedNotes(ctx, difficulty, trace = null, notes = finalNotes(ctx, difficulty)) {
+  const rule = flagged(ctx, difficulty).noNoise;
+  if (!rule) return notes;
+  const played = withoutNoise(notes, noiseOf(ctx, rule));
+  return trace ? trace.step("noNoise", notes, played) : played;
+}
+
 // The moments diff is cut from, or null for a level charted straight from the music.
 function upperRhythm(ctx, diff) {
   if (!diff.cutFrom) return null;
@@ -745,7 +764,7 @@ function upperRhythm(ctx, diff) {
 // --- public API --------------------------------------------------------------
 
 function chartFrom(ctx, difficulty, audioKey) {
-  const notes = finalNotes(ctx, difficulty);
+  const notes = playedNotes(ctx, difficulty);
   if (new Set(notes.map((n) => n.t)).size < MIN_NOTES) return null; // chords don't make a sparse song playable
   const { features, durationMs } = ctx;
   // The chart store sets features.noMelody when it charts a song that has no decoded melody: that map is marked, the one made
@@ -793,7 +812,7 @@ function traceChart(features, difficulty, audioKey, flags) {
   if (!usable(features)) return null;
   const ctx = analyse(features, flags);
   const trace = createTrace();
-  const notes = notesFor(ctx, difficulty, trace);
+  const notes = playedNotes(ctx, difficulty, trace, notesFor(ctx, difficulty, trace));
   const chart = chartFrom(ctx, difficulty, audioKey);
   const { timing, phrases } = ctx;
   const story = trace.report(notes);
