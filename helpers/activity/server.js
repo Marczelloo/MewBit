@@ -762,6 +762,13 @@ const mewbeatChannel = createMewbeatChannel({
   tourSongs,
   // New songs like a player's own for the suggestions: autoplay's candidate search, in the background and budgeted.
   discover: createMewbeatDiscoverer({ log: Log }),
+  // What a player listens to through the bot, as more seeds for them (read only: nothing is created or changed).
+  listening: {
+    topTracks: (userId, limit) => statsStore.getTopTracks(userId, limit),
+    topArtists: (userId, limit) => statsStore.getTopArtists(userId, limit),
+    roomTracks: (guildId) => getRoomHistory(guildId),
+    liked: (userId) => playlistStore.loadPlaylists().user?.[userId]?.find((playlist) => playlist.name === "Liked Songs")?.tracks ?? [],
+  },
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
   // A pending room phase must not keep the process alive.

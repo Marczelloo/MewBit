@@ -10,12 +10,14 @@ const {
   identityOf,
   isOfferable,
   levelFor,
+  mixSeeds,
   playsOf,
   seedsOf,
   skillOf,
   stripOf,
 } = require("../../../helpers/mewbeat/recommendations");
 const { audioKeyOf, trackFromAudioKey } = require("../../../helpers/mewbeat/audioKey");
+const { readTaste } = require("../../../helpers/mewbeat/listeningTaste");
 
 const CALIBRATION_AUDIO_KEY = audioKeyOf({ info: { sourceName: "mewbeat", identifier: "mewbeat:calibration:40:20:3000", length: 33_000 } });
 const NOW = 1_700_000_000_000;
@@ -166,6 +168,31 @@ describe("mewbeat suggestions: search budget", () => {
     for (let i = 0; i < 10; i += 1) assert.strictEqual(budget.take("a"), false);
     clock += 61_000;
     assert.strictEqual(budget.take("a"), true);
+  });
+});
+
+describe("mewbeat suggestions: mixing seeds", () => {
+  const game = (id, role = "played") => ({ title: `Game ${id}`, artist: `Artist ${id}`, audioKey: keyOf(id), role });
+  const listen = (id, role = "artist") => ({ title: `Listen ${id}`, artist: `Band ${id}`, role, label: `Band ${id}` });
+  const titles = (seeds) => seeds.map((seed) => seed.title);
+
+  it("takes turns, the game first after a play this week or the song just played", () => {
+    const recent = [{ at: NOW - DAY }];
+    assert.deepStrictEqual(titles(mixSeeds([game("a"), game("b")], [listen("x"), listen("y")], { now: NOW, rounds: recent, justPlayed: null })), ["Game a", "Listen x", "Game b"]);
+    const old = [{ at: NOW - 30 * DAY }];
+    assert.deepStrictEqual(titles(mixSeeds([game("a"), game("b")], [listen("x"), listen("y")], { now: NOW, rounds: old, justPlayed: null })), ["Listen x", "Game a", "Listen y"]);
+    assert.deepStrictEqual(titles(mixSeeds([game("a")], [listen("x"), listen("y")], { now: NOW, rounds: old, justPlayed: keyOf("a") })), ["Game a", "Listen x", "Listen y"]);
+  });
+
+  it("is the game's two seeds as before without listening, and at most three with it", () => {
+    assert.deepStrictEqual(titles(mixSeeds([game("a"), game("b"), game("c")], [], { now: NOW, rounds: [], justPlayed: null })), ["Game a", "Game b"]);
+    assert.strictEqual(mixSeeds([game("a"), game("b")], [listen("x"), listen("y"), listen("z")], { now: NOW, rounds: [{ at: NOW }], justPlayed: null }).length, 3);
+    assert.deepStrictEqual(mixSeeds([], [], { now: NOW, rounds: [], justPlayed: null }), []);
+  });
+
+  it("drops a listening seed whose artist the game already asks about", () => {
+    const same = { ...listen("x"), artist: "Artist a" };
+    assert.deepStrictEqual(titles(mixSeeds([game("a")], [same], { now: NOW, rounds: [{ at: NOW }], justPlayed: null })), ["Game a"]);
   });
 });
 
@@ -392,6 +419,144 @@ describe("mewbeat suggestions: recommender", () => {
       assert.ok(calls <= 3, `at most three searches a minute, saw ${calls}`);
     });
   });
+
+  describe("what the player listens to", () => {
+    const found = (id, score = 70, extra) => ({ ...song(id), score, ...extra });
+    // Made-up bot data: ann asks for Band A a lot and for Band B a little; bo for Band Z; cy and nobody for nothing.
+    const sources = (extra = {}) => ({
+      topTracks: (userId) => ({
+        ann: [{ track: "Band A - Song One", count: 9 }, { track: "Band A - Song Two", count: 4 }, { track: "Band B - Song Three", count: 2 }],
+        bo: [{ track: "Band Z - Other Song", count: 5 }],
+      })[userId] ?? [],
+      topArtists: (userId) => ({ ann: [{ artist: "Band A", count: 13 }], bo: [{ artist: "Band Z", count: 5 }] })[userId] ?? [],
+      roomTracks: () => [],
+      liked: () => [],
+      ...extra,
+    });
+    const tasteFrom = (list) => (userId, guildId) => readTaste({ userId, guildId, sources: list, now: NOW });
+    const seedRounds = [round("known", { artist: "Seed Artist", title: "Seed Song" })];
+    const recorder = () => {
+      const asked = [];
+      return { asked, discover: async (seed, options) => { asked.push([seed.title, options?.anchor?.title ?? null]); return [found(`n-${seed.title.replaceAll(" ", "")}`)]; } };
+    };
+
+    it("suggests from the listening alone, names what the player listens to and sets the taste as the anchor", async () => {
+      const { asked, discover } = recorder();
+      const recommender = build({ historyStore: storeOf({}), taste: tasteFrom(sources()), discover });
+      const first = recommender.forPlayer({ userId: "ann", guildId: "g" });
+      assert.strictEqual(first.pending, true);
+      await recommender.idle();
+      assert.deepStrictEqual(asked, [["Song One", "Song Three"], ["Song Three", "Song One"]]);
+      const reply = recommender.forPlayer({ userId: "ann", guildId: "g" });
+      const similar = reply.sections.find((section) => section.kind === "similar");
+      assert.strictEqual(similar.title, "Picked for you");
+      assert.deepStrictEqual(similar.rows.map((row) => row.reason).sort(), ["Because you listen to Band A", "Because you listen to Song Three"]);
+      assert.strictEqual(reply.skill, null, "listening says nothing about the player's skill in the game");
+    });
+
+    it("mixes the game's seeds with the listening ones, the game first when the player just played", async () => {
+      const { asked, discover } = recorder();
+      const recommender = build({ historyStore: storeOf({ rounds: seedRounds }), taste: tasteFrom(sources()), discover });
+      recommender.forPlayer({ userId: "ann", guildId: "g", seedKey: keyOf("known") });
+      await recommender.idle();
+      assert.deepStrictEqual(asked.map(([title]) => title), ["Seed Song", "Song One", "Song Three"]);
+      const similar = rowsOf(recommender.forPlayer({ userId: "ann", guildId: "g", seedKey: keyOf("known") }), "similar");
+      assert.deepStrictEqual(similar.map((row) => row.reason), ["Because you just played Seed Song", "Because you listen to Band A", "Because you listen to Song Three"]);
+    });
+
+    it("lets the listening lead when the last game was long ago, and leaves out an artist the game already asks about", async () => {
+      const { asked, discover } = recorder();
+      const old = [round("known", { artist: "Seed Artist", title: "Seed Song", at: NOW - 30 * DAY })];
+      const recommender = build({ historyStore: storeOf({ rounds: old }), taste: tasteFrom(sources()), discover });
+      recommender.forPlayer({ userId: "ann", guildId: "g" });
+      await recommender.idle();
+      assert.deepStrictEqual(asked.map(([title]) => title), ["Song One", "Seed Song", "Song Three"]);
+
+      const same = recorder();
+      const sameArtist = build({ historyStore: storeOf({ rounds: [round("known", { artist: "Band A", title: "Game Song" })] }), taste: tasteFrom(sources()), discover: same.discover });
+      sameArtist.forPlayer({ userId: "ann", guildId: "g" });
+      await sameArtist.idle();
+      assert.deepStrictEqual(same.asked.map(([title]) => title), ["Game Song", "Song Three"], "Band A is asked about once, by the game");
+    });
+
+    it("keeps one player's listening out of another's suggestions", async () => {
+      const { asked, discover } = recorder();
+      const recommender = build({ historyStore: storeOf({}), taste: tasteFrom(sources()), discover });
+      recommender.forPlayer({ userId: "ann", guildId: "g" });
+      await recommender.idle();
+      asked.length = 0;
+      const bo = recommender.forPlayer({ userId: "bo", guildId: "g" });
+      const nobody = recommender.forPlayer({ userId: "cy", guildId: "g" });
+      await recommender.idle();
+      assert.deepStrictEqual(asked.map(([title]) => title), ["Other Song"], "bo is asked about bo's song, cy about nothing");
+      assert.deepStrictEqual(rowsOf(nobody, "similar"), []);
+      const after = recommender.forPlayer({ userId: "bo", guildId: "g" });
+      const reasons = rowsOf(after, "similar").map((row) => row.reason);
+      assert.deepStrictEqual(reasons, ["Because you listen to Other Song"]);
+      assert.ok(bo.sections.every((section) => section.rows.every((row) => !/Band A|Song One|Song Three/.test(row.reason))));
+    });
+
+    it("shares one discovery only between players who ask with the same seed and the same anchor", async () => {
+      const both = { topTracks: () => [{ track: "Band A - Song One", count: 3 }, { track: "Band B - Song Three", count: 1 }], topArtists: () => [] };
+      let calls = 0;
+      const recommender = build({
+        historyStore: storeOf({ rounds: seedRounds }),
+        taste: (userId) => readTaste({ userId, guildId: "g", sources: { ...both, topTracks: userId === "u3" ? () => [{ track: "Band C - Other", count: 3 }] : both.topTracks }, now: NOW }),
+        budget: { take: () => true },
+        discover: async () => { calls += 1; return [found("n1")]; },
+      });
+      for (const userId of ["u1", "u2"]) recommender.forPlayer({ userId, guildId: "g", seedKey: keyOf("known") });
+      await recommender.idle();
+      const shared = calls;
+      assert.strictEqual(shared, 3, "u1 and u2 share the game seed's search and both listening seeds");
+      recommender.forPlayer({ userId: "u3", guildId: "g", seedKey: keyOf("known") });
+      await recommender.idle();
+      assert.ok(calls > shared && calls <= shared + 2, "u3's taste is another anchor, so another search, but not another one for the song u3 did not ask about");
+    });
+
+    it("does not offer a song the player already listens to, or one by the artist of the seed it came from twice", async () => {
+      const recommender = build({
+        historyStore: storeOf({}),
+        taste: tasteFrom(sources()),
+        discover: async () => [found("heard", 90, { title: "Song Two", artist: "Band A" }), found("fine", 60)],
+      });
+      recommender.forPlayer({ userId: "ann", guildId: "g" });
+      await recommender.idle();
+      const keys = rowsOf(recommender.forPlayer({ userId: "ann", guildId: "g" }), "similar").map((row) => row.audioKey);
+      assert.deepStrictEqual(keys, [keyOf("fine")]);
+    });
+
+    it("still answers when the listening cannot be read, and gives a player with nothing the classics and the server's picks", async () => {
+      const { asked, discover } = recorder();
+      const broken = build({ historyStore: storeOf({ rounds: seedRounds }), taste: () => { throw new Error("disk"); }, discover });
+      broken.forPlayer({ userId: "ann", guildId: "g" });
+      await broken.idle();
+      assert.deepStrictEqual(asked.map(([title]) => title), ["Seed Song"], "the game's seed alone, as before");
+
+      const store = storeOf({ played: [{ ...song("here"), plays: 5, lastAt: NOW }] });
+      for (const taste of [null, tasteFrom(sources())]) {
+        const reply = build({ historyStore: store, taste, discover }).forPlayer({ userId: "cy", guildId: "g" });
+        assert.strictEqual(reply.pending, false);
+        assert.deepStrictEqual(rowsOf(reply, "similar"), []);
+        assert.strictEqual(rowsOf(reply, "here").length, 1);
+        assert.strictEqual(rowsOf(reply, "classic").length, CLASSICS.length);
+      }
+    });
+
+    it("keeps the search budget: three a minute in all, however many seeds the listening adds", async () => {
+      let calls = 0;
+      const recommender = build({
+        historyStore: storeOf({ rounds: seedRounds }),
+        taste: (userId) => readTaste({ userId, guildId: "g", sources: { topTracks: () => ["A", "B", "C", "D"].map((band) => ({ track: `Band ${band} - ${userId} song`, count: 3 })), topArtists: () => [] }, now: NOW }),
+        discover: async () => { calls += 1; return []; },
+      });
+      for (const userId of ["p1", "p2", "p3"]) {
+        recommender.forPlayer({ userId, guildId: "g" });
+        await recommender.idle();
+      }
+      assert.ok(calls <= 3, `at most three searches a minute, saw ${calls}`);
+    });
+  });
 });
 
 describe("mewbeat suggestions: discovery", () => {
@@ -428,6 +593,59 @@ describe("mewbeat suggestions: discovery", () => {
     assert.deepStrictEqual(rows.map((row) => row.title), ["Thigh", "Tlow"]);
     assert.deepStrictEqual(rows[0].audioKey, keyOf("high"));
     assert.ok(rows.every((row) => trackFromAudioKey(row.audioKey)));
+  });
+});
+
+describe("mewbeat suggestions: discovery with the player's taste", () => {
+  const candidate = (id) => ({ title: `T${id}`, artist: `A${id}`, track: { info: { sourceName: "youtube", identifier: id, length: 200_000, uri: `https://y/${id}`, isStream: false } } });
+  // plain: score without taste; tasted: score with the anchor (and the flow gate off), per candidate id.
+  const modulesOf = (table, { fetches = { n: 0 }, tags = ["rock"], fail = false } = {}) => ({
+    candidates: {
+      cleanTrackInfo: (title, author) => ({ cleanTitle: title, searchArtist: author }),
+      fetchLastFmCandidates: async () => { fetches.n += 1; if (fail) throw new Error("last.fm down"); return Object.keys(table).map(candidate); },
+    },
+    v3: {
+      buildSelectionContext: ({ anchorTrack }) => ({ anchorTrack }),
+      scoreCandidateV3: (item, context) => {
+        const entry = table[item.track.info.identifier];
+        return context.anchorTrack ? entry.tasted : entry.plain;
+      },
+    },
+    tags: { getLastFmTagProfile: async () => (tags ? { tags } : null) },
+  });
+  const run = async (modules, anchor) => createDiscoverer({ hasKey: () => true, loadAutoplay: () => modules })({ title: "Seed", artist: "Band" }, anchor === undefined ? undefined : { anchor });
+  const table = {
+    up: { plain: { score: 50, details: {} }, tasted: { score: 62, details: {} } },
+    steady: { plain: { score: 60, details: {} }, tasted: { score: 58, details: {} } },
+    weak: { plain: { score: 20, details: {} }, tasted: { score: 80, details: {} } },
+    blocked: { plain: { score: 90, details: { genreFlow: { allowed: false } } }, tasted: { score: 99, details: {} } },
+  };
+
+  it("moves up what fits the taste, never moves a song down, and never lets one in or out", async () => {
+    const rows = await run(modulesOf(table), { title: "Liked", artist: "Other" });
+    assert.deepStrictEqual(rows.map((row) => [row.title, row.score]), [["Tup", 62], ["Tsteady", 60]]);
+  });
+
+  it("is what it was without an anchor, or when the anchor's genres are unknown", async () => {
+    const plain = await run(modulesOf(table));
+    assert.deepStrictEqual(plain.map((row) => [row.title, row.score]), [["Tsteady", 60], ["Tup", 50]]);
+    assert.deepStrictEqual((await run(modulesOf(table), null)).map((row) => row.score), [60, 50]);
+    assert.deepStrictEqual((await run(modulesOf(table, { tags: null }), { title: "Liked", artist: "Other" })).map((row) => row.score), [60, 50]);
+  });
+
+  it("looks a seed's neighbours up once for every anchor, and does not keep a failed lookup", async () => {
+    const fetches = { n: 0 };
+    const discover = createDiscoverer({ hasKey: () => true, loadAutoplay: () => modulesOf(table, { fetches }) });
+    await discover({ title: "Seed", artist: "Band" }, { anchor: { title: "One", artist: "X" } });
+    await discover({ title: "Seed", artist: "Band" }, { anchor: { title: "Two", artist: "Y" } });
+    await discover({ title: "Seed", artist: "Band" });
+    assert.strictEqual(fetches.n, 1);
+
+    const failing = { n: 0 };
+    const again = createDiscoverer({ hasKey: () => true, loadAutoplay: () => modulesOf(table, { fetches: failing, fail: true }) });
+    await assert.rejects(() => again({ title: "Seed", artist: "Band" }));
+    await assert.rejects(() => again({ title: "Seed", artist: "Band" }));
+    assert.strictEqual(failing.n, 2);
   });
 });
 

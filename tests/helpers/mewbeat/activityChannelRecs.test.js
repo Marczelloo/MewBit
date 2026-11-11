@@ -30,7 +30,7 @@ describe("mewbeat channel suggestions", () => {
   });
 
   // Charts exist for "known" only (all four levels); every other song has none and must stay that way.
-  function setup({ withStores = true, discover = null } = {}) {
+  function setup({ withStores = true, discover = null, listening = null } = {}) {
     const chartCalls = [];
     const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now: () => NOW });
     const historyStore = createHistoryStore({ file: path.join(dir, "history.json"), now: () => NOW });
@@ -48,6 +48,7 @@ describe("mewbeat channel suggestions", () => {
       now: () => NOW,
       ...(withStores ? { scoreStore, historyStore, statsStore } : {}),
       discover,
+      listening,
     });
     return { channel, historyStore, chartCalls };
   }
@@ -126,5 +127,37 @@ describe("mewbeat channel suggestions", () => {
     assert.strictEqual(other.skill, null);
     assert.strictEqual(other.sections[1].rows.length, 0);
     assert.ok(other.sections[3].rows.length > 0, "a player with no history still gets the classics");
+  });
+
+  // The music bot's records, made up: ann asked for Band A, bo for Band Z; an autoplay pick is nobody's request.
+  const listeningOf = () => ({
+    topTracks: (userId) => ({ ann: [{ track: "Band A - Song One", count: 8 }], bo: [{ track: "Band Z - Zed Song", count: 8 }] })[userId] ?? [],
+    topArtists: (userId) => ({ ann: [{ artist: "Band A", count: 8 }], bo: [{ artist: "Band Z", count: 8 }] })[userId] ?? [],
+    roomTracks: () => [{ info: { title: "Auto Song", author: "Band Auto", requesterId: "ann", autoplayed: true }, userData: { autoplayPlayedAt: NOW - 1000 } }],
+    liked: () => [],
+  });
+
+  it("suggests from what the player listens to through the bot, and keeps it from other players", async () => {
+    const asked = [];
+    const { channel, chartCalls } = setup({ discover: async (seed, options) => { asked.push([seed.artist, options?.anchor?.artist ?? null]); return []; }, listening: listeningOf() });
+    const reply = await ask(channel);
+    assert.strictEqual(reply.status, "ok");
+    assert.strictEqual(reply.pending, true);
+    assert.deepStrictEqual(asked, [["Band A", null]]);
+    assert.strictEqual(reply.skill, null);
+
+    await ask(channel, { id: "r2" }, "bo");
+    assert.deepStrictEqual(asked, [["Band A", null], ["Band Z", null]]);
+    assert.ok(!asked.some(([artist]) => artist === "Band Auto"), "what autoplay chose is not the player's taste");
+    assert.deepStrictEqual(chartCalls, []);
+  });
+
+  it("answers a player the bot has never heard from with the classics, even with the listening wired in", async () => {
+    const { channel } = setup({ discover: async () => [], listening: listeningOf() });
+    const reply = await ask(channel, {}, "newcomer");
+    assert.strictEqual(reply.status, "ok");
+    assert.strictEqual(reply.pending, false);
+    assert.strictEqual(reply.sections[0].rows.length, 0);
+    assert.strictEqual(reply.sections[3].rows.length, CLASSICS.length);
   });
 });
