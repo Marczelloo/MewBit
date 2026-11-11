@@ -63,6 +63,17 @@ describe("mewbeat settings validation", () => {
     assert.strictEqual(normalizeSettings({}).musicVolume, 80);
   });
 
+  it("evens out loudness by default, accepts it off, and refuses anything but a boolean", () => {
+    assert.strictEqual(DEFAULT_SETTINGS.normalizeLoudness, true);
+    assert.strictEqual(normalizeSettings({}).normalizeLoudness, true);
+    assert.strictEqual(validateSettingsPatch({ normalizeLoudness: false }, DEFAULT_SETTINGS).normalizeLoudness, false);
+    assert.strictEqual(normalizeSettings({ normalizeLoudness: false }).normalizeLoudness, false);
+    assert.strictEqual(normalizeSettings({ normalizeLoudness: "off" }).normalizeLoudness, true, "a bad stored value falls back");
+    for (const bad of ["off", 0, null]) {
+      assert.throws(() => validateSettingsPatch({ normalizeLoudness: bad }, DEFAULT_SETTINGS), /loudness/);
+    }
+  });
+
   it("follows the tempo by default and accepts a fixed speed", () => {
     assert.strictEqual(DEFAULT_SETTINGS.tempoScroll, true);
     assert.strictEqual(validateSettingsPatch({ tempoScroll: false }, DEFAULT_SETTINGS).tempoScroll, false);

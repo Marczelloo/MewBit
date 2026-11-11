@@ -343,6 +343,13 @@ export default function SettingsPanel({ settings, onAction, onClose, timing = nu
               </section>
               <section className="mb-row mb-row-stack">
                 <div className="mb-row-head">
+                  <span className="mb-row-label">Even out loudness</span>
+                  <Segmented label="Even out loudness" options={HIT_SOUNDS} value={valueOf("normalizeLoudness") !== false} onChange={(value) => send({ normalizeLoudness: value })} />
+                </div>
+                <p className="mb-row-help">Plays every song at about the same loudness, so a quiet one is not drowned out by a loud one. Solo and rooms only.</p>
+              </section>
+              <section className="mb-row mb-row-stack">
+                <div className="mb-row-head">
                   <span className="mb-row-label">Hit sounds</span>
                   <Segmented label="Hit sounds" options={HIT_SOUNDS} value={hitSounds} onChange={(value) => send({ hitSounds: value })} />
                 </div>

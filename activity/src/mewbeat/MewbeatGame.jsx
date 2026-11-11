@@ -298,7 +298,12 @@ function MewbeatRoot(props) {
     fetchAudio,
     fetchClip,
     aligner: createAlignClient({ makeWorker: makeAlignWorker }),
+    yieldToUi: () => new Promise((resolve) => setTimeout(resolve, 0)),
   }));
+  const normalizeLoudness = settings?.normalizeLoudness !== false;
+  useEffect(() => {
+    audio.setNormalize(normalizeLoudness);
+  }, [audio, normalizeLoudness]);
   const musicVolume = Number.isFinite(settings?.musicVolume) ? settings.musicVolume : DEFAULT_MUSIC_VOLUME;
   useEffect(() => {
     audio.setVolume(musicGain(musicVolume));

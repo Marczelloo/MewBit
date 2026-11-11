@@ -15,7 +15,7 @@ test.before(async () => {
 
 // A fake AudioContext driven by a manual perf clock: currentTime advances with perf time, no output latency
 // unless asked for, and getOutputTimestamp pairs the context time with the matching perf time.
-function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio, fetchClip, aligner, decode } = {}) {
+function harness({ durationSec = 200, state = "running", withTimestamp = true, outputLatency = 0, baseLatency = 0, fetchAudio, fetchClip, aligner, decode, measure, yieldToUi } = {}) {
   const env = { perf: 1000, sources: [], gains: [], resumeCalls: 0, fetches: [] };
   const ctx = {
     state,
@@ -99,6 +99,8 @@ function harness({ durationSec = 200, state = "running", withTimestamp = true, o
     createContext: () => ctx,
     now: () => env.perf,
     aligner,
+    ...(measure ? { measure } : {}),
+    yieldToUi,
   });
   return { env, ctx, audio };
 }
@@ -328,6 +330,7 @@ test("stop clears the clock and a pause during resume() cancels the start", asyn
   let release;
   ctx.resume = () => new Promise((resolve) => { release = () => { ctx.state = "running"; resolve(); }; });
   const pending = audio.play(0);
+  await turn(); // the song's loudness scan finishes first, then play() asks the context to resume
   audio.stop();
   release();
   await pending;
@@ -785,4 +788,151 @@ test("close closes the aligner", async () => {
   const { audio } = harness({ aligner });
   audio.close();
   assert.equal(aligner.closed, 1);
+});
+
+// Loudness normalisation. The context makes its gains in order: master volume, song bus, song level.
+const MASTER = 0;
+const SONG_LEVEL = 2;
+let loudness;
+test.before(async () => {
+  loudness = await import(pathToFileURL(path.resolve(__dirname, "../../../activity/src/mewbeat/loudness.js")).href);
+});
+const dbOf = (gain) => 20 * Math.log10(gain);
+// A measurement that says the song sits `under` LU below the target (so it is lifted by that much).
+const measuredUnder = (under, peakDb = -30) => async () => ({ lufs: loudness.TARGET_LUFS - under, peakDb });
+const close = (actual, expected, slack, label = "") => assert.ok(Math.abs(actual - expected) <= slack, `${label} ${actual} is not within ${slack} of ${expected}`);
+
+test("a loaded song plays through its loudness gain, a node of its own", async () => {
+  const { env, audio } = harness({ measure: measuredUnder(6) });
+  await audio.load("k1");
+  await audio.play(0);
+  const level = env.gains[SONG_LEVEL].gain.value;
+  close(dbOf(level), 6, 1e-6);
+  assert.equal(audio.songLevel().gain, level);
+  // The music volume is the master gain alone: the two combine instead of replacing each other.
+  audio.setVolume(musicGain(50));
+  assert.equal(env.gains[MASTER].gain.value, musicGain(50));
+  assert.equal(env.gains[SONG_LEVEL].gain.value, level);
+});
+
+test("every song is brought to the same loudness, each by its own gain", async () => {
+  const lufs = { k1: -8, k2: -15, k3: -11 };
+  let key = null;
+  const { env, audio } = harness({
+    measure: async () => ({ lufs: lufs[key], peakDb: -20 }),
+    fetchAudio: async (k) => { key = k; return new ArrayBuffer(8); },
+  });
+  const heard = [];
+  for (const k of ["k1", "k2", "k3"]) {
+    await audio.load(k);
+    await audio.play(0);
+    heard.push(lufs[k] + dbOf(env.gains[SONG_LEVEL].gain.value));
+  }
+  for (const value of heard) close(value, loudness.TARGET_LUFS, 1e-6);
+});
+
+test("the loudness gain moves neither the start nor the song clock", async () => {
+  const run = async (measure) => {
+    const { env, audio } = harness({ measure });
+    await audio.load("k1");
+    await audio.play(1500);
+    const started = { ...env.sources.at(-1).started };
+    env.perf += 3000;
+    return { started, time: audio.songTimeAt(env.perf) };
+  };
+  assert.deepEqual(await run(measuredUnder(7)), await run(measuredUnder(0)));
+  assert.deepEqual(await run(measuredUnder(7)), await run(async () => { throw new Error("no scan"); }));
+});
+
+test("play waits for the measurement, so a song never starts at one level and moves to another", async () => {
+  let finish;
+  const { env, audio } = harness({ measure: () => new Promise((resolve) => { finish = resolve; }) });
+  await audio.load("k1");
+  const starting = audio.play(0);
+  await turn();
+  assert.equal(env.sources.length, 0, "not started yet");
+  finish({ lufs: loudness.TARGET_LUFS - 6, peakDb: -30 });
+  await starting;
+  assert.equal(env.sources.length, 1);
+  close(dbOf(env.gains[SONG_LEVEL].gain.value), 6, 1e-6);
+});
+
+test("the setting off plays the song as rendered and measures nothing; on again takes effect at once", async () => {
+  let scans = 0;
+  const { env, audio } = harness({ measure: async () => { scans += 1; return { lufs: loudness.TARGET_LUFS - 6, peakDb: -30 }; } });
+  audio.setNormalize(false);
+  await audio.load("k1");
+  await audio.play(0);
+  assert.equal(scans, 0);
+  assert.equal(env.gains[SONG_LEVEL].gain.value, 1);
+  assert.equal(audio.songLevel(), null);
+  // Switched on while the song plays: it is measured and lifted without a restart.
+  const source = env.sources.at(-1);
+  audio.setNormalize(true);
+  await turn();
+  assert.equal(scans, 1);
+  close(dbOf(env.gains[SONG_LEVEL].gain.value), 6, 1e-6);
+  assert.equal(env.sources.at(-1), source, "the source was not restarted");
+  audio.setNormalize(false);
+  assert.equal(env.gains[SONG_LEVEL].gain.value, 1);
+  audio.setNormalize(true);
+  assert.equal(scans, 1, "a song is measured once");
+  close(dbOf(env.gains[SONG_LEVEL].gain.value), 6, 1e-6);
+});
+
+test("a song that cannot be measured still plays, unchanged", async () => {
+  const failing = [
+    async () => { throw new Error("scan failed"); },
+    async () => ({ lufs: null, peakDb: 0 }),
+    () => { throw new Error("sync failure"); },
+  ];
+  for (const measure of failing) {
+    const { env, audio } = harness({ measure });
+    await audio.load("old-song");
+    await audio.play(0);
+    assert.equal(env.sources.length, 1);
+    assert.equal(env.gains[SONG_LEVEL].gain.value, 1);
+  }
+  // A decoded buffer with no channel data to read plays unchanged as well.
+  const { env, audio } = harness({ decode: async () => ({ duration: 10, sampleRate: 100, length: 1000, numberOfChannels: 2 }) });
+  await audio.load("bare");
+  await audio.play(0);
+  assert.equal(env.sources.length, 1);
+  assert.equal(env.gains[SONG_LEVEL].gain.value, 1);
+});
+
+test("the real measurement reads the decoded buffer: a quiet song is lifted, a loud one is lowered", async () => {
+  const tone = (amp) => {
+    const out = new Float32Array(48000 * 12);
+    for (let i = 0; i < out.length; i += 1) out[i] = amp * Math.sin((2 * Math.PI * 997 * i) / 48000);
+    return out;
+  };
+  const gains = {};
+  for (const [name, amp] of [["quiet", 0.01], ["loud", 0.5]]) {
+    const data = tone(amp);
+    const { env, audio } = harness({
+      decode: async () => ({ duration: 12, sampleRate: 48000, length: data.length, numberOfChannels: 2, getChannelData: () => data }),
+    });
+    await audio.load(name);
+    await audio.play(0);
+    gains[name] = dbOf(env.gains[SONG_LEVEL].gain.value);
+  }
+  // A 0.01 tone is -40 LUFS: far under the target, so the boost cap holds. A 0.5 tone is -6 LUFS: lowered to the target.
+  close(gains.quiet, loudness.MAX_BOOST_DB, 1e-6);
+  close(gains.loud, loudness.TARGET_LUFS - (20 * Math.log10(0.5)), 0.1);
+});
+
+test("a preview and a highlight are lifted by their own gain, outside the clock", async () => {
+  const { env, audio } = harness({ measure: measuredUnder(6) });
+  assert.equal(await audio.preview("k1", { fromMs: 50_000, level: 0.5 }), true);
+  close(env.gains.at(-1).ramps[1].value / 0.5, 10 ** (6 / 20), 1e-6);
+  assert.equal(audio.songTimeAt(env.perf), null);
+  await audio.load("k2");
+  await audio.play(0);
+  assert.equal(audio.highlight(60_000, { level: 0.5 }), true);
+  close(env.gains.at(-1).ramps[1].value / 0.5, 10 ** (6 / 20), 1e-6);
+  // With the setting off the clips are as rendered.
+  audio.setNormalize(false);
+  audio.highlight(60_000, { level: 0.5 });
+  close(env.gains.at(-1).ramps[1].value, 0.5, 1e-9);
 });
