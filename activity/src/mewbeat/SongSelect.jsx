@@ -1,6 +1,7 @@
 import { MagnifyingGlass, Play, Plus, Sparkle, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
+import { describeLinkError, describeLinkNote, describePlayIssue, listedTracks, playIssueOf } from "./searchResults.js";
 import LevelBoard from "./LevelBoard.jsx";
 import ModifierPicker from "./ModifierPicker.jsx";
 import PlayerPanel from "./PlayerPanel.jsx";
@@ -45,7 +46,6 @@ const EMPTY_COPY = {
 };
 
 const PLAYED_LIMIT = 500;
-const SEARCH_LIMIT = 20;
 const MIN_QUERY = 2;
 const SEARCH_DEBOUNCE_MS = 300;
 const STARS_FULL_BAR = 8; // the stars value where a difficulty bar is full
@@ -58,6 +58,8 @@ const PREPARE_ERRORS = {
   resolve_failed: "Couldn't load that song. Try another one.",
   not_found: "Couldn't find that song.",
   unsupported: "Live streams can't be played.",
+  stream: "Live streams can't be played.",
+  too_long: "Songs over 20 minutes can't be played.",
 };
 
 export function describePrepareError(error) {
@@ -75,6 +77,7 @@ const CHART_ERRORS = {
   busy: "The charting queue is full right now. Try again in a minute.",
   uncharted: "This song can't be charted (there is no music to follow in it).",
   failed: "Charting this song failed.",
+  too_long: "Songs over 20 minutes can't be charted.",
   timeout: "Charting is taking longer than expected. Try again later.",
 };
 
@@ -183,6 +186,7 @@ function playedRow(track) {
     stars: track.stars ?? null,
     bests: track.bests ?? {},
     highlightMs: track.highlightMs ?? null,
+    playIssue: null,
   };
 }
 
@@ -202,6 +206,7 @@ function searchRow(track) {
     stars: track.stars ?? null, // set when the song already has charts
     bests: {},
     highlightMs: null,
+    playIssue: playIssueOf(track), // a live stream or a song over the length limit is listed, and cannot be played
   };
 }
 
@@ -224,7 +229,7 @@ function LevelCell({ row, id, label }) {
 
 // "2:36 · 240 BPM"; either part is left out when the song doesn't have it.
 function rowMeta(row) {
-  return [formatLength(row.durationMs), Number.isFinite(row.bpm) ? `${Math.round(row.bpm)} BPM` : ""].filter(Boolean).join(" · ");
+  return [formatLength(row.durationMs), describePlayIssue(row.playIssue), Number.isFinite(row.bpm) ? `${Math.round(row.bpm)} BPM` : ""].filter(Boolean).join(" · ");
 }
 
 // One song in the list. A pick or a state push re-renders only the rows whose own props changed (up to 500 rows):
@@ -234,7 +239,7 @@ const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary })
     <div
       role="option"
       aria-selected={on}
-      className={`mb-ss-row${on ? " mb-ss-row-on" : ""}`}
+      className={`mb-ss-row${on ? " mb-ss-row-on" : ""}${row.playIssue ? " mb-ss-row-blocked" : ""}`}
       onClick={() => onPick(row)}
       onDoubleClick={() => { onPick(row); onPrimary(); }}
     >
@@ -266,7 +271,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   const [scope, setScope] = useState(isPrivate ? "global" : "server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
-  const [found, setFound] = useState({ status: "idle", rows: [] });
+  const [found, setFound] = useState({ status: "idle", rows: [], link: null }); // link: what a pasted link was (the server's answer)
   const [reload, setReload] = useState(0);
   const [selectedKey, setSelectedKey] = useState(startSelectedKey); // the first-run tour opens with its sample song picked
   const [difficulty, setDifficulty] = useState(DIFFICULTIES.some((d) => d.id === defaultDifficulty) ? defaultDifficulty : "normal");
@@ -323,7 +328,8 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     return () => { cancelled = true; };
   }, [request, scope, reload]);
 
-  // Search across every source but Deezer, debounced. Streams can't be charted, so they are left out too.
+  // The server's song search (a pasted link included), debounced. Streams and songs over the length limit are listed
+  // and marked; they can't be played or charted.
   useEffect(() => {
     if (!searching) {
       setFound({ status: "idle", rows: [] });
@@ -333,9 +339,9 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     setFound({ status: "searching", rows: [] });
     const timer = window.setTimeout(async () => {
       try {
-        const response = await searchActivity({ ...context, query: text, signal: controller.signal });
-        const rows = (response.tracks || []).filter((track) => track.uri && !track.isStream && track.source !== "deezer").slice(0, SEARCH_LIMIT).map(searchRow);
-        setFound({ status: rows.length ? "ready" : "empty", rows });
+        const response = await searchActivity({ ...context, query: text, game: true, signal: controller.signal });
+        const rows = listedTracks(response).map(searchRow);
+        setFound({ status: rows.length ? "ready" : "empty", rows, link: response.link ?? null });
       } catch {
         if (!controller.signal.aborted) setFound({ status: "error", rows: [] });
       }
@@ -409,7 +415,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
   }, [selected?.key, sort, level, direction, filter]);
 
-  const previewRow = onPlay && preparing !== null ? null : selected;
+  const previewRow = (onPlay && preparing !== null) || selected?.playIssue ? null : selected;
   const previewRowRef = useRef(previewRow);
   previewRowRef.current = previewRow;
   const previewKey = previewRow?.key ?? null;
@@ -448,6 +454,10 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
   const play = useCallback(async () => {
     if (!selected || preparing) return;
+    if (selected.playIssue) {
+      setPlayError(describePrepareError(selected.playIssue));
+      return;
+    }
     setPreparing(selected.key);
     setPlayError(null);
     try {
@@ -461,6 +471,10 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
   const addToRoom = useCallback(async () => {
     if (!selected || preparing || !onAddToRoom) return;
+    if (selected.playIssue) {
+      setPlayError(describePrepareError(selected.playIssue));
+      return;
+    }
     setPreparing(selected.key);
     setPlayError(null);
     setAddedNote(null);
@@ -514,7 +528,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
   let emptyCopy = null;
   if (list.status === "loading" || list.status === "searching" || (searching && list.status === "idle")) emptyCopy = searching ? "Searching…" : "Loading songs…";
-  else if (list.status === "empty") emptyCopy = "No songs found.";
+  else if (list.status === "empty") emptyCopy = found.link ? describeLinkError(found.link) : "No songs found.";
   else if (list.status === "error") emptyCopy = searching ? "Search failed." : "Couldn't load the played songs.";
   else if (!rows.length && !searching && played.rows.length) emptyCopy = "No songs match this filter.";
   else if (!rows.length) emptyCopy = EMPTY_COPY[scope];
@@ -535,7 +549,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   };
 
   const selectedStars = starsOf(selected, difficulty);
-  const uncharted = Boolean(selected) && DIFFICULTIES.every(({ id }) => starsOf(selected, id) === null);
+  const uncharted = Boolean(selected) && !selected.playIssue && DIFFICULTIES.every(({ id }) => starsOf(selected, id) === null);
   const ownJob = chartJob && chartJob.row.key === selected?.key ? chartJob : null;
   const chartRunning = ownJob?.status === "running";
   const chartError = ownJob?.status === "error" ? ownJob.error : null;
@@ -570,6 +584,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                   {selected.durationMs ? <span className="mb-ss-chip">{formatLength(selected.durationMs)}</span> : null}
                   {player && selected.bpm ? <span className="mb-ss-chip">{Math.round(selected.bpm)} BPM</span> : null}
                   {selected.source ? <span className="mb-ss-chip">{selected.source}</span> : null}
+                  {selected.playIssue ? <span className="mb-ss-chip mb-ss-chip-blocked" role="status">{describePlayIssue(selected.playIssue)}: can't be played</span> : null}
                   {previewing?.key === selected.key ? (
                     previewing.error ? (
                       <span className="mb-ss-chip mb-ss-chip-unavailable" role="status" title={previewing.error}>
@@ -622,7 +637,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
               </div>
             ) : player && selectedStars !== null ? null : (
               <p className="mb-ss-note">
-                {!onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
+                {selected.playIssue ? describePrepareError(selected.playIssue) : !onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
               </p>
             )}
             {player ? (
@@ -676,7 +691,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
             ref={inputRef}
             type="search"
             value={query}
-            placeholder="Search YouTube, Spotify, Deezer…"
+            placeholder="Search a song, or paste a link…"
             aria-label="Search for a song"
             autoComplete="off"
             onChange={(event) => changeQuery(event.target.value)}
@@ -728,6 +743,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
               {DIFFICULTIES.map(({ id }) => <span key={id} className={`mb-ss-d-${id}`}>{HEAD_LABELS[id]}</span>)}
             </div>
           ) : null}
+          {searching && list.status === "ready" && describeLinkNote(found.link, rows.length) ? <p className="mb-ss-note mb-ss-linknote">{describeLinkNote(found.link, rows.length)}</p> : null}
           {rows.map((row) => (
             <SongRow key={row.key} row={row} on={row.key === selected?.key} preparing={preparing === row.key} onPick={select} onPrimary={runPrimary} />
           ))}
@@ -737,13 +753,13 @@ export default function SongSelect({ context, request, player, defaultDifficulty
           {playError ? <p className="mb-ss-error" role="alert">{playError}</p> : null}
           {addedNote ? <p className="mb-ss-added" role="status">{addedNote}</p> : null}
           {onPlay ? (
-            <button type="button" className="mb-btn mb-btn-primary mb-ss-play" disabled={!selected || busy} onClick={play}>
+            <button type="button" className="mb-btn mb-btn-primary mb-ss-play" disabled={!selected || busy || Boolean(selected?.playIssue)} onClick={play}>
               <Play size={16} weight="fill" aria-hidden="true" />
               {busy ? "Preparing…" : <>Play{selected ? <small>{DIFFICULTIES.find((d) => d.id === difficulty)?.label}</small> : null}</>}
             </button>
           ) : null}
           {onAddToRoom ? (
-            <button type="button" className={`mb-btn mb-ss-add${onPlay ? "" : " mb-btn-primary"}`} disabled={!selected || busy} onClick={addToRoom}>
+            <button type="button" className={`mb-btn mb-ss-add${onPlay ? "" : " mb-btn-primary"}`} disabled={!selected || busy || Boolean(selected?.playIssue)} onClick={addToRoom}>
               <Plus size={16} weight="bold" aria-hidden="true" />
               {busy && !onPlay ? "Adding…" : "Add to room queue"}
             </button>
