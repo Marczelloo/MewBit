@@ -360,6 +360,37 @@ bez ludzkiego Hella do porównania. Easy i Normal bez zmian, zagnieżdżenie trz
 Sprawdzone warianty: bez wyjątku dla bębnów Hell tracił 10%, a F1 Harda spadało o 0,1; na wszystkich frazach utworu
 Hell tracił 7% przy tym samym F1.
 
+Odsłuch 11 listopada: „jest dobrze". Flaga zostaje w zestawie bota.
+
+### Poziomy, trzeci krok: akordy i stopa, bez flagi
+
+Dwa pomysły z planu poziomów sprawdzone pomiarem przed budową. Żaden nie dał flagi.
+
+**Akordy tam, gdzie gra kilka dźwięków naraz.** Liczba z poprzedniego rozdziału (akord rośnie u ludzi na 31% momentów
+Normala, u nas na 17%, „w 68% przypadków przy dwóch lub więcej dźwiękach") była źle odczytana. W tych utworach 64%
+momentów ma co najmniej dwa dźwięki, więc 68% to prawie sama częstość bazowa. Ludzie powiększają akord niemal tak samo
+często bez względu na liczbę dźwięków: 25% momentów bez dźwięku, 25% z jednym, 31% z dwoma, 33% z trzema i więcej
+(11 utworów, gdzie 85%+ momentów ma dźwięk; skrypt `chordgrow.js`). Różnica 31% do 17% bierze się z tego, że nasz
+Normal jest gęstszy od ludzkiego, a nie z tego, że Hard jest rzadszy:
+
+| utwory korpusu wg udziału momentów z dźwiękiem | momenty Normal, ludzie / my | momenty Hard, ludzie / my | nuty Hard, ludzie / my |
+|---|---|---|---|
+| 85%+ (10) | 482 / 611 | 749 / 736 | 1041 / 966 |
+| 60-85% (36) | 569 / 686 | 757 / 828 | 1123 / 1115 |
+| poniżej 60% (28) | 596 / 748 | 890 / 913 | 1256 / 1282 |
+
+Hard ma więc tyle momentów i nut co u ludzi. Jedyna luka to 7% mniej nut w utworach na pianino itp., i siedzi w
+akordach: przy jednym dźwięku ludzie grają akord w 25% momentów Harda, my w 10%, bo `heardChords` trzyma zasadę
+„jeden klawisz, jeden bloczek"; przy trzech i więcej 55% do 45%. Zamknięcie tej luki znaczyłoby dwa bloczki na jeden
+klawisz w Hardzie, wbrew uwadze z odsłuchu Normala, więc zostaje jak jest.
+
+**Stopa na końcu kolejki dodatków.** Próba: dodatek na samej stopie albo na gołym onsecie dostaje niższą ocenę.
+F1 Harda wobec ludzi (75 utworów) 80,87 bez zmiany, 81,00 przy karze 0,5, 80,99 przy 1, 80,87 przy 2; sama stopa
+80,91, sam onset 80,94. To szum, flagi nie ma.
+
+Stan Harda na korpusie z flagami bota: F1 80,9, precyzja 79,0, czułość 83,9, 857 momentów na utwór (ludzie 815),
+1168 nut (ludzie 1176). Ludzkiego Hella w korpusie nie ma (Easy 79, Normal 78, Hard 75 map).
+
 ### Na czym leżą dodatki w ludzkich mapach
 
 74 utwory korpusu z ludzkim Normalem i Hardem. Ludzki Hard zawiera 98,8% momentów Normala (Normal 97,7% Easy), czyli
