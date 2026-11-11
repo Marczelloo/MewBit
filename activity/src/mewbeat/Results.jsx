@@ -513,10 +513,6 @@ export default function Results({
             <p className="mb-res-next">Up next: <b>{upNext.title}</b>{upNext.ready ? " · chart ready" : ""}</p>
           ) : null}
           {vote && upNext?.title ? <VoteLine vote={vote} /> : null}
-          {/* Songs to play after this one, looked up in the background; the strip shows when there are any. */}
-          {onSuggest && request && !summary.calibration ? (
-            <SuggestedNext request={request} seedKey={summary.audioKey ?? null} onSuggest={onSuggest} actionLabel={suggestLabel} doneLabel={suggestDoneLabel} />
-          ) : null}
           <div className="mb-res-actions">
             {onRestart ? (
               <button type="button" className={`mb-btn${primary === "restart" ? " mb-btn-primary" : ""}`} onClick={onRestart}>
@@ -550,6 +546,11 @@ export default function Results({
               </button>
             ) : null}
           </div>
+          {/* Songs to play after this one, looked up in the background; the strip shows when there are any. It sits
+              under the buttons, so on a short screen it is the strip that scrolls out of view, never Restart or the vote. */}
+          {onSuggest && request && !summary.calibration ? (
+            <SuggestedNext request={request} seedKey={summary.audioKey ?? null} onSuggest={onSuggest} actionLabel={suggestLabel} doneLabel={suggestDoneLabel} />
+          ) : null}
         </div>
       </div>
 
