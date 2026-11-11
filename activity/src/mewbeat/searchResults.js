@@ -50,3 +50,37 @@ export function listedTracks(response) {
   const limit = response?.link?.kind === "playlist" ? LINK_LIST_LIMIT : SEARCH_LIMIT;
   return (response?.tracks || []).filter((track) => track?.uri && track.source !== "deezer").slice(0, limit);
 }
+
+/** A search shows at most this many of the open tab's own songs ahead of the server's results. */
+export const OPEN_TAB_LIMIT = 6;
+
+/** Lower case, without accents: how a title, an artist and a query are compared. */
+export function foldText(text) {
+  return String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/** Whether every word of the query is in the row's title or artist (case and accents ignored). An empty query matches nothing. */
+export function rowMatchesQuery(row, query) {
+  const words = foldText(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const haystack = `${foldText(row?.title)} ${foldText(row?.artist)}`;
+  return words.every((word) => haystack.includes(word));
+}
+
+const sameSong = (a, b) => (a.audioKey && b.audioKey ? a.audioKey === b.audioKey : a.uri === b.uri);
+
+/**
+ * The rows of a search, in two sections. First the songs of the open tab that match the query (at most OPEN_TAB_LIMIT,
+ * in the tab's order, with their stars, bests and plays as the tab shows them), under `openLabel`. Then the server's
+ * results without the songs already above (the same audio key, or the same link when a row has none), under `newLabel`.
+ * A row carries its section's label as `section`. With nothing in the first section there is no header for either: the
+ * results are one plain list (section null).
+ */
+export function mergeSearchRows({ openRows = [], foundRows = [], query = "", openLabel = "", newLabel = "New songs" } = {}) {
+  const first = openRows.filter((row) => rowMatchesQuery(row, query)).slice(0, OPEN_TAB_LIMIT);
+  const fresh = foundRows.filter((row) => !first.some((shown) => sameSong(shown, row)));
+  return [
+    ...first.map((row) => ({ ...row, section: openLabel })),
+    ...fresh.map((row) => ({ ...row, section: first.length ? newLabel : null })),
+  ];
+}

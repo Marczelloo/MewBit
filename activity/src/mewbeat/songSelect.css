@@ -264,13 +264,43 @@
 
 @media (prefers-reduced-motion: reduce) {
   .mb-ss .mb-ss-back, .mb-ss .mb-ss-pl, .mb-ss .mb-ss-rankrow { transition: none; }
-  .mb-ss .mb-ss-spin { animation-duration: 3s; }
+  .mb-ss .mb-ss-spin, .mb-ss .mb-ss-pill[aria-busy="true"] svg { animation-duration: 3s; }
 }
 
-/* "Chart this map": the button where the note sat, with a line under it, and a spinner while the bot charts. */
-.mb-ss .mb-ss-chart { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.mb-ss .mb-ss-chart-btn { display: inline-flex; align-items: center; gap: 8px; }
+/* "Chart this map": the button and a short status line in a column beside the title, reserved for every song (the hero
+   keeps its size whether the song is charted or not, and so does everything under it). The title gives the width up,
+   not the layout: it is cut at two lines. The status never has more lines than fit the cover's height. */
+.mb-ss .mb-ss-detail { container: mb-ss-detail / inline-size; }
+.mb-ss .mb-ss-hero-side-on { grid-template-columns: 132px minmax(0, 1fr) 140px; }
+.mb-ss .mb-ss-hero-side { display: flex; flex-direction: column; align-items: stretch; align-self: start; gap: 6px; min-width: 0; }
+.mb-ss .mb-ss-chart-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 8px; overflow: hidden; font-size: 12.5px; white-space: nowrap; }
 .mb-ss .mb-ss-chart-btn[aria-busy="true"] { color: var(--mb-cyan); }
+.mb-ss .mb-ss-side-line {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--mb-faint);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+}
+.mb-ss .mb-ss-side-error { color: var(--mb-danger); font-weight: 700; }
+/* A narrower detail column: a smaller cover and side, and "Chart map" for "Chart this map". */
+@container mb-ss-detail (max-width: 560px) {
+  .mb-ss .mb-ss-hero-side-on { grid-template-columns: 88px minmax(0, 1fr) 116px; gap: 12px; }
+  .mb-ss .mb-ss-hero-side-on .mb-ss-cover { width: 88px; border-radius: 14px; }
+  .mb-ss .mb-ss-chart-opt { display: none; }
+  .mb-ss .mb-ss-side-line { -webkit-line-clamp: 3; line-clamp: 3; }
+}
+/* Narrower still, the side takes a row of its own under the cover and the title, with its height kept. */
+@container mb-ss-detail (max-width: 340px) {
+  .mb-ss .mb-ss-hero-side-on { grid-template-columns: 88px minmax(0, 1fr); }
+  .mb-ss .mb-ss-hero-side-on .mb-ss-hero-side { grid-column: 1 / -1; align-self: stretch; min-height: 70px; }
+  .mb-ss .mb-ss-side-line { -webkit-line-clamp: 2; line-clamp: 2; }
+}
 .mb-ss .mb-ss-spin {
   width: 12px;
   height: 12px;
@@ -283,12 +313,18 @@
 
 /* right side: the song list as a table. Columns are the cover, the song and one per level. */
 .mb-ss .mb-ss-list { container-type: inline-size; }
-.mb-ss .mb-ss-tabs { flex-wrap: wrap; padding-top: 12px; }
+.mb-ss .mb-ss-tabs { min-width: 0; padding-top: 12px; }
 .mb-ss .mb-ss-search { margin: 8px 14px; }
 
-.mb-ss .mb-ss-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 14px 8px; }
+/* The slot between the search field and the rows is one height for every state, so nothing under it moves: it holds the
+   sort tools of a played tab, the refresh of For you, a line about Popular, or what a search is showing. */
+.mb-ss .mb-ss-slot { box-sizing: border-box; display: flex; flex: none; gap: 8px; align-items: center; height: 38px; padding: 0 14px 8px; }
+.mb-ss .mb-ss-tools { display: flex; flex: 1 1 auto; gap: 8px; align-items: center; min-width: 0; }
+.mb-ss .mb-ss-slot-text { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--mb-faint); font: 500 12px/1.2 var(--mb-ss-mono); text-overflow: ellipsis; white-space: nowrap; }
+.mb-ss .mb-ss-slot-text b { color: var(--mb-high); font-weight: 700; }
 .mb-ss .mb-ss-select,
-.mb-ss .mb-ss-dir {
+.mb-ss .mb-ss-dir,
+.mb-ss .mb-ss-pill {
   position: relative;
   display: flex;
   align-items: center;
@@ -303,10 +339,13 @@
   font: 700 12px/1 var(--mb-ss-mono);
   white-space: nowrap;
 }
+.mb-ss .mb-ss-select { flex: 0 1 auto; min-width: 0; }
 .mb-ss .mb-ss-select small { color: var(--mb-faint); font-size: 11px; font-weight: 500; }
 .mb-ss .mb-ss-select select {
   appearance: none;
+  min-width: 0;
   padding: 0 14px 0 0;
+  text-overflow: ellipsis;
   border: 0;
   background: none;
   color: var(--c, var(--mb-high));
@@ -319,10 +358,16 @@
 .mb-ss .mb-ss-select::after { content: "▾"; position: absolute; right: 10px; color: var(--mb-faint); pointer-events: none; }
 .mb-ss .mb-ss-select:hover { outline-color: rgb(255 255 255 / 0.28); }
 .mb-ss .mb-ss-select:focus-within,
-.mb-ss .mb-ss-dir:focus-visible { outline: 2px solid var(--mb-cyan); }
+.mb-ss .mb-ss-dir:focus-visible,
+.mb-ss .mb-ss-pill:focus-visible { outline: 2px solid var(--mb-cyan); }
 .mb-ss .mb-ss-select select:focus { outline: none; }
-.mb-ss .mb-ss-dir { margin-left: auto; justify-content: center; min-width: 30px; cursor: pointer; }
+.mb-ss .mb-ss-dir { flex: none; margin-left: auto; justify-content: center; min-width: 30px; cursor: pointer; }
 .mb-ss .mb-ss-dir:hover { outline-color: rgb(255 255 255 / 0.28); }
+/* A small button of the slot (Refresh, Clear): the same pill as the selects. */
+.mb-ss .mb-ss-pill { flex: none; margin-left: auto; justify-content: center; cursor: pointer; }
+.mb-ss .mb-ss-pill:hover:not(:disabled) { outline-color: rgb(255 255 255 / 0.28); }
+.mb-ss .mb-ss-pill:disabled { opacity: 0.55; cursor: default; }
+.mb-ss .mb-ss-pill[aria-busy="true"] svg { animation: mb-ss-spin 0.9s linear infinite; }
 
 /* The level header sticks while the rows scroll under it, so it always lines up with them. */
 .mb-ss .mb-ss-rows { --mb-ss-cols: 44px minmax(0, 1fr) repeat(4, 38px); scroll-padding-top: 24px; }
@@ -364,7 +409,8 @@
 .mb-ss .mb-ss-chip-blocked { color: var(--mb-faint); }
 .mb-ss .mb-ss-linknote { padding: 6px 14px 2px; }
 
-/* The suggestion tabs group their rows under a heading ("Worth another go", "Rhythm game classics"). */
+/* The suggestion tabs group their rows under a heading ("Worth another go", "Popular in rhythm games"); so does a search
+   ("Played by you", "New songs"). */
 .mb-ss .mb-ss-section {
   padding: 12px 14px 5px;
   border-bottom: 1px solid var(--mb-line);
@@ -395,9 +441,11 @@
   .mb-ss .mb-ss-head, .mb-ss .mb-ss-row { gap: 6px; padding-inline: 10px; }
   .mb-ss .mb-ss-art { width: 36px; }
   .mb-ss .mb-ss-lv { font-size: 11px; }
-  .mb-ss .mb-ss-tabs, .mb-ss .mb-ss-tools { padding-inline: 10px; }
+  .mb-ss .mb-ss-tabs, .mb-ss .mb-ss-slot { padding-inline: 10px; }
   .mb-ss .mb-ss-search { margin-inline: 10px; }
   .mb-ss .mb-ss-tab { padding-inline: 7px; font-size: 12px; }
+  /* the three selects keep their values, not their captions, so the slot stays one line */
+  .mb-ss .mb-ss-select small { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,4 @@
-// Map suggestions for the results screen and the song select ("Suggested next", "For you", "Rhythm game classics").
+// Map suggestions for the results screen and the song select ("Suggested next", "For you", "Popular in rhythm games").
 // Four kinds of row, each with a reason it can show:
 //   similar  new songs that sound like what the player played or did well on (autoplay's candidate search, see
 //            recommendDiscover.js); found in the background, so the first answer may not have them yet (`pending`)
@@ -41,6 +41,8 @@ const SIMILAR_ROWS = 8;
 const AGAIN_ROWS = 6;
 const HERE_ROWS = 8;
 const STRIP_ROWS = 4;
+// A refresh (`rotate`) moves each list on by this much: a window of the rows it shows, or this many of the classics.
+const CLASSIC_STEP = 5;
 // A good run: from this accuracy up a song is "done well on", and one more level is worth a try.
 const GOOD_ACCURACY = 90;
 const SOLID_ACCURACY = 92;
@@ -55,6 +57,17 @@ const SEEDS_WITH_LISTENING = 3;
 // The game history leads the seeds when the player played this lately; otherwise what they listen to does.
 const RECENT_GAME_DAYS = 7;
 const MIN_SIMILAR_SCORE = 45;
+
+// The rotation a request asks for: a whole number from 0 up; anything else is no rotation.
+const rotationOf = (value) => (Number.isSafeInteger(value) && value > 0 ? value : 0);
+
+// `size` rows of a ranked list, starting `rotate` windows in and wrapping round the end, so a refresh shows the next
+// rows and a list that is shorter than the window stays as it is.
+function windowOf(list, rotate, size) {
+  if (list.length <= size) return list;
+  const start = (rotate * size) % list.length;
+  return Array.from({ length: size }, (_, index) => list[(start + index) % list.length]);
+}
 
 function lengthOfKey(audioKey) {
   return Number(trackFromAudioKey(audioKey)?.info?.length);
@@ -182,7 +195,7 @@ function mixSeeds(game, listening, { now, rounds, justPlayed }) {
 
 // Songs other players played that this one has not, the ones played most and most lately first, and those with a level
 // near the player's own a little ahead.
-function hereRows({ played, ownKeys, ownIdentities, skill, starsOf, now, exclude }) {
+function hereRows({ played, ownKeys, ownIdentities, skill, starsOf, now, exclude, rotate = 0 }) {
   const rows = [];
   for (const track of played) {
     if (ownKeys.has(track.audioKey) || exclude.has(track.audioKey) || !isOfferable(track)) continue;
@@ -195,12 +208,12 @@ function hereRows({ played, ownKeys, ownIdentities, skill, starsOf, now, exclude
     const reason = track.plays >= 3 ? `Played ${track.plays} times by others here` : "Played by others here";
     rows.push({ ...rowOf(track), kind: "here", reason, level: pick?.level ?? null, levelStars: pick?.stars ?? null, score });
   }
-  return rows.sort((a, b) => b.score - a.score).slice(0, HERE_ROWS);
+  return windowOf(rows.sort((a, b) => b.score - a.score), rotate, HERE_ROWS);
 }
 
 // Songs the player knows and could do something with: a level up after a solid run, another go after a close one, a
 // retry of a lost run. A song is offered once, for the first reason that applies.
-function againRows({ plays, rounds, ownTracks, skill, starsOf, now, exclude }) {
+function againRows({ plays, rounds, ownTracks, skill, starsOf, now, exclude, rotate = 0 }) {
   const byKey = new Map();
   for (const play of plays ?? []) {
     const level = LEVELS.indexOf(play.difficulty);
@@ -256,15 +269,15 @@ function againRows({ plays, rounds, ownTracks, skill, starsOf, now, exclude }) {
       level, levelStars: starsOf(round.audioKey)?.[level] ?? null, score: 2.2,
     });
   }
-  return rows.sort((a, b) => b.score - a.score).slice(0, AGAIN_ROWS);
+  return windowOf(rows.sort((a, b) => b.score - a.score), rotate, AGAIN_ROWS);
 }
 
 // The classics in an order of the player's own (so everybody does not start with the same ones), those they have not
-// played first. Every entry is kept; a played one says so.
-function classicRows({ classics, userId, ownKeys, ownIdentities, skill, starsOf, exclude }) {
+// played first. Every entry is kept; a played one says so. A refresh starts the order further on.
+function classicRows({ classics, userId, ownKeys, ownIdentities, skill, starsOf, exclude, rotate = 0 }) {
   let hash = 0;
   for (const char of String(userId ?? "")) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  const offset = classics.length ? hash % classics.length : 0;
+  const offset = classics.length ? (hash + rotate * CLASSIC_STEP) % classics.length : 0;
   const rotated = [...classics.slice(offset), ...classics.slice(0, offset)];
   const rows = rotated
     .filter((entry) => !exclude.has(entry.audioKey) && isOfferable(entry))
@@ -437,7 +450,8 @@ function createRecommender({
   const similarTitle = (seeds) => (seeds.length === 1 ? seedReason(seeds[0])
     : seeds.every((seed) => ["just", "well", "played"].includes(seed.role)) ? "Like what you play" : "Picked for you");
 
-  function sectionsFor({ userId, guildId, seedKey = null }) {
+  function sectionsFor({ userId, guildId, seedKey = null, rotate: asked = 0 }) {
+    const rotate = rotationOf(asked);
     const base = baseOf(userId, guildId);
     const starsOf = starsReader(); // one read of the chart flags for every song looked at below
     const at = now();
@@ -452,10 +466,21 @@ function createRecommender({
     // New songs are new to the player in the game and in what they listen to.
     const seen = new Set([...exclude, ...base.ownKeys, ...(base.taste?.tracks ?? []).map((song) => identityOf(song.title, song.artist))]);
     const similar = [];
-    const queues = lists.map(({ seed, rows }) => rows
-      .filter((row) => Number(row.score) >= MIN_SIMILAR_SCORE)
-      .sort((a, b) => b.score - a.score)
-      .map((row) => ({ seed, row })));
+    const offerable = (row) => {
+      const identity = identityOf(row.title, row.artist);
+      return !seen.has(row.audioKey) && isOfferable(row) && !(identity && (base.ownIdentities.has(identity) || seen.has(identity)));
+    };
+    // A refresh moves each seed's queue on by the rows one answer takes from it, wrapping round to the first again once
+    // the seed's songs are used up. What a seed found is not searched for again, so this costs no discovery.
+    const perSeed = Math.ceil(SIMILAR_ROWS / Math.max(1, lists.length));
+    const queues = lists.map(({ seed, rows }) => {
+      const queue = rows
+        .filter((row) => Number(row.score) >= MIN_SIMILAR_SCORE && offerable(row))
+        .sort((a, b) => b.score - a.score)
+        .map((row) => ({ seed, row }));
+      const start = queue.length ? (rotate * perSeed) % queue.length : 0;
+      return [...queue.slice(start), ...queue.slice(0, start)];
+    });
     for (let depth = 0; similar.length < SIMILAR_ROWS && queues.some((queue) => queue.length > depth); depth += 1) {
       for (const queue of queues) {
         const entry = queue[depth];
@@ -470,22 +495,23 @@ function createRecommender({
       }
     }
 
-    const again = againRows({ plays, rounds: base.rounds, ownTracks: base.ownTracks, skill, starsOf, now: at, exclude });
-    const here = hereRows({ played: base.played, ownKeys: base.ownKeys, ownIdentities: base.ownIdentities, skill, starsOf, now: at, exclude });
-    const classic = classicRows({ classics, userId, ownKeys: base.ownKeys, ownIdentities: base.ownIdentities, skill, starsOf, exclude });
+    const again = againRows({ plays, rounds: base.rounds, ownTracks: base.ownTracks, skill, starsOf, now: at, exclude, rotate });
+    const here = hereRows({ played: base.played, ownKeys: base.ownKeys, ownIdentities: base.ownIdentities, skill, starsOf, now: at, exclude, rotate });
+    const classic = classicRows({ classics, userId, ownKeys: base.ownKeys, ownIdentities: base.ownIdentities, skill, starsOf, exclude, rotate });
 
     const sections = [
       { kind: "similar", title: similarTitle(seeds), rows: similar },
       { kind: "again", title: "Worth another go", rows: again },
       { kind: "here", title: "Played here", rows: here },
-      { kind: "classic", title: "Rhythm game classics", rows: classic },
+      { kind: "classic", title: "Popular in rhythm games", rows: classic },
     ];
     return { sections, pending, skill };
   }
 
   return {
     // { sections, strip, pending, skill }: answers at once from what is known; `pending` says a search is still running
-    // (ask again in a few seconds). seedKey is the song just played, which is never offered back.
+    // (ask again in a few seconds). seedKey is the song just played, which is never offered back. rotate (0 up) is how
+    // many times the player refreshed: the lists show their next rows, nothing new is searched for.
     forPlayer(request) {
       const { sections, pending, skill } = sectionsFor(request);
       return { sections, strip: stripOf(sections), pending, skill: skill && { stars: Math.round(skill.stars * 10) / 10, basis: skill.basis } };

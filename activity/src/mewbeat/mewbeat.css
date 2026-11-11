@@ -908,7 +908,8 @@
 .mb-ss-hero { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 16px; align-items: end; }
 .mb-ss-cover { position: relative; display: block; width: 132px; aspect-ratio: 1; border-radius: 18px; object-fit: cover; outline: 1px solid rgb(255 255 255 / 0.14); }
 .mb-ss-hero-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.mb-ss-hero h2 { margin: 6px 0 0; font-size: clamp(22px, 2.6vw, 30px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; overflow-wrap: anywhere; }
+/* A long title is cut at two lines (its full text is the tooltip): the side column beside it never gets pushed out. */
+.mb-ss-hero h2 { display: -webkit-box; margin: 6px 0 0; overflow: hidden; font-size: clamp(22px, 2.6vw, 30px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .mb-ss-artist { color: var(--mb-muted); font-size: 14px; }
 .mb-ss-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .mb-ss-chip {
@@ -950,8 +951,14 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 
 /* right: scopes, search, songs, actions */
 .mb-ss-list { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--mb-line); background: rgb(5 6 8 / 0.55); }
-.mb-ss-tabs { display: flex; gap: 2px; padding: 14px 14px 0; }
+/* One line at every width: a tab that does not fit shrinks and is cut with an ellipsis, it never drops to a second line. */
+.mb-ss-tabs { display: flex; flex-wrap: nowrap; gap: 2px; padding: 14px 14px 0; }
 .mb-ss-tab {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 8px 10px;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -963,7 +970,8 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
 .mb-ss-tab:hover { color: var(--mb-muted); }
 .mb-ss-tab:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: -2px; }
 .mb-ss-tab-on { border-color: var(--mb-cyan); color: var(--mb-text); }
-.mb-ss-tab-static { margin-left: auto; cursor: default; }
+/* While a search is typed the open tab stays marked, quieter: its matching songs lead the results. */
+.mb-ss-tab-current { border-color: rgb(103 227 244 / 0.35); color: var(--mb-muted); }
 .mb-ss-search {
   display: flex;
   align-items: center;
@@ -986,6 +994,24 @@ button.mb-ss-diff:not(:disabled):hover { background: var(--mb-raised); }
   font: 600 13px/1 "Hanken Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
 }
 .mb-ss-search input:focus { outline: none; }
+/* The field's own clear control is the small × beside it (the browser's built-in one is hidden). */
+.mb-ss-search input::-webkit-search-cancel-button { display: none; appearance: none; }
+.mb-ss-clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.08);
+  color: var(--mb-muted);
+  cursor: pointer;
+}
+.mb-ss-clear:hover { background: rgb(255 255 255 / 0.16); color: var(--mb-text); }
+.mb-ss-clear:focus-visible { outline: 2px solid var(--mb-cyan); outline-offset: 1px; }
 .mb-ss-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .mb-ss-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 24px; color: var(--mb-muted); font-size: 13px; text-align: center; }
 .mb-ss-empty-error { color: var(--mb-danger); font-weight: 700; }

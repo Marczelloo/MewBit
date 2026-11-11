@@ -16,6 +16,8 @@ const { createSoloTracks } = require("./soloTracks");
 const DIFFICULTIES = ["easy", "normal", "hard", "hell"];
 const MAX_ID_LENGTH = 40;
 const MAX_URI_LENGTH = 1000;
+// How far a suggestions refresh may rotate the lists; more is the same as this (the lists wrap round long before).
+const ROTATE_MAX = 1000;
 const MAX_SOURCE_LENGTH = 40;
 // A resolved search result is reused this long (and at most this many are kept).
 const RESOLVE_CACHE_MS = 10 * 60_000;
@@ -75,7 +77,7 @@ function errorReply(message) {
 // is queued, so the round's loading window doesn't pay for a cold render.
 // tourSongs.state() (tourSongs.js) is what the first-run tour is told about its two songs: both warm, or null.
 // discover({ title, artist }, { anchor }) -> [song] finds new songs like one (recommendDiscover.js) for the suggestions
-// (recommendations.js); without it the suggestions are the player's own songs, the server's and the classics.
+// (recommendations.js); without it the suggestions are the player's own songs, the server's and the popular songs.
 // listening is where the music bot keeps what a player listens to (listeningTaste.js: topTracks, topArtists, roomTracks,
 // liked); the suggestions use it as seeds next to the game history. Without it they know the game only.
 function createMewbeatChannel({
@@ -784,15 +786,17 @@ function createMewbeatChannel({
   // Suggestions for the results screen and the song select: { sections: [{ kind, title, rows }], strip, pending }. It
   // answers from what is known at once; `pending` says a search for new songs is still running (ask again in a few
   // seconds). The rows carry what a played row does (stars and so on, from the charts that exist, none made). `seedKey`
-  // is the song just played, which is never offered back.
+  // is the song just played, which is never offered back. `rotate` (a whole number from 0, capped at ROTATE_MAX) is how
+  // often the player refreshed: the lists show their next rows. It starts no search and spends none of the discovery budget.
   function recommendations(guildId, userId, message) {
-    const { id, seedKey } = message;
+    const { id, seedKey, rotate } = message;
     const fail = (reason) => ({ type: "mewbeat_recs", id, status: "error", reason });
     if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat recs.");
     if (!recommender) return fail("unavailable");
     if (seedKey != null && (typeof seedKey !== "string" || seedKey.length > MAX_URI_LENGTH)) return fail("bad_request");
+    if (rotate != null && !(Number.isInteger(rotate) && rotate >= 0)) return fail("bad_request");
 
-    const { sections, strip, pending, skill } = recommender.forPlayer({ userId, guildId, seedKey: seedKey ?? null });
+    const { sections, strip, pending, skill } = recommender.forPlayer({ userId, guildId, seedKey: seedKey ?? null, rotate: Math.min(rotate ?? 0, ROTATE_MAX) });
     const read = summaryReader();
     const decorated = new Map(); // a row is in a section and maybe the strip: looked up once
     const decorate = (row) => {

@@ -165,3 +165,42 @@ test("answers ready at once for a charted song and not_found for an unknown one"
   const missing = await request("mewbeat_chart_map", { audioKey: "youtube:nope:1", uri: "https://nowhere.invalid/x" });
   assert.deepEqual([missing.status, missing.reason], ["error", "not_found"]);
 });
+
+test("For you answers differently for each rotate, and wraps round to the first list", async () => {
+  const keys = async (rotate) => {
+    const answer = await request("mewbeat_recs", { rotate });
+    return answer.sections.flatMap((section) => section.rows.map((row) => row.audioKey)).join("|");
+  };
+  const lists = [];
+  for (let rotate = 0; rotate < 4; rotate += 1) lists.push(await keys(rotate));
+  assert.equal(new Set(lists).size, 4, "every refresh is another list");
+  assert.equal(await keys(0), await keys(0), "the same rotate gives the same list");
+  assert.equal(await keys(0), await keys(60), "it comes round again");
+  const answer = await request("mewbeat_recs", { rotate: 1 });
+  assert.equal(answer.sections.find((section) => section.kind === "classic").title, "Popular in rhythm games");
+});
+
+test("a search finds songs the open tabs list too, and songs nobody has played", async () => {
+  const played = await request("mewbeat_played", { scope: "server" });
+  const found = await mock.mockSearch({ query: "Toby" });
+  const inTab = found.tracks.filter((track) => played.tracks.some((row) => row.audioKey === track.audioKey));
+  assert.ok(inTab.length >= 2, "the tab's songs come back");
+  assert.ok(found.tracks.length > inTab.length, "and new ones with them");
+  assert.ok(found.tracks.every((track) => track.uri && track.author && track.durationMs > 0));
+  assert.deepEqual((await mock.mockSearch({ query: "zzzz" })).tracks, []);
+  assert.deepEqual((await mock.mockSearch({ query: "  " })).tracks, []);
+});
+
+test("chartFails makes the first chart ask fail and lets the retry through", async (t) => {
+  mock.resetMockCharting();
+  let clock = 2_000_000;
+  t.mock.method(Date, "now", () => clock);
+  const failing = mock.createMockRequest({ chartFails: true });
+  const played = await failing("mewbeat_played", { scope: "server" });
+  const song = played.tracks.find((track) => track.stars === null);
+  const first = await failing("mewbeat_chart_map", { audioKey: song.audioKey, uri: song.uri });
+  assert.deepEqual([first.status, first.reason], ["error", "failed"]);
+  const retry = await failing("mewbeat_chart_map", { audioKey: song.audioKey, uri: song.uri, retry: true });
+  assert.deepEqual([retry.status, retry.state], ["ok", "queued"]);
+  mock.resetMockCharting();
+});

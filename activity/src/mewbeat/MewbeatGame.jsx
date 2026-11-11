@@ -43,6 +43,7 @@ import ChartWaitLine from "./ChartWaitLine.jsx";
 import { PlainTile, RunTile, useSongFraction } from "./MinimizedTile.jsx";
 import { readyOf, shouldAutoPause, tileOf } from "./minimized.js";
 import { useMinimized } from "./useMinimized.js";
+import { noteRunSaved } from "./suggestionsSession.js";
 import "./mewbeat.css";
 
 // Same switch as MOCK_PREVIEW in App.jsx (a dev-server-only ?mock=1 page with no bot).
@@ -246,8 +247,9 @@ function MockSongSelect() {
   const [modifiers, setModifiers] = useState([]);
   useEffect(() => {
     let cancelled = false;
-    import("./mockRequests.js").then(({ createMockRequest, MOCK_USER_ID }) => {
-      if (!cancelled) setMock({ request: createMockRequest(), player: { userId: MOCK_USER_ID } });
+    import("./mockRequests.js").then(({ createMockRequest, mockSearch, MOCK_USER_ID }) => {
+      const chartFails = new URLSearchParams(window.location.search).has("chartfails");
+      if (!cancelled) setMock({ request: createMockRequest({ chartFails }), search: mockSearch, player: { userId: MOCK_USER_ID } });
     });
     return () => { cancelled = true; };
   }, []);
@@ -259,7 +261,7 @@ function MockSongSelect() {
         <div className="mb-header-brand"><span className="mb-wordmark">mewbeat</span></div>
       </header>
       <div className="mb-screen">
-        <SongSelect request={mock.request} player={mock.player} onPlay={onPlay} modifiers={modifiers} onModifiers={setModifiers} />
+        <SongSelect request={mock.request} search={mock.search} player={mock.player} onPlay={onPlay} modifiers={modifiers} onModifiers={setModifiers} />
       </div>
     </div>
   );
@@ -1073,6 +1075,14 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
     const id = window.setTimeout(() => setHeldId(heldSummaryId), heldMs);
     return () => window.clearTimeout(id);
   }, [heldSummaryId, heldMs]);
+  // A saved run tells the For you tab to move on: the song is not offered again and its look-alikes lead.
+  const savedRunId = endSummary?.submit?.status === "ok" ? endSummary.id : null;
+  const savedRunKey = endSummary?.audioKey ?? null;
+  const savedRunPlain = Boolean(endSummary?.calibration || endSummary?.autoplay);
+  useEffect(() => {
+    if (savedRunId == null) return;
+    noteRunSaved({ id: savedRunId, audioKey: savedRunKey, calibration: false, autoplay: savedRunPlain });
+  }, [savedRunId, savedRunKey, savedRunPlain]);
   const endBanner = holdingCard && !lost ? (isFullCombo(endSummary) ? "FULL COMBO!" : "SONG COMPLETE") : null;
   // FAILED: over a lost run's hold, and for as long as Live keeps its results back.
   const failedBanner = (holdingCard && lost) || (mode === "live" && failed);

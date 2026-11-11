@@ -26,24 +26,24 @@ test("shapes a suggestion like a song-select row, with its reason and level", ()
   assert.deepEqual([bare.key, bare.levelStars, bare.level, bare.stars, bare.played, bare.title], ["https://y/x", null, null, null, false, "Unknown title"]);
 });
 
-test("the For you tab lists new, retry and server picks once each; Classics lists the curated list alone", () => {
+test("the For you tab lists new, retry and server picks once each; Popular lists the curated list alone", () => {
   const answer = reply([
     { kind: "similar", title: "Like", rows: [row("a")] },
     { kind: "again", title: "Again", rows: [row("b"), row("a")] },
     { kind: "here", title: "Here", rows: [row("c")] },
-    { kind: "classic", title: "Classics", rows: [row("d"), row("e", { played: true })] },
+    { kind: "classic", title: "Popular in rhythm games", rows: [row("d"), row("e", { played: true })] },
   ]);
   assert.deepEqual(suggestions.suggestionRows(answer, "foryou").map((r) => r.audioKey.split(":")[1]), ["a", "b", "c"]);
-  const classics = suggestions.suggestionRows(answer, "classics");
+  const classics = suggestions.suggestionRows(answer, "popular");
   assert.deepEqual(classics.map((r) => r.audioKey.split(":")[1]), ["d", "e"]);
   assert.equal(classics[1].played, true);
 });
 
 test("a player with nothing of their own gets the classics under For you", () => {
-  const answer = reply([{ kind: "similar", rows: [] }, { kind: "classic", title: "Classics", rows: [row("d")] }]);
+  const answer = reply([{ kind: "similar", rows: [] }, { kind: "classic", title: "Popular in rhythm games", rows: [row("d")] }]);
   assert.deepEqual(suggestions.suggestionRows(answer, "foryou").map((r) => r.audioKey), ["youtube:d:200000"]);
   assert.deepEqual(suggestions.suggestionRows(null, "foryou"), []);
-  assert.deepEqual(suggestions.suggestionRows({ sections: "no" }, "classics"), []);
+  assert.deepEqual(suggestions.suggestionRows({ sections: "no" }, "popular"), []);
 });
 
 test("drops a suggestion that has no way to be played", () => {

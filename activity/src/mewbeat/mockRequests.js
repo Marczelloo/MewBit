@@ -2,6 +2,12 @@
 // server only). The shapes are the ones helpers/mewbeat/activityChannel.js answers; the songs and numbers are
 // the ones of docs/superpowers/specs/mewbeat-mockups/song-select-profile.html.
 //
+// Open it as ?mock=1&select=1. Things to look at (the song select is the solo one, on "On this server"):
+//   Bad Apple!! (live cut)      uncharted: "Chart this map" sits right of the title, "Not charted yet" under it
+//   ...&chartfails=1            the first chart ask fails: the side shows the error and "Try again"
+//   For you                     "Refresh" gives another list each time (it wraps after a few)
+//   a search such as "toby"     songs of the open tab first (with their stars and bests), then "New songs"
+//
 // Two ids are there to show the awkward states: "new-player" has no rounds at all (zeros, stats null) and
 // "missing" is somebody the bot has never seen (not_found). Both sit in the ranking so they can be clicked.
 
@@ -333,7 +339,16 @@ const UNCHARTED = [
   { title: "Bad Apple!!", artist: "Alstroemeria Records", len: 219 },
   { title: "Butterfly", artist: "Smile.dk", len: 183 },
   { title: "Through the Fire and Flames", artist: "DragonForce", len: 442 },
+  { title: "Spear of Justice", artist: "Toby Fox", len: 143 },
+  { title: "Bonetrousle", artist: "Toby Fox", len: 98 },
+  { title: "Sandstorm", artist: "Darude", len: 233 },
+  { title: "Cirno's Perfect Math Class", artist: "Demetori", len: 191 },
+  { title: "Paranoia", artist: "2MB", len: 127 },
+  { title: "MEGALOVANIA (Camellia remix)", artist: "Camellia", len: 201 },
+  { title: "Mayday", artist: "Camellia", len: 214 },
+  { title: "Mayday Parade", artist: "Nevermind Band", len: 176 },
 ];
+const byUncharted = (title) => UNCHARTED.find((song) => song.title === title);
 
 function suggestion(song, extra) {
   const charted = SONGS.find((candidate) => candidate.title === song.title);
@@ -342,25 +357,60 @@ function suggestion(song, extra) {
   return { audioKey, uri, source, title, artist, artworkUrl, durationMs, stars, notes, bests: extra.kind === "again" ? bests : {}, highlightMs, bpm, playIssue: null, played: false, levelStars: null, ...extra };
 }
 
-function recs({ seedKey } = {}) {
+// `count` rows of the pool from `start` on, wrapping round its end (the bot's windowOf, in short).
+const windowFrom = (pool, count, start) => (pool.length ? Array.from({ length: Math.min(count, pool.length) }, (_, i) => pool[(start + i) % pool.length]) : []);
+
+// What a `rotate` of 0, 1, 2, ... shows: the similar rows step on by two through their pool, the others by one (or two),
+// so every refresh is a different list and a few refreshes come round to the first one again.
+function recs({ seedKey, rotate = 0 } = {}) {
   const byTitle = (title) => SONGS.find((song) => song.title === title);
-  const stepUp = suggestion(byTitle("Rude Buster"), { kind: "again", reason: "S on Normal, try Hard", level: "hard", levelStars: 4.3 });
-  const retry = suggestion(byTitle("MEGALOVANIA"), { kind: "again", reason: "78% on Hard, one more go", level: "hard", levelStars: 5.8 });
-  const similar = [
-    suggestion(UNCHARTED[0], { kind: "similar", reason: "Because you just played MEGALOVANIA", level: null }),
-    suggestion(UNCHARTED[3], { kind: "similar", reason: "Because you did well on Rude Buster", level: null }),
+  const seeded = SONGS.find((song) => audioKeyOf(song) === seedKey);
+  const step = Number.isInteger(rotate) && rotate > 0 ? rotate : 0;
+  const likeReasons = [
+    seeded ? `Because you just played ${seeded.title}` : "Because you just played MEGALOVANIA",
+    "Because you did well on Rude Buster",
+    "Like Hopes and Dreams",
+    "Like the songs you finish",
+    "Because you played MORE",
   ];
-  const here = [suggestion(byTitle("Coffin Dance"), { kind: "here", reason: "Played 4 times by others here", level: "normal", levelStars: 2.8 })];
-  const classic = [UNCHARTED[1], UNCHARTED[2]].map((song) => suggestion(song, { kind: "classic", reason: song.title === "Butterfly" ? "From Dance Dance Revolution" : "From Touhou", level: null }));
-  const sections = [
-    { kind: "similar", title: "Like what you play", rows: similar },
-    { kind: "again", title: "Worth another go", rows: [stepUp, retry] },
-    { kind: "here", title: "Played here", rows: here },
-    { kind: "classic", title: "Rhythm game classics", rows: classic },
+  const similarPool = ["Bury the Light", "Through the Fire and Flames", "Spear of Justice", "Bonetrousle", "Sandstorm"].map((title, i) => suggestion(byUncharted(title), { kind: "similar", reason: likeReasons[i], level: null }));
+  const againPool = [
+    suggestion(byTitle("Rude Buster"), { kind: "again", reason: "S on Normal, try Hard", level: "hard", levelStars: 4.3 }),
+    suggestion(byTitle("MEGALOVANIA"), { kind: "again", reason: "78% on Hard, one more go", level: "hard", levelStars: 5.8 }),
+    suggestion(byTitle("Hopes and Dreams"), { kind: "again", reason: "B on Hard, one more go", level: "hard", levelStars: 5.2 }),
   ];
-  const strip = [similar[0], stepUp, here[0], classic[0]].filter((row) => row.audioKey !== seedKey);
+  const herePool = [
+    suggestion(byTitle("Coffin Dance"), { kind: "here", reason: "Played 4 times by others here", level: "normal", levelStars: 2.8 }),
+    suggestion(byTitle("GHOST"), { kind: "here", reason: "Played 3 times by others here", level: "normal", levelStars: 2.5 }),
+    suggestion(byTitle("REVOLVANIA"), { kind: "here", reason: "Played 2 times by others here", level: "normal", levelStars: 2.7 }),
+  ];
+  const classicReasons = { "Bad Apple!!": "From Touhou", Butterfly: "From Dance Dance Revolution", "Cirno's Perfect Math Class": "From Touhou", Paranoia: "From Dance Dance Revolution" };
+  const classicPool = Object.keys(classicReasons).map((title) => suggestion(byUncharted(title), { kind: "classic", reason: classicReasons[title], level: null }));
   const without = (rows) => rows.filter((row) => row.audioKey !== seedKey);
-  return { status: "ok", sections: sections.map((section) => ({ ...section, rows: without(section.rows) })), strip, pending: false, skill: { stars: 5.2, basis: "good" } };
+  const sections = [
+    { kind: "similar", title: "Like what you play", rows: windowFrom(without(similarPool), 2, step * 2) },
+    { kind: "again", title: "Worth another go", rows: windowFrom(without(againPool), 2, step) },
+    { kind: "here", title: "Played here", rows: windowFrom(without(herePool), 1, step) },
+    { kind: "classic", title: "Popular in rhythm games", rows: windowFrom(without(classicPool), 2, step * 2) },
+  ];
+  const strip = sections.map((section) => section.rows[0]).filter(Boolean);
+  return { status: "ok", sections, strip, pending: false, skill: { stars: 5.2, basis: "good" } };
+}
+
+// The song search (the `search` prop of SongSelect): every sample song, charted or not, and the ones nobody played, whose
+// title or artist has all the words of the query. Songs of the open tabs come back too, so a search shows them under
+// "New songs" only when they are not already above. The shape is the bot's: tracks with an author and a link.
+const fold = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+export function mockSearch({ query = "" } = {}) {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const catalog = [...SONGS, ...UNCHARTED];
+  const found = catalog.filter((song) => words.length && words.every((word) => `${fold(song.title)} ${fold(song.artist)}`.includes(word)));
+  const tracks = found.map((song) => {
+    const row = suggestion(song, { kind: "search" });
+    return { uri: row.uri, source: "youtube", title: song.title, author: song.artist, artworkUrl: null, durationMs: song.len * 1000, audioKey: row.audioKey, stars: row.stars };
+  });
+  return new Promise((resolve) => setTimeout(() => resolve({ tracks }), LATENCY_MS * 4));
 }
 
 const ANSWERS = {
@@ -376,10 +426,17 @@ const ANSWERS = {
 };
 
 // request(type, body) -> a promise of the reply, like createMewbeatRequests().request without the socket.
-export function createMockRequest() {
+// `chartFails`: the first "Chart this map" ask of the uncharted song fails ("Try again" shows); the retry goes through.
+export function createMockRequest({ chartFails = false } = {}) {
+  let failed = false;
   return (type, body = {}) => new Promise((resolve) => {
     const answer = ANSWERS[type];
-    const reply = answer ? { type, id: "mock", ...answer(body) } : { type, id: "mock", status: "error", reason: "unknown" };
+    let reply = answer ? { type, id: "mock", ...answer(body) } : { type, id: "mock", status: "error", reason: "unknown" };
+    if (type === "mewbeat_chart_map" && chartFails && !failed && !body.retry && reply.status === "ok" && reply.state === "queued") {
+      failed = true;
+      resetMockCharting();
+      reply = { type, id: "mock", status: "error", reason: "failed" };
+    }
     setTimeout(() => resolve(reply), LATENCY_MS);
   });
 }

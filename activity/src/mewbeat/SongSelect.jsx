@@ -1,7 +1,7 @@
-import { MagnifyingGlass, Play, Plus, Sparkle, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
+import { ArrowsClockwise, MagnifyingGlass, Play, Plus, Sparkle, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
-import { describeLinkError, describeLinkNote, describePlayIssue, listedTracks, playIssueOf } from "./searchResults.js";
+import { describeLinkError, describeLinkNote, describePlayIssue, listedTracks, mergeSearchRows, playIssueOf } from "./searchResults.js";
 import ChartWaitLine from "./ChartWaitLine.jsx";
 import { createChartWait } from "./chartWait.js";
 import LevelBoard from "./LevelBoard.jsx";
@@ -10,6 +10,7 @@ import PlayerPanel from "./PlayerPanel.jsx";
 import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { arrangeRows } from "./songList.js";
 import { suggestionRows } from "./suggestions.js";
+import { suggestionsSession } from "./suggestionsSession.js";
 import { useSuggestions } from "./useSuggestions.js";
 import "./songSelect.css";
 
@@ -26,13 +27,22 @@ const SCOPES = [
   { id: "mine", label: "Played by you" },
 ];
 
-// Two more tabs beside the played lists: what the bot suggests for the player, and the curated rhythm-game classics.
+// Two more tabs beside the played lists: what the bot suggests for the player, and the curated popular rhythm-game songs.
 // They are lists of suggestions, not of played songs, so they have their own rows, copy and no sort tools.
 const SUGGEST_TABS = [
   { id: "foryou", label: "For you" },
-  { id: "classics", label: "Classics" },
+  { id: "popular", label: "Popular" },
 ];
 const SUGGEST_IDS = SUGGEST_TABS.map((tab) => tab.id);
+
+// What the first section of a search is called: the songs of the open tab that match the query.
+const TAB_SECTIONS = {
+  server: "On this server",
+  global: "Played everywhere",
+  mine: "Played by you",
+  foryou: "For you",
+  popular: "Popular in rhythm games",
+};
 
 const SORTS = [
   { id: "recent", label: "Recent" },
@@ -56,7 +66,13 @@ const EMPTY_COPY = {
   global: "No songs played yet — search for one",
   mine: "You haven't played anything yet — search for a song",
   foryou: "Nothing to suggest yet — play a few songs and it will fill in",
-  classics: "No classics to show",
+  popular: "No popular songs to show",
+};
+
+// The slot between the search field and the rows says what a suggestion tab is.
+const SLOT_NOTES = {
+  foryou: "Songs like the ones you play, and ones worth another go",
+  popular: "Well-known songs from rhythm games",
 };
 
 const PLAYED_LIMIT = 500;
@@ -280,13 +296,18 @@ const SongRow = memo(function SongRow({ row, on, preparing, onPick, onPrimary })
 // side is the song's details alone.
 // onUnlockAudio(), when given, runs synchronously inside the click or key press that picks a row: the browser only lets
 // audio start from a gesture, and the preview itself comes a moment later, from a timer.
-export default function SongSelect({ context, request, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onUnlockAudio, onClose, onSelected, startSelectedKey = null, modifiers = [], onModifiers, onModifiersOpen }) {
+// search(options) is the song search (the bot's, by default); the mock preview passes its own.
+export default function SongSelect({ context, request, search = searchActivity, player, defaultDifficulty = "normal", onPlay, onAddToRoom, onPreview, onUnlockAudio, onClose, onSelected, startSelectedKey = null, modifiers = [], onModifiers, onModifiersOpen }) {
   const isPrivate = usePrivatePlace();
   const [scope, setScope] = useState(isPrivate ? "global" : "server");
   const [query, setQuery] = useState("");
   const [played, setPlayed] = useState({ status: "loading", rows: [] });
   const [found, setFound] = useState({ status: "idle", rows: [], link: null }); // link: what a pasted link was (the server's answer)
   const [reload, setReload] = useState(0);
+  // "For you" moves on after a run (what the session counted while this screen was away) and on "Refresh": both go to
+  // the bot as one rotation count. The snapshot is taken once, so the list does not move while the screen is up.
+  const [recsSession] = useState(suggestionsSession);
+  const [refreshes, setRefreshes] = useState(0);
   const [selectedKey, setSelectedKey] = useState(startSelectedKey); // the first-run tour opens with its sample song picked
   const [difficulty, setDifficulty] = useState(DIFFICULTIES.some((d) => d.id === defaultDifficulty) ? defaultDifficulty : "normal");
   const [preparing, setPreparing] = useState(null); // the row key being prepared
@@ -329,8 +350,17 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   const text = query.trim();
   const searching = text.length >= MIN_QUERY;
   // The suggestion tabs are asked for only while one is showing; the bot looks them up and starts no charting.
-  const suggesting = !searching && SUGGEST_IDS.includes(scope);
-  const suggested = useSuggestions({ request, enabled: suggesting, reload });
+  // The tab's suggestions stay loaded while a search is typed over them: their matches lead the results.
+  const suggestTab = SUGGEST_IDS.includes(scope);
+  const suggesting = !searching && suggestTab;
+  const forYou = scope === "foryou";
+  const suggested = useSuggestions({
+    request,
+    enabled: suggestTab,
+    seedKey: forYou ? recsSession.seedKey : null, // the song just played: songs like it lead
+    rotate: forYou ? recsSession.runs + refreshes : 0,
+    reload,
+  });
 
   // The played list for the chosen scope.
   useEffect(() => {
@@ -359,7 +389,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     setFound({ status: "searching", rows: [] });
     const timer = window.setTimeout(async () => {
       try {
-        const response = await searchActivity({ ...context, query: text, game: true, signal: controller.signal });
+        const response = await search({ ...context, query: text, game: true, signal: controller.signal });
         const rows = listedTracks(response).map(searchRow);
         setFound({ status: rows.length ? "ready" : "empty", rows, link: response.link ?? null });
       } catch {
@@ -380,12 +410,19 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   const foundRows = useMemo(() => withCharts(found.rows), [withCharts, found.rows]);
   const suggestedRows = useMemo(() => withCharts(suggested.reply ? suggestionRows(suggested.reply, scope) : []), [withCharts, suggested.reply, scope]);
   const arranged = useMemo(() => arrangeRows(playedRows, { sort, level, direction, filter }), [playedRows, sort, level, direction, filter]);
-  const list = searching ? found : suggesting ? { status: suggested.status } : played;
+  // A search is two sections: the open tab's matching songs (with their stars, bests and plays), then the server's other
+  // results. The first one is there at once, the second when the search answers.
+  const searchedRows = useMemo(
+    () => (searching ? mergeSearchRows({ openRows: suggestTab ? suggestedRows : playedRows, foundRows, query: text, openLabel: TAB_SECTIONS[scope] }) : []),
+    [searching, suggestTab, suggestedRows, playedRows, foundRows, text, scope],
+  );
+  // A search with a match to show is a ready list, whatever the server has said so far.
+  const list = searching ? (searchedRows.length ? { status: "ready" } : found) : suggesting ? { status: suggested.status } : played;
   // A search keeps the order it came in, a suggestion tab the bot's; the tools only arrange the played list.
-  const rows = searching ? foundRows : suggesting ? suggestedRows : arranged;
+  const rows = searching ? searchedRows : suggesting ? suggestedRows : arranged;
   // No list picks a song by itself: the details, the preview and Play wait for the player's pick. It is looked up in
   // every row, so a level or filter that hides the song from the list does not drop it.
-  const selected = useMemo(() => (searching ? foundRows : suggesting ? suggestedRows : playedRows).find((row) => row.key === selectedKey) ?? null, [searching, suggesting, foundRows, suggestedRows, playedRows, selectedKey]);
+  const selected = useMemo(() => (searching ? searchedRows : suggesting ? suggestedRows : playedRows).find((row) => row.key === selectedKey) ?? null, [searching, suggesting, searchedRows, suggestedRows, playedRows, selectedKey]);
 
   // The charting of the picked song: asks the bot now and then (the request answers "queued" until the stars are
   // there). It stops when the player picks another song, after a few minutes, and on the first error.
@@ -551,6 +588,13 @@ export default function SongSelect({ context, request, player, defaultDifficulty
     setAddedNote(null);
   };
 
+  // The search field's × and the slot's Clear: the same as emptying the field by hand, with the focus kept in it.
+  const clearQuery = () => {
+    changeQuery("");
+    inputRef.current?.focus();
+  };
+
+  // Any tab, the open one included, ends a search and shows that tab.
   const pickScope = (id) => {
     setQuery("");
     setScope(id);
@@ -565,6 +609,8 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   else if (list.status === "error") emptyCopy = searching ? "Search failed." : suggesting ? suggested.error : "Couldn't load the played songs.";
   else if (!rows.length && !searching && played.rows.length) emptyCopy = "No songs match this filter.";
   else if (!rows.length) emptyCopy = EMPTY_COPY[scope];
+  // The matches of the open tab are listed while the server is still looking, or when it could not: say so after them.
+  const searchTail = searching && rows.length ? (found.status === "searching" || found.status === "idle" ? "Looking for new songs…" : found.status === "error" ? "Couldn't look for new songs." : null) : null;
 
   // A leaderboard or ranking row opens that player's profile. Your own row opens yours. Clearing the selection
   // also stops the preview, through the effect on previewKey.
@@ -607,11 +653,11 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                 <button type="button" className="mb-ss-back" onClick={() => setSelectedKey(null)}>← Profile</button>
               </div>
             ) : null}
-            <div className="mb-ss-hero" data-tour="track">
+            <div className={`mb-ss-hero${request ? " mb-ss-hero-side-on" : ""}`} data-tour="track">
               <Cover row={selected} className="mb-ss-cover" size="medium" />
               <div className="mb-ss-hero-text">
                 <span className="mb-ss-label">{selected.reason || (selected.plays ? `played ${selected.plays}×` : searching ? "search result" : "song")}</span>
-                <h2>{selected.title}</h2>
+                <h2 title={selected.title}>{selected.title}</h2>
                 <div className="mb-ss-artist">{selected.artist}</div>
                 <div className="mb-ss-chips">
                   {selected.durationMs ? <span className="mb-ss-chip">{formatLength(selected.durationMs)}</span> : null}
@@ -633,6 +679,32 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                   ) : null}
                 </div>
               </div>
+              {/* A song with no stars gets the chart button here, beside the title: the column is reserved for every song, so
+                  charting (or failing) never moves what sits under the hero. A charted song leaves it empty. */}
+              {request ? (
+                <div className="mb-ss-hero-side" data-tour={uncharted ? "chart" : undefined}>
+                  {uncharted ? (
+                    <>
+                      <button
+                        type="button"
+                        className="mb-btn mb-ss-chart-btn"
+                        disabled={chartRunning}
+                        aria-busy={chartRunning || undefined}
+                        onClick={() => startChart(selected, Boolean(chartError))}
+                      >
+                        {chartRunning ? <><span className="mb-ss-spin" aria-hidden="true" />Charting…</> : <><Sparkle size={14} weight="fill" aria-hidden="true" />{chartError ? "Try again" : <>Chart<span className="mb-ss-chart-opt"> this</span> map</>}</>}
+                      </button>
+                      {chartError ? (
+                        <p className="mb-ss-side-line mb-ss-side-error" role="alert" title={chartError}>{chartError}</p>
+                      ) : chartRunning ? (
+                        <p className="mb-ss-side-line"><ChartWaitLine store={chartWait} fallback="Charting, about half a minute." /></p>
+                      ) : (
+                        <p className="mb-ss-side-line" role="status" title="Charting takes about half a minute.">Not charted yet</p>
+                      )}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="mb-ss-diffs" data-tour="diff" role={onPlay ? "radiogroup" : undefined} aria-label={onPlay ? "Difficulty" : undefined}>
               {DIFFICULTIES.map(({ id, label }) => {
@@ -651,29 +723,8 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                 );
               })}
             </div>
-            {/* A song with no stars gets the chart button; with the leaderboard below, the note has nothing else to say. */}
-            {uncharted && request ? (
-              <div className="mb-ss-chart" data-tour="chart">
-                <button
-                  type="button"
-                  className="mb-btn mb-ss-chart-btn"
-                  disabled={chartRunning}
-                  aria-busy={chartRunning || undefined}
-                  onClick={() => startChart(selected, Boolean(chartError))}
-                >
-                  {chartRunning ? <><span className="mb-ss-spin" aria-hidden="true" />Charting…</> : <><Sparkle size={14} weight="fill" aria-hidden="true" />{chartError ? "Try again" : "Chart this map"}</>}
-                </button>
-                {chartError ? (
-                  <p className="mb-ss-error" role="alert">{chartError}</p>
-                ) : (
-                  chartRunning ? (
-                    <p className="mb-ss-note"><ChartWaitLine store={chartWait} fallback="Charting this map. It takes about half a minute; the stars appear here when it is done." /></p>
-                  ) : (
-                    <p className="mb-ss-note" role="status">Not charted yet. Charting takes about half a minute.</p>
-                  )
-                )}
-              </div>
-            ) : player && selectedStars !== null ? null : (
+            {/* With the player's leaderboard below, a note has nothing left to say: it would only come and go with the song. */}
+            {player ? null : (
               <p className="mb-ss-note">
                 {selected.playIssue ? describePrepareError(selected.playIssue) : !onPlay ? "Each player picks their level in the lobby." : selectedStars === null ? "Levels are charted the first time you play this song." : selectedBest ? "Your best is on the server board." : "Beat it to get on the board."}
               </p>
@@ -709,19 +760,20 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
       <aside className="mb-ss-list" data-tour="list">
         <div className="mb-ss-tabs" role="tablist" aria-label="Songs">
+          {/* The row is the same while a search is typed: no tab comes or goes. The open tab stays marked, quieter, because
+              its matching songs lead the results; any tab ends the search. */}
           {[...scopesFor(SCOPES, isPrivate), ...SUGGEST_TABS].map(({ id, label }) => (
             <button
               key={id}
               type="button"
               role="tab"
-              aria-selected={!searching && scope === id}
-              className={`mb-ss-tab${!searching && scope === id ? " mb-ss-tab-on" : ""}`}
+              aria-selected={scope === id}
+              className={`mb-ss-tab${scope === id ? (searching ? " mb-ss-tab-current" : " mb-ss-tab-on") : ""}`}
               onClick={() => pickScope(id)}
             >
               {label}
             </button>
           ))}
-          {searching ? <span className="mb-ss-tab mb-ss-tab-on mb-ss-tab-static">Search results</span> : null}
         </div>
         <label className="mb-ss-search" data-tour="search">
           <MagnifyingGlass size={16} weight="bold" aria-hidden="true" />
@@ -734,38 +786,72 @@ export default function SongSelect({ context, request, player, defaultDifficulty
             autoComplete="off"
             onChange={(event) => changeQuery(event.target.value)}
           />
+          {query ? (
+            <button type="button" className="mb-ss-clear" aria-label="Clear search" title="Clear search" onClick={clearQuery}>
+              <X size={12} weight="bold" aria-hidden="true" />
+            </button>
+          ) : null}
         </label>
 
-        {!searching && !suggesting ? (
-          <div className="mb-ss-tools">
-            <label className="mb-ss-select">
-              <small>Sort</small>
-              <select aria-label="Sort by" value={sort} onChange={(event) => pickSort(event.target.value)}>
-                {SORTS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
-              </select>
-            </label>
-            <label className={`mb-ss-select mb-ss-d-${level}`} title="Which level the sort and the filters look at">
-              <small>Level</small>
-              <select aria-label="Level for sorting and filtering" value={level} onChange={(event) => setLevel(event.target.value)}>
-                {DIFFICULTIES.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
-              </select>
-            </label>
-            <label className="mb-ss-select">
-              <small>Filter</small>
-              <select aria-label="Filter songs" value={filter} onChange={(event) => setFilter(event.target.value)}>
-                {FILTERS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="mb-ss-dir"
-              aria-label={direction === "desc" ? "Descending, switch to ascending" : "Ascending, switch to descending"}
-              onClick={() => setDirection((current) => (current === "desc" ? "asc" : "desc"))}
-            >
-              {direction === "desc" ? "↓" : "↑"}
-            </button>
-          </div>
-        ) : null}
+        {/* One slot of the same height for every state, so the rows never move: the sort tools of a played tab, the refresh of
+            For you, a line about Popular, or what a search is showing. */}
+        <div className="mb-ss-slot">
+          {searching ? (
+            <>
+              <span className="mb-ss-slot-text" role="status">Results for <b>"{text}"</b></span>
+              <button type="button" className="mb-ss-pill" onClick={clearQuery}>
+                <X size={11} weight="bold" aria-hidden="true" />
+                Clear
+              </button>
+            </>
+          ) : suggestTab ? (
+            <>
+              <span className="mb-ss-slot-text">{SLOT_NOTES[scope]}</span>
+              {forYou ? (
+                <button
+                  type="button"
+                  className="mb-ss-pill"
+                  disabled={suggested.status !== "ready" || suggested.asking}
+                  aria-busy={suggested.asking || undefined}
+                  title="Show other songs"
+                  onClick={() => setRefreshes((n) => n + 1)}
+                >
+                  <ArrowsClockwise size={13} weight="bold" aria-hidden="true" />
+                  Refresh
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <div className="mb-ss-tools">
+              <label className="mb-ss-select">
+                <small>Sort</small>
+                <select aria-label="Sort by" value={sort} onChange={(event) => pickSort(event.target.value)}>
+                  {SORTS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </label>
+              <label className={`mb-ss-select mb-ss-d-${level}`} title="Which level the sort and the filters look at">
+                <small>Level</small>
+                <select aria-label="Level for sorting and filtering" value={level} onChange={(event) => setLevel(event.target.value)}>
+                  {DIFFICULTIES.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </label>
+              <label className="mb-ss-select">
+                <small>Filter</small>
+                <select aria-label="Filter songs" value={filter} onChange={(event) => setFilter(event.target.value)}>
+                  {FILTERS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="mb-ss-dir"
+                aria-label={direction === "desc" ? "Descending, switch to ascending" : "Ascending, switch to descending"}
+                onClick={() => setDirection((current) => (current === "desc" ? "asc" : "desc"))}
+              >
+                {direction === "desc" ? "↓" : "↑"}
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="mb-ss-rows" ref={listRef} role="listbox" aria-label={searching ? "Search results" : suggesting ? "Suggested songs" : "Played songs"}>
           {emptyCopy ? (
@@ -782,13 +868,14 @@ export default function SongSelect({ context, request, player, defaultDifficulty
               {DIFFICULTIES.map(({ id }) => <span key={id} className={`mb-ss-d-${id}`}>{HEAD_LABELS[id]}</span>)}
             </div>
           ) : null}
-          {searching && list.status === "ready" && describeLinkNote(found.link, rows.length) ? <p className="mb-ss-note mb-ss-linknote">{describeLinkNote(found.link, rows.length)}</p> : null}
+          {searching && found.status === "ready" && describeLinkNote(found.link, foundRows.length) ? <p className="mb-ss-note mb-ss-linknote">{describeLinkNote(found.link, foundRows.length)}</p> : null}
           {rows.map((row, index) => (
             <Fragment key={row.key}>
-              {suggesting && row.section && row.section !== rows[index - 1]?.section ? <div className="mb-ss-section" role="presentation">{row.section}</div> : null}
+              {row.section && row.section !== rows[index - 1]?.section ? <div className="mb-ss-section" role="presentation">{row.section}</div> : null}
               <SongRow row={row} on={row.key === selected?.key} preparing={preparing === row.key} onPick={select} onPrimary={runPrimary} />
             </Fragment>
           ))}
+          {searchTail ? <p className="mb-ss-note mb-ss-linknote" role="status">{searchTail}</p> : null}
         </div>
 
         <div className="mb-ss-actions">

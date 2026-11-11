@@ -119,6 +119,30 @@ describe("mewbeat channel suggestions", () => {
     assert.deepStrictEqual([reply.type, reply.status, reply.reason], ["mewbeat_recs", "error", "unavailable"]);
   });
 
+  it("refuses a rotate that is not a whole number from zero", async () => {
+    const { channel } = setup();
+    for (const rotate of [-1, 1.5, "2", true, {}, NaN]) {
+      const reply = await ask(channel, { rotate });
+      assert.deepStrictEqual([reply.type, reply.status, reply.reason], ["mewbeat_recs", "error", "bad_request"], String(rotate));
+    }
+    for (const rotate of [undefined, null, 0, 3]) assert.strictEqual((await ask(channel, { rotate })).status, "ok", String(rotate));
+  });
+
+  it("shows other rows for another rotate, caps a huge one, and asks for nothing new", async () => {
+    const asked = [];
+    const { channel, historyStore, chartCalls } = setup({ discover: async (seed) => { asked.push(seed); return []; } });
+    historyStore.add("ann", round("known"));
+    const classicKeys = async (rotate) => (await ask(channel, rotate === undefined ? {} : { rotate })).sections.find((section) => section.kind === "classic").rows.map((row) => row.audioKey);
+    const plain = await classicKeys();
+    assert.deepStrictEqual(await classicKeys(0), plain, "zero is the plain answer");
+    const turned = await classicKeys(1);
+    assert.deepStrictEqual([...turned].sort(), [...plain].sort(), "the same songs");
+    assert.notStrictEqual(turned[0], plain[0], "in another order");
+    assert.deepStrictEqual(await classicKeys(1_000_000_000), await classicKeys(1000), "a huge rotate is capped");
+    assert.deepStrictEqual(chartCalls, []);
+    assert.ok(asked.length <= 1, "the lists move on without a new search");
+  });
+
   it("keeps one player's history out of another's suggestions", async () => {
     const { channel, historyStore } = setup();
     historyStore.add("ann", round("known", { accuracy: 80 }));

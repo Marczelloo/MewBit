@@ -420,6 +420,99 @@ describe("mewbeat suggestions: recommender", () => {
     });
   });
 
+  describe("refreshing (rotate)", () => {
+    const found = (id, score = 70, extra) => ({ ...song(id), score, ...extra });
+    const seededRounds = [round("known", { artist: "Seed Artist", title: "Seed Song" })];
+    const keysOf = (reply, kind) => rowsOf(reply, kind).map((row) => row.audioKey);
+    // A catalogue of twelve made-up classics: the test needs counts, not the real list's entries.
+    const classics = Array.from({ length: 12 }, (_, index) => ({ ...song(`cl${index}`), game: "Made-up game" }));
+
+    it("is no rotation without it, for zero, and for anything that is not a whole number", () => {
+      const recommender = build({ classics });
+      const plain = recommender.forPlayer({ userId: "u", guildId: "g" });
+      assert.deepStrictEqual(recommender.forPlayer({ userId: "u", guildId: "g", rotate: 0 }), plain);
+      assert.deepStrictEqual(recommender.forPlayer({ userId: "u", guildId: "g", rotate: -3 }), plain);
+      assert.deepStrictEqual(recommender.forPlayer({ userId: "u", guildId: "g", rotate: 1.5 }), plain);
+      assert.deepStrictEqual(recommender.forPlayer({ userId: "u", guildId: "g", rotate: "2" }), plain);
+    });
+
+    it("starts the classics further on, and comes back to the first order after a full turn", () => {
+      const recommender = build({ classics });
+      const first = keysOf(recommender.forPlayer({ userId: "u", guildId: "g" }), "classic");
+      const next = keysOf(recommender.forPlayer({ userId: "u", guildId: "g", rotate: 1 }), "classic");
+      assert.strictEqual(next.length, first.length, "the same songs, in another order");
+      assert.deepStrictEqual([...next].sort(), [...first].sort());
+      assert.notStrictEqual(next[0], first[0]);
+      // five songs on a catalogue of twelve is back at the start after twelve refreshes
+      assert.deepStrictEqual(keysOf(recommender.forPlayer({ userId: "u", guildId: "g", rotate: classics.length }), "classic"), first);
+    });
+
+    it("shows the next rows of the server's picks and of the retry list, wrapping round", () => {
+      const played = Array.from({ length: 20 }, (_, index) => ({ ...song(`s${index}`), plays: 30 - index, lastAt: NOW - DAY }));
+      const rounds = Array.from({ length: 14 }, (_, index) => round(`r${index}`, { accuracy: 60 + index, at: NOW - 3 * DAY }));
+      const recommender = build({ historyStore: storeOf({ rounds, played }), classics });
+      const base = recommender.forPlayer({ userId: "u", guildId: "g" });
+      const turned = recommender.forPlayer({ userId: "u", guildId: "g", rotate: 1 });
+      for (const kind of ["here", "again"]) {
+        const before = keysOf(base, kind);
+        const after = keysOf(turned, kind);
+        assert.ok(before.length > 0 && after.length === before.length, kind);
+        assert.ok(after.every((key) => !before.includes(key)), `${kind}: a refresh shows other songs`);
+      }
+      // 20 server picks at eight a window: the third refresh is back at the start
+      assert.deepStrictEqual(keysOf(recommender.forPlayer({ userId: "u", guildId: "g", rotate: 5 }), "here"), keysOf(base, "here"));
+    });
+
+    it("leaves a list shorter than its window as it is", () => {
+      const recommender = build({ classics });
+      const base = recommender.forPlayer({ userId: "u", guildId: "g" });
+      const turned = recommender.forPlayer({ userId: "u", guildId: "g", rotate: 3 });
+      assert.deepStrictEqual(keysOf(turned, "here"), keysOf(base, "here"));
+      assert.deepStrictEqual(keysOf(turned, "again"), keysOf(base, "again"));
+    });
+
+    it("moves on through what a seed found, without searching again or spending the budget", async () => {
+      const store = storeOf({ rounds: seededRounds });
+      let calls = 0;
+      let taken = 0;
+      const recommender = build({
+        historyStore: store,
+        classics,
+        budget: { take: () => { taken += 1; return true; } },
+        discover: async () => { calls += 1; return Array.from({ length: 20 }, (_, index) => found(`n${index}`, 90 - index)); },
+      });
+      recommender.forPlayer({ userId: "u", guildId: "g" });
+      await recommender.idle();
+      assert.strictEqual(calls, 1);
+      const spent = taken;
+      const base = keysOf(recommender.forPlayer({ userId: "u", guildId: "g" }), "similar");
+      const turned = keysOf(recommender.forPlayer({ userId: "u", guildId: "g", rotate: 1 }), "similar");
+      const again = keysOf(recommender.forPlayer({ userId: "u", guildId: "g", rotate: 2 }), "similar");
+      await recommender.idle();
+      assert.strictEqual(base.length, 8);
+      assert.strictEqual(turned.length, 8);
+      assert.ok(turned.every((key) => !base.includes(key)), "the second answer shows other songs");
+      assert.ok(again.every((key) => !turned.includes(key)));
+      assert.strictEqual(calls, 1, "no new search");
+      assert.strictEqual(taken, spent, "no place of the budget spent");
+    });
+
+    it("wraps a seed's songs round to the best again, and never offers the song just played", async () => {
+      const recommender = build({
+        historyStore: storeOf({ rounds: seededRounds }),
+        classics,
+        discover: async () => [found("n0", 90), found("n1", 80), found("n2", 70), found("known", 99)],
+      });
+      recommender.forPlayer({ userId: "u", guildId: "g", seedKey: keyOf("known") });
+      await recommender.idle();
+      const keys = (rotate) => keysOf(recommender.forPlayer({ userId: "u", guildId: "g", seedKey: keyOf("known"), rotate }), "similar");
+      assert.deepStrictEqual(keys(0), [keyOf("n0"), keyOf("n1"), keyOf("n2")]);
+      // one seed gives eight rows a window; three songs wrap: 8 mod 3 = 2 in
+      assert.deepStrictEqual(keys(1), [keyOf("n2"), keyOf("n0"), keyOf("n1")]);
+      for (const rotate of [0, 1, 2, 3, 4]) assert.ok(!keys(rotate).includes(keyOf("known")), `rotate ${rotate}`);
+    });
+  });
+
   describe("what the player listens to", () => {
     const found = (id, score = 70, extra) => ({ ...song(id), score, ...extra });
     // Made-up bot data: ann asks for Band A a lot and for Band B a little; bo for Band Z; cy and nobody for nothing.

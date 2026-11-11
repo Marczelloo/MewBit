@@ -1,4 +1,4 @@
-// Song suggestions (mewbeat_recs): the helpers the song-select's "For you" and "Classics" tabs and the results strip
+// Song suggestions (mewbeat_recs): the helpers the song-select's "For you" and "Popular" tabs and the results strip
 // share. The bot only looks suggestions up; showing one starts no analysis and no charting.
 
 // While the bot is still looking for songs like the ones played (pending), the screen asks again now and then.
@@ -17,7 +17,7 @@ export function describeSuggestError(reason) {
 
 // A suggestion as the song-select's row shape, plus why it is there (reason), which list it came from (section,
 // kind), the level it suggests (level, levelStars; null when the song has no charts yet) and whether the player
-// has played a classic already.
+// has played a popular song already.
 export function suggestionRow(row, section = null) {
   return {
     key: row.audioKey ?? row.uri,
@@ -54,11 +54,11 @@ function uniqueRows(rows) {
 }
 
 // The rows of a tab. "foryou": songs like the player's, songs worth another go and what the server plays; the
-// classics fill in when none of those has anything (a new player). "classics": the curated list alone.
+// popular songs (the bot's "classic" kind) fill in when none of those has anything (a new player). "popular": that curated list alone.
 export function suggestionRows(reply, tab) {
   const sections = Array.isArray(reply?.sections) ? reply.sections : [];
   const rowsOf = (kinds) => sections.filter((section) => kinds.includes(section.kind)).flatMap((section) => (Array.isArray(section.rows) ? section.rows : []).map((row) => suggestionRow(row, section.title)));
-  if (tab === "classics") return uniqueRows(rowsOf(["classic"]));
+  if (tab === "popular") return uniqueRows(rowsOf(["classic"]));
   const own = uniqueRows(rowsOf(["similar", "again", "here"]));
   return own.length ? own : uniqueRows(rowsOf(["classic"]));
 }
