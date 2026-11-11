@@ -44,6 +44,35 @@ services:
       timeout: 5s
       retries: 5
 
+  # Melody decoder for mewbeat (Basic Pitch on onnxruntime). The bot POSTs the bytes of a track and gets the melody JSON back; it is
+  # reachable on the compose network only, nothing is published. One decode at a time, the model unloads after a few idle minutes.
+  mewbeat-decoder:
+    image: mewbeat-decoder-svc:latest
+    build:
+      context: ./scripts/mewbeat-melody/decoder
+    environment:
+      MEWBEAT_DECODER_THREADS: 2
+      MEWBEAT_DECODER_IDLE_MIN: 5
+    # Two cores and a bounded memory: a decode of a 20 minute track peaks near 1.1 GB, a 3 minute one near 0.4 GB.
+    cpus: 2
+    mem_limit: 2g
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request as u; u.urlopen('http://127.0.0.1:8090/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   bot:
     image: marczelloo/neo-beat-buddy:latest
     # Built on the Pi from this checkout by the dashboard deploy agent.
@@ -59,6 +88,8 @@ services:
       NODE_ENV: production
       ACTIVITY_HOST: ${ACTIVITY_HOST:-0.0.0.0}
       ACTIVITY_PORT: ${ACTIVITY_PORT:-8787}
+      # The melody decoder service above. Not in depends_on on purpose: the bot retries a decode later when the service is down.
+      MEWBEAT_DECODER_URL: http://mewbeat-decoder:8090
     ports:
       # Keep Activity private for the Cloudflare tunnel and avoid the Dashboard
       # runner, which already owns localhost:8787 on the Raspberry Pi.

@@ -1,0 +1,3 @@
+# The decoder image is built from these on any host; CRLF in a RUN script breaks the shell inside it.
+scripts/mewbeat-melody/decoder/Dockerfile text eol=lf
+scripts/mewbeat-melody/decoder/requirements.txt text eol=lf

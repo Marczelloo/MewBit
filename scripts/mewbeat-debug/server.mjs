@@ -163,7 +163,9 @@ function featuresOf(id) {
     // With the melody decoded offline for it, as the bot charts it (chartStore.js withDecodedMelody).
     const features = readJson(join(BOT_DATA, "features", `${playedSha(id)}.json`));
     const melody = join(BOT_DATA, "melody", `${playedSha(id)}.json`);
-    return existsSync(melody) ? require(join(CHARTS, "melodyFile.js")).withMelodyFile(features, readJson(melody)) : features;
+    if (existsSync(melody)) return require(join(CHARTS, "melodyFile.js")).withMelodyFile(features, readJson(melody));
+    // No melody file: the bot charts it as a chart made without the melody, which carries the nm marker (generate.js).
+    return { ...features, noMelody: true };
   }
   return readJson(join(DATA, "features", `${id}.json`));
 }
@@ -216,10 +218,10 @@ function botFlags() {
 
 function chartPayload(id, level) {
   const { GENERATOR_VERSION, generateChart, traceChart, chartMetrics } = freshGenerator();
-  const { flagsKey } = require(join(CHARTS, "flags.js"));
+  const { flagsKey, noMelodyKey } = require(join(CHARTS, "flags.js"));
   const features = featuresOf(id);
   const flags = botFlags();
-  const flagged = flagsKey(flags);
+  const flagged = features.noMelody === true ? noMelodyKey(flagsKey(flags)) : flagsKey(flags);
   const generatorVersion = flagged ? `${GENERATOR_VERSION}-${flagged}` : GENERATOR_VERSION;
   const started = performance.now();
   const story = traceChart(features, level, "debug", flags);

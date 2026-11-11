@@ -195,9 +195,10 @@ describe("Normal picks its notes from the music", () => {
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
-      assert.strictEqual(charts.normal.version, 44);
+      // Made without a melody (no decoder in this store), so marked nm.
+      assert.strictEqual(charts.normal.version, "44-nm");
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file(44)));
+      assert.ok(fs.existsSync(file("44-nm")));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

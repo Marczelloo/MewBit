@@ -46,7 +46,8 @@ describe("mewbeat explicit chart retry", () => {
   let node;
   const key = audioKeyOf(track);
   const featuresFile = () => path.join(dir, "features", `${audioKeyFile(key)}.json`);
-  const chartsFile = () => path.join(dir, "charts", `${audioKeyFile(key)}.v${GENERATOR_VERSION}.json`);
+  // No melody decoder here, so the charts are made without a melody and carry the nm marker.
+  const chartsFile = () => path.join(dir, "charts", `${audioKeyFile(key)}.v${GENERATOR_VERSION}-nm.json`);
 
   function build(generate = generateAll) {
     analysis = createAnalysisClient({ dir, now: () => clock, log: silentLog });

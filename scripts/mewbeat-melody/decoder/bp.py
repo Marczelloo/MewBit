@@ -4,18 +4,41 @@ Windowing and stitching follow basic_pitch.inference, except that the kept frame
 The posteriors are kept as uint8 (x 255) and read back as floats, the way the first hand-run decodes stored them: the notes
 that follow depend on those quantised values, so a decode now repeats an earlier one.
 """
+import os
+
 import numpy as np
 
-MODEL = "/opt/venv/lib/python3.12/site-packages/basic_pitch/saved_models/icassp_2022/nmp.onnx"
+# The model file of basic-pitch 0.4.0 (saved_models/icassp_2022/nmp.onnx): in the old mewbeat-decoder image it sits in the package,
+# in the service image (Dockerfile) it is copied out of the pinned wheel.
+MODEL = os.environ.get("MEWBEAT_BP_MODEL", "/opt/venv/lib/python3.12/site-packages/basic_pitch/saved_models/icassp_2022/nmp.onnx")
 SR, HOP, N = 22050, 256, 22050 * 2 - 256
 OLAP = 30  # frames, same as the package
 FPS = SR / HOP
 
 
-def load(path):
-    import librosa
-    y, _ = librosa.load(path, sr=SR, mono=True)
-    return y.astype(np.float32)
+def load(source):
+    """Audio at 22050 Hz mono, float32. `source` is a path or a binary file object.
+
+    The steps of librosa.load(source, sr=SR, mono=True) in librosa 1.0.0 (soundfile read, mean over the channels, soxr_hq resample,
+    length fixed to ceil(n * SR / rate)) written out, so the service image needs soundfile and soxr and not librosa with numba, scipy
+    and scikit-learn. The samples are the same ones; the old image's librosa is the reference the tests compare with.
+    """
+    import soundfile as sf
+    import soxr
+    with sf.SoundFile(source) as f:
+        rate = f.samplerate
+        y = f.read(frames=-1, dtype="float32", always_2d=False).T
+    if not np.isfinite(y).all():
+        raise ValueError("the audio holds samples that are not finite")
+    n_in = y.shape[-1]
+    if n_in == 0:
+        raise ValueError("the audio is empty")
+    y = np.zeros(n_in, np.float32) + np.mean(y, axis=tuple(range(y.ndim - 1)))
+    if rate != SR:
+        size = int(np.ceil(n_in * (float(SR) / rate)))
+        y = soxr.resample(y, rate, SR, quality="soxr_hq")
+        y = y[:size] if len(y) > size else np.pad(y, (0, size - len(y)))
+    return np.asarray(y, dtype=np.float32)
 
 
 def session(threads=1):
@@ -60,9 +83,9 @@ def infer(sess, y):
     return res
 
 
-def posteriors(path, threads=1):
-    """(note, onset, contour, duration in s) for one audio file."""
-    y = load(path)
-    o = infer(session(threads), y)
+def posteriors(source, threads=1, sess=None):
+    """(note, onset, contour, duration in s) for one audio file (a path or a file object). `sess` is a session kept by the caller."""
+    y = load(source)
+    o = infer(sess or session(threads), y)
     q = {m: (o[m] * 255).astype(np.uint8) / 255. for m in ("note", "onset", "contour")}
     return q["note"], q["onset"], q["contour"], len(y) / SR

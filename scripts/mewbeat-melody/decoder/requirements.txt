@@ -1,0 +1,13 @@
+# Everything service.py, decode.py and bp.py import at run time, pinned to the versions of the first mewbeat-decoder image so that a
+# decode gives the same numbers. No torch, tensorflow, librosa, numba, scipy or scikit-learn: bp.load writes out the librosa steps
+# it needs on soundfile and soxr. The Dockerfile installs these with --no-deps, so a package that needs another has it listed here.
+numpy==2.5.4
+onnxruntime==1.31.1
+flatbuffers==25.12.19
+protobuf==7.36.2
+packaging==26.3
+soundfile==0.14.0
+cffi==2.1.1
+pycparser==3.12
+typing_extensions==4.16.0
+soxr==1.1.0
