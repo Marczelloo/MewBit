@@ -675,7 +675,7 @@ function filterPlayableSearchResults(tracks, query) {
   );
 }
 
-function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = true } = {}) {
+function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = true, trimSingleWord = true } = {}) {
   const pool = Array.isArray(tracks) ? tracks : [];
   const sourceConsensus = new Map();
   for (const track of pool) {
@@ -704,7 +704,7 @@ function rankSearchResults(tracks, query, { limit, withScores = false, dedupe = 
     .map((entry) => ({ ...entry, effectiveScore: entry.score + entry.providerBonus }))
     .sort(compareRankedSearchResults);
 
-  const focusedRanked = trimWeakSingleWordMatches(keepOriginalsAboveVariants(ranked), query);
+  const focusedRanked = trimSingleWord ? trimWeakSingleWordMatches(keepOriginalsAboveVariants(ranked), query) : keepOriginalsAboveVariants(ranked);
   const uniqueRanked = dedupe ? deduplicateRankedSearchResults(focusedRanked) : focusedRanked;
 
   const selected = Number.isInteger(limit) ? uniqueRanked.slice(0, Math.max(0, limit)) : uniqueRanked;

@@ -12,13 +12,21 @@
 // - A query that is an artist's name ranks that artist's songs, not songs that happen to have the same title.
 // - The correction of a typo and the query as typed both count, so a wrong correction cannot hide a hit.
 // - A track over the plugin's length limit is kept but labelled (`playIssue`) and sorted last.
+// - A recording is one row, however many uploads and providers carry it: "TheFatRat - MAYDAY (Lyrics) feat. X"
+//   on a lyric channel, the artist's own upload, the YouTube Music audio and a Deezer or Spotify row are the same
+//   recording (`recordingKeyOf`), and the copy the game plays and charts best is the one shown (`pickCopy`).
+//   Remixes, covers, live, nightcore and instrumental versions are other recordings and stay their own rows.
+// - Rows are scored on a cleaned view of the metadata (the "Artist - " in front of a title and the feat. credit
+//   removed), so an artist's own upload matches the title as exactly as a catalogue row does; what several
+//   lanes agree on and what Deezer says is played adds to the score; and the one-word cut keeps what has such
+//   evidence, because "mayday" must not leave TheFatRat's song behind an exact title nobody plays.
 
 const { matchTokens } = require("../lavalink/searchMatching");
 const { buildSearchQueries } = require("../lavalink/searchQueryVariants");
 const { annotateSearchPopularity, isSearchPopularityEnabled, lookupSearchPopularity } = require("../lavalink/searchPopularity");
-const { getConsensusKey, isRelevantSearchResult, normalizeText, rankSearchResults } = require("../lavalink/searchRanking");
+const { isRelevantSearchResult, normalizeText, rankSearchResults } = require("../lavalink/searchRanking");
 const { searchWithCorrection } = require("../lavalink/searchSuggestions");
-const { cleanArtistName } = require("../lavalink/trackNormalization");
+const { cleanArtistName, getCoreTitle, getVariantKinds } = require("../lavalink/trackNormalization");
 
 // Mirrors `plugins.mewbeat.maxTrackMs` in helpers/lavalink/application.yml: the plugin refuses a longer track
 // with 422 too_long when the chart is asked for.
@@ -77,6 +85,7 @@ const ARTIST_MAX_WORDS = 4;
 const LOOSE_POSITIONS = 6;
 const LOOSE_WHEN_FEWER_THAN = 8;
 const MAX_HINTS = 2;
+const MAX_WEAK_HINTS = 1;
 const MAX_ARTIST_HINTS = 4; // an artist's best-known songs may be on Deezer's list only
 const HINT_TOP_RANKS = 6;
 const HINT_TIMEOUT_MS = 1_200;
@@ -166,7 +175,7 @@ function detectArtistQuery(tracks, query) {
   const byArtist = new Set();
   const byTitle = new Set();
   for (const track of tracks) {
-    const key = getConsensusKey(track) || track?.info?.identifier;
+    const key = recordingKeyOf(track) || track?.info?.identifier;
     if (!key) continue;
     if (matchesAuthor(track, needles) || titleCredits(track, needles)) byArtist.add(key);
     else if (matchesTitle(track, needles)) byTitle.add(key);
@@ -219,6 +228,86 @@ function identityOf(track) {
   return track?.info?.identifier || track?.info?.uri || null;
 }
 
+// --- Recordings: one row per song, whatever uploaded or listed it ---------------------------------------------
+
+// The guest credit on a title: "MAYDAY (feat. X)", "MAYDAY feat. X" (up to the next bracket).
+const FEATURE_CREDIT_PATTERN = /\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]|\s+(?:feat\.?|ft\.?|featuring)\s+[^()[\]]*/gi;
+// What the title starts with after the dash when that is a version label and not the song ("Song - Live at ...").
+const VERSION_LABEL_START = /^(?:live|remix|remaster(?:ed)?|acoustic|instrumental|demo|official|lyrics?|audio|video|version|edit|extended|radio|slowed|sped|nightcore|cover|\d{4}\b)/i;
+const CREDIT_MAX_WORDS = 5;
+// Versions the same recording keeps through (a remaster, a radio edit, a clean copy): everything else is its own row.
+const SAME_RECORDING_KINDS = new Set(["remaster", "edit", "clean"]);
+
+function squash(text) {
+  return normalizeText(text).replace(/\s+/g, "");
+}
+
+// "Sidney Polak, Pezet" and "Kendrick Lamar & SZA" are listed under the first artist by the catalogues.
+function primaryArtist(author) {
+  return cleanArtistName(String(author || "").split(/\s*(?:,|&|\bx\b|\bfeat\.?|\bft\.?|\bfeaturing\b|\bwith\b)\s*/i)[0]);
+}
+
+// "TheFatRat", "The Fat Rat" and "thefatrat" are one name; a shortened name ("Quebo") is not.
+function sameName(left, right) {
+  const a = squash(cleanArtistName(left));
+  const b = squash(cleanArtistName(right));
+  if (!a || !b) return false;
+  return a === b;
+}
+
+/**
+ * Who a title credits and what the song is called, from "Artist - Song" and "Song - Artist" uploads. `credit` is
+ * "author" when the uploader is that artist, "title" when a fan or lyric channel carries the artist's name in the
+ * title, and null when the title has no credit.
+ */
+function splitArtistCredit(rawTitle, author) {
+  const text = String(rawTitle || "").trim();
+  const artist = primaryArtist(author);
+  const first = text.match(/^(.+?)\s[-–—]\s(.+)$/);
+  if (first && !VERSION_LABEL_START.test(first[2].trim()) && !getVariantKinds(first[1]).length) {
+    if (sameName(first[1], artist)) return { artist: String(author || ""), title: first[2].trim(), credit: "author" };
+    if (first[1].trim().split(/\s+/).length <= CREDIT_MAX_WORDS) return { artist: first[1].trim(), title: first[2].trim(), credit: "title" };
+  }
+  const last = text.match(/^(.+)\s[-–—]\s(.+?)$/);
+  if (last && sameName(last[2], artist)) return { artist: String(author || ""), title: last[1].trim(), credit: "author" };
+  return { artist: String(author || ""), title: text, credit: null };
+}
+
+function withoutFeatureCredit(title) {
+  const text = String(title || "");
+  return text.replace(FEATURE_CREDIT_PATTERN, " ").replace(/\s{2,}/g, " ").trim() || text;
+}
+
+/**
+ * The key two copies of one recording share, across uploads and providers: the artist's name written without
+ * spaces, the song with its decoration, credit and guests removed, and the versions that make it another
+ * recording (remix, live, cover, instrumental, nightcore...). Null when the metadata has no artist or title.
+ */
+function recordingKeyOf(track) {
+  const credit = splitArtistCredit(track?.info?.title, track?.info?.author);
+  const artist = squash(primaryArtist(credit.artist));
+  const base = getCoreTitle(withoutFeatureCredit(credit.title));
+  if (!artist || !base) return null;
+  const versions = getVariantKinds(track.info.title).filter((kind) => !SAME_RECORDING_KINDS.has(kind));
+  return versions.length ? `${artist}|${base}|${versions.sort().join(",")}` : `${artist}|${base}`;
+}
+
+function groupKeyOf(track) {
+  return recordingKeyOf(track) || `id:${identityOf(track) || track?.info?.uri || ""}`;
+}
+
+// The track as the scorer should read it: the song's own title and the artist it credits. Plain data, keyed
+// back to the real track by the caller (a Poru track is a class instance and is never copied).
+function scoringView(track) {
+  const credit = splitArtistCredit(track.info.title, track.info.author);
+  return {
+    searchLane: laneOf(track),
+    searchRank: track.searchRank,
+    searchPopularity: track.searchPopularity,
+    info: { ...track.info, title: withoutFeatureCredit(credit.title), author: credit.credit === "title" ? credit.artist : track.info.author },
+  };
+}
+
 function withoutRepeats(tracks) {
   const seen = new Set();
   return tracks.filter((track) => {
@@ -232,10 +321,86 @@ function withoutRepeats(tracks) {
   });
 }
 
+// Which copy of a recording the game should play and chart: the audio the platform made for it, from the artist's
+// own channel, at the recording's length; a lyric video or a fan upload only when nothing better lists it.
+const COPY_LANE_BONUS = { ytm: 30, yt: 10, sp: 4, sc: 0 };
+const OWN_CHANNEL_BONUS = 25;
+const TOPIC_BONUS = 10;
+const LYRIC_COPY_PENALTY = 30;
+const VIDEO_COPY_PENALTY = 8;
+const AUDIO_COPY_BONUS = 10;
+const LENGTH_MATCH_BONUS = 20;
+const LENGTH_NEAR_BONUS = 8;
+const LENGTH_OFF_PENALTY = 25;
+const UNPLAYABLE_COPY_PENALTY = 200;
+const BULK_COPY_PENALTY = 40;
+
+function medianOf(values) {
+  const sorted = values.filter((value) => value > 0).sort((left, right) => left - right);
+  return sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+}
+
+function copyScore(entry, { referenceMs, texts }) {
+  const { track } = entry;
+  const info = track.info;
+  const title = normalizeText(info.title || "");
+  let score = (COPY_LANE_BONUS[laneOf(track)] || 0) + entry.score * 0.01 - (Number(track.searchRank) || 0) * 0.1;
+  if (splitArtistCredit(info.title, info.author).credit !== "title") score += OWN_CHANNEL_BONUS;
+  if (/-\s*topic\s*$/i.test(info.author || "")) score += TOPIC_BONUS;
+  if (/\b(?:lyrics?|lyric video|visuali[sz]er)\b/.test(title) && !queryHasAny(texts, [/\blyrics?\b/])) score -= LYRIC_COPY_PENALTY;
+  else if (/\b(?:official (?:music )?video|music video|mv)\b/.test(title)) score -= VIDEO_COPY_PENALTY;
+  else if (/\b(?:official audio|audio)\b/.test(title)) score += AUDIO_COPY_BONUS;
+  const length = Number(info.length) || 0;
+  if (referenceMs && length) {
+    const gap = Math.abs(length - referenceMs);
+    if (gap <= 8_000) score += LENGTH_MATCH_BONUS;
+    else if (gap <= Math.max(20_000, referenceMs * 0.15)) score += LENGTH_NEAR_BONUS;
+    else score -= LENGTH_OFF_PENALTY;
+  }
+  if (playIssueOf(track)) score -= UNPLAYABLE_COPY_PENALTY;
+  if (bulkPenalty(track, texts)) score -= BULK_COPY_PENALTY;
+  return score;
+}
+
+/** The best playable copy among the entries of one recording (the Deezer copy only tells its length), or null. */
+function pickCopy(entries, texts) {
+  const playable = entries.filter((entry) => isPlayableLane(entry.track));
+  if (!playable.length) return null;
+  const deezer = entries.find((entry) => !isPlayableLane(entry.track));
+  const referenceMs = Number(deezer?.track.info.length) || (playable.length >= 3 ? medianOf(playable.map((entry) => Number(entry.track.info.length) || 0)) : 0);
+  let best = null;
+  let bestScore = -Infinity;
+  for (const entry of playable) {
+    const score = copyScore(entry, { referenceMs, texts });
+    if (score > bestScore) {
+      best = entry;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+// Whether the cleaned title and artist keep every query word the raw metadata had (a guest credit the query
+// names is the case where they do not, and the raw score then stands).
+function viewKeepsQuery(track, view, text) {
+  const needles = splitQueryWords(text).required;
+  if (!needles.length) return true;
+  return matchTokens(needles, wordsOfTrack(view)).credit >= matchTokens(needles, wordsOfTrack(track)).credit - 1e-9;
+}
+
+// What a recording's several copies and Deezer's play counts say beyond its metadata.
+const POPULARITY_WEIGHT = 60;
+// A fan or lyric channel's "Artist - Song" reads as the song once cleaned, but the artist's own rows come first on a tie.
+const FAN_UPLOAD_PENALTY = 40;
+const LANE_AGREEMENT_BONUS = 14;
+// One-word queries are cut to what scores near the best result, unless something backs the result up.
+const ONE_WORD_WINDOW = 120;
+
 /**
  * Orders a pool of tracks for the song select. `queries` is the query as typed first, then the corrected
  * one when there is one. Returns `items` ({ track, score, tier }; tier is "main", "loose" or "blocked", in the
  * order to show) and `hints`, Deezer recordings that rank well and have no playable copy in the pool.
+ * One item is one recording: its uploads and providers are grouped by `recordingKeyOf` and the best copy shown.
  */
 function rankGameResults(pool, { queries, limit = MAX_RESULTS } = {}) {
   const texts = [...new Set((queries || []).map((query) => String(query || "").trim()).filter(Boolean))];
@@ -251,61 +416,91 @@ function rankGameResults(pool, { queries, limit = MAX_RESULTS } = {}) {
   candidates
     .filter((track) => !isPlayableLane(track))
     .forEach((track, position) => {
-      const key = getConsensusKey(track);
+      const key = recordingKeyOf(track);
       if (key && !deezerOrder.has(key)) deezerOrder.set(key, position);
     });
 
-  // Score each query over the whole strict pool and keep a track's best score among the queries it matches.
+  // Score each query over the whole strict pool and keep a track's best score among the queries it matches. The
+  // scorer reads the cleaned view of a track ("Artist - Song feat. X" is the song's own title), the raw track
+  // only when the cleaning took away a word the query holds.
   const best = new Map();
   for (const text of texts) {
     const relevant = strict.filter((track) => isRelevantSearchResult(track, requiredText(text)));
-    for (const entry of rankSearchResults(relevant, text, { withScores: true, dedupe: false })) {
-      const known = best.get(entry.track);
-      if (!known || entry.effectiveScore > known.score) best.set(entry.track, { track: entry.track, score: entry.effectiveScore });
+    const views = new Map(relevant.map((track) => [track, scoringView(track)]));
+    const options = { withScores: true, dedupe: false, trimSingleWord: false };
+    const viewed = new Map(rankSearchResults([...views.values()], text, options).map((entry) => [entry.track, entry]));
+    const raw = new Map(rankSearchResults(relevant, text, options).map((entry) => [entry.track, entry]));
+    for (const track of relevant) {
+      const view = views.get(track);
+      const entry = viewKeepsQuery(track, view, text) ? viewed.get(view) : raw.get(track);
+      const known = best.get(track);
+      if (entry && (!known || entry.effectiveScore > known.score)) best.set(track, { track, score: entry.effectiveScore, plain: entry.score });
     }
   }
 
   for (const entry of best.values()) {
     entry.score -= bulkPenalty(entry.track, texts);
+    if (splitArtistCredit(entry.track.info.title, entry.track.info.author).credit === "title") entry.score -= FAN_UPLOAD_PENALTY;
     if (texts.some((text) => matchesArtistThenTitle(entry.track, splitQueryWords(text).required))) entry.score += SPLIT_BONUS;
     if (!artistQuery) continue;
     if (matchesAuthor(entry.track, artistNeedles)) {
       entry.score += ARTIST_BONUS;
       if (authorTokens(entry.track).length === artistNeedles.length) entry.score += SOLE_ARTIST_BONUS;
       // Deezer lists an artist's songs by how much they are played.
-      const position = deezerOrder.get(getConsensusKey(entry.track));
+      const position = deezerOrder.get(recordingKeyOf(entry.track));
       if (position !== undefined) entry.score += Math.max(0, 90 - position * 9);
     } else if (matchesTitle(entry.track, artistNeedles) && !titleCredits(entry.track, artistNeedles)) {
       entry.score -= TITLE_ONLY_PENALTY;
     }
   }
 
-  // One entry per recording: the best playable copy, or none (then the Deezer copy is a hint).
-  const groups = new Map();
-  for (const entry of [...best.values()].sort((left, right) => right.score - left.score)) {
-    const key = getConsensusKey(entry.track) || `id:${identityOf(entry.track)}`;
-    const group = groups.get(key) || { playable: null, deezer: null };
-    if (isPlayableLane(entry.track)) group.playable ??= entry;
-    else group.deezer ??= entry;
-    groups.set(key, group);
+  // One entry per recording: its best playable copy, or none (then the Deezer copy is a hint). The recording
+  // scores what its best copy scored, plus what its copies say together.
+  const maxPopularity = Math.max(0, ...[...best.keys()].map((track) => Number(track.searchPopularity) || 0));
+  const byRecording = new Map();
+  for (const entry of best.values()) {
+    const key = groupKeyOf(entry.track);
+    if (!byRecording.has(key)) byRecording.set(key, []);
+    byRecording.get(key).push(entry);
   }
-  const ordered = [...groups.values()]
-    .map((group) => group.playable || group.deezer)
-    .sort((left, right) => right.score - left.score);
+  const recordings = [...byRecording.values()].map((entries) => {
+    const lanes = new Set(entries.map((entry) => laneOf(entry.track)));
+    const share = maxPopularity ? Math.max(...entries.map((entry) => Number(entry.track.searchPopularity) || 0)) / maxPopularity : 0;
+    const agreement = lanes.has("ytm") && lanes.has("yt") ? LANE_AGREEMENT_BONUS : 0;
+    const copy = pickCopy(entries, texts) || entries.find((entry) => !isPlayableLane(entry.track)) || entries[0];
+    const base = Math.max(...entries.map((entry) => entry.plain));
+    const top = Math.max(...entries.map((entry) => entry.score));
+    const deezer = entries.find((entry) => !isPlayableLane(entry.track))?.track || null;
+    // Only a fan or lyric channel carries it, and a catalogue knows it: the provider's own copy is worth a look.
+    const weak = Boolean(deezer) && isPlayableLane(copy.track) && laneOf(copy.track) === "yt" && splitArtistCredit(copy.track.info.title, copy.track.info.author).credit === "title";
+    return { track: copy.track, deezer, weak, base, byArtist: artistQuery && entries.some((entry) => matchesAuthor(entry.track, artistNeedles)), score: top + share * POPULARITY_WEIGHT + agreement, backed: share > 0 || lanes.size > 1 };
+  });
+  recordings.sort((left, right) => right.score - left.score);
+  const oneWord = artistNeedles.length === 1;
+  // The window is measured on the match score alone (the bot's cut does the same), so the evidence a result gets
+  // cannot push its rivals out. The songs of the artist an artist query names are not cut: a long title scores low.
+  const bestBase = Math.max(...recordings.map((entry) => entry.base));
+  const kept = oneWord ? recordings.filter((entry) => entry.backed || entry.byArtist || entry.base >= bestBase - ONE_WORD_WINDOW) : recordings;
+
+  const ordered = kept.map(({ track, score, deezer, weak }) => ({ track, score, deezer, weak }));
+  // A hint is a Deezer recording with no playable copy, or (`replaces`) one whose only copy is a fan upload.
+  // Swapping a fan copy for the catalogue's is a nicety, so it gets a smaller share of the lookups.
+  let weakLeft = artistQuery ? 2 : MAX_WEAK_HINTS;
   const hints = ordered
     .map((entry, rank) => ({ entry, rank }))
-    .filter(({ entry, rank }) => !isPlayableLane(entry.track) && rank < HINT_TOP_RANKS && !playIssueOf(entry.track) && matchesExactly(entry.track, texts))
+    .filter(({ entry, rank }) => rank < HINT_TOP_RANKS && !playIssueOf(entry.track) && (!isPlayableLane(entry.track) || entry.weak) && matchesExactly(entry.weak ? entry.deezer : entry.track, texts))
+    .filter(({ entry }) => !entry.weak || weakLeft-- > 0)
     .slice(0, artistQuery ? MAX_ARTIST_HINTS : MAX_HINTS)
-    .map(({ entry }) => entry);
+    .map(({ entry }) => (entry.weak ? { track: entry.deezer, score: entry.score, replaces: entry.track } : { track: entry.track, score: entry.score }));
 
   const items = ordered
     .filter((entry) => isPlayableLane(entry.track))
-    .map((entry) => ({ ...entry, tier: playIssueOf(entry.track) ? "blocked" : "main" }));
+    .map(({ track, score }) => ({ track, score, tier: playIssueOf(track) ? "blocked" : "main" }));
 
   // Few matches: the provider's own first results, which the strict words may have missed.
   const mainCount = items.filter((item) => item.tier === "main").length;
   if (mainCount < LOOSE_WHEN_FEWER_THAN) {
-    const known = new Set(items.map((item) => item.track));
+    const known = new Set([...best.keys(), ...items.map((item) => item.track)]);
     const floor = Math.min(0, ...items.map((item) => item.score)) - 50;
     candidates
       .filter((track) => laneOf(track) === "ytm" && !known.has(track) && Number(track.searchRank) < LOOSE_POSITIONS && !playIssueOf(track) && matchesPartly(track, texts))
@@ -343,11 +538,20 @@ function pickHintCopy(hint, tracks) {
 /** Puts the resolved copies of Deezer hints into the ranked items, at the rank the hint had. */
 function placeResolvedHints(items, resolved, limit = MAX_RESULTS) {
   const known = new Set(items.map((item) => identityOf(item.track)));
-  const keys = new Set(items.map((item) => getConsensusKey(item.track)).filter(Boolean));
+  const keys = new Set(items.map((item) => recordingKeyOf(item.track)).filter(Boolean));
   const result = [...items];
   for (const { hint, track } of resolved) {
-    const key = getConsensusKey(track);
-    if (!track || known.has(identityOf(track)) || (key && keys.has(key))) continue;
+    if (!track || known.has(identityOf(track))) continue;
+    if (hint.replaces) {
+      // The catalogue's own copy takes the place of the fan upload that stood for the recording.
+      const at = result.findIndex((item) => item.track === hint.replaces);
+      if (at < 0) continue;
+      known.add(identityOf(track));
+      result[at] = { track, score: result[at].score, tier: result[at].tier, via: "deezer" };
+      continue;
+    }
+    const key = recordingKeyOf(track);
+    if (key && keys.has(key)) continue;
     known.add(identityOf(track));
     result.push({ track, score: hint.score, tier: "main", via: "deezer" });
   }
@@ -412,6 +616,15 @@ async function askLanes(poru, requests) {
   return settled.flatMap((tracks) => tracks || []);
 }
 
+// YouTube answers a bare word ("mayday", "blue") with events, shows and kids' videos; the same words with "song"
+// after them list the songs people play, best known first. A second YouTube request asks it for short titles.
+const SONG_LANE_MAX_WORDS = 2;
+
+function isShortTitleQuery(text) {
+  const { required, optional } = splitQueryWords(text);
+  return !optional.length && required.length <= SONG_LANE_MAX_WORDS;
+}
+
 /**
  * The pool for one query text: the first pass asks YouTube Music, YouTube and Deezer together. A thin pool
  * adds the other providers and the accent variants ("cieple" -> "ciepłe"), as the bot's search does.
@@ -421,7 +634,9 @@ async function searchPool(poru, text, { popularity = true } = {}) {
   if (!original) return [];
   const popularityLookup = popularity && isSearchPopularityEnabled() ? lookupSearchPopularity(original).catch(() => null) : null;
 
-  const pool = await askLanes(poru, FIRST_LANES.map((lane) => ({ lane, query: original })));
+  const requests = FIRST_LANES.map((lane) => ({ lane, query: original }));
+  if (isShortTitleQuery(original)) requests.push({ lane: "yt", query: `${original} song` });
+  const pool = await askLanes(poru, requests);
   const relevant = pool.filter((track) => isPlayableLane(track) && isRelevantSearchResult(track, requiredText(original)));
   if (relevant.length < MIN_RELEVANT_RESULTS) {
     const now = Date.now();
@@ -540,7 +755,9 @@ module.exports = {
   placeResolvedHints,
   playIssueOf,
   rankGameResults,
+  recordingKeyOf,
   searchGameSongs,
   searchSongLink,
+  splitArtistCredit,
   splitQueryWords,
 };
