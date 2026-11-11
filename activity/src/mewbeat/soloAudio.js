@@ -2,6 +2,7 @@
 // AudioContext, so the song clock comes from the audio hardware instead of a server anchor. The module
 // touches no browser global at load time; the context is created lazily and reused across songs.
 import { audioLagMs, riseEnvelope } from "./audioAlign.js";
+import { loudnessGain, measureSong } from "./loudness.js";
 
 const DEFAULT_VOLUME = 0.8;
 // An immediate start is scheduled this far ahead: the audio thread picks a start up at its next render quantum,
@@ -14,6 +15,15 @@ export const MUSIC_MAX_GAIN = 0.4;
 export function musicGain(percent) {
   const share = Number.isFinite(percent) ? Math.min(1, Math.max(0, percent / 100)) : 0.8;
   return MUSIC_MAX_GAIN * share * share;
+}
+
+// Loudness normalisation (loudness.js): every decoded song is measured once and played through one static gain that
+// brings it to the game's target. The songs are rendered hot (peaks above full scale), so the peak limit counts the room
+// the music volume's own ceiling leaves, not the file's: MUSIC_MAX_GAIN is 8 dB under full scale.
+const HEADROOM_DB = -20 * Math.log10(MUSIC_MAX_GAIN);
+
+export function levelGain(measure) {
+  return loudnessGain(measure, { headroomDb: HEADROOM_DB });
 }
 
 // Clips (the song select preview, the results highlight) loop a stretch of a song, under the music volume.
@@ -37,12 +47,19 @@ export function createSoloAudio({
   createContext = () => new (globalThis.AudioContext ?? globalThis.webkitAudioContext)(),
   now = () => performance.now(),
   aligner = null, // alignClient.js: scans the song off the main thread; without it align runs inline
+  measure = measureSong, // loudness.js: (channels, sampleRate, { yieldToUi }) -> { lufs, peakDb }
+  yieldToUi = null, // awaited between slices of a loudness scan, so a long song does not hold the page up
 } = {}) {
   let ctx = null;
   let gain = null;
+  let songLevel = null; // the loaded song's loudness gain; a node of its own, so fades and the volume stay as they are
   let songBus = null; // the game's source goes through this, so a clip can fade the song out without stopping its clock
   let songFaded = false;
   let volume = DEFAULT_VOLUME;
+  let normalize = true; // the loudness setting; off plays every song as rendered
+  // The loudness gain of each decoded buffer ({ gain, db, limitedBy }), kept once measured.
+  const levels = new WeakMap();
+  let measuring = null; // the loaded song's measurement in flight, which play() waits for
   // Decoded buffer of the last loaded song only (a 4 minute song costs ~85 MB).
   let loadedKey = null;
   let buffer = null;
@@ -83,7 +100,48 @@ export function createSoloAudio({
     songBus = ctx.createGain();
     songBus.gain.value = 1;
     songBus.connect(gain);
+    songLevel = ctx.createGain();
+    songLevel.gain.value = 1;
+    songLevel.connect(songBus);
     return ctx;
+  }
+
+  // The loudness gain of a decoded buffer. A song that cannot be measured (or whose scan throws) plays unchanged.
+  function levelOf(decoded) {
+    const known = levels.get(decoded);
+    if (known) return Promise.resolve(known);
+    const promise = (async () => {
+      try {
+        const channels = [decoded.getChannelData(0)];
+        if (decoded.numberOfChannels > 1) channels.push(decoded.getChannelData(1));
+        return levelGain(await measure(channels, decoded.sampleRate, { yieldToUi }));
+      } catch {
+        return levelGain(null);
+      }
+    })().then((level) => {
+      levels.set(decoded, level);
+      return level;
+    });
+    return promise;
+  }
+
+  // The gain a buffer plays at: 1 with the setting off, or while it is not measured.
+  const gainFor = (decoded) => (normalize && decoded ? levels.get(decoded)?.gain ?? 1 : 1);
+
+  function applyLevel() {
+    if (songLevel) songLevel.gain.value = gainFor(buffer);
+  }
+
+  // Measures the loaded song in the background (nothing with the setting off). play() waits for it, so a song never
+  // starts at one level and moves to another.
+  function measureLoaded() {
+    const decoded = buffer;
+    if (!normalize || !decoded || levels.has(decoded) || measuring) return;
+    const scan = levelOf(decoded).then(() => {
+      if (measuring === scan) measuring = null;
+      if (buffer === decoded) applyLevel();
+    });
+    measuring = scan;
   }
 
   // Creates the context and starts resuming it. Call it straight from a user gesture (the Play click),
@@ -142,6 +200,8 @@ export function createSoloAudio({
       lagMs = 0;
       alignSeq += 1;
       aligning = null;
+      measuring = null;
+      measureLoaded();
       return { durationMs: durationMs() };
     })();
     loading = { key: audioKey, promise };
@@ -237,8 +297,8 @@ export function createSoloAudio({
     stopClip({ fadeMs: 0 });
     dropSource();
     const seq = ++playSeq;
-    if (aligning) {
-      await aligning;
+    if (aligning || measuring) {
+      await Promise.all([aligning, measuring]);
       if (seq !== playSeq) return;
     }
     if (c.state !== "running") {
@@ -246,6 +306,7 @@ export function createSoloAudio({
       if (seq !== playSeq) return;
       if (c.state !== "running") throw new Error("Audio is blocked. Click Play to allow sound.");
     }
+    applyLevel();
     const from = Math.min(fromMs, durationMs());
     if (songFaded) {
       songFaded = false;
@@ -256,7 +317,7 @@ export function createSoloAudio({
     node.buffer = buffer;
     // The pitch follows the rate (a plain playbackRate, no time-stretching), like the speed mods in other rhythm games.
     if (rate !== 1) node.playbackRate.value = rate;
-    node.connect(songBus);
+    node.connect(songLevel);
     // Scheduled starts keep their context time; an immediate start gets a small lead (START_LEAD_S), so the
     // context time the clock assumes is the one the audio thread really starts at.
     const startCtx = whenPerfMs === null ? c.currentTime + START_LEAD_S : Math.max(c.currentTime, ctxTimeAt(whenPerfMs));
@@ -373,8 +434,9 @@ export function createSoloAudio({
   }
 
   // Plays clipBuffer from fromS to the end of it (or for maxS at most) with fades, once.
-  function startClip(clipBuffer, fromS, level, maxS = Infinity) {
+  function startClip(clipBuffer, fromS, baseLevel, maxS = Infinity) {
     dropClip(CLIP_SWAP_FADE_S);
+    const level = baseLevel * gainFor(clipBuffer);
     const c = ctx;
     const lengthS = Math.min(clipBuffer.duration - fromS, maxS);
     if (!(lengthS > 0)) return;
@@ -492,6 +554,11 @@ export function createSoloAudio({
       const c = context();
       const entry = reusablePreview(audioKey, wanted) ?? (await decodePreview(c, audioKey, wanted, seq));
       if (!entry || seq !== clipSeq) return false;
+      // A cut is measured on its own (about CLIP_WINDOW_S), so the preview is as loud as the game will be.
+      if (normalize) {
+        await levelOf(entry.buffer);
+        if (seq !== clipSeq) return false;
+      }
       if (c.state !== "running") {
         await c.resume();
         if (seq !== clipSeq || c.state !== "running") return false;
@@ -548,6 +615,7 @@ export function createSoloAudio({
     bytes.clear();
     endedListeners.clear();
     buffer = null;
+    measuring = null;
     rise = null;
     lagMs = 0;
     alignSeq += 1;
@@ -561,6 +629,7 @@ export function createSoloAudio({
     ctx = null;
     gain = null;
     songBus = null;
+    songLevel = null;
     songFaded = false;
     try { old?.close?.(); } catch { /* already closed */ }
   }
@@ -568,6 +637,14 @@ export function createSoloAudio({
   function setVolume(next) {
     volume = Number.isFinite(next) ? Math.min(1, Math.max(0, next)) : DEFAULT_VOLUME;
     if (gain) gain.gain.value = volume;
+  }
+
+  // The loudness setting: on brings every song to the same level, off plays it as rendered. A song already playing
+  // changes level at once (nothing is retimed); a song not yet measured is measured now.
+  function setNormalize(next) {
+    normalize = next !== false;
+    measureLoaded();
+    applyLevel();
   }
 
   return {
@@ -584,6 +661,9 @@ export function createSoloAudio({
     unlock,
     close,
     setVolume,
+    setNormalize,
+    // The loudness gain applied to the loaded song ({ gain, db, limitedBy }), or null while unmeasured or switched off.
+    songLevel: () => (normalize && buffer ? levels.get(buffer) ?? null : null),
     preview,
     previewError: () => previewError,
     // Whether preview() would start without downloading anything (a decoded cut, the game's song or kept bytes).

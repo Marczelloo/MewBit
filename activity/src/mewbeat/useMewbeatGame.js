@@ -17,7 +17,7 @@ import { missPose } from "./missPose.js";
 import { createStore } from "./hudStore.js";
 
 // Same literal as DEFAULT_SETTINGS in helpers/mewbeat/userSettings.js (the activity cannot import that CJS file).
-export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, showMewbit: true, tempoScroll: true, modifiers: [], feverMode: "manual" };
+export const DEFAULT_SETTINGS = { keys: ["KeyD", "KeyF", "KeyJ", "KeyK"], offsetMs: 0, soloOffsetMs: 0, scrollSpeed: 5, liveDifficulty: "normal", effects: "full", hitSounds: false, hitSound: "kick", hitVolume: 40, sfx: true, sfxVolume: 60, musicVolume: 80, normalizeLoudness: true, showMewbit: true, tempoScroll: true, modifiers: [], feverMode: "manual" };
 const COMBO_BREAK_OVER = 20; // as in osu!: losing a short combo makes no sound
 const COMBO_BREAK_LEVEL = 0.5;
 
