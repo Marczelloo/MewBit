@@ -167,10 +167,12 @@ test("the modifier step names what the picker offers and how a score changes", (
   for (const name of ["One Life", "Ghost Notes", "Strict Timing"]) assert.ok(say.includes(name), name);
 });
 
-test("the links step names the platforms the bot resolves and the two limits", () => {
+test("the links step names only the platform whose links were seen to load, and the two limits", () => {
   const say = byId("after-links").say;
   assert.match(say, /links/);
-  for (const platform of ["YouTube", "Spotify", "SoundCloud"]) assert.ok(say.includes(platform), platform);
+  assert.ok(say.includes("YouTube"));
+  // Spotify and SoundCloud links depend on provider keys the Lavalink node may not have.
+  for (const platform of ["Spotify", "SoundCloud"]) assert.ok(!say.includes(platform), platform);
   assert.match(say, /20 minutes/);
   assert.match(say, /live streams/);
 });

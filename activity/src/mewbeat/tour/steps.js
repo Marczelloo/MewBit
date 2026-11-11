@@ -109,7 +109,7 @@ export const TOUR_STEPS = [
   },
   {
     id: "after-links", target: "search", side: "right", portrait: "talk",
-    say: "The search bar takes links too. Paste a YouTube, Spotify or SoundCloud link to one song. Songs over 20 minutes and live streams don't work.",
+    say: "The search bar takes links too. Paste a YouTube link to a song or a playlist. Songs over 20 minutes and live streams don't work.",
     count: null, view: "select", settings: null, also: null, primary: "Next", secondary: "Skip",
   },
   {
