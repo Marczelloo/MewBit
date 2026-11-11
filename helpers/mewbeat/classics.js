@@ -1,8 +1,9 @@
 // The Rhythm game classics shown in the song select and on the results screen (recommendations.js). An entry is here
 // because community made maps of the song are among the most played for its game (BeatSaver ratings, osu! and Quaver
 // play counts, Geometry Dash likes, Clone Hero downloads, Friday Night Funkin' mod songs ranked by Quaver play counts);
-// the songs of a game's own base release only qualify when the community plays them that much too. The evidence for
-// every entry is in docs/mewbeat/popularne-mapy-zrodla-2026-11-11.md.
+// the songs of a rhythm game's own base release (Beat Saber's OST, the Friday Night Funkin' weeks, Geometry Dash's main
+// levels) stay out, however much they are played. The evidence for every entry is in
+// docs/mewbeat/popularne-mapy-zrodla-2026-11-11.md.
 //
 // Every entry was checked against the bot's Lavalink: its pinned YouTube link loads as a single track, is not a stream,
 // is shorter than the 20 minute play limit and is the intended recording (the artist's or label's own upload or the
@@ -57,9 +58,6 @@ const CLASSICS = Object.freeze([
   {"id":"endgame","title":"Endgame","artist":"Waterflame","game":"Geometry Dash","uri":"https://www.youtube.com/watch?v=lrpS69H1RRU","audioKey":"youtube:lrpS69H1RRU:140000","durationMs":140000,"artworkUrl":"https://i.ytimg.com/vi/lrpS69H1RRU/mqdefault.jpg"},
   {"id":"chaoz-impact","title":"Chaoz Impact","artist":"ParagonX9","game":"Geometry Dash","uri":"https://www.youtube.com/watch?v=BvAnA5XRrUE","audioKey":"youtube:BvAnA5XRrUE:116000","durationMs":116000,"artworkUrl":"https://i.ytimg.com/vi/BvAnA5XRrUE/mqdefault.jpg"},
   {"id":"unity","title":"Unity","artist":"TheFatRat","game":"Geometry Dash","uri":"https://www.youtube.com/watch?v=n8X9_MgEdCg","audioKey":"youtube:n8X9_MgEdCg:249000","durationMs":249000,"artworkUrl":"https://i.ytimg.com/vi/n8X9_MgEdCg/mqdefault.jpg"},
-  {"id":"stereo-madness","title":"Stereo Madness","artist":"ForeverBound","game":"Geometry Dash","uri":"https://www.youtube.com/watch?v=JhKyKEDxo8Q","audioKey":"youtube:JhKyKEDxo8Q:198000","durationMs":198000,"artworkUrl":"https://i.ytimg.com/vi/JhKyKEDxo8Q/mqdefault.jpg"},
-  {"id":"dry-out","title":"Dry Out","artist":"DJVI","game":"Geometry Dash","uri":"https://www.youtube.com/watch?v=G4qH8pOmEBo","audioKey":"youtube:G4qH8pOmEBo:164000","durationMs":164000,"artworkUrl":"https://i.ytimg.com/vi/G4qH8pOmEBo/mqdefault.jpg"},
-  {"id":"back-on-track","title":"Back On Track","artist":"DJVI","game":"Geometry Dash","uri":"https://www.youtube.com/watch?v=91rnrr0U9R8","audioKey":"youtube:91rnrr0U9R8:181000","durationMs":181000,"artworkUrl":"https://i.ytimg.com/vi/91rnrr0U9R8/mqdefault.jpg"},
   {"id":"otonoke","title":"Otonoke","artist":"Creepy Nuts","game":"Clone Hero","uri":"https://www.youtube.com/watch?v=tRwHpyOq4P4","audioKey":"youtube:tRwHpyOq4P4:196000","durationMs":196000,"artworkUrl":"https://i.ytimg.com/vi/tRwHpyOq4P4/mqdefault.jpg"},
   {"id":"through-the-fire-and-flames","title":"Through the Fire and Flames","artist":"DragonForce","game":"Clone Hero","uri":"https://www.youtube.com/watch?v=XkFz_hi2tWY","audioKey":"youtube:XkFz_hi2tWY:439000","durationMs":439000,"artworkUrl":"https://i.ytimg.com/vi/XkFz_hi2tWY/mqdefault.jpg"},
   {"id":"hotel-california","title":"Hotel California","artist":"Eagles","game":"Clone Hero","uri":"https://www.youtube.com/watch?v=dLl4PZtxia8","audioKey":"youtube:dLl4PZtxia8:391000","durationMs":391000,"artworkUrl":"https://i.ytimg.com/vi/dLl4PZtxia8/mqdefault.jpg"},
@@ -75,8 +73,6 @@ const CLASSICS = Object.freeze([
   {"id":"nyaw","title":"Nyaw (Vs. Kapi Mod)","artist":"paperkitty","game":"Friday Night Funkin' mods","uri":"https://www.youtube.com/watch?v=4pBDcGEARgs","audioKey":"youtube:4pBDcGEARgs:146000","durationMs":146000,"artworkUrl":"https://i.ytimg.com/vi/4pBDcGEARgs/mqdefault.jpg"},
   {"id":"casanova","title":"Casanova (Selever Mod)","artist":"Mike Geno","game":"Friday Night Funkin' mods","uri":"https://www.youtube.com/watch?v=AS3k41vOYF0","audioKey":"youtube:AS3k41vOYF0:170000","durationMs":170000,"artworkUrl":"https://i.ytimg.com/vi/AS3k41vOYF0/mqdefault.jpg"},
   {"id":"too-slow","title":"Too Slow (Vs. Sonic.exe Mod)","artist":"MarStarBro","game":"Friday Night Funkin' mods","uri":"https://www.youtube.com/watch?v=uQw5NvCRxTk","audioKey":"youtube:uQw5NvCRxTk:188000","durationMs":188000,"artworkUrl":"https://i.ytimg.com/vi/uQw5NvCRxTk/mqdefault.jpg"},
-  {"id":"ugh","title":"Ugh","artist":"Kawai Sprite","game":"Friday Night Funkin'","uri":"https://www.youtube.com/watch?v=_pLDBCkvyUg","audioKey":"youtube:_pLDBCkvyUg:86000","durationMs":86000,"artworkUrl":"https://i.ytimg.com/vi/_pLDBCkvyUg/mqdefault.jpg"},
-  {"id":"blammed","title":"Blammed","artist":"Kawai Sprite","game":"Friday Night Funkin'","uri":"https://www.youtube.com/watch?v=aQ2tXk-2UEg","audioKey":"youtube:aQ2tXk-2UEg:107000","durationMs":107000,"artworkUrl":"https://i.ytimg.com/vi/aQ2tXk-2UEg/mqdefault.jpg"},
 ].map((entry) => Object.freeze({ source: "youtube", ...entry })));
 
 module.exports = { CLASSICS };

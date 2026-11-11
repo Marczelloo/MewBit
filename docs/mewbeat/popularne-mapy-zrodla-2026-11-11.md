@@ -13,13 +13,13 @@ Utwór jest na liście, gdy mapy robione przez społeczność dla tej piosenki n
 - Clone Hero: pobrania utworów na Rhythmverse (format Clone Hero);
 - Friday Night Funkin': piosenki z modów, ułożone wg gier na mapach Quavera, a mody wg wyświetleń na GameBanana.
 
-Utwór z gry bazowej wchodzi tylko wtedy, gdy sam jest też wśród najczęściej granych map społeczności (w tej liście: Ugh i Blammed z FNF, MEGALOVANIA i Rude Buster przez osu! i Quavera, Stereo Madness, Dry Out i Back On Track przez polubienia poziomów GD).
+Utwory z gry bazowej samej gry rytmicznej nie wchodzą, nawet gdy społeczność często je gra. Przy przeglądzie wypadło przez to pięć wpisów z pierwszej wersji tej listy: Ugh i Blammed (FNF, 21. i 36. miejsce w Quaverze) oraz Stereo Madness, Dry Out i Back On Track (ścieżki poziomów głównych Geometry Dash, użyte w polubionych poziomach społeczności). MEGALOVANIA i Rude Buster zostają, bo Undertale i Deltarune nie są grami rytmicznymi, a te mapy zrobiła społeczność osu! i Quavera.
 
 Każdy link YouTube sprawdzono w Lavalinku: ładuje się jako jeden utwór, nie jest streamem, trwa krócej niż 20 minut, a kanał to oficjalny kanał wykonawcy, wytwórni albo autoryzowany kanał Topic. Brak oficjalnego nagrania oznaczał wykreślenie wpisu.
 
 ## Liczba wpisów
 
-Razem 63. Wg gry: osu!: 12, Beat Saber: 12, Quaver: 10, Geometry Dash: 12, Clone Hero: 9, Friday Night Funkin' mods: 6, Friday Night Funkin': 2.
+Razem 58. Wg gry: osu!: 12, Beat Saber: 12, Quaver: 10, Geometry Dash: 9, Clone Hero: 9, Friday Night Funkin' mods: 6. W tabeli brakuje numerów 44–46 i 62–63: to pięć wykreślonych wpisów z gier bazowych.
 
 ## Wszystkie wpisy
 
@@ -70,9 +70,6 @@ W kolumnie "Gra" jest tekst pokazywany jako "From ...". Ostatnia kolumna to kana
 | 41 | Endgame | Waterflame | Geometry Dash | GDBrowser, poziom Platinum Adventure: 14. miejsce (3,4 mln polubień) | Waterflame (2:20) |
 | 42 | Chaoz Impact | ParagonX9 | Geometry Dash | GDBrowser, poziom Speed Racer: 25. miejsce (2,8 mln polubień) | ParagonX9official (1:56) |
 | 43 | Unity | TheFatRat | Geometry Dash | GDBrowser, poziom Unity: 36. miejsce (2,3 mln polubień); BeatSaver 55. miejsce | TheFatRat (4:09) |
-| 44 | Stereo Madness | ForeverBound | Geometry Dash | GDBrowser, poziom Level Easy: 8. miejsce (4,6 mln polubień) | ForeverBound (3:18) |
-| 45 | Dry Out | DJVI | Geometry Dash | GDBrowser, poziom THE LIGHTNING ROAD: 13. miejsce (3,4 mln polubień) | DJVI - Topic (2:44) |
-| 46 | Back On Track | DJVI | Geometry Dash | GDBrowser, poziom Dreamland: 26. miejsce (2,7 mln polubień) | DJVI - Topic (3:01) |
 | 47 | Otonoke | Creepy Nuts | Clone Hero | Rhythmverse (format Clone Hero), 1. miejsce wg pobrań (18,3 tys.) | Creepy Nuts (3:16) |
 | 48 | Through the Fire and Flames | DragonForce | Clone Hero | Rhythmverse (Clone Hero), 8. miejsce (5,2 tys.) | DragonForce - Topic (7:19) |
 | 49 | Hotel California | Eagles | Clone Hero | Rhythmverse (Clone Hero), 7. miejsce (5,2 tys.) | Eagles (6:31) |
@@ -88,8 +85,6 @@ W kolumnie "Gra" jest tekst pokazywany jako "From ...". Ostatnia kolumna to kana
 | 59 | Nyaw (Vs. Kapi Mod) | paperkitty | Friday Night Funkin' mods | Quaver, 11. miejsce (623 tys.); GameBanana: VS Kapi 2,7 mln wyświetleń | paperkitty (2:26) |
 | 60 | Casanova (Selever Mod) | Mike Geno | Friday Night Funkin' mods | Quaver, 18. miejsce (420 tys.); GameBanana: Mid-Fight Masses | Mike Geno (2:50) |
 | 61 | Too Slow (Vs. Sonic.exe Mod) | MarStarBro | Friday Night Funkin' mods | GameBanana: Vs. Sonic.exe 4,9 mln wyświetleń (wybór piosenki z pamięci) | MarStarBro - Topic (3:08) |
-| 62 | Ugh | Kawai Sprite | Friday Night Funkin' | Quaver, 21. miejsce (352 tys.) | Kawai Sprite (1:26) |
-| 63 | Blammed | Kawai Sprite | Friday Night Funkin' | Quaver, 36. miejsce (240 tys.) | Kawai Sprite (1:47) |
 
 Uwagi do wpisów:
 
@@ -100,11 +95,11 @@ Uwagi do wpisów:
 
 ## Usunięte ze starej listy
 
-Stara lista miała 58 wpisów. W nowej zostało z niej 13: Freedom Dive, Blue Zenith, Unravel, Everything will freeze, Believer, Blammed, Stereo Madness, Back On Track, Dry Out, Through the Fire and Flames, Sweet Child O' Mine, MEGALOVANIA, Rude Buster. Usunięto 45 i dodano 50 nowych. Powody usunięć (wszystkie to brak dowodu popularności konkretnej piosenki w mapach społeczności, w danych, które udało się odczytać):
+Stara lista miała 58 wpisów. W nowej zostało z niej 9: Freedom Dive, Blue Zenith, Unravel, Everything will freeze, Believer, Through the Fire and Flames, Sweet Child O' Mine, MEGALOVANIA, Rude Buster. Usunięto 49 i dodano 49 nowych. Powody usunięć (wszystkie to brak dowodu popularności konkretnej piosenki w mapach społeczności, w danych, które udało się odczytać):
 
 - Beat Saber, ścieżki gry bazowej (Legend, Balearic Pumping, Lvl Insane, $100 Bills, Turn Me On): nie pojawiły się w odczytanym rankingu BeatSaver wg ocen (około 1600 najwyżej ocenianych map), który prowadzą utwory licencjonowane.
-- FNF, piosenki gry bazowej (Bopeebo, Fresh, Dad Battle, Guns, Stress): nie pojawiły się w odczytanym rankingu Quavera wg liczby gier. Zostały Ugh i Blammed, które w nim są.
-- Geometry Dash, poziomy główne (Base After Base, Clubstep, Theory of Everything, Deadlocked, Electrodynamix, xStep): poziomy główne nie znalazły się wśród najbardziej polubionych w danych GDBrowser, zostały poziomy z dowodem.
+- FNF, piosenki gry bazowej (Bopeebo, Fresh, Dad Battle, Guns, Stress): nie pojawiły się w odczytanym rankingu Quavera wg liczby gier. Ugh i Blammed w nim są, ale wypadły jako gra bazowa.
+- Geometry Dash, poziomy główne (Base After Base, Clubstep, Theory of Everything, Deadlocked, Electrodynamix, xStep): poziomy główne nie znalazły się wśród najbardziej polubionych w danych GDBrowser. Stereo Madness, Dry Out i Back On Track miały dowód (poziomy społeczności z tą ścieżką), ale wypadły jako ścieżki gry bazowej.
 - Clone Hero (Raining Blood, Free Bird, Cult of Personality, Before I Forget, Beast and the Harlot, Barracuda, One): nie pojawiły się w odczytanym rankingu Rhythmverse wg pobrań.
 - DDR Butterfly, Touhou (Bad Apple!!, Cirno's Perfect Math Class, U.N. Owen Was Her?, Septette for the Dead Princess), Project DIVA (Senbonzakura, Tell Your World, Love is War, Ghost Rule): żadne z odczytanych źródeł nie dało dowodu na liczbę gier lub pobrań tych piosenek. Dla Etterny i StepManii API podaje tylko popularność całych paczek, nie piosenek.
 - Spider Dance, THE WORLD REVOLVING, Live & Learn, Last Surprise, Floral Fury, BFG Division: gry bazowe bez dowodu z map społeczności.
