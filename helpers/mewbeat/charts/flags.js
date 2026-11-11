@@ -100,6 +100,12 @@ const namesOf = (flags) => Object.keys(normalFlags(flags)).sort();
 // The enabled names, sorted and joined with "-"; "" when none are on.
 const flagsKey = (flags) => namesOf(flags).join("-");
 
+// The marker of a chart made without a decoded melody (generate.js puts it after the version, the chart store after the flags
+// in the file name): such charts are a different map, so they have their own scores and their own file. The chart made with a
+// melody carries no marker, so its version and file name are what they were before. "nm" is not a flag name.
+const NO_MELODY = "nm";
+const noMelodyKey = (flagged) => (flagged ? `${flagged}-${NO_MELODY}` : NO_MELODY);
+
 // A flags key as the name of a chart file holds it (chartStore.js): the key itself, or past MAX_FILE_KEY characters "flags-"
 // and the first 16 hex digits of its SHA-1. The store writes a file under a temporary name some 60 characters longer, and
 // no file name passes 255 characters: with fourteen flags on, the charts were made and never kept.
@@ -116,4 +122,4 @@ function withFlags(diff, levelName, flags) {
   return result;
 }
 
-module.exports = { FLAGS, FLAGS_FILE_NAME, fileKey, flagsKey, normalFlags, withFlags };
+module.exports = { FLAGS, FLAGS_FILE_NAME, fileKey, flagsKey, noMelodyKey, normalFlags, withFlags };

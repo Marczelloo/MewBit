@@ -9,7 +9,7 @@ const { analysisClient } = require("./analysisClient");
 const { calibrationCharts, isCalibrationTrack } = require("./calibrationTrack");
 const { summarizeCharts } = require("./chartSummary");
 const { GENERATOR_VERSION } = require("./charts/generate");
-const { FLAGS_FILE_NAME, fileKey, flagsKey, normalFlags } = require("./charts/flags");
+const { FLAGS_FILE_NAME, fileKey, flagsKey, noMelodyKey, normalFlags } = require("./charts/flags");
 const { withMelodyFile } = require("./charts/melodyFile");
 const { createChartRunner } = require("./chartRunner");
 const { createMelodyDecoder } = require("./melodyDecoder");
@@ -33,6 +33,10 @@ const FLAGS_TTL_MS = 2000;
 // Generator flags (charts/flags.js) add their names after it, so each
 // combination of flags has its own file and no flags is the plain name; a long
 // list of flags goes in as its hash (flags.js fileKey).
+//
+// A song charted without a decoded melody is another map: its charts carry the marker "nm" after the flags (flags.js
+// noMelodyKey, `.v44-nm.json`, `.v44-holds-nm.json`), the ones made with a melody have the plain name. Lookups try the plain
+// name first and then the marked one (variantsOf); a marked chart is replaced once a melody is there.
 //
 // The chart file is the source of truth for an audioKey + version: scores
 // refer to it. Features are not bit-reproducible across machines (decoder
@@ -149,6 +153,11 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   }
 
   const memoryKey = (key, flagged) => (flagged ? `${key}|${flagged}` : key);
+  // The chart variants of one set of flags, in the order they are looked for: made with a melody, then made without.
+  const variantsOf = (flagged) => [flagged, noMelodyKey(flagged)];
+  const melodyPathOf = (key) => path.join(dir, "melody", `${audioKeyFile(key)}.json`);
+  const warnedMelodyFiles = new Set(); // melody files that were warned about, once each
+  const unreadableMelodyFiles = new Set(); // melody files that exist but could not be read
 
   // Charts of other generator versions are never read again; drop them once
   // per store so each version bump does not leave the old files behind. Files
@@ -226,29 +235,80 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
 
   // Memory, then disk, for a verdict that needs no analysis: ready or uncharted.
   function known(key, flagged) {
-    const id = memoryKey(key, flagged);
-    const cached = readMemory(id);
-    if (cached) return READY(cached);
-    if (unchartedByKey.has(id)) return UNCHARTED(unchartedByKey.get(id));
-    const stored = readDisk(key, flagged, true);
-    if (!stored) return null;
-    if (stored.uncharted) {
-      unchartedByKey.set(id, stored.reason);
-      return UNCHARTED(stored.reason);
+    for (const variant of variantsOf(flagged)) {
+      const id = memoryKey(key, variant);
+      const cached = readMemory(id);
+      if (cached) return READY(cached);
+      if (unchartedByKey.has(id)) return UNCHARTED(unchartedByKey.get(id));
+      const stored = readDisk(key, variant, true);
+      if (!stored) continue;
+      if (stored.uncharted) {
+        unchartedByKey.set(id, stored.reason);
+        return UNCHARTED(stored.reason);
+      }
+      return remember(id, stored);
     }
-    return remember(id, stored);
+    return null;
+  }
+
+  // The charts of a song in memory under either variant of the flags: { variant, charts }, or null.
+  function cachedCharts(key, flagged) {
+    for (const variant of variantsOf(flagged)) {
+      const charts = readMemory(memoryKey(key, variant));
+      if (charts) return { variant, charts };
+    }
+    return null;
+  }
+
+  function unchartedReason(key, flagged) {
+    for (const variant of variantsOf(flagged)) {
+      const id = memoryKey(key, variant);
+      if (unchartedByKey.has(id)) return unchartedByKey.get(id);
+    }
+    return undefined;
+  }
+
+  // A melody file that cannot be used is warned about once and put aside (`.corrupt-` name), so it counts as missing: the
+  // decoder (melodyDecoder.has looks for the file) makes it again.
+  async function setAsideMelody(file, why) {
+    if (!warnedMelodyFiles.has(file)) {
+      warnedMelodyFiles.add(file);
+      log.warning("mewbeat melody file is unusable and will be decoded again", path.basename(file), why);
+    }
+    await backupCorruptFile(file).catch(() => {});
   }
 
   // A melody from a second detector, where one was decoded offline for this audio (melody/<audio key file>.json): the
-  // Normal lays its lanes on it and leans its choice of moments on it (generate.js). Without the file nothing changes.
+  // Normal lays its lanes on it and leans its choice of moments on it (generate.js). Returns the features and whether a
+  // melody was laid on them; a file that is not there, cannot be read or is not a melody counts as missing.
   async function withDecodedMelody(features, key) {
-    if (!features) return features;
+    if (!features) return { features, melody: false };
+    const file = melodyPathOf(key);
+    let text;
     try {
-      const melody = JSON.parse(await fsPromises.readFile(path.join(dir, "melody", `${audioKeyFile(key)}.json`), "utf8"));
-      return withMelodyFile(features, melody);
-    } catch {
-      return features;
+      text = await fsPromises.readFile(file, "utf8");
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        unreadableMelodyFiles.add(file); // not a reason to chart the song again (resolve)
+        if (!warnedMelodyFiles.has(file)) {
+          warnedMelodyFiles.add(file);
+          log.warning("mewbeat could not read a melody file", path.basename(file), error?.message);
+        }
+      }
+      return { features, melody: false };
     }
+    let melody;
+    try {
+      melody = JSON.parse(text);
+    } catch (error) {
+      await setAsideMelody(file, `not JSON: ${error?.message}`);
+      return { features, melody: false };
+    }
+    if (!Array.isArray(melody?.notes)) {
+      await setAsideMelody(file, "no notes");
+      return { features, melody: false };
+    }
+    return { features: withMelodyFile(features, melody), melody: true };
   }
 
   // Charts made without a melody are dropped once it is decoded: the files of every combination of flags for this audio, the
@@ -334,45 +394,69 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   // priority: "play" or "background" (priorityGate.js). offline: no Lavalink node is used, so only cached features are charted
   // and no melody is decoded (the pass over old songs, chartStore.rechart).
   async function resolve(track, key, node, { flags, key: flagged }, { priority = "play", offline = false } = {}) {
-    const id = memoryKey(key, flagged);
     await sweepOldVersions();
-    const stored = readDisk(key, flagged);
+    let stored = null;
+    let storedAs = flagged;
+    for (const variant of variantsOf(flagged)) {
+      const found = readDisk(key, variant);
+      if (found === false) {
+        await backupCorruptFile(chartsPathOf(dir, key, variant)).catch((error) => {
+          log.warning("mewbeat could not back up corrupt charts", error?.message);
+        });
+      } else if (found) {
+        stored = found;
+        storedAs = variant;
+        break;
+      }
+    }
+    // Charts made without a melody are stale once a melody file is there (decoded since, or put there by hand).
+    if (stored && storedAs !== flagged && fs.existsSync(melodyPathOf(key)) && !unreadableMelodyFiles.has(melodyPathOf(key))) {
+      await dropCharts(key);
+      stored = null;
+    }
     if (stored) {
+      const id = memoryKey(key, storedAs);
       if (stored.uncharted) {
         unchartedByKey.set(id, stored.reason);
         return UNCHARTED(stored.reason);
       }
       // Not bound to the request: the charts on disk are served as they are.
-      if (melodyDecoder && !offline && !melodyDecoder.has(key)) {
-        Promise.resolve()
-          .then(() => analysis.peek?.(track))
-          .then((features) => features && replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features, { priority }), key))
-          .catch((error) => log.warning("mewbeat could not look for features to decode the melody", error?.message));
-      }
+      if (melodyDecoder && !offline && !melodyDecoder.has(key)) decodeLater(track, key, node, priority);
       return remember(id, stored);
-    }
-    if (stored === false) {
-      await backupCorruptFile(chartsPathOf(dir, key, flagged)).catch((error) => {
-        log.warning("mewbeat could not back up corrupt charts", error?.message);
-      });
     }
 
     const analysed = await analysis.getFeatures(track, node, { priority });
     if (!analysed) return statusWithoutFeatures(track);
-    if (melodyDecoder && !offline && !melodyDecoder.has(key)) await waitForMelody(track, key, node, analysed, priority);
-    const features = await withDecodedMelody(analysed, key);
+    let laid = await withDecodedMelody(analysed, key);
+    if (!laid.melody && melodyDecoder && !offline && !melodyDecoder.has(key)) {
+      await waitForMelody(track, key, node, analysed, priority);
+      laid = await withDecodedMelody(analysed, key);
+    }
+    // Without a melody the charts are the marked variant (generate.js reads features.noMelody for the chart's version).
+    const variant = laid.melody ? flagged : noMelodyKey(flagged);
+    const id = memoryKey(key, variant);
+    const features = laid.melody ? laid.features : { ...laid.features, noMelody: true };
 
     const charts = await generate(features, key, flags, { priority });
     if (!charts) {
       // Remembered like any chart so a spoken-word track is not regenerated per request.
       unchartedByKey.set(id, TOO_FEW_NOTES);
-      await persist(key, flagged, { uncharted: true, reason: TOO_FEW_NOTES }, "uncharted marker");
+      await persist(key, variant, { uncharted: true, reason: TOO_FEW_NOTES }, "uncharted marker");
       return UNCHARTED(TOO_FEW_NOTES);
     }
 
     const ready = remember(id, charts);
-    await persist(key, flagged, charts, "charts");
+    await persist(key, variant, charts, "charts");
     return ready;
+  }
+
+  // Asks the decoder for the melody of a song whose charts are served as they are, without waiting for it; the charts are
+  // replaced when it is there. Looks for the song's cached features itself and does nothing without them.
+  function decodeLater(track, key, node, priority) {
+    Promise.resolve()
+      .then(() => analysis.peek?.(track))
+      .then((features) => features && replaceWhenDecoded(melodyDecoder.ensure(key, track, node, features, { priority }), key))
+      .catch((error) => log.warning("mewbeat could not look for features to decode the melody", error?.message));
   }
 
   async function persist(key, flagged, value, what) {
@@ -410,14 +494,20 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
     if (isCalibrationTrack(track)) return Promise.resolve(READY(withPace(calibrationCharts(track))));
     const state = currentFlags();
     const id = memoryKey(key, state.key);
-    const cached = readMemory(id);
-    if (cached) return Promise.resolve(READY(cached));
+    const cached = cachedCharts(key, state.key);
+    if (cached) {
+      // Charts made without the melody stay until it is decoded; each request is a chance for a decode that is due again
+      // (a failed one is retried later, melodyDecoder.js), which does nothing while one is pending or the decoder gives up.
+      if (cached.variant !== state.key && !offline && melodyDecoder?.wants?.(key)) decodeLater(track, key, node, priority);
+      return Promise.resolve(READY(cached.charts));
+    }
     if (retry && !pendingByKey.has(id) && claimRetry(key)) {
       const forced = forgetUncharted(track, key).then(() => resolve(track, key, node, state)).finally(() => pendingByKey.delete(id));
       pendingByKey.set(id, forced);
       return forced;
     }
-    if (unchartedByKey.has(id)) return Promise.resolve(UNCHARTED(unchartedByKey.get(id)));
+    const uncharted = unchartedReason(key, state.key);
+    if (uncharted !== undefined) return Promise.resolve(UNCHARTED(uncharted));
     const pending = pendingByKey.get(id);
     if (pending) {
       if (priority === "play" && backgroundIds.delete(id)) {
@@ -471,12 +561,18 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
       const key = audioKeyOf(track);
       if (!key) return null;
       if (isCalibrationTrack(track)) return summarizeCharts(calibrationCharts(track));
-      const id = memoryKey(key, flagged);
-      const summary = summaryByKey.get(id);
-      if (summary) return summary;
-      const warm = warmByFile.get(chartFileOf(key, flagged));
-      if (warm) return warm.audioKey === key ? warm.summary ?? null : null;
-      return known(key, flagged)?.status === "ready" ? summaryByKey.get(id) : null;
+      for (const variant of variantsOf(flagged)) {
+        const summary = summaryByKey.get(memoryKey(key, variant));
+        if (summary) return summary;
+        const warm = warmByFile.get(chartFileOf(key, variant));
+        if (warm) return warm.audioKey === key ? warm.summary ?? null : null;
+      }
+      if (known(key, flagged)?.status !== "ready") return null;
+      for (const variant of variantsOf(flagged)) {
+        const summary = summaryByKey.get(memoryKey(key, variant));
+        if (summary) return summary;
+      }
+      return null;
     };
   }
 
@@ -486,7 +582,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
   function warmSummaries() {
     warming ??= (async () => {
       const flagged = currentFlags().key;
-      const suffix = chartSuffix(flagged);
+      const suffixes = variantsOf(flagged).map(chartSuffix);
       const chartsDir = path.join(dir, "charts");
       let names;
       try {
@@ -495,7 +591,7 @@ function createChartStore({ dir, analysis, generate = generateOnWorker, log = Lo
         return; // no charts directory yet
       }
       for (const name of names) {
-        if (!name.endsWith(suffix) || warmByFile.has(name) || missingFiles.has(name)) continue;
+        if (!suffixes.some((suffix) => name.endsWith(suffix)) || warmByFile.has(name) || missingFiles.has(name)) continue;
         const epoch = filesEpoch;
         let entry;
         try {

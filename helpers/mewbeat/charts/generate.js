@@ -20,7 +20,7 @@ const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf,
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
 const { localKeep, thinned } = require("./localThin");
-const { flagsKey, normalFlags, withFlags } = require("./flags");
+const { flagsKey, noMelodyKey, normalFlags, withFlags } = require("./flags");
 const { fillRests } = require("./rests");
 const { laneTheRest, nested, rhythmOf, sameCuts, sortedOnsets, withBeats } = require("./rhythm");
 const { accentSections, openWithFirstSound, sectionStarts } = require("./sections");
@@ -714,7 +714,9 @@ function chartFrom(ctx, difficulty, audioKey) {
   const notes = finalNotes(ctx, difficulty);
   if (new Set(notes.map((n) => n.t)).size < MIN_NOTES) return null; // chords don't make a sparse song playable
   const { features, durationMs } = ctx;
-  const flagged = flagsKey(ctx.flags);
+  // The chart store sets features.noMelody when it charts a song that has no decoded melody: that map is marked, the one made
+  // with a melody keeps the version it always had.
+  const flagged = features.noMelody === true ? noMelodyKey(flagsKey(ctx.flags)) : flagsKey(ctx.flags);
   return {
     version: flagged ? `${GENERATOR_VERSION}-${flagged}` : GENERATOR_VERSION, // scores and stale runs follow it
     audioKey,

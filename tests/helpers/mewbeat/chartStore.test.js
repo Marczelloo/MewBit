@@ -56,8 +56,9 @@ describe("mewbeat chart store", () => {
   let dir;
   const track = makeTrack();
   const chartsDir = () => path.join(dir, "charts");
+  // These stores have no melody decoder, so what they chart is made without a melody and carries the nm marker.
   const chartsPath = (version = GENERATOR_VERSION, flagged = "") =>
-    path.join(chartsDir(), `${audioKeyFile(audioKeyOf(track))}.v${version}${flagged && `-${flagged}`}.json`);
+    path.join(chartsDir(), `${audioKeyFile(audioKeyOf(track))}.v${version}${flagged && `-${flagged}`}-nm.json`);
   const setFlags = (value) => {
     fs.writeFileSync(path.join(dir, "generator-flags.json"), typeof value === "string" ? value : JSON.stringify(value));
     clock += FLAGS_TTL_MS;
@@ -348,8 +349,8 @@ describe("mewbeat chart store", () => {
       const flagged = await store.getCharts(track, "node");
 
       assert.deepStrictEqual(generate.flags, [{}, { density: true, holds: true }]);
-      assert.strictEqual(plain.charts.easy.version, GENERATOR_VERSION);
-      assert.strictEqual(flagged.charts.easy.version, `${GENERATOR_VERSION}-density-holds`);
+      assert.strictEqual(plain.charts.easy.version, `${GENERATOR_VERSION}-nm`);
+      assert.strictEqual(flagged.charts.easy.version, `${GENERATOR_VERSION}-density-holds-nm`);
       assert.ok(fs.existsSync(chartsPath()));
       assert.ok(fs.existsSync(chartsPath(GENERATOR_VERSION, "density-holds")));
       assert.ok(!fs.existsSync(chartsPath(GENERATOR_VERSION, "holds-density")));
@@ -382,7 +383,7 @@ describe("mewbeat chart store", () => {
       const generate = spiedGenerate();
       const store = createChartStore({ dir, analysis: fakeAnalysis(), generate, log: quietLog });
 
-      assert.strictEqual(store.peekCharts(track).charts.easy.version, `${GENERATOR_VERSION}-lead`);
+      assert.strictEqual(store.peekCharts(track).charts.easy.version, `${GENERATOR_VERSION}-lead-nm`);
       setFlags({ flags: [] });
       assert.strictEqual(store.peekCharts(track), null);
       assert.strictEqual(generate.calls, 0);
@@ -396,7 +397,7 @@ describe("mewbeat chart store", () => {
       setFlags({ flags: ["transitions"] });
       assert.strictEqual(store.peekCharts(track), null);
       await store.getCharts(track, "node");
-      assert.strictEqual(store.peekCharts(track).charts.hard.version, `${GENERATOR_VERSION}-transitions`);
+      assert.strictEqual(store.peekCharts(track).charts.hard.version, `${GENERATOR_VERSION}-transitions-nm`);
     });
 
     it("keeps uncharted verdicts per combination", async () => {
@@ -427,16 +428,16 @@ describe("mewbeat chart store", () => {
       const generate = spiedGenerate();
       const store = createChartStore({ dir, analysis: fakeAnalysis(), generate, log: { warning: (...args) => warnings.push(args) } });
 
-      assert.strictEqual((await store.getCharts(track, "node")).charts.easy.version, GENERATOR_VERSION);
+      assert.strictEqual((await store.getCharts(track, "node")).charts.easy.version, `${GENERATOR_VERSION}-nm`);
       setFlags("{not json");
       for (let i = 0; i < 3; i += 1) {
-        assert.strictEqual(store.peekCharts(track).charts.easy.version, GENERATOR_VERSION);
+        assert.strictEqual(store.peekCharts(track).charts.easy.version, `${GENERATOR_VERSION}-nm`);
         assert.strictEqual((await store.getCharts(track, "node")).status, "ready");
       }
       assert.strictEqual(warnings.length, 1);
       for (const text of ["null", "[]", '{"flags":"holds"}', '{"flags":["nope"]}']) {
         setFlags(text);
-        assert.strictEqual(store.peekCharts(track).charts.easy.version, GENERATOR_VERSION, text);
+        assert.strictEqual(store.peekCharts(track).charts.easy.version, `${GENERATOR_VERSION}-nm`, text);
       }
       setFlags("{still not json");
       store.peekCharts(track);
@@ -460,7 +461,7 @@ describe("mewbeat chart store", () => {
 
         fs.writeFileSync(path.join(dir, "generator-flags.json"), JSON.stringify({ flags: ["holds"] }));
         clock += FLAGS_TTL_MS - 1;
-        assert.strictEqual(store.peekCharts(track).charts.easy.version, GENERATOR_VERSION);
+        assert.strictEqual(store.peekCharts(track).charts.easy.version, `${GENERATOR_VERSION}-nm`);
         assert.strictEqual(flagsReads(spy), 1);
         assert.ok(!fs.existsSync(chartsPath(GENERATOR_VERSION, "holds")));
 
@@ -509,7 +510,8 @@ describe("mewbeat chart store", () => {
         assert.strictEqual(store.peekCharts(track), null);
         assert.strictEqual(store.peekCharts(track), null);
         assert.strictEqual(store.summaryReader()(track), null);
-        assert.strictEqual(chartReads(spy), 1);
+        // One read for each variant (made with a melody, made without): none is read twice.
+        assert.strictEqual(chartReads(spy), 2);
       } finally {
         spy.mock.restore();
       }
