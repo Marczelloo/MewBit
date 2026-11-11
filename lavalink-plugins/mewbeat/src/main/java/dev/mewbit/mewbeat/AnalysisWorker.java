@@ -40,6 +40,7 @@ public final class AnalysisWorker implements AutoCloseable {
 
     static final String JSON = "application/json";
     static final String WAV = "audio/wav";
+    /** The shortest a job may be given; longer tracks get {@code timeoutFactor} times their own length if that is more. */
     static final long DEFAULT_TIMEOUT_MS = 120_000;
     static final int WAV_SAMPLE_RATE = 24_000;
 
@@ -59,6 +60,7 @@ public final class AnalysisWorker implements AutoCloseable {
     private final int maxQueue;
     private final long maxTrackMs;
     private final long timeoutMs;
+    private final double timeoutFactor;
     private final ThreadPoolExecutor executor;
     private final ScheduledExecutorService watchdog;
 
@@ -67,12 +69,31 @@ public final class AnalysisWorker implements AutoCloseable {
             TrackDecoder decoder,
             @Value("${plugins.mewbeat.maxQueue:4}") int maxQueue,
             @Value("${plugins.mewbeat.maxTrackMs:1200000}") long maxTrackMs,
-            @Value("${plugins.mewbeat.analysisTier:full}") String analysisTier) {
-        this(decoder, MetricsLog.toLavalinkLog(), maxQueue, maxTrackMs, DEFAULT_TIMEOUT_MS, AnalysisTier.parse(analysisTier));
+            @Value("${plugins.mewbeat.analysisTier:full}") String analysisTier,
+            @Value("${plugins.mewbeat.timeoutFactor:0.3}") double timeoutFactor) {
+        this(
+                decoder,
+                MetricsLog.toLavalinkLog(),
+                maxQueue,
+                maxTrackMs,
+                DEFAULT_TIMEOUT_MS,
+                AnalysisTier.parse(analysisTier),
+                timeoutFactor);
     }
 
     AnalysisWorker(TrackDecoder decoder, MetricsLog metrics, int maxQueue, long maxTrackMs, long timeoutMs) {
         this(decoder, metrics, maxQueue, maxTrackMs, timeoutMs, AnalysisTier.FULL);
+    }
+
+    /** A flat timeout for every track, whatever its length. */
+    AnalysisWorker(
+            TrackDecoder decoder,
+            MetricsLog metrics,
+            int maxQueue,
+            long maxTrackMs,
+            long timeoutMs,
+            AnalysisTier tier) {
+        this(decoder, metrics, maxQueue, maxTrackMs, timeoutMs, tier, 0);
     }
 
     AnalysisWorker(
@@ -81,13 +102,15 @@ public final class AnalysisWorker implements AutoCloseable {
             int maxQueue,
             long maxTrackMs,
             long timeoutMs,
-            AnalysisTier tier) {
+            AnalysisTier tier,
+            double timeoutFactor) {
         this.tier = tier;
         this.decoder = decoder;
         this.metrics = metrics;
         this.maxQueue = maxQueue;
         this.maxTrackMs = maxTrackMs;
         this.timeoutMs = timeoutMs;
+        this.timeoutFactor = timeoutFactor;
         this.executor = new ThreadPoolExecutor(
                 1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(maxQueue), minPriorityThreads("mewbeat-analysis"));
         this.watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
@@ -175,16 +198,31 @@ public final class AnalysisWorker implements AutoCloseable {
         return new Outcome(422, JSON, bytes("{\"error\":\"uncharted\",\"reason\":\"" + reason + "\"}"));
     }
 
+    /**
+     * How long a job on a track of {@code lengthMs} may run: the flat {@code timeoutMs}, or {@code factor} times the
+     * track's length when that is more (0.3 gives a 20-minute track 6 minutes). A factor of 0 (or less) leaves the
+     * flat timeout.
+     */
+    static long timeoutFor(long timeoutMs, double factor, long lengthMs) {
+        if (factor <= 0 || lengthMs <= 0) {
+            return timeoutMs;
+        }
+        return Math.max(timeoutMs, Math.round(Math.min(Long.MAX_VALUE / 4.0, factor * lengthMs)));
+    }
+
     private Outcome submit(TrackMeta meta, Job job) {
         Future<JobResult> future;
+        long jobTimeoutMs = timeoutFor(timeoutMs, timeoutFactor, meta.lengthMs());
         try {
-            future = executor.submit(() -> runGuarded(meta, job));
+            future = executor.submit(() -> runGuarded(meta, job, jobTimeoutMs));
         } catch (RejectedExecutionException e) {
             metrics.job(meta.identifier(), 0, 0, 0, "busy");
             return new Outcome(503, JSON, bytes("{\"error\":\"busy\"}"));
         }
-        // The job times itself out, so this bound only matters if the worker is lost.
-        long waitBoundMs = (maxQueue + 2L) * timeoutMs + 10_000;
+        // The job times itself out, so this bound only matters if the worker is lost. Jobs queued ahead may each
+        // run up to the longest timeout a track that is let in can get.
+        long longestMs = timeoutFor(timeoutMs, timeoutFactor, maxTrackMs);
+        long waitBoundMs = (maxQueue + 1L) * longestMs + jobTimeoutMs + 10_000;
         try {
             return future.get(waitBoundMs, TimeUnit.MILLISECONDS).outcome();
         } catch (ExecutionException e) {
@@ -201,7 +239,7 @@ public final class AnalysisWorker implements AutoCloseable {
     }
 
     /** Runs on the worker thread: arms the timeout, samples the heap, logs the metrics line. */
-    private JobResult runGuarded(TrackMeta meta, Job job) {
+    private JobResult runGuarded(TrackMeta meta, Job job, long jobTimeoutMs) {
         Thread worker = Thread.currentThread();
         Object lock = new Object();
         boolean[] finished = {false};
@@ -222,7 +260,7 @@ public final class AnalysisWorker implements AutoCloseable {
                         }
                     }
                 },
-                timeoutMs,
+                jobTimeoutMs,
                 TimeUnit.MILLISECONDS);
 
         long started = System.nanoTime();
@@ -234,7 +272,7 @@ public final class AnalysisWorker implements AutoCloseable {
             audioMs = result.audioMs();
             resultName = "ok";
         } catch (InterruptedException e) {
-            result = new JobResult(timeoutOutcome(timedOut[0]), 0);
+            result = new JobResult(timeoutOutcome(timedOut[0], jobTimeoutMs), 0);
             resultName = timedOut[0] ? "timeout" : "decode_failed";
         } catch (Exception e) {
             result = new JobResult(error(502, "decode_failed", describe(e)), 0);
@@ -253,9 +291,9 @@ public final class AnalysisWorker implements AutoCloseable {
         return result;
     }
 
-    private Outcome timeoutOutcome(boolean timedOut) {
+    private static Outcome timeoutOutcome(boolean timedOut, long jobTimeoutMs) {
         return timedOut
-                ? error(502, "decode_failed", "timed out after " + timeoutMs / 1000.0 + " s")
+                ? error(502, "decode_failed", "timed out after " + jobTimeoutMs / 1000.0 + " s")
                 : error(502, "decode_failed", "cancelled");
     }
 

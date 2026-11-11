@@ -4,8 +4,13 @@ package dev.mewbit.mewbeat.dsp;
 final class Fft {
 
     private final int size;
-    private final float[] cos;
-    private final float[] sin;
+    /**
+     * The twiddle factors of every stage, one after the other, so each stage reads its own run front to back: the
+     * stage with butterflies {@code half} apart starts at {@code half - 1} and holds {@code cos} and the negated
+     * {@code sin} of {@code 2 * pi * j * (size / span) / size} for {@code j} below {@code half}.
+     */
+    private final float[] twiddleRe;
+    private final float[] twiddleIm;
     private final int[] reversed;
 
     Fft(int size) {
@@ -13,12 +18,22 @@ final class Fft {
             throw new IllegalArgumentException("FFT size must be a power of two: " + size);
         }
         this.size = size;
-        cos = new float[size / 2];
-        sin = new float[size / 2];
+        float[] cos = new float[size / 2];
+        float[] sin = new float[size / 2];
         for (int k = 0; k < size / 2; k++) {
             double angle = 2 * Math.PI * k / size;
             cos[k] = (float) Math.cos(angle);
             sin[k] = (float) Math.sin(angle);
+        }
+        twiddleRe = new float[size - 1];
+        twiddleIm = new float[size - 1];
+        for (int span = 2; span <= size; span <<= 1) {
+            int half = span >> 1;
+            int step = size / span;
+            for (int j = 0, k = 0; j < half; j++, k += step) {
+                twiddleRe[half - 1 + j] = cos[k];
+                twiddleIm[half - 1 + j] = -sin[k];
+            }
         }
         reversed = new int[size];
         int bits = Integer.numberOfTrailingZeros(size);
@@ -42,11 +57,29 @@ final class Fft {
         }
         for (int span = 2; span <= size; span <<= 1) {
             int half = span >> 1;
-            int step = size / span;
+            int table = half - 1;
+            if (half < 32) {
+                // Few butterflies per group: walk down the groups with one twiddle factor instead (the butterflies
+                // of a stage are independent, so their order changes nothing).
+                for (int j = 0; j < half; j++) {
+                    float wr = twiddleRe[table + j];
+                    float wi = twiddleIm[table + j];
+                    for (int a = j; a < size; a += span) {
+                        int b = a + half;
+                        float tr = re[b] * wr - im[b] * wi;
+                        float ti = re[b] * wi + im[b] * wr;
+                        re[b] = re[a] - tr;
+                        im[b] = im[a] - ti;
+                        re[a] += tr;
+                        im[a] += ti;
+                    }
+                }
+                continue;
+            }
             for (int start = 0; start < size; start += span) {
-                for (int j = 0, k = 0; j < half; j++, k += step) {
-                    float wr = cos[k];
-                    float wi = -sin[k];
+                for (int j = 0; j < half; j++) {
+                    float wr = twiddleRe[table + j];
+                    float wi = twiddleIm[table + j];
                     int a = start + j;
                     int b = a + half;
                     float tr = re[b] * wr - im[b] * wi;

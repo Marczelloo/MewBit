@@ -16,6 +16,11 @@ const MEMORY_CAPACITY = 32;
 // plugin holds a request for at most ~2 minutes of its own job timeout plus
 // queue wait, so this is the longest we are willing to wait for one track.
 const REQUEST_TIMEOUT_MS = 150_000;
+// The plugin gives a long track more than its two minutes: plugins.mewbeat.timeoutFactor (0.3) of the track's length. The
+// wait here grows by the same ratio, up to what Poru's fetch itself lasts.
+const PLUGIN_TIMEOUT_MS = 120_000;
+const PLUGIN_TIMEOUT_FACTOR = 0.3;
+const LONGEST_REQUEST_MS = 290_000;
 const DURATION_SLACK_MIN_MS = 2000;
 const DURATION_SLACK_RATIO = 0.05;
 // An uncharted marker is a few dozen bytes; a features document is hundreds of kilobytes. statusOf, which is sync, only
@@ -55,6 +60,13 @@ function durationMatchesTrack(features, track) {
 }
 
 class RequestTimeout extends Error {}
+
+// How long to wait for one track's analysis: `baseMs`, longer by as much as the plugin's own timeout grows for its length.
+function requestTimeoutFor(track, baseMs) {
+  const length = Number(track?.info?.length);
+  const ratio = Number.isFinite(length) ? (PLUGIN_TIMEOUT_FACTOR * length) / PLUGIN_TIMEOUT_MS : 1;
+  return Math.min(Math.max(baseMs, LONGEST_REQUEST_MS), baseMs * Math.max(1, ratio));
+}
 
 // Rejects with RequestTimeout when the promise has not settled in time; the
 // late result of the original promise is simply ignored.
@@ -117,7 +129,7 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
     if (!node?.rest) return null;
     let body;
     try {
-      body = await withTimeout(node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track }), requestTimeoutMs);
+      body = await withTimeout(node.rest.post(ANALYZE_ROUTE, { encodedTrack: track.track }), requestTimeoutFor(track, requestTimeoutMs));
     } catch (error) {
       if (error instanceof RequestTimeout) {
         // The plugin may still be working on it, so retry soon rather than in 10 minutes.
@@ -281,4 +293,5 @@ function createAnalysisClient({ dir, now = Date.now, log = Log, requestTimeoutMs
 module.exports = {
   analysisClient: createAnalysisClient({ dir: path.join(__dirname, "..", "data", "mewbeat") }),
   createAnalysisClient,
+  requestTimeoutFor,
 };

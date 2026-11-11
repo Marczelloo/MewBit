@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { afterEach, beforeEach, describe, it, mock } = require("node:test");
 
-const { createAnalysisClient } = require("../../../helpers/mewbeat/analysisClient");
+const { createAnalysisClient, requestTimeoutFor } = require("../../../helpers/mewbeat/analysisClient");
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 
 const MINUTE = 60 * 1000;
@@ -441,6 +441,23 @@ describe("mewbeat analysis client", () => {
       fs.mkdirSync(path.dirname(cacheFileOf(track)), { recursive: true });
       fs.writeFileSync(cacheFileOf(track), "{not json");
       assert.strictEqual(await client.peek(track), null);
+    });
+  });
+
+  describe("the wait for one track", () => {
+    it("is the base wait up to the length the plugin's flat timeout covers", () => {
+      assert.strictEqual(requestTimeoutFor(makeTrack({ length: 4 * MINUTE }), 150_000), 150_000);
+      assert.strictEqual(requestTimeoutFor(makeTrack({ length: 400_000 }), 150_000), 150_000);
+    });
+
+    it("grows with a longer track as the plugin's timeout does, up to what the fetch lasts", () => {
+      assert.strictEqual(requestTimeoutFor(makeTrack({ length: 10 * MINUTE }), 150_000), 225_000);
+      assert.strictEqual(requestTimeoutFor(makeTrack({ length: 20 * MINUTE }), 150_000), 290_000);
+    });
+
+    it("stays the base wait for a track with no length", () => {
+      assert.strictEqual(requestTimeoutFor({ info: {} }, 150_000), 150_000);
+      assert.strictEqual(requestTimeoutFor(null, 150_000), 150_000);
     });
   });
 });

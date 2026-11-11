@@ -177,9 +177,9 @@ public final class FeatureExtractor {
         hops++;
 
         long hpssStart = System.nanoTime();
-        float[][] separated = hpss.push(magnitude);
-        if (separated != null) {
-            drumDetector.accept(separated[0], drumFrame++);
+        float[] percussive = hpss.pushPercussive(magnitude);
+        if (percussive != null) {
+            drumDetector.accept(percussive, drumFrame++);
         }
         hpssNanos += System.nanoTime() - hpssStart;
     }
@@ -212,9 +212,7 @@ public final class FeatureExtractor {
         }
 
         long hpssStart = System.nanoTime();
-        for (float[][] pair : hpss.flush()) {
-            drumDetector.accept(pair[0], drumFrame++);
-        }
+        hpss.flushPercussive(percussive -> drumDetector.accept(percussive, drumFrame++));
         List<Features.Drum> drums = drumDetector.finish();
         hpssNanos += System.nanoTime() - hpssStart;
 
