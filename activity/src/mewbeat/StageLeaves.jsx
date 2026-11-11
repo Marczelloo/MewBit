@@ -158,7 +158,7 @@ export const HealthBar = memo(function HealthBar({ store, shown, show, effects }
   if (depleted) classes.push("mb-health-spent");
   if (effects === "full") classes.push("mb-health-fx");
   return (
-    <div className={classes.join(" ")} role="meter" aria-label="Health" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(health * 100)}>
+    <div className={classes.join(" ")} data-tour="health" role="meter" aria-label="Health" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(health * 100)}>
       {pips ? (
         <div className="mb-health-pips" aria-hidden="true">
           {Array.from({ length: pips.count }, (_, index) => <i key={index} className={index < pips.filled ? "mb-pip mb-pip-on" : "mb-pip"} />)}

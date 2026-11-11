@@ -16,7 +16,7 @@ import { createMewbeatLink } from "./link.js";
 import { createLiveBoardStore } from "./liveBoard.js";
 import { createMockLink, createStillLink } from "./mockLink.js";
 import TourLayer from "./tour/TourLayer.jsx";
-import { AFTER_INDEX, AFTER_NO_TRAP_INDEX, END_INDEX, TOUR_STEPS, tourNext } from "./tour/steps.js";
+import { AFTER_INDEX, END_INDEX, TOUR_STEPS, tourNext } from "./tour/steps.js";
 import { CUT_FADE_MS, HEAVY_MS, START_LEAD_S, TRAP_IDLE, TRAP_PAUSE_MS, createTrapPlayer, prepareTrap, trapReducer, trapSceneOf, trapScreenOf } from "./tour/trap.js";
 import { pickLine } from "./mewbit/lines.js";
 import { createMewbeatRequests } from "./requests.js";
@@ -326,9 +326,10 @@ function MewbeatRoot(props) {
   // The first-run tour (and Settings' Replay): null, or the step it is on. It runs on the real Solo screens, but on a
   // session of its own (key "tour") with the sample song, a link that only stands still and no way to send anything
   // (see tourProps below). The mode is never written, so the game comes back as it was. Only the first run tells the
-  // bot it was seen, once, when its first part ends; a replay tells nothing. After a played map there is a second part
-  // (the "after-*" steps): it waits in afterDueRef and the solo session says when the player is back at song select
-  // (soloBack). Skip anywhere in the first part means there is none.
+  // bot it was seen, once, when its first part ends; a replay tells nothing. The tour tells everything before the first
+  // map. Only when the trap ran there is a short second part (the "after-*" steps, the apology): it waits in afterDueRef
+  // and the solo session says when the player is back at song select (soloBack). No trap, Skip anywhere in the first
+  // part: there is none.
   const { firstRun, onAction } = props;
   const [tour, setTour] = useState(firstRun ? 0 : null);
   const [tourKit, setTourKit] = useState(null);
@@ -378,7 +379,7 @@ function MewbeatRoot(props) {
     markSeen();
   }, [markSeen]);
   // The last step's Next ends it too (unless the trap takes it over, see tourPrimary), like every Skip. "Let's go" with no
-  // trap ready opens Solo for a song of the player's own, and the second part waits for that map like it does for the calm one.
+  // trap ready opens Solo for a song of the player's own, and nothing follows it: the second part is for the trap only.
   const nextTour = useCallback(() => {
     const next = tourNext(tour);
     if (next !== null) {
@@ -386,10 +387,7 @@ function MewbeatRoot(props) {
       return;
     }
     endTour();
-    if (tour === END_INDEX) {
-      setMode("solo");
-      afterDueRef.current = AFTER_NO_TRAP_INDEX;
-    }
+    if (tour === END_INDEX) setMode("solo");
   }, [tour, endTour]);
   const replayTour = useCallback(() => {
     afterDueRef.current = null;
@@ -1098,8 +1096,8 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
   // spends a while loading and charting before its own run exists.
   // A run lost in Live keeps its numbers up beside the FAILED banner until the song (and its results) is over.
   const stagedShown = running || holdingCard || showCard || failedHold;
-  // The health bar belongs to a run the player plays and can lose.
-  const showHealth = stagedShown && !watchingLive && !spectating && !touring && !calibrating && !autoplay;
+  // The health bar belongs to a run the player plays and can lose. The tour shows it on its own step, an empty run's half.
+  const showHealth = (stagedShown && !watchingLive && !spectating && !touring && !calibrating && !autoplay) || tourStep?.id === "health";
   // A spectator's stage follows the watched player, not the autoplay that draws their notes (the leaves read the HUD
   // themselves; this only says whom to follow).
   const watchVibe = watchingLive && typeof targetEntry?.vibe === "number" ? targetEntry.vibe : null;
@@ -1473,7 +1471,7 @@ function MewbeatSession({ mode, onModeChange, liveAvailable, botPlaying, audio, 
             </button>
           ) : null}
           {menuShown ? null : (
-            <button type="button" className="mb-btn" ref={menuButtonRef} aria-haspopup="dialog" onClick={openMenu}>
+            <button type="button" className="mb-btn" ref={menuButtonRef} aria-haspopup="dialog" onClick={openMenu} data-tour="pause">
               {running ? <Pause size={16} weight="bold" aria-hidden="true" /> : <List size={16} weight="bold" aria-hidden="true" />}
               {running ? "Pause" : "Menu"} <kbd className="mb-kbd">Esc</kbd>
             </button>
