@@ -160,17 +160,28 @@ export function songProgress(room, mapping, nowPerf) {
   return Math.min(1, Math.max(0, (server - room.startAt - (room.silenceMs ?? 0)) / room.current.durationMs));
 }
 
+// Has a round ended in this room, so that Ready is the vote for the next map (the Play next button) rather than the
+// lobby's Ready with its wait? The server says so in `voting`; a snapshot without it (an older bot, a mock) shows a
+// round's results exactly when one ended.
+export function isVoting(room) {
+  if (!room) return false;
+  if (typeof room.voting === "boolean") return room.voting;
+  return room.endedAt != null;
+}
+
 // The vote for the next map, as the lobby and the results show it. The server sends the tally (`votes`, `votesNeeded`);
 // when a snapshot has none (an older bot, the mock lobby's first frame) it is counted here by the same rule: the
 // players, i.e. not the spectators, and more than half of them. `voters` and `waiting` are the players in the room's
 // order, so the screens can name who voted. `counting` is the final 5 s (they run when the vote passed or the host
 // forced the start), `forced` says which of the two it was.
 export function voteOf(room) {
+  const voting = isVoting(room);
   const players = (room?.members ?? []).filter((m) => !m.spectator);
   const voters = players.filter((m) => m.ready);
   const votes = Number.isFinite(room?.votes) ? room.votes : voters.length;
   const needed = Number.isFinite(room?.votesNeeded) ? room.votesNeeded : players.length ? Math.floor(players.length / 2) + 1 : 0;
   return {
+    voting,
     votes,
     needed,
     players: players.length,
@@ -181,7 +192,8 @@ export function voteOf(room) {
   };
 }
 
-// The status line of a player in the list: the vote between rounds, loading/playing/done during one.
+// The status line of a player in the list: Ready before the room's first round, the vote after one, loading/playing/done
+// during a round.
 export function memberStatus(room, member) {
   if (!member) return { text: "", tone: "wait" };
   if (member.spectator) return { text: "Watching", tone: "wait" };
@@ -190,7 +202,8 @@ export function memberStatus(room, member) {
     if (room.phase === "loading") return member.loaded ? { text: "Loaded", tone: "ok" } : { text: "Loading…", tone: "wait" };
     return { text: "Playing", tone: "ok" };
   }
-  return member.ready ? { text: "Voted", tone: "ok" } : { text: "Not voted", tone: "wait" };
+  if (isVoting(room)) return member.ready ? { text: "Voted", tone: "ok" } : { text: "Not voted", tone: "wait" };
+  return member.ready ? { text: "Ready", tone: "ok" } : { text: "Picking…", tone: "wait" };
 }
 
 // Rows for Results' standings, from the finished round of a snapshot. The server sends no avatar, so it
@@ -249,7 +262,7 @@ const ROOM_ERRORS = {
   invite_expired: "That invite has expired, so this is your own room.",
   wrong_phase: "Not possible while a round is running.",
   empty_queue: "Add a song to the queue first.",
-  spectating: "You're watching. Pick Player to vote.",
+  spectating: "You're watching. Pick Player to take part.",
   queue_full: "The queue is full (5 per player, 20 in total).",
   forbidden: "You can only remove your own songs.",
   bad_index: "That song is already gone from the queue.",

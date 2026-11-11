@@ -3,8 +3,10 @@ const { describe, it } = require("node:test");
 
 const { createRooms, FINAL_COUNTDOWN_MS } = require("../../../helpers/mewbeat/rooms");
 
-// The vote for the next map: nothing starts by itself, a round starts (after the final 5 s) once MORE THAN HALF of
-// the players voted or the host forces it. See the header of helpers/mewbeat/rooms.js for who counts.
+// The vote for the next map. It belongs to the time after a round: nothing starts by itself, the next round starts (after
+// the final 5 s) once MORE THAN HALF of the players voted or the host forces it, and the lobby's Ready button is the same
+// flag. Before the room's first round the lobby works as it always did (rooms.test.js); the section at the end here
+// only checks where the two meet. See the header of helpers/mewbeat/rooms.js for who counts.
 
 const G = "g1";
 
@@ -52,11 +54,22 @@ function setup() {
   return { rooms, clock };
 }
 
-// A lobby of the given players (the first is the host) with the given songs queued by the host.
-async function lobby(users, songs = ["a", "b"]) {
+// A room of the given players (the first is the host) before its first round, with the given songs queued by the host.
+async function firstRound(users, songs = ["a", "b"]) {
   const ctx = setup();
   for (const user of users) ctx.rooms.join(G, profile(user));
   for (const uri of songs) await ctx.rooms.queueAdd(G, users[0], { uri });
+  return ctx;
+}
+
+// The same room right after its first round, on the results screen, with the given songs still queued. This is where
+// the vote lives.
+async function lobby(users, songs = ["a", "b"]) {
+  const ctx = await firstRound(users, ["first", ...songs]);
+  ctx.rooms.start(G, users[0]); // before the first round the host starts at once
+  assert.strictEqual(snap(ctx.rooms).phase, "loading");
+  playRound(ctx, users);
+  assert.strictEqual(snap(ctx.rooms).phase, "lobby");
   return ctx;
 }
 
@@ -79,14 +92,10 @@ describe("mewbeat room vote: nothing starts by itself", () => {
   it("stays on the results screen with a song queued when nobody votes (the glitch)", async () => {
     const ctx = await lobby(["ann", "bo"]);
     const { rooms, clock } = ctx;
-    rooms.start(G, "ann");
-    clock.advance(FINAL_COUNTDOWN_MS);
-    assert.strictEqual(phaseOf(rooms), "loading");
-    playRound(ctx, ["ann", "bo"]);
 
     const ended = snap(rooms);
     assert.strictEqual(ended.phase, "lobby");
-    assert.strictEqual(ended.queue.length, 1); // "b" is waiting
+    assert.strictEqual(ended.queue.length, 2); // "a" and "b" are waiting
     assert.strictEqual(ended.nextAt, null);
     assert.strictEqual(ended.finalCountdown, false);
     assert.strictEqual(clock.pending(), 0);
@@ -104,14 +113,15 @@ describe("mewbeat room vote: nothing starts by itself", () => {
     const { rooms, clock } = ctx;
     vote(rooms, "ann");
     vote(rooms, "bo");
-    clock.advance(FINAL_COUNTDOWN_MS); // the vote started round 1
+    clock.advance(FINAL_COUNTDOWN_MS); // the vote started round 2
     assert.strictEqual(phaseOf(rooms), "loading");
-    assert.deepStrictEqual(voters(rooms), []);
+    assert.strictEqual(snap(rooms).round, 2);
+    assert.deepStrictEqual(voters(rooms), []); // cleared when the round starts
     playRound(ctx, ["ann", "bo"]);
-    assert.deepStrictEqual(voters(rooms), []);
+    assert.deepStrictEqual(voters(rooms), []); // and again when it ends
     assert.strictEqual(snap(rooms).nextAt, null);
     clock.advance(10 * 60_000);
-    assert.strictEqual(snap(rooms).round, 1);
+    assert.strictEqual(snap(rooms).round, 2);
   });
 
   it("refuses a vote while a round runs, but accepts taking one back", async () => {
@@ -255,11 +265,7 @@ describe("mewbeat room vote: the electorate is recounted", () => {
   });
 
   it("counts the players who are still on the results screen", async () => {
-    const ctx = await lobby(["ann", "bo", "cy"]);
-    const { rooms, clock } = ctx;
-    rooms.start(G, "ann");
-    clock.advance(FINAL_COUNTDOWN_MS);
-    playRound(ctx, ["ann", "bo", "cy"]);
+    const { rooms } = await lobby(["ann", "bo", "cy"]);
     assert.strictEqual(snap(rooms).votesNeeded, 2);
     vote(rooms, "ann");
     assert.strictEqual(snap(rooms).finalCountdown, false); // bo and cy are reading, but they still count
@@ -341,9 +347,9 @@ describe("mewbeat room vote: the host forces the start", () => {
     clock.advance(2000);
     rooms.start(G, "ann");
     assert.strictEqual(phaseOf(rooms), "loading");
-    assert.strictEqual(snap(rooms).round, 1);
+    assert.strictEqual(snap(rooms).round, 2);
     clock.advance(60_000);
-    assert.strictEqual(snap(rooms).round, 1); // the old timer did not start a second round
+    assert.strictEqual(snap(rooms).round, 2); // the old timer did not start a second round
   });
 
   it("keeps counting down when votes are taken back, because the force needs none", async () => {
@@ -361,12 +367,13 @@ describe("mewbeat room vote: the host forces the start", () => {
     const { rooms, clock } = ctx;
     rooms.start(G, "ann");
     clock.advance(FINAL_COUNTDOWN_MS);
+    assert.strictEqual(snap(rooms).round, 2);
     assert.strictEqual(snap(rooms).forced, false);
     playRound(ctx, ["ann", "bo"]);
     assert.strictEqual(snap(rooms).forced, false);
     assert.strictEqual(snap(rooms).finalCountdown, false);
     clock.advance(10 * 60_000);
-    assert.strictEqual(snap(rooms).round, 1);
+    assert.strictEqual(snap(rooms).round, 2);
   });
 
   it("is refused with nothing queued and in a round", async () => {
@@ -392,7 +399,7 @@ describe("mewbeat room vote: the queue changes under it", () => {
     assert.strictEqual(room.finalCountdown, false);
     assert.strictEqual(clock.pending(), 0);
     clock.advance(60_000);
-    assert.strictEqual(snap(rooms).round, 0);
+    assert.strictEqual(snap(rooms).round, 1);
   });
 
   it("voids the votes when the host moves another song to the front", async () => {
@@ -411,7 +418,7 @@ describe("mewbeat room vote: the queue changes under it", () => {
     assert.strictEqual(snap(rooms).finalCountdown, false);
     assert.strictEqual(snap(rooms).forced, false);
     clock.advance(60_000);
-    assert.strictEqual(snap(rooms).round, 0);
+    assert.strictEqual(snap(rooms).round, 1);
   });
 
   it("keeps the votes when a song is added behind or removed from behind the one up next", async () => {
@@ -437,7 +444,7 @@ describe("mewbeat room vote: the queue changes under it", () => {
     await rooms.queueAdd(G, "ann", { uri: "z" }); // a new song starts a new vote, not an old one
     assert.strictEqual(snap(rooms).votes, 0);
     clock.advance(60_000);
-    assert.strictEqual(snap(rooms).round, 0);
+    assert.strictEqual(snap(rooms).round, 1);
   });
 });
 
@@ -455,5 +462,85 @@ describe("mewbeat room vote: solo flows", () => {
     vote(rooms, "ann");
     clock.advance(FINAL_COUNTDOWN_MS);
     assert.strictEqual(snap(rooms).current.audioKey, keyOf("b"));
+  });
+});
+
+describe("mewbeat room vote: where the first round ends and the vote begins", () => {
+  it("keeps the lobby Ready before the first round: one of three opens the wait and nobody has to vote", async () => {
+    const { rooms, clock } = await firstRound(["ann", "bo", "cy"]);
+    assert.strictEqual(snap(rooms).voting, false);
+    vote(rooms, "ann");
+    const room = snap(rooms);
+    assert.strictEqual(room.finalCountdown, false);
+    assert.strictEqual(room.nextAt, clock.now() + 60_000); // the 60 s wait the first Ready opens
+    clock.advance(60_000);
+    assert.strictEqual(phaseOf(rooms), "loading"); // it ran out, with one Ready of three
+  });
+
+  it("keeps the lobby Ready before the first round: everyone ready cuts the wait to 5 s", async () => {
+    const { rooms, clock } = await firstRound(["ann", "bo", "cy"]);
+    vote(rooms, "ann");
+    vote(rooms, "bo");
+    assert.strictEqual(snap(rooms).finalCountdown, false); // two of three is a majority only after a round
+    vote(rooms, "cy");
+    assert.strictEqual(snap(rooms).finalCountdown, true);
+    assert.strictEqual(snap(rooms).nextAt, clock.now() + FINAL_COUNTDOWN_MS);
+  });
+
+  it("starts at once on the host start before the first round, with no countdown", async () => {
+    const { rooms } = await firstRound(["ann", "bo"]);
+    assert.deepStrictEqual(rooms.start(G, "ann"), { ok: true });
+    assert.strictEqual(phaseOf(rooms), "loading");
+    assert.strictEqual(snap(rooms).finalCountdown, false);
+  });
+
+  it("takes Ready with nothing queued before the first round, and refuses it after a round", async () => {
+    const first = await firstRound(["ann"], []);
+    assert.deepStrictEqual(vote(first.rooms, "ann"), { ok: true });
+    assert.strictEqual(snap(first.rooms).nextAt, null); // nothing to count down to
+    const after = await lobby(["ann"], []);
+    assert.deepStrictEqual(vote(after.rooms, "ann"), { ok: false, reason: "empty_queue" });
+  });
+
+  it("tells the clients which of the two it is in the snapshot", async () => {
+    const ctx = await firstRound(["ann", "bo"]);
+    assert.strictEqual(snap(ctx.rooms).voting, false);
+    ctx.rooms.start(G, "ann");
+    assert.strictEqual(snap(ctx.rooms).voting, false); // a round in progress is not a vote yet
+    playRound(ctx, ["ann", "bo"]);
+    assert.strictEqual(snap(ctx.rooms).voting, true);
+  });
+
+  it("makes the lobby Ready after a round the same flag as Play next, and starts nothing the others did not vote for", async () => {
+    const { rooms, clock } = await lobby(["ann", "bo", "cy"]);
+    vote(rooms, "ann"); // Play next on the results screen
+    assert.strictEqual(member(rooms, "ann").ready, true);
+    // bo is in the lobby view and has not pressed Ready: nothing starts, however long they stay there.
+    clock.advance(10 * 60_000);
+    assert.strictEqual(phaseOf(rooms), "lobby");
+    assert.strictEqual(snap(rooms).nextAt, null);
+    assert.strictEqual(member(rooms, "bo").ready, false);
+    vote(rooms, "bo"); // Ready in the lobby view counts as the vote
+    assert.strictEqual(snap(rooms).votes, 2);
+    assert.strictEqual(snap(rooms).finalCountdown, true);
+    vote(rooms, "bo", false); // and taking it back stops the countdown
+    assert.strictEqual(snap(rooms).finalCountdown, false);
+    assert.strictEqual(clock.pending(), 0);
+  });
+
+  it("stays in the window regime when the first round is aborted, and in the vote regime when a later one is", async () => {
+    const first = await firstRound(["ann", "bo"]);
+    first.rooms.start(G, "ann");
+    first.clock.advance(140_000); // nobody loads the song
+    assert.strictEqual(phaseOf(first.rooms), "lobby");
+    assert.strictEqual(snap(first.rooms).voting, false);
+    assert.strictEqual(snap(first.rooms).queue.length, 2); // the song went back to the front
+
+    const later = await lobby(["ann", "bo"]);
+    later.rooms.start(G, "ann");
+    later.clock.advance(FINAL_COUNTDOWN_MS + 140_000);
+    assert.strictEqual(phaseOf(later.rooms), "lobby");
+    assert.strictEqual(snap(later.rooms).voting, true);
+    assert.strictEqual(snap(later.rooms).nextAt, null);
   });
 });

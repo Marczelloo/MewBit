@@ -48,10 +48,11 @@ function setup({ prepare } = {}) {
     })),
     broadcast: (guildId, userIds, payload) => pushes.push({ guildId, userIds: [...userIds], payload }),
   });
-  // The host's start runs the final countdown first; most tests only want the round that follows it.
+  // Before the room's first round the host's start is immediate; after a round it runs the final countdown first.
+  // Most tests only want the round that follows it, whichever way it got there.
   rooms.startNow = (guildId, userId) => {
     const reply = rooms.start(guildId, userId);
-    clock.advance(FINAL_COUNTDOWN_MS);
+    if (rooms.snapshot(guildId)?.phase === "lobby") clock.advance(FINAL_COUNTDOWN_MS);
     return reply;
   };
   return { rooms, clock, pushes };
@@ -335,16 +336,14 @@ describe("mewbeat rooms rounds", () => {
   const KEY_B = "youtube:b:200000";
 
   it("only the host starts, and only with a song queued in the lobby", async () => {
-    const { rooms, clock } = ctx;
+    const { rooms } = ctx;
     assert.deepStrictEqual(rooms.start(G, "bo"), { ok: false, reason: "not_host" });
     assert.deepStrictEqual(rooms.start(G, "ghost"), { ok: false, reason: "not_in_room" });
     const empty = setup();
     empty.rooms.join(G, profile("ann"));
     assert.deepStrictEqual(empty.rooms.start(G, "ann"), { ok: false, reason: "empty_queue" });
     assert.deepStrictEqual(rooms.start(G, "ann"), { ok: true });
-    assert.strictEqual(phaseOf(rooms), "lobby"); // the final countdown runs first
-    clock.advance(5000);
-    assert.strictEqual(phaseOf(rooms), "loading");
+    assert.strictEqual(phaseOf(rooms), "loading"); // before the first round the host's start is immediate
     assert.deepStrictEqual(rooms.start(G, "ann"), { ok: false, reason: "wrong_phase" });
   });
 
@@ -365,7 +364,7 @@ describe("mewbeat rooms rounds", () => {
 
     room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "countdown");
-    assert.strictEqual(room.startAt, t0 + 5000 + 3000);
+    assert.strictEqual(room.startAt, t0 + 3000);
 
     clock.advance(2999);
     assert.strictEqual(phaseOf(rooms), "countdown");
@@ -835,35 +834,35 @@ describe("mewbeat rooms review fixes", () => {
       assert.strictEqual(ctx.rooms.snapshot(G).current.audioKey, keyOf("a"));
     });
 
-    it("drops an entry that can't be prepared and waits for the vote for the next one", async () => {
+    it("drops an entry that can't be prepared and goes on with the next one", async () => {
       const f = flaky();
       const ctx = setup({ prepare: f.prepare });
       await started(ctx);
       f.broken.add("a");
-      ctx.rooms.startNow(G, "ann");
+      ctx.rooms.start(G, "ann");
       await flush();
       const room = ctx.rooms.snapshot(G);
-      assert.strictEqual(room.phase, "lobby");
-      assert.strictEqual(room.current, null);
-      assert.deepStrictEqual(room.queue.map((entry) => entry.audioKey), [keyOf("b")]); // not voted for, so not started
-      assert.strictEqual(room.round, 1);
-      assert.strictEqual(room.nextAt, null);
-      assert.strictEqual(ctx.pushes.at(-1).payload.room.current, null);
-      assert.strictEqual(ctx.clock.pending(), 0);
+      assert.strictEqual(room.phase, "loading");
+      assert.strictEqual(room.current.audioKey, keyOf("b"));
+      assert.deepStrictEqual(room.queue, []);
+      assert.strictEqual(room.round, 2);
+      // Everyone is told, and only the new song's loading timer is running.
+      assert.strictEqual(ctx.pushes.at(-1).payload.room.current.audioKey, keyOf("b"));
+      assert.strictEqual(ctx.clock.pending(), 1);
     });
 
-    it("falls back to the lobby with the rest of the queue when the song can't be prepared", async () => {
+    it("falls back to the lobby when no queued song can be prepared", async () => {
       const f = flaky();
       const ctx = setup({ prepare: f.prepare });
       await started(ctx);
       f.broken.add("a");
       f.broken.add("b");
-      ctx.rooms.startNow(G, "ann");
+      ctx.rooms.start(G, "ann");
       await flush();
       const room = ctx.rooms.snapshot(G);
       assert.strictEqual(room.phase, "lobby");
       assert.strictEqual(room.current, null);
-      assert.deepStrictEqual(room.queue.map((entry) => entry.audioKey), [keyOf("b")]);
+      assert.deepStrictEqual(room.queue, []);
       assert.strictEqual(ctx.clock.pending(), 0);
     });
 
@@ -903,18 +902,29 @@ describe("mewbeat rooms ready and spectating", () => {
     return ctx;
   }
 
-  it("waits for the others: one vote of two starts nothing, however long it takes", async () => {
+  it("opens a 60 s wait on the first Ready and starts the round when it runs out", async () => {
     const { rooms, clock } = await lobby();
     assert.strictEqual(rooms.snapshot(G).nextAt, null);
     rooms.ready(G, "ann", { ready: true });
-    const room = rooms.snapshot(G);
+    let room = rooms.snapshot(G);
     assert.strictEqual(room.phase, "lobby");
-    assert.strictEqual(room.nextAt, null);
+    assert.strictEqual(room.nextAt, clock.now() + 60_000);
     assert.strictEqual(room.finalCountdown, false);
-    assert.strictEqual(clock.pending(), 0);
-    clock.advance(60 * 60_000);
+    clock.advance(59_999);
     assert.strictEqual(phaseOf(rooms), "lobby");
-    assert.strictEqual(rooms.snapshot(G).round, 0);
+    clock.advance(1);
+    room = rooms.snapshot(G);
+    assert.strictEqual(room.phase, "loading");
+    assert.deepStrictEqual(room.members.map((member) => member.spectator), [false, false]); // bo plays too
+  });
+
+  it("never stretches the wait when less than 5 s of it is left", async () => {
+    const { rooms, clock } = await lobby();
+    rooms.ready(G, "ann", { ready: true });
+    const end = rooms.snapshot(G).nextAt;
+    clock.advance(58_000);
+    rooms.ready(G, "bo", { ready: true });
+    assert.strictEqual(rooms.snapshot(G).nextAt, end);
   });
 
   it("drops to 5 s when everyone is ready, and clears everyone's ready at the start", async () => {
@@ -938,31 +948,31 @@ describe("mewbeat rooms ready and spectating", () => {
   });
 
 
-  it("goes back to waiting when someone takes the vote back during the final seconds", async () => {
+  it("goes back to the rest of the long wait when someone takes Ready back", async () => {
     const { rooms, clock } = await lobby();
     rooms.ready(G, "ann", { ready: true });
+    const end = rooms.snapshot(G).nextAt;
+    clock.advance(10_000);
     rooms.ready(G, "bo", { ready: true });
     clock.advance(2000);
     rooms.ready(G, "bo", { ready: false });
     const room = rooms.snapshot(G);
-    assert.strictEqual(room.nextAt, null);
+    assert.strictEqual(room.nextAt, end);
     assert.strictEqual(room.finalCountdown, false);
-    assert.strictEqual(clock.pending(), 0); // the old 5 s timer is gone
-    clock.advance(60_000);
+    clock.advance(10_000); // the old 5 s timer is gone
     assert.strictEqual(phaseOf(rooms), "lobby");
   });
 
-  it("recounts when a new player joins during the final seconds", async () => {
+  it("goes back to the long wait when a new player joins during the final seconds", async () => {
     const { rooms, clock } = await lobby();
     rooms.ready(G, "ann", { ready: true });
+    const end = rooms.snapshot(G).nextAt;
     rooms.ready(G, "bo", { ready: true });
     clock.advance(1000);
-    rooms.join(G, profile("cy")); // two of three is still more than half
-    assert.strictEqual(rooms.snapshot(G).finalCountdown, true);
-    rooms.join(G, profile("dy")); // two of four is not
+    rooms.join(G, profile("cy"));
+    assert.strictEqual(rooms.snapshot(G).nextAt, end);
     assert.strictEqual(rooms.snapshot(G).finalCountdown, false);
-    assert.strictEqual(rooms.snapshot(G).nextAt, null);
-    clock.advance(60_000);
+    clock.advance(10_000);
     assert.strictEqual(phaseOf(rooms), "lobby");
   });
 
@@ -984,23 +994,15 @@ describe("mewbeat rooms ready and spectating", () => {
     assert.strictEqual(rooms.snapshot(G).round, 0);
   });
 
-  it("lets the host force the start after the usual 5 s, and a second press skips them", async () => {
+  it("lets the host start at once while the clock runs, and the old timer stays dead", async () => {
     const { rooms, clock } = await lobby();
-    rooms.ready(G, "ann", { ready: true }); // one vote of two: not enough
+    rooms.ready(G, "ann", { ready: true });
     assert.deepStrictEqual(rooms.start(G, "ann"), { ok: true });
-    let room = rooms.snapshot(G);
-    assert.strictEqual(room.phase, "lobby");
-    assert.strictEqual(room.finalCountdown, true);
-    assert.strictEqual(room.forced, true);
-    assert.strictEqual(room.nextAt, clock.now() + 5000);
-    clock.advance(2000);
-    assert.deepStrictEqual(rooms.start(G, "ann"), { ok: true });
-    room = rooms.snapshot(G);
-    assert.strictEqual(room.phase, "loading");
-    assert.strictEqual(room.round, 1);
+    assert.strictEqual(phaseOf(rooms), "loading");
+    assert.strictEqual(rooms.snapshot(G).round, 1);
     rooms.loaded(G, "ann", KEY_A);
     rooms.loaded(G, "bo", KEY_A);
-    clock.advance(60_000); // the 5 s timer is dead
+    clock.advance(60_000);
     assert.strictEqual(rooms.snapshot(G).round, 1);
   });
 
@@ -1041,16 +1043,14 @@ describe("mewbeat rooms ready and spectating", () => {
     assert.strictEqual(clock.pending(), 1); // only the new loading timer
   });
 
-  it("refuses a vote while no song is queued, and takes votes once one is added", async () => {
+  it("waits for a queued song, and runs the final seconds once one is added", async () => {
     const { rooms, clock } = await lobby(["ann", "bo"], []);
-    assert.deepStrictEqual(rooms.ready(G, "ann", { ready: true }), { ok: false, reason: "empty_queue" });
-    assert.strictEqual(memberOf(rooms, "ann").ready, false);
-    assert.strictEqual(phaseOf(rooms), "lobby");
-    assert.strictEqual(rooms.snapshot(G).nextAt, null);
-    await rooms.queueAdd(G, "ann", { uri: "a" });
-    assert.strictEqual(rooms.snapshot(G).nextAt, null); // a song alone starts nothing
     rooms.ready(G, "ann", { ready: true });
     rooms.ready(G, "bo", { ready: true });
+    assert.strictEqual(phaseOf(rooms), "lobby");
+    assert.strictEqual(rooms.snapshot(G).nextAt, null);
+    assert.strictEqual(rooms.snapshot(G).round, 0);
+    await rooms.queueAdd(G, "ann", { uri: "a" });
     assert.strictEqual(rooms.snapshot(G).nextAt, clock.now() + 5000);
     clock.advance(5000);
     assert.strictEqual(phaseOf(rooms), "loading");
