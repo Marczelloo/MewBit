@@ -1,7 +1,7 @@
 const assert = require("node:assert");
 const { describe, it } = require("node:test");
 
-const { playPp, ratingOf } = require("../../../helpers/mewbeat/rating");
+const { playPp, ratingOf, runPp } = require("../../../helpers/mewbeat/rating");
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} is not ${b}`);
 
@@ -16,6 +16,17 @@ describe("mewbeat rating", () => {
     assert.equal(playPp({ stars: 4, accuracy: 30 }), 0);
     assert.equal(playPp({ stars: null, accuracy: 99 }), 0);
     assert.equal(playPp({ stars: 4, accuracy: null }), 0);
+  });
+
+  it("rates a run that stopped early on its accuracy times the share it played", () => {
+    near(runPp({ stars: 4, accuracy: 100, completion: 1 }), playPp({ stars: 4, accuracy: 100 }));
+    near(runPp({ stars: 4, accuracy: 100, completion: 0.8 }), playPp({ stars: 4, accuracy: 80 }));
+    assert.equal(runPp({ stars: 4, accuracy: 90, completion: 0.5 }), 0);
+  });
+
+  it("takes a run without a stored completion as played to the end", () => {
+    near(runPp({ stars: 4, accuracy: 90 }), playPp({ stars: 4, accuracy: 90 }));
+    near(runPp({ stars: 4, accuracy: 90, completion: null }), playPp({ stars: 4, accuracy: 90 }));
   });
 
   it("weights the plays by rank, best first, without touching the input", () => {

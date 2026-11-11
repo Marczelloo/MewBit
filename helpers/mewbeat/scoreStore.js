@@ -197,7 +197,9 @@ function createScoreStore({ file = DEFAULT_FILE, now = Date.now, debounceMs = 20
     };
     users.set(userId, entry);
     persist(chartKey, entry);
-    return { newBest, best: publicEntry(entry) };
+    // previous: the best the player had before this run (null on a first play), which newBest was decided against.
+    // A deferred call has none to give, so it leaves the field out.
+    return { newBest, best: publicEntry(entry), previous: previous ? publicEntry(previous) : null };
   }
 
   function sorted({ chartKey, guildId }) {

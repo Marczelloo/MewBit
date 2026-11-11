@@ -240,8 +240,22 @@ function mockRun({ durationMs, modifiers, pileUp }) {
   return { events, feverStarts, state };
 }
 
-// variant: { failed } a run lost to a pile-up of misses, { nf } a No Fail run whose health ran out and played on.
-export function createMockSummary({ failed = false, nf = false } = {}) {
+export const MOCK_VERSUS = ["better", "worse", "first", "none"];
+
+// The score reply for the run, as the bot sends it. versus: how the run stands against the best from before it, "better"
+// a new best, "worse" the best stands, "first" there was none, "none" a bot that sends neither the pp nor that best.
+// The pp is made up.
+function mockReply({ versus, score, accuracy, grade }) {
+  const reply = { ranked: true, newBest: versus === "better" || versus === "first" || versus === "none", score, accuracy, rank: { server: 2, global: 3 } };
+  const beaten = { score: score + (versus === "worse" ? 3200 : -12400), accuracy: accuracy + (versus === "worse" ? 0.52 : -1.24) };
+  reply.best = { score: versus === "worse" ? beaten.score : score, grade };
+  if (versus === "none") return reply;
+  return { ...reply, pp: 187.4, previousBest: versus === "first" ? null : beaten };
+}
+
+// variant: { failed } a run lost to a pile-up of misses, { nf } a No Fail run whose health ran out and played on,
+// { versus } what the score reply says of the run's pp and the best before it (MOCK_VERSUS; a No Fail run defaults to "worse").
+export function createMockSummary({ failed = false, nf = false, versus = nf ? "worse" : "better" } = {}) {
   const track = mockTrack("Hopes and Dreams", MOCK_USER_ID);
   const modifiers = nf ? ["nf"] : ["gn", "st"];
   const { events, feverStarts, state } = mockRun({ durationMs: track.durationMs, modifiers, pileUp: failed || nf });
@@ -279,6 +293,6 @@ export function createMockSummary({ failed = false, nf = false } = {}) {
     depleted: state.depletedAt !== null,
     submit: failed
       ? { status: "skipped" }
-      : { status: "ok", result: { ranked: true, newBest: !nf, rank: { server: 2, global: 3 }, best: { score: state.score, grade: gradeOf(accuracy) } } },
+      : { status: "ok", result: mockReply({ versus, score: state.score, accuracy, grade: gradeOf(accuracy) }) },
   };
 }

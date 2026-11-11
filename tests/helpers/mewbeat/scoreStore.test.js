@@ -51,6 +51,52 @@ describe("mewbeat score store", () => {
     assert.strictEqual(store.bestOf(KEY, "nobody"), null);
   });
 
+  it("hands back the best from before the run as previous, null on a first play", () => {
+    const store = open();
+    const first = store.submit(run());
+    assert.strictEqual(first.previous, null);
+    const worse = store.submit(run({ score: 900, accuracy: 80, at: 200 }));
+    assert.strictEqual(worse.newBest, false);
+    assert.deepStrictEqual([worse.previous.score, worse.previous.accuracy], [1000, 90]);
+    const better = store.submit(run({ score: 1200, accuracy: 95, at: 300 }));
+    assert.strictEqual(better.newBest, true);
+    assert.deepStrictEqual([better.previous.score, better.previous.accuracy, better.best.score], [1000, 90, 1200]);
+    assert.strictEqual(store.submit(run({ userId: "u2", profile: { username: "Bo" } })).previous, null, "another player has none");
+  });
+
+  describe("on a remote", () => {
+    // What remoteSync gives a store, with the loading switched by hand.
+    function remoteStore() {
+      const state = { ready: false, deferred: [], upserts: [] };
+      const remote = {
+        ready: () => state.ready,
+        upsert: (table, id, row) => state.upserts.push(row),
+        defer: (store, method, args) => state.deferred.push({ store, method, args }),
+      };
+      return { state, store: createScoreStore({ remote }) };
+    }
+
+    it("has no previous best to give before it is loaded, and the call is deferred", () => {
+      const { state, store } = remoteStore();
+      const reply = store.submit(run());
+      assert.deepStrictEqual(reply, { newBest: false, best: null });
+      assert.strictEqual("previous" in reply, false);
+      assert.strictEqual(state.deferred.length, 1);
+    });
+
+    it("gives the loaded best as previous once it is loaded", () => {
+      const { state, store } = remoteStore();
+      state.ready = true;
+      const first = store.submit(run());
+      assert.strictEqual(first.previous, null);
+      store.hydrate([state.upserts[0]]);
+      const second = store.submit(run({ score: 800, accuracy: 70, at: 200 }));
+      assert.deepStrictEqual([second.newBest, second.previous.score, second.previous.accuracy], [false, 1000, 90]);
+      const third = store.submit(run({ score: 1100, accuracy: 92, at: 300 }));
+      assert.deepStrictEqual([third.newBest, third.previous.score], [true, 1000]);
+    });
+  });
+
   it("sorts boards by score then earlier time and ranks by scope", () => {
     const store = open();
     store.submit(run({ userId: "u1", guildId: "g1", score: 1000, at: 100 }));

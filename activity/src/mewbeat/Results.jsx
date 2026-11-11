@@ -4,6 +4,7 @@ import { COUNT_MS, JUDGE_COUNT_MS, JUDGE_STEP_MS, REVEAL, easeOut, isFullCombo, 
 import { useResultSounds } from "./useResultSounds.js";
 import { BoardHeading, BoardRow, BoardRows, useLevelBoard } from "./LevelBoard.jsx";
 import { resultBoardTarget } from "./resultBoard.js";
+import { versusOf } from "./resultVersus.js";
 import { MIN_TAPS } from "./calibration.js";
 import { formatAccuracy, formatScore } from "./GameHud.jsx";
 import { ModifierTags } from "./ModifierPicker.jsx";
@@ -174,6 +175,11 @@ function CalibrationResult({ timing, savedOffset, onApplyOffset }) {
   );
 }
 
+// A difference from resultVersus.js: the sign is in the text, and the tone only follows it.
+function Delta({ diff }) {
+  return <span className={`mb-res-delta is-${diff.trend}`}>{diff.text}</span>;
+}
+
 function RankLine({ submit, summary }) {
   // Never sent: the run mixes two charts, which the server cannot score.
   if (summary.difficultyChanged) {
@@ -327,6 +333,8 @@ export default function Results({
   const submit = summary.submit ?? { status: "skipped" };
   const result = submit.status === "ok" ? submit.result : null;
   const newBest = Boolean(result?.newBest);
+  // The pp of the run and its difference to the best from before it, from the score reply.
+  const versus = useMemo(() => versusOf(result), [result]);
   // A click anywhere skips to the end of the reveal.
   const [skipped, setSkipped] = useState(false);
   const animate = effects !== "off" && !prefersReduced && !skipped;
@@ -346,6 +354,10 @@ export default function Results({
   // A lost run has no grade to celebrate, no best to beat and no full combo to count.
   const lost = Boolean(summary.failed) && !summary.calibration;
   const fullCombo = !lost && isFullCombo(summary);
+  // The room for the pp and the differences is kept from the first frame for every run the server could rank, so the
+  // reply landing moves nothing. A run known here to be unranked never has them, so it keeps no room.
+  const keepsVersus = !lost && !summary.calibration && !summary.autoplay && !summary.difficultyChanged && !(summary.skipped > 0);
+  const versusShown = verdict && Boolean(versus);
   // Mewbit's line: a lost run first, then a new best, then a full combo, else the grade's. Picked once per moment, so a
   // re-render (the score reply replacing the summary, the clock) keeps the same words.
   const bubbleMoment = lost ? "failed" : newBest ? "newBest" : fullCombo ? "fullCombo" : `grade${grade}`;
@@ -417,11 +429,19 @@ export default function Results({
         <div className="mb-res-body">
           <div className="mb-res-cards">
             <div className="mb-res-card mb-res-mine mb-res-in" style={{ "--d": "80ms" }}>
-              {lost ? (
-                <div className={`mb-res-stamp${shown("grade") ? "" : " mb-res-wait"}`} role="img" aria-label="Failed">FAILED</div>
-              ) : (
-                <div className={`mb-grade mb-grade-${grade} mb-res-grade${shown("grade") ? "" : " mb-res-wait"}`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
-              )}
+              <div className="mb-res-gradecol">
+                {lost ? (
+                  <div className={`mb-res-stamp${shown("grade") ? "" : " mb-res-wait"}`} role="img" aria-label="Failed">FAILED</div>
+                ) : (
+                  <div className={`mb-grade mb-grade-${grade} mb-res-grade${shown("grade") ? "" : " mb-res-wait"}`} aria-label={`Grade ${summary.grade ?? "none"}`}>{summary.grade ?? "-"}</div>
+                )}
+                {keepsVersus ? (
+                  <div className={`mb-res-pp ${versusShown && versus.pp ? "mb-res-in" : "mb-res-wait"}`} title={versus?.pp && !versus.pp.counts ? "Your best on this level stands, so this run adds nothing to your rating." : undefined}>
+                    <b className={versus?.pp && !versus.pp.counts ? "is-idle" : undefined}>{versus?.pp?.text ?? "--"}</b>
+                    <span>{versus?.pp && !versus.pp.counts ? "not counted" : null}</span>
+                  </div>
+                ) : null}
+              </div>
               {celebrate ? (
                 <div className="mb-res-burst" aria-hidden="true">
                   {BURST.map((fleck, index) => (
@@ -437,6 +457,17 @@ export default function Results({
                   {newBest && verdict && !lost ? <span className="mb-res-newbest">NEW BEST</span> : null}
                   {previous && shown("accuracy") ? <span className="mb-res-label mb-res-in">Best {formatScore(previous.score)}</span> : null}
                 </div>
+                {keepsVersus ? (
+                  <div className={`mb-res-versus ${versusShown && (versus.first || versus.score) ? "mb-res-in" : "mb-res-wait"}`} role="group" aria-label="Against your previous best on this level">
+                    {versus?.score ? (
+                      <>
+                        <span className="mb-res-vs-cap">vs previous best</span>
+                        <Delta diff={versus.score} />
+                        {versus.accuracy ? <Delta diff={versus.accuracy} /> : null}
+                      </>
+                    ) : <span className="mb-res-vs-cap">{versus?.first ? "First play" : " "}</span>}
+                  </div>
+                ) : null}
                 {summary.depleted && !lost ? (
                   <p className={`mb-res-nf ${shown("accuracy") ? "mb-res-in" : "mb-res-wait"}`}>
                     NF ×{NO_FAIL_PENALTY}{graph?.depletedAt != null ? ` after ${formatClock(graph.depletedAt)}` : ""}

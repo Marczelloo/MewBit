@@ -6,7 +6,10 @@ const { afterEach, beforeEach, describe, it } = require("node:test");
 
 const { createMewbeatChannel } = require("../../../helpers/mewbeat/activityChannel");
 const { audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
+const { starsOf } = require("../../../helpers/mewbeat/charts/stars");
 const { createHistoryStore } = require("../../../helpers/mewbeat/historyStore");
+const { createRanking, LOCAL_USER } = require("../../../helpers/mewbeat/ranking");
+const { playPp, runPp } = require("../../../helpers/mewbeat/rating");
 const { createScoreStore } = require("../../../helpers/mewbeat/scoreStore");
 const { createStatsStore } = require("../../../helpers/mewbeat/statsStore");
 const { createSoloTracks } = require("../../../helpers/mewbeat/soloTracks");
@@ -68,10 +71,10 @@ describe("mewbeat channel scores", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup({ charts = makeCharts(), playback = null, register = true, log, durationMs = 200000, walks, queue } = {}) {
+  function setup({ charts = makeCharts(), playback = null, register = true, log, durationMs = 200000, walks, queue, remote } = {}) {
     let clock = 1_000;
     const now = () => (clock += 10);
-    const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now });
+    const scoreStore = createScoreStore({ file: path.join(dir, "scores.json"), now, remote });
     if (walks) {
       const walk = scoreStore.forEachEntry;
       scoreStore.forEachEntry = (fn) => { walks.count += 1; return walk(fn); };
@@ -185,6 +188,142 @@ describe("mewbeat channel scores", () => {
     assert.strictEqual(worse.result.best.score, 1500);
     assert.ok(worse.result.score < 1500);
     assert.strictEqual(historyStore.recent("ann", 5).length, 2);
+  });
+
+  describe("pp and the previous best", () => {
+    const KEY_R3 = `${KEY}|hard|${VERSION}|r3`;
+    const worseEvents = () => perfectEvents().map((event) => (event.n === 1 ? { ...event, j: "miss" } : event));
+    const hardStars = () => starsOf(makeCharts().hard);
+
+    it("rates a ranked run by the function the ranking uses, and has no previous best on a first play", async () => {
+      const { channel, scoreStore } = setup();
+      const { result } = await submit(channel, submitMessage());
+      assert.strictEqual(result.previousBest, null);
+      assert.ok(result.pp > 0);
+      assert.strictEqual(result.pp, runPp({ stars: hardStars(), accuracy: result.accuracy, completion: 1 }));
+      assert.strictEqual(result.pp, playPp({ stars: hardStars(), accuracy: result.accuracy }));
+
+      // The ranking reads the stored best back and rates it: the play it lists is worth what the reply said.
+      const ranking = createRanking({
+        walk: (visit) => scoreStore.forEachEntry(visit),
+        currentOf: () => ({ chartKey: KEY_R3, stars: hardStars() }),
+        trackOf: () => null,
+      });
+      const { plays } = ranking.playerOf("ann");
+      assert.strictEqual(plays.length, 1);
+      assert.strictEqual(plays[0].pp, result.pp);
+    });
+
+    it("uses the stars the chart stores when it has them", async () => {
+      const { channel } = setup();
+      const { result } = await submit(channel, submitMessage({ difficulty: "easy" }));
+      assert.strictEqual(result.pp, playPp({ stars: 1.5, accuracy: result.accuracy }));
+    });
+
+    it("rates a run that stopped early on its accuracy times the share it played", async () => {
+      const { channel } = setup();
+      const { result } = await submit(channel, submitMessage({ events: perfectEvents().slice(0, 4) }));
+      assert.strictEqual(result.ranked, true);
+      // Four of the six parts: 0.6667 of the map.
+      assert.strictEqual(result.pp, playPp({ stars: hardStars(), accuracy: result.accuracy * 0.6667 }));
+      assert.ok(result.pp < playPp({ stars: hardStars(), accuracy: result.accuracy }));
+    });
+
+    it("gives the best from before the run, whether the run beats it or not", async () => {
+      const { channel } = setup();
+      const first = await submit(channel, submitMessage({ events: worseEvents() }));
+      assert.strictEqual(first.result.previousBest, null);
+      const second = await submit(channel, submitMessage());
+      assert.strictEqual(second.result.newBest, true);
+      assert.deepStrictEqual(second.result.previousBest, { score: first.result.score, accuracy: first.result.accuracy });
+      // The best has moved on to the second run, and the third is measured against it.
+      const third = await submit(channel, submitMessage({ events: worseEvents() }));
+      assert.strictEqual(third.result.newBest, false);
+      assert.deepStrictEqual(third.result.previousBest, { score: second.result.score, accuracy: second.result.accuracy });
+      assert.deepStrictEqual(Object.keys(third.result.previousBest).sort(), ["accuracy", "score"]);
+      assert.strictEqual(third.result.best.score, second.result.score);
+    });
+
+    it("keeps each player's previous best apart", async () => {
+      const { channel } = setup();
+      await submit(channel, submitMessage());
+      const other = await submit(channel, submitMessage(), { userId: "bo", profile: BO });
+      assert.strictEqual(other.result.previousBest, null);
+    });
+
+    it("carries neither for a run that is not ranked", async () => {
+      const notes = Array.from({ length: 13 }, (_, i) => ({ t: 1000 + i * 500, lane: i % 4 }));
+      const chart = (difficulty) => ({ version: VERSION, audioKey: KEY, difficulty, notes });
+      const lostCharts = { easy: chart("easy"), normal: chart("normal"), hard: chart("hard"), hell: chart("hell") };
+      const lost = ["perfect", "perfect", "perfect", "perfect", "perfect", "miss", "miss", "miss", "miss", "miss", "miss", "miss"]
+        .map((j, n) => ({ n, part: "head", j, t: notes[n].t, d: 0 }));
+      const cases = [
+        [{ flags: { autoplay: true } }, undefined],
+        [{ flags: { difficultyChanged: true } }, undefined],
+        [{ flags: { calibration: true } }, undefined],
+        [{ events: perfectEvents().slice(0, 2) }, undefined],
+        [{ events: lost }, lostCharts],
+      ];
+      for (const [overrides, charts] of cases) {
+        // With a best already stored: a run that does not count must not be set against it.
+        const { channel } = setup(charts && { charts });
+        if (!charts) await submit(channel, submitMessage({ id: "s0" }));
+        const { result } = await submit(channel, submitMessage(overrides));
+        assert.strictEqual(result.ranked, false, JSON.stringify(overrides));
+        assert.strictEqual("pp" in result, false, JSON.stringify(overrides));
+        assert.strictEqual("previousBest" in result, false, JSON.stringify(overrides));
+      }
+    });
+
+    it("rates a No Fail run that survives, like any ranked one", async () => {
+      const notes = Array.from({ length: 13 }, (_, i) => ({ t: 1000 + i * 500, lane: i % 4 }));
+      const chart = (difficulty) => ({ version: VERSION, audioKey: KEY, difficulty, notes });
+      const charts = { easy: chart("easy"), normal: chart("normal"), hard: chart("hard"), hell: chart("hell") };
+      const events = ["perfect", "perfect", "perfect", "perfect", "perfect", "miss", "miss", "miss", "miss", "miss", "miss", "miss", "perfect"]
+        .map((j, n) => ({ n, part: "head", j, t: notes[n].t, d: 0 }));
+      const { channel } = setup({ charts });
+      const { result } = await submit(channel, submitMessage({ events, modifiers: ["nf"] }));
+      assert.strictEqual(result.ranked, true);
+      assert.strictEqual(result.pp, playPp({ stars: starsOf(charts.hard), accuracy: result.accuracy }));
+      assert.strictEqual(result.previousBest, null);
+    });
+
+    it("leaves the pp out for the local test user, whom the ranking does not count, but still gives the previous best", async () => {
+      const { channel } = setup();
+      await submit(channel, submitMessage(), { userId: LOCAL_USER, profile: { username: "Local" } });
+      const { result } = await submit(channel, submitMessage({ events: worseEvents() }), { userId: LOCAL_USER, profile: { username: "Local" } });
+      assert.strictEqual("pp" in result, false);
+      assert.strictEqual(result.previousBest.score, 1500);
+    });
+
+    describe("on a remote score store", () => {
+      // The store of a process whose AtlasHub read has not finished, or has.
+      function remoteOf(state) {
+        return { ready: () => state.ready, upsert: () => {}, defer: (store, method, args) => state.deferred.push(args), insert: () => {} };
+      }
+
+      it("says nothing of either while the store is not loaded, and the run is kept for the replay", async () => {
+        const state = { ready: false, deferred: [] };
+        const { channel } = setup({ remote: remoteOf(state) });
+        const { result } = await submit(channel, submitMessage());
+        assert.strictEqual(result.ranked, true);
+        assert.strictEqual(result.newBest, false);
+        assert.strictEqual("pp" in result, false);
+        assert.strictEqual("previousBest" in result, false);
+        assert.strictEqual(state.deferred.length, 1);
+      });
+
+      it("carries both once the store is loaded, the previous best being the loaded row", async () => {
+        const state = { ready: true, deferred: [] };
+        const { channel, scoreStore } = setup({ remote: remoteOf(state) });
+        const first = await submit(channel, submitMessage({ events: worseEvents() }));
+        assert.strictEqual(first.result.previousBest, null);
+        assert.strictEqual(first.result.pp, playPp({ stars: hardStars(), accuracy: first.result.accuracy }));
+        const second = await submit(channel, submitMessage());
+        assert.deepStrictEqual(second.result.previousBest, { score: first.result.score, accuracy: first.result.accuracy });
+        assert.strictEqual(scoreStore.bestOf(KEY_R3, "ann").score, second.result.score);
+      });
+    });
   });
 
   it("sends the player's own best with the chart, once there is one", async () => {

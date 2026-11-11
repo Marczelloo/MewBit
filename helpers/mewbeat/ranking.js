@@ -1,4 +1,4 @@
-const { playPp, ratingOf } = require("./rating");
+const { ratingOf, runPp } = require("./rating");
 
 const CHART_KEY = /^(.*)\|(easy|normal|hard|hell)\|(.+)$/;
 // The local test player scores under this id; it is not a person to rank.
@@ -39,8 +39,7 @@ function createRanking({ walk, currentOf, trackOf, now = Date.now, ttlMs = 60000
         audioKey,
         difficulty,
         stars: current.stars,
-        // A run that stopped early is rated on the share of the map it played; the accuracy shown stays its own.
-        pp: playPp({ stars: current.stars, accuracy: entry.accuracy * (entry.completion ?? 1) }),
+        pp: runPp({ stars: current.stars, accuracy: entry.accuracy, completion: entry.completion }),
         accuracy: entry.accuracy,
         grade: entry.grade,
         score: entry.score,
@@ -111,4 +110,4 @@ function createRanking({ walk, currentOf, trackOf, now = Date.now, ttlMs = 60000
   return { rowsFor, rankOf, playerOf, invalidate };
 }
 
-module.exports = { createRanking };
+module.exports = { createRanking, LOCAL_USER };

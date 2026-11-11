@@ -10,10 +10,16 @@ function playPp({ stars, accuracy }) {
   return PP.base * stars ** PP.starPower * share ** PP.accuracyPower;
 }
 
+// What a run is worth in the rating: one that stopped early is rated on the share of the map it played, while the
+// accuracy shown stays its own. The ranking and the score reply both read it here.
+function runPp({ stars, accuracy, completion }) {
+  return playPp({ stars, accuracy: accuracy * (completion ?? 1) });
+}
+
 // A player's rating: the best plays first, each next one counting a little less.
 function ratingOf(pps) {
   const sorted = [...pps].sort((a, b) => b - a);
   return sorted.reduce((total, pp, rank) => total + pp * PP.decay ** rank, 0);
 }
 
-module.exports = { PP, playPp, ratingOf };
+module.exports = { PP, playPp, runPp, ratingOf };

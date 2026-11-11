@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Lobby, { LeaveConfirm } from "./Lobby.jsx";
 import Results from "./Results.jsx";
 import { createMockRequest, MOCK_USER_ID } from "./mockRequests.js";
-import { addNextSong, applyReady, clearCountdown, createMockFinishedRoom, createMockRoom, createMockSummary, forceStart, mockTrack, moveInQueue, removeFromQueue, startCountdown } from "./mockRoom.js";
+import { addNextSong, applyReady, clearCountdown, createMockFinishedRoom, createMockRoom, createMockSummary, forceStart, mockTrack, MOCK_VERSUS, moveInQueue, removeFromQueue, startCountdown } from "./mockRoom.js";
 import Stage from "./Stage.jsx";
 import { standingsOf, upNextOf, voteOf } from "./room.js";
 
@@ -15,6 +15,9 @@ import { standingsOf, upNextOf, voteOf } from "./room.js";
 //   &host=kuba     see the room as a guest instead of its owner
 //   &charting=1    an uncharted song heads the queue: the levels row shows where it stands in line and the time it has waited
 //   &last=1        the lobby after a finished round (the finished song in the queue; "Last round" standings for a spectator)
+//   &solo=1        (with &results=1) the results of a Solo run, with no room around them
+//   &versus=worse  (with &results=1) the run's pp and best before it: better (default), worse, first or none
+//   &reply=2500    (with &results=1) the score reply arrives that many ms after the screen does
 //
 // The room starts with two of four players voted for the next map, so nothing counts down. The controls work on the
 // fake room: the vote (a majority starts the final seconds, as on the bot), level, Player / Spectator, Add songs, moving
@@ -144,8 +147,17 @@ function MockResultsScreen({ options }) {
   // The vote works on the fake room, so the toggle, the count and the countdown can be tried.
   const [room, setRoom] = useState(() => createMockFinishedRoom(options));
   const [receivedAt, setReceivedAt] = useState(() => performance.now());
-  const summary = useMemo(() => createMockSummary({ failed: options.failed, nf: options.nf }), [options.failed, options.nf]);
-  const standings = useMemo(() => standingsOf(room, MOCK_USER_ID), [room]);
+  const settled = useMemo(() => createMockSummary({ failed: options.failed, nf: options.nf, versus: options.versus }), [options.failed, options.nf, options.versus]);
+  // &reply=<ms>: the score reply is still on its way for that long, as on a slow bot.
+  const [replied, setReplied] = useState(!options.replyMs);
+  useEffect(() => {
+    if (replied) return undefined;
+    const timer = setTimeout(() => setReplied(true), options.replyMs);
+    return () => clearTimeout(timer);
+  }, [replied, options.replyMs]);
+  const summary = useMemo(() => (replied || options.failed ? settled : { ...settled, submit: { status: "submitting" } }), [replied, settled, options.failed]);
+  const solo = options.solo;
+  const standings = useMemo(() => (solo ? null : standingsOf(room, MOCK_USER_ID)), [room, solo]);
   const tally = voteOf(room);
   const me = room.members.find((m) => m.userId === MOCK_USER_ID);
   const commit = (next) => { setRoom(next); setReceivedAt(performance.now()); };
@@ -155,21 +167,21 @@ function MockResultsScreen({ options }) {
     <Frame onLeave={() => {}} stage={stage}>
       <Results
         summary={summary}
-        mode="room"
+        mode={solo ? "solo" : "room"}
         phase="ended"
         effects="full"
         standings={standings}
-        upNext={upNextOf(room)}
+        upNext={solo ? null : upNextOf(room)}
         request={request}
         userId={MOCK_USER_ID}
         onRestart={() => {}}
-        onNext={() => { const { room: next, reply } = applyReady(room, MOCK_USER_ID, { ready: !me.ready }); if (reply.status === "ok") commit(next); }}
+        onNext={solo ? undefined : () => { const { room: next, reply } = applyReady(room, MOCK_USER_ID, { ready: !me.ready }); if (reply.status === "ok") commit(next); }}
         nextOn={Boolean(me?.ready)}
         nextLabel="Play next"
         nextCount={`${tally.votes}/${tally.needed}`}
         vote={{ votes: tally.votes, needed: tally.needed, names: tally.voters.map((m) => m.username), forced: tally.forced, startPerf: tally.counting ? startPerf : null }}
-        onForce={room.hostId === MOCK_USER_ID ? () => { const { room: next, reply } = forceStart(room, MOCK_USER_ID); if (reply.status === "ok") commit(next); } : undefined}
-        onSuggest={() => Promise.resolve()}
+        onForce={!solo && room.hostId === MOCK_USER_ID ? () => { const { room: next, reply } = forceStart(room, MOCK_USER_ID); if (reply.status === "ok") commit(next); } : undefined}
+        onSuggest={solo ? undefined : () => Promise.resolve()}
         suggestLabel="Add"
         suggestDoneLabel="Added"
         savedOffset={12}
@@ -190,6 +202,12 @@ export default function MockLobby({ search }) {
   const failed = params.has("failed");
   const nf = params.has("nf");
   const charting = params.has("charting");
-  const options = useMemo(() => ({ hostId, clockMs, last, failed, nf, charting }), [hostId, clockMs, last, failed, nf, charting]);
+  // &solo=1: the same results as a Solo run's, with no room around them; &versus=better|worse|first|none: what the score
+  // reply says of the pp and the best before the run; &reply=2500: the reply arrives that many ms after the screen.
+  const solo = params.has("solo");
+  const versus = MOCK_VERSUS.includes(params.get("versus")) ? params.get("versus") : undefined;
+  const reply = Number(params.get("reply"));
+  const replyMs = Number.isFinite(reply) && reply > 0 ? reply : 0;
+  const options = useMemo(() => ({ hostId, clockMs, last, failed, nf, charting, solo, versus, replyMs }), [hostId, clockMs, last, failed, nf, charting, solo, versus, replyMs]);
   return params.has("results") ? <MockResultsScreen options={options} /> : <MockLobbyScreen options={options} />;
 }
