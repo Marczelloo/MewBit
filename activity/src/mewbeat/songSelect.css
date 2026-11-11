@@ -364,6 +364,19 @@
 .mb-ss .mb-ss-chip-blocked { color: var(--mb-faint); }
 .mb-ss .mb-ss-linknote { padding: 6px 14px 2px; }
 
+/* The suggestion tabs group their rows under a heading ("Worth another go", "Rhythm game classics"). */
+.mb-ss .mb-ss-section {
+  padding: 12px 14px 5px;
+  border-bottom: 1px solid var(--mb-line);
+  color: var(--mb-faint);
+  font: 700 10px/1 var(--mb-ss-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* The level a suggestion proposes is tagged on its tile (the lobby's tile has the same tag in lobby.css). */
+.mb-ss .mb-ss-diffs .mb-ss-diff { position: relative; }
+.mb-ss .mb-ss-diffs .mb-ss-diff-tag { position: absolute; top: -6px; right: 6px; padding: 1px 5px; border-radius: 4px; background: var(--mb-bg); outline: 1px solid var(--c); color: var(--c); font: 700 9px/1.3 var(--mb-ss-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+
 .mb-ss .mb-ss-lv {
   display: flex;
   flex-direction: column;

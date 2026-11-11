@@ -15,6 +15,7 @@ import Mewbit, { usePrefersReducedMotion } from "./mewbit/Mewbit.jsx";
 import { pickLine } from "./mewbit/lines.js";
 import { formatOffset } from "./SettingsPanel.jsx";
 import { resolveArtworkUrl } from "./SongSelect.jsx";
+import SuggestedNext from "./SuggestedNext.jsx";
 
 const JUDGEMENTS = [
   ["perfect", "Perfect"],
@@ -318,6 +319,9 @@ export default function Results({
   onForce = null,
   forceLabel = "Force start",
   onSound = null,
+  onSuggest = null,
+  suggestLabel = "Play",
+  suggestDoneLabel = null,
 }) {
   const prefersReduced = usePrefersReducedMotion();
   const submit = summary.submit ?? { status: "skipped" };
@@ -509,6 +513,10 @@ export default function Results({
             <p className="mb-res-next">Up next: <b>{upNext.title}</b>{upNext.ready ? " · chart ready" : ""}</p>
           ) : null}
           {vote && upNext?.title ? <VoteLine vote={vote} /> : null}
+          {/* Songs to play after this one, looked up in the background; the strip shows when there are any. */}
+          {onSuggest && request && !summary.calibration ? (
+            <SuggestedNext request={request} seedKey={summary.audioKey ?? null} onSuggest={onSuggest} actionLabel={suggestLabel} doneLabel={suggestDoneLabel} />
+          ) : null}
           <div className="mb-res-actions">
             {onRestart ? (
               <button type="button" className={`mb-btn${primary === "restart" ? " mb-btn-primary" : ""}`} onClick={onRestart}>

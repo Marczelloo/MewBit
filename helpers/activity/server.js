@@ -71,6 +71,7 @@ const { createInvitePoster } = require("../mewbeat/invites");
 const { createSoloTracks } = require("../mewbeat/soloTracks");
 const { createTourSongs } = require("../mewbeat/tourSongs");
 const { createRechart } = require("../mewbeat/rechart");
+const { createDiscoverer: createMewbeatDiscoverer } = require("../mewbeat/recommendDiscover");
 const { createVoiceCharting } = require("../mewbeat/voiceCharting");
 const { historyStore: mewbeatHistoryStore, scoreStore: mewbeatScoreStore, statsStore: mewbeatStatsStore } = require("../mewbeat/stores");
 const { createRunLookup, getReporter, placeLabel, setRunLookup } = require("../mewbeat/reports");
@@ -759,6 +760,8 @@ const mewbeatChannel = createMewbeatChannel({
   postInvite: createInvitePoster({ getClient }),
   warmAudio: (audioKey, track, node) => audioStore.get(audioKey, track, node),
   tourSongs,
+  // New songs like a player's own for the suggestions: autoplay's candidate search, in the background and budgeted.
+  discover: createMewbeatDiscoverer({ log: Log }),
   broadcast: sendToGuildSockets,
   sendToUser: (guildId, userId, payload) => sendToGuildSockets(guildId, [userId], payload),
   // A pending room phase must not keep the process alive.

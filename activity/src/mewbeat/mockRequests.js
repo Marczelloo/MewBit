@@ -301,7 +301,45 @@ function chartMap({ audioKey, uri }) {
   return { status: "ok", state: "ready", audioKey: key, stats };
 }
 
+// Suggestions (mewbeat_recs): one section of each kind, from the sample songs and a few that nobody charted. The
+// shapes are the ones recommendations.js builds and activityChannel.js decorates; pending stays false.
+const UNCHARTED = [
+  { title: "Bury the Light", artist: "Casey Edwards", len: 233 },
+  { title: "Bad Apple!!", artist: "Alstroemeria Records", len: 219 },
+  { title: "Butterfly", artist: "Smile.dk", len: 183 },
+  { title: "Through the Fire and Flames", artist: "DragonForce", len: 442 },
+];
+
+function suggestion(song, extra) {
+  const charted = SONGS.find((candidate) => candidate.title === song.title);
+  const base = charted ? playedTrack(charted) : { audioKey: audioKeyOf(song), uri: `https://mock.invalid/watch?v=${slug(song.title)}`, source: "youtube", title: song.title, artist: song.artist, artworkUrl: null, durationMs: song.len * 1000, stars: null, notes: {}, bests: {}, highlightMs: null, bpm: null };
+  const { audioKey, uri, source, title, artist, artworkUrl, durationMs, stars, notes, bests, highlightMs, bpm } = base;
+  return { audioKey, uri, source, title, artist, artworkUrl, durationMs, stars, notes, bests: extra.kind === "again" ? bests : {}, highlightMs, bpm, playIssue: null, played: false, levelStars: null, ...extra };
+}
+
+function recs({ seedKey } = {}) {
+  const byTitle = (title) => SONGS.find((song) => song.title === title);
+  const stepUp = suggestion(byTitle("Rude Buster"), { kind: "again", reason: "S on Normal, try Hard", level: "hard", levelStars: 4.3 });
+  const retry = suggestion(byTitle("MEGALOVANIA"), { kind: "again", reason: "78% on Hard, one more go", level: "hard", levelStars: 5.8 });
+  const similar = [
+    suggestion(UNCHARTED[0], { kind: "similar", reason: "Because you just played MEGALOVANIA", level: null }),
+    suggestion(UNCHARTED[3], { kind: "similar", reason: "Because you did well on Rude Buster", level: null }),
+  ];
+  const here = [suggestion(byTitle("Coffin Dance"), { kind: "here", reason: "Played 4 times by others here", level: "normal", levelStars: 2.8 })];
+  const classic = [UNCHARTED[1], UNCHARTED[2]].map((song) => suggestion(song, { kind: "classic", reason: song.title === "Butterfly" ? "From Dance Dance Revolution" : "From Touhou", level: null }));
+  const sections = [
+    { kind: "similar", title: "Like what you play", rows: similar },
+    { kind: "again", title: "Worth another go", rows: [stepUp, retry] },
+    { kind: "here", title: "Played here", rows: here },
+    { kind: "classic", title: "Rhythm game classics", rows: classic },
+  ];
+  const strip = [similar[0], stepUp, here[0], classic[0]].filter((row) => row.audioKey !== seedKey);
+  const without = (rows) => rows.filter((row) => row.audioKey !== seedKey);
+  return { status: "ok", sections: sections.map((section) => ({ ...section, rows: without(section.rows) })), strip, pending: false, skill: { stars: 5.2, basis: "good" } };
+}
+
 const ANSWERS = {
+  mewbeat_recs: recs,
   mewbeat_chart_map: chartMap,
   mewbeat_song_stats: songStats,
   mewbeat_played: played,

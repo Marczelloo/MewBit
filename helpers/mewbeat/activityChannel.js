@@ -5,6 +5,7 @@ const { summarizeCharts } = require("./chartSummary");
 const { createLiveBoard } = require("./liveBoard");
 const { isPrivatePlace } = require("./places");
 const { createRanking } = require("./ranking");
+const { createRecommender } = require("./recommendations");
 const { judgeablePartsOf, recomputeRun } = require("./recompute");
 const { RULES_VERSION, boardKeyOf, loadClientModifiers } = require("./rules");
 const { DIFFICULTIES: ROOM_DIFFICULTIES, MAX_PLAYERS, createRooms } = require("./rooms");
@@ -69,6 +70,8 @@ function errorReply(message) {
 // warmAudio(audioKey, track, node) starts rendering a room song's audio when it
 // is queued, so the round's loading window doesn't pay for a cold render.
 // tourSongs.state() (tourSongs.js) is what the first-run tour is told about its two songs: both warm, or null.
+// discover({ title, artist }) -> [song] finds new songs like one (recommendDiscover.js) for the suggestions
+// (recommendations.js); without it the suggestions are the player's own songs, the server's and the classics.
 function createMewbeatChannel({
   readPlayback,
   chartStore,
@@ -81,6 +84,8 @@ function createMewbeatChannel({
   newInviteCode = () => randomBytes(8).toString("base64url"),
   warmAudio = () => {},
   tourSongs = null,
+  discover = null,
+  recommendOptions = {},
   // eslint-disable-next-line no-unused-vars
   broadcast = () => {}, sendToUser,
   setTimer = setTimeout, clearTimer = clearTimeout,
@@ -481,6 +486,24 @@ function createMewbeatChannel({
   // With the scores in AtlasHub the store is empty until it has been read; the ranking built from it must be dropped then.
   scoreStore?.onHydrated?.(() => ranking?.invalidate());
 
+  // Map suggestions (recommendations.js). They read the stores and the charts that exist; they never chart or analyse.
+  const recommender = historyStore && scoreStore
+    ? createRecommender({
+      historyStore,
+      starsReader: () => {
+        const read = summaryReader();
+        return (audioKey) => {
+          const charts = read(trackFromAudioKey(audioKey));
+          return charts ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, charts[difficulty]?.stars ?? null])) : null;
+        };
+      },
+      discover,
+      now,
+      log,
+      ...recommendOptions,
+    })
+    : null;
+
   // The tempo of any stored difficulty of the song, normal first.
   function bpmOf(charts) {
     if (!charts) return null;
@@ -630,6 +653,7 @@ function createMewbeatChannel({
         failed: run.failed,
         modifiers,
       });
+      recommender?.forget(userId); // the run changes what to suggest
     }
     // The player's totals take every real run that got at least half through, ranked or not; a calibration or an
     // autoplay run is nobody's play, and neither is a restart a few seconds in.
@@ -724,6 +748,48 @@ function createMewbeatChannel({
       return { ...track, stars, notes, bests, highlightMs: highlightOf(charts), bpm: bpmOf(charts) };
     });
     return { type: "mewbeat_played", id, tracks };
+  }
+
+  // Suggestions for the results screen and the song select: { sections: [{ kind, title, rows }], strip, pending }. It
+  // answers from what is known at once; `pending` says a search for new songs is still running (ask again in a few
+  // seconds). The rows carry what a played row does (stars and so on, from the charts that exist, none made). `seedKey`
+  // is the song just played, which is never offered back.
+  function recommendations(guildId, userId, message) {
+    const { id, seedKey } = message;
+    const fail = (reason) => ({ type: "mewbeat_recs", id, status: "error", reason });
+    if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) return errorReply("Bad mewbeat recs.");
+    if (!recommender) return fail("unavailable");
+    if (seedKey != null && (typeof seedKey !== "string" || seedKey.length > MAX_URI_LENGTH)) return fail("bad_request");
+
+    const { sections, strip, pending, skill } = recommender.forPlayer({ userId, guildId, seedKey: seedKey ?? null });
+    const read = summaryReader();
+    const decorated = new Map(); // a row is in a section and maybe the strip: looked up once
+    const decorate = (row) => {
+      if (decorated.has(row)) return decorated.get(row);
+      const charts = read(trackFromAudioKey(row.audioKey));
+      const stars = charts ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, charts[difficulty]?.stars ?? null])) : null;
+      const notes = charts ? Object.fromEntries(DIFFICULTIES.map((difficulty) => [difficulty, charts[difficulty]?.notes ?? null])) : {};
+      const bests = {};
+      if (row.kind === "again" || row.played) {
+        for (const difficulty of DIFFICULTIES) {
+          const chartKey = chartKeyFor(row.audioKey, difficulty, read);
+          const best = chartKey && scoreStore.bestOf(chartKey, userId);
+          if (best) bests[difficulty] = { score: best.score, grade: best.grade };
+        }
+      }
+      const result = { ...row, stars, notes, bests, highlightMs: highlightOf(charts), bpm: bpmOf(charts), playIssue: null };
+      decorated.set(row, result);
+      return result;
+    };
+    return {
+      type: "mewbeat_recs",
+      id,
+      status: "ok",
+      sections: sections.map((section) => ({ ...section, rows: section.rows.map(decorate) })),
+      strip: strip.map(decorate),
+      pending,
+      skill,
+    };
   }
 
   // The player a profile or stats request is about: yourself (no userId) or somebody else. Null when nobody
@@ -984,6 +1050,7 @@ function createMewbeatChannel({
         case "mewbeat_song_stats": return songStats(guildId, userId, message);
         case "mewbeat_chart_map": return chartMap(guildId, userId, message);
         case "mewbeat_played": return played(boards, userId, message);
+        case "mewbeat_recs": return recommendations(boards, userId, message);
         case "mewbeat_profile": return playerProfile(boards, userId, message, profile);
         case "mewbeat_stats": return playerStats(guildId, userId, message, profile);
         case "mewbeat_report_runs": return reportRuns(userId, message);

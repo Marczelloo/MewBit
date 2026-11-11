@@ -1,5 +1,5 @@
 import { MagnifyingGlass, Play, Plus, Sparkle, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchActivity } from "../api.js";
 import { describeLinkError, describeLinkNote, describePlayIssue, listedTracks, playIssueOf } from "./searchResults.js";
 import LevelBoard from "./LevelBoard.jsx";
@@ -7,6 +7,8 @@ import ModifierPicker from "./ModifierPicker.jsx";
 import PlayerPanel from "./PlayerPanel.jsx";
 import { scopesFor, usePrivatePlace } from "./placeContext.js";
 import { arrangeRows } from "./songList.js";
+import { suggestionRows } from "./suggestions.js";
+import { useSuggestions } from "./useSuggestions.js";
 import "./songSelect.css";
 
 export const DIFFICULTIES = [
@@ -21,6 +23,14 @@ const SCOPES = [
   { id: "global", label: "Everywhere" },
   { id: "mine", label: "Played by you" },
 ];
+
+// Two more tabs beside the played lists: what the bot suggests for the player, and the curated rhythm-game classics.
+// They are lists of suggestions, not of played songs, so they have their own rows, copy and no sort tools.
+const SUGGEST_TABS = [
+  { id: "foryou", label: "For you" },
+  { id: "classics", label: "Classics" },
+];
+const SUGGEST_IDS = SUGGEST_TABS.map((tab) => tab.id);
 
 const SORTS = [
   { id: "recent", label: "Recent" },
@@ -43,6 +53,8 @@ const EMPTY_COPY = {
   server: "No songs played here yet — search for one",
   global: "No songs played yet — search for one",
   mine: "You haven't played anything yet — search for a song",
+  foryou: "Nothing to suggest yet — play a few songs and it will fill in",
+  classics: "No classics to show",
 };
 
 const PLAYED_LIMIT = 500;
@@ -227,9 +239,9 @@ function LevelCell({ row, id, label }) {
   );
 }
 
-// "2:36 · 240 BPM"; either part is left out when the song doesn't have it.
+// "2:36 · 240 BPM"; any part is left out when the song doesn't have it. A suggestion starts with why it is listed.
 function rowMeta(row) {
-  return [formatLength(row.durationMs), describePlayIssue(row.playIssue), Number.isFinite(row.bpm) ? `${Math.round(row.bpm)} BPM` : ""].filter(Boolean).join(" · ");
+  return [row.reason, row.played ? "played" : "", formatLength(row.durationMs), describePlayIssue(row.playIssue), Number.isFinite(row.bpm) ? `${Math.round(row.bpm)} BPM` : ""].filter(Boolean).join(" · ");
 }
 
 // One song in the list. A pick or a state push re-renders only the rows whose own props changed (up to 500 rows):
@@ -312,9 +324,13 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
   const text = query.trim();
   const searching = text.length >= MIN_QUERY;
+  // The suggestion tabs are asked for only while one is showing; the bot looks them up and starts no charting.
+  const suggesting = !searching && SUGGEST_IDS.includes(scope);
+  const suggested = useSuggestions({ request, enabled: suggesting, reload });
 
   // The played list for the chosen scope.
   useEffect(() => {
+    if (SUGGEST_IDS.includes(scope)) return undefined;
     let cancelled = false;
     setPlayed({ status: "loading", rows: [] });
     Promise.resolve()
@@ -358,13 +374,14 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   const withCharts = useCallback((list) => (Object.keys(charted).length ? list.map((row) => (charted[row.key] ? { ...row, ...charted[row.key] } : row)) : list), [charted]);
   const playedRows = useMemo(() => withCharts(played.rows), [withCharts, played.rows]);
   const foundRows = useMemo(() => withCharts(found.rows), [withCharts, found.rows]);
+  const suggestedRows = useMemo(() => withCharts(suggested.reply ? suggestionRows(suggested.reply, scope) : []), [withCharts, suggested.reply, scope]);
   const arranged = useMemo(() => arrangeRows(playedRows, { sort, level, direction, filter }), [playedRows, sort, level, direction, filter]);
-  const list = searching ? found : played;
-  // A search keeps the order it came in; the tools only arrange the played list.
-  const rows = searching ? foundRows : arranged;
+  const list = searching ? found : suggesting ? { status: suggested.status } : played;
+  // A search keeps the order it came in, a suggestion tab the bot's; the tools only arrange the played list.
+  const rows = searching ? foundRows : suggesting ? suggestedRows : arranged;
   // No list picks a song by itself: the details, the preview and Play wait for the player's pick. It is looked up in
   // every row, so a level or filter that hides the song from the list does not drop it.
-  const selected = useMemo(() => (searching ? foundRows : playedRows).find((row) => row.key === selectedKey) ?? null, [searching, foundRows, playedRows, selectedKey]);
+  const selected = useMemo(() => (searching ? foundRows : suggesting ? suggestedRows : playedRows).find((row) => row.key === selectedKey) ?? null, [searching, suggesting, foundRows, suggestedRows, playedRows, selectedKey]);
 
   // The charting of the picked song: asks the bot now and then (the request answers "queued" until the stars are
   // there). It stops when the player picks another song, after a few minutes, and on the first error.
@@ -439,8 +456,12 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
   const unlockRef = useRef(onUnlockAudio);
   unlockRef.current = onUnlockAudio;
+  // Where Play exists, a suggestion brings the level it suggests (the one that fits the player's results).
+  const playRef = useRef(Boolean(onPlay));
+  playRef.current = Boolean(onPlay);
   const select = useCallback((row) => {
     try { unlockRef.current?.(); } catch { /* a blocked context shows up as a failed preview */ }
+    if (playRef.current && row.level && row.levelStars !== null && row.levelStars !== undefined) setDifficulty(row.level);
     setSelectedKey(row.key);
     setPlayError(null);
     setAddedNote(null);
@@ -527,9 +548,9 @@ export default function SongSelect({ context, request, player, defaultDifficulty
   };
 
   let emptyCopy = null;
-  if (list.status === "loading" || list.status === "searching" || (searching && list.status === "idle")) emptyCopy = searching ? "Searching…" : "Loading songs…";
+  if (list.status === "loading" || list.status === "searching" || (searching && list.status === "idle")) emptyCopy = searching ? "Searching…" : suggesting ? "Finding songs for you…" : "Loading songs…";
   else if (list.status === "empty") emptyCopy = found.link ? describeLinkError(found.link) : "No songs found.";
-  else if (list.status === "error") emptyCopy = searching ? "Search failed." : "Couldn't load the played songs.";
+  else if (list.status === "error") emptyCopy = searching ? "Search failed." : suggesting ? suggested.error : "Couldn't load the played songs.";
   else if (!rows.length && !searching && played.rows.length) emptyCopy = "No songs match this filter.";
   else if (!rows.length) emptyCopy = EMPTY_COPY[scope];
 
@@ -577,7 +598,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
             <div className="mb-ss-hero" data-tour="track">
               <Cover row={selected} className="mb-ss-cover" size="medium" />
               <div className="mb-ss-hero-text">
-                <span className="mb-ss-label">{selected.plays ? `played ${selected.plays}×` : searching ? "search result" : "song"}</span>
+                <span className="mb-ss-label">{selected.reason || (selected.plays ? `played ${selected.plays}×` : searching ? "search result" : "song")}</span>
                 <h2>{selected.title}</h2>
                 <div className="mb-ss-artist">{selected.artist}</div>
                 <div className="mb-ss-chips">
@@ -611,6 +632,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
                     label={label}
                     stars={starsOf(selected, id)}
                     best={selected.bests?.[id]}
+                    tag={selected.level === id && starsOf(selected, id) !== null ? "Suggested" : undefined}
                     {...(onPlay ? { type: "button", role: "radio", "aria-checked": difficulty === id, disabled: busy, onClick: () => setDifficulty(id) } : null)}
                     className={!onPlay ? "mb-ss-diff-static" : difficulty === id ? "mb-ss-diff-on" : ""}
                   />
@@ -671,7 +693,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
 
       <aside className="mb-ss-list" data-tour="list">
         <div className="mb-ss-tabs" role="tablist" aria-label="Songs">
-          {scopesFor(SCOPES, isPrivate).map(({ id, label }) => (
+          {[...scopesFor(SCOPES, isPrivate), ...SUGGEST_TABS].map(({ id, label }) => (
             <button
               key={id}
               type="button"
@@ -698,7 +720,7 @@ export default function SongSelect({ context, request, player, defaultDifficulty
           />
         </label>
 
-        {!searching ? (
+        {!searching && !suggesting ? (
           <div className="mb-ss-tools">
             <label className="mb-ss-select">
               <small>Sort</small>
@@ -729,13 +751,14 @@ export default function SongSelect({ context, request, player, defaultDifficulty
           </div>
         ) : null}
 
-        <div className="mb-ss-rows" ref={listRef} role="listbox" aria-label={searching ? "Search results" : "Played songs"}>
+        <div className="mb-ss-rows" ref={listRef} role="listbox" aria-label={searching ? "Search results" : suggesting ? "Suggested songs" : "Played songs"}>
           {emptyCopy ? (
             <div className={`mb-ss-empty${list.status === "error" ? " mb-ss-empty-error" : ""}`} role={list.status === "error" ? "alert" : "status"}>
               <span>{emptyCopy}</span>
               {list.status === "error" && !searching ? <button type="button" className="mb-btn" onClick={() => setReload((n) => n + 1)}>Try again</button> : null}
             </div>
           ) : null}
+          {suggesting && suggested.status === "ready" && suggested.pending ? <p className="mb-ss-note mb-ss-linknote" role="status">Looking for songs like the ones you play…</p> : null}
           {!searching && rows.length ? (
             <div className="mb-ss-head" aria-hidden="true">
               <span />
@@ -744,8 +767,11 @@ export default function SongSelect({ context, request, player, defaultDifficulty
             </div>
           ) : null}
           {searching && list.status === "ready" && describeLinkNote(found.link, rows.length) ? <p className="mb-ss-note mb-ss-linknote">{describeLinkNote(found.link, rows.length)}</p> : null}
-          {rows.map((row) => (
-            <SongRow key={row.key} row={row} on={row.key === selected?.key} preparing={preparing === row.key} onPick={select} onPrimary={runPrimary} />
+          {rows.map((row, index) => (
+            <Fragment key={row.key}>
+              {suggesting && row.section && row.section !== rows[index - 1]?.section ? <div className="mb-ss-section" role="presentation">{row.section}</div> : null}
+              <SongRow row={row} on={row.key === selected?.key} preparing={preparing === row.key} onPick={select} onPrimary={runPrimary} />
+            </Fragment>
           ))}
         </div>
 
