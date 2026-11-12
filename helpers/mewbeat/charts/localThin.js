@@ -35,6 +35,38 @@ function localKeep(features, durationMs, { reach, power, floor, knee }) {
   });
 }
 
+// diff.lightThin (a flag): per second, the share of its moments a lighter stretch keeps, read from the 500 ms energy. A second
+// is lighter when its energy (smoothed over +-`smooth` hops) stays under the loud level of the music around it, taken as the
+// `quantile` of the `reach` seconds on each side and from the quieter side (so a stretch with loud music on both sides counts,
+// the start of a long light part or a quiet ending does not), and only where that level is loud enough (`minLevel`, the
+// normalised energy: Rush E plays fast piano on little energy). Its share is the energy against that level, from `knee` down,
+// never under `floor`; 1 everywhere else.
+function lightKeep(features, durationMs, { reach, quantile, smooth, minLevel, knee, floor, power }) {
+  const seconds = Math.max(1, Math.ceil(durationMs / 1000));
+  const keep = new Array(seconds).fill(1);
+  const hop = features.energy?.hopMs, values = features.energy?.values;
+  if (!hop || !Array.isArray(values) || values.length === 0) return keep;
+  const n = values.length;
+  const smoothed = values.map((_, i) => meanOf(values.slice(Math.max(0, i - smooth), i + smooth + 1)));
+  const side = Math.round((reach * 1000) / hop);
+  const at = (list) => { const sorted = [...list].sort((a, b) => a - b); return sorted[Math.min(sorted.length - 1, Math.floor(quantile * sorted.length))]; };
+  const perSecond = Math.round(1000 / hop);
+  const sums = new Array(seconds).fill(0), levels = new Array(seconds).fill(0), counts = new Array(seconds).fill(0);
+  for (let j = side; j + side < n; j++) {
+    const level = Math.min(at(smoothed.slice(j - side, j)), at(smoothed.slice(j + 1, j + side + 1)));
+    const second = Math.floor((j * hop) / 1000);
+    if (second >= seconds) break;
+    sums[second] += level > 0 ? smoothed[j] / level : 1;
+    levels[second] += level;
+    counts[second]++;
+  }
+  return keep.map((_, s) => {
+    if (counts[s] < perSecond) return 1; // a side window is cut by the song's edge
+    const relative = sums[s] / counts[s];
+    return levels[s] / counts[s] < minLevel || relative >= knee ? 1 : Math.max(floor, (relative / knee) ** power);
+  });
+}
+
 // The notes without the moments the music gives up: per run of seconds under full keep, off the beat first, then evenly along
 // the run. A held moment stays (a slower stretch is where a long note belongs), no stretch opens past MAX_GAP_BEATS, and
 // at most `spare` moments go. The moments of `last` (a set of times, or null) go only when no other is left to take.
@@ -83,4 +115,4 @@ function thinned(notes, keep, timing, spare = Infinity, last = null) {
   return gone.size === 0 ? notes : notes.filter((n) => !gone.has(n.t));
 }
 
-module.exports = { localKeep, thinned };
+module.exports = { localKeep, lightKeep, thinned };

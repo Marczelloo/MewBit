@@ -150,6 +150,24 @@ const FAST_RUNS = { minGapMs: 70 };
 // follows the player's wish, not the corpus. A note is added only inside a stream (notes before and after within
 // `streamBeats` of a beat) and `minGapMs` from both, like FAST_RUNS.
 const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs: 70, maxRun: 5, maxCover: 0.03 };
+// localThin.js lightKeep (generator flag lightThin, Normal only). Asked for by ear (King Gnu AIZO, 190 BPM, about 0:48-1:00 and
+// 2:04-2:10: "a bit lighter in the music, still full of blocks"): AIZO is flat loud, so the strong-onset thinning of localThin
+// never ran there and the 500 ms energy was read by no rule that reaches over many seconds. A second whose energy stays under
+// the q80 of the `reach` 12 s on both sides (the quieter side counts, so a start of a long light part or a quiet ending does
+// not) keeps (r / knee) ** power of its moments, never under `floor`, and only where that level is itself at least `minLevel`.
+// Measured: AIZO Normal moments per 2 s in the two stretches 11 11 11 9 11 11 | 14 7 11 14 11 11 -> 10 11 9 8 10 8 | 14 6 8 12 7
+// 11 (loud windows around 11-14 stay), longest gap unchanged (1421 ms). Corpus, 80 songs, relative energy against the loud level
+// around, ours per moment against the not-lighter seconds around it (people's Normal in brackets), before -> after: 0.5-0.6
+// .708 -> .586 (.631), 0.6-0.7 .733 -> .613 (.671), 0.7-0.8 .803 -> .709 (.761), 0.8-0.9 .928 -> .882 (.921); the same signal
+// shifted by 37 s is untouched (.941/.977/.978/.991 -> .927/.979/.983/.989 against people .906/.981/.960/1.008), so it is the
+// music and not the rule's own cut. In bins above 0.5 it now sits .04-.06 under people: asked for by ear, and the F1 against
+// people costs Easy .7306 -> .7304, Normal .7906 -> .7893, Hard .8051 -> .8047. Moments, corpus Normal 56316 -> 55855 (-0.8%,
+// 65 of 80 songs), bot 98 songs 91048 -> 90283 (80 songs; Easy -278, Hard -476, Hell -397 follow Normal). Guards: Rush E (fast
+// piano on little energy, p80 .74) keeps its notes but for one moment at 1:58 where the energy really falls .89 -> .66 -> .79
+// (669 -> 668; minLevel .75 took 2-3, .85 and above 0 but leaves AIZO's 0:48 stretch at 11 11 10 9); MAYDAY Normal 1014 -> 1007
+// (largest 4 s window 19 -> 14 at 1:32); MEGALOVANIA (Camellia, 242 BPM) 2352 -> 2325, 2:20 window 27 -> 22 on top of dipThin.
+// smooth 0: a smoothed edge thinned the first louder second after a stretch (MAYDAY +15 added moments by the reshuffle).
+const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0.85, floor: 0.6, power: 1.5 };
 // selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
 // sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
 // 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
@@ -780,6 +798,7 @@ module.exports = {
   DIP_THIN,
   DRUMLESS,
   DRUM_RUNS,
+  LIGHT_THIN,
   EASY_FIGURES,
   EASY_FROM_NORMAL,
   EASY_SAME_CUTS,
