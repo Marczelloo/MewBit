@@ -25,6 +25,7 @@ const {
   MELODY_LINES_FIRST,
   MELODY_SHIFT_PICK,
   NO_NOISE,
+  NO_NOISE_EDGE,
   PITCH_LANES,
   PLUS_CALM,
   PLUS_CALM_END,
@@ -89,6 +90,8 @@ const FLAGS = {
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
   // Every level: no notes where the sounds are no music, off the grid and without pitch (noise.js; generate.js playedNotes).
   noNoise: { label: "Wszystkie poziomy: bez nut na dźwiękach spoza muzyki (szum, mowa, efekty: poza siatką i bez wysokości dźwięku)", levels: { easy: { noNoise: NO_NOISE }, normal: { noNoise: NO_NOISE }, hard: { noNoise: NO_NOISE }, hell: { noNoise: NO_NOISE } } },
+  // Every level, with noNoise: a noise stretch that opens the song reaches on to where the music begins, one that closes it back to where the music stopped (noise.js edgeStretches).
+  noNoiseEdge: { label: "Wszystkie poziomy, z noNoise: szum na początku (końcu) utworu sięga do miejsca, gdzie zaczyna się (kończy) muzyka, także gdy dekoder słyszy w nim nuty", levels: { easy: { noNoiseEdge: NO_NOISE_EDGE }, normal: { noNoiseEdge: NO_NOISE_EDGE }, hard: { noNoiseEdge: NO_NOISE_EDGE }, hell: { noNoiseEdge: NO_NOISE_EDGE } } },
   // Normal: the lane moves the way the melody's pitch moves, by about as much (laneRules.js pitchCost). Lanes only: no note moves in time.
   pitchLanes: { label: "Normal: tor idzie za wysokością melodii (wyżej = w prawo)", levels: { normal: { pitchLanes: PITCH_LANES } } },
   // Hard, Hell: in a quiet stretch the extras number at most half of what the level below plays there (generate.js plusNotes, quiet.js).

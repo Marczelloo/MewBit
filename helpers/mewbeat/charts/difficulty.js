@@ -324,6 +324,17 @@ const CALM_SPOTS = { below: 0.65, windowBeats: 4, sideBeats: 12, minSideBeats: 4
 // music bed (youtube:CHENRaquRHo 4:30-5:05, 56 notes; youtube:wjOj_6cMGEY 13:31-14:06, 146): that is music by every
 // measure here. Looser numbers (onGrid .15, pitched 2) take in stretches people do play (0.72 notes/s against 0.13).
 const NO_NOISE = { windowMs: 4000, hopMs: 1000, minSounds: 8, onGrid: 0.1, pitched: 1 };
+// noise.js edgeStretches (flag noNoiseEdge, with noNoise). A noise stretch that starts within `withinMs` of the song's first
+// (last) second takes the windows after it that are still off the grid and under `pitched` decoded notes a second, and its
+// edge lies `reachMs` past the last window's centre. King Gnu AIZO: noNoise stops at 10.4 s, the decoder hears 1.75-2.25 notes
+// a second in windows 11-13 (9 notes of 70-383 ms, none held, none after 13.8 s) and the music starts at 15.57 s; the rule
+// takes the noise to 14.0 s (Normal's first note 10919 -> 14156). Pitch waived altogether (and reach 2000) put 126 of
+// people's Normal notes in the added stretches (long tails, 2006713 at 127-142 s); pitched 3 with reach 1000 puts 12 (Easy 9,
+// Hard 16 of 33304 / 58047 / 87288) in 39.4 s on 13 of 79 corpus songs, F1 against people Easy .7333 -> .7334, Normal
+// .7940 -> .7942, Hard .8051 -> .8054. Bot's songs: 30.2 s on 9 of 93, Normal -42 notes, Easy -19, Hard -52, Hell -66. Free-time
+// phrases (the trap, Rush E 32ca6d66): the bot's Rush E loses 3 notes at its end and none at its start (first note 129 stays);
+// in the corpus 1539091, 1802351 and 2258999 have free phrases touched, 3.0, 1.5 and 3.5 s.
+const NO_NOISE_EDGE = { withinMs: 2000, reachMs: 1000, pitched: 3 };
 // chords.js: a moment of Normal after 2 beats of nothing in quiet music plays one note, held until half a beat before the
 // next moment (Rebel Path 1:42.5, asked for by ear; people play one tap there 68% of the time, hold it 5%).
 const QUIET_LONE = { gapBeats: 2, below: 0.25, hold: { minBeats: 1, releaseBeats: 0.5 } };
@@ -760,6 +771,7 @@ module.exports = {
   PITCH_LANES,
   CALM_SPOTS,
   NO_NOISE,
+  NO_NOISE_EDGE,
   PLUS_CALM,
   PLUS_CALM_END,
   PLUS_FIGURES,

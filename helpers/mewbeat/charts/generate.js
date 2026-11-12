@@ -348,8 +348,9 @@ function quietOf(ctx, rule) {
 }
 
 // Where the sounds of the song are no music (noise.js), once a song: t -> boolean, or null with nothing to tell it by.
-function noiseOf(ctx, rule) {
-  if (ctx.noise === undefined) ctx.noise = noiseLookup(ctx.raw, ctx.features, ctx.timing, rule);
+// `edge` (diff.noNoiseEdge) lets a stretch at the song's start or end reach on to the music; every level has the same.
+function noiseOf(ctx, rule, edge = null) {
+  if (ctx.noise === undefined) ctx.noise = noiseLookup(ctx.raw, ctx.features, ctx.timing, rule, edge);
   return ctx.noise;
 }
 
@@ -748,9 +749,9 @@ function finalNotes(ctx, difficulty) {
 // so away from the noise each level is note for note what it was (with Normal's opening emptied first, the fixture's Easy
 // and Hell chose other figures for the whole song).
 function playedNotes(ctx, difficulty, trace = null, notes = finalNotes(ctx, difficulty)) {
-  const rule = flagged(ctx, difficulty).noNoise;
+  const { noNoise: rule, noNoiseEdge: edge } = flagged(ctx, difficulty);
   if (!rule) return notes;
-  const played = withoutNoise(notes, noiseOf(ctx, rule));
+  const played = withoutNoise(notes, noiseOf(ctx, rule, edge));
   return trace ? trace.step("noNoise", notes, played) : played;
 }
 
