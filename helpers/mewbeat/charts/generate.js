@@ -13,6 +13,7 @@ const { withMergedLead } = require("./legato");
 const { heldLineMoments } = require("./melodyLines");
 const { ranks, withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
+const { withDrumRunNotes } = require("./drumRuns");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
 const { patternEvents } = require("./patterns");
@@ -125,7 +126,7 @@ function copiedRepeat(ctx, all, i, diff) {
     .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
   const upper = upperRhythm(ctx, diff);
   const copied = upper ? nested(fitted, upper) : fitted;
-  if (diff.copyMelody) {
+  if (diff.copyMelody && !(diff.copySure && phrase.similarity >= diff.copySure)) {
     const here = melodyShare(ctx, diff, copied, phrase.startMs, phrase.endMs);
     if (here !== null && here < diff.copyMelody.share * (melodyShare(ctx, diff, sourceNotes, from, to) ?? 1)) return null;
   }
@@ -348,8 +349,9 @@ function quietOf(ctx, rule) {
 }
 
 // Where the sounds of the song are no music (noise.js), once a song: t -> boolean, or null with nothing to tell it by.
-function noiseOf(ctx, rule) {
-  if (ctx.noise === undefined) ctx.noise = noiseLookup(ctx.raw, ctx.features, ctx.timing, rule);
+// `edge` (diff.noNoiseEdge) lets a stretch at the song's start or end reach on to the music; every level has the same.
+function noiseOf(ctx, rule, edge = null) {
+  if (ctx.noise === undefined) ctx.noise = noiseLookup(ctx.raw, ctx.features, ctx.timing, rule, edge);
   return ctx.noise;
 }
 
@@ -651,8 +653,13 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const bursts = diff.melodyRuns && diff.fastRuns;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, bursts ? { ...diff.melodyRuns, minGapMs: bursts.minGapMs } : diff.melodyRuns)) : settled;
   const stood = bursts && ran !== settled ? new Set(settled.map((n) => n.t)) : null;
-  const burstGap = stood ? { gapMs: bursts.minGapMs, times: new Set(ran.map((n) => n.t).filter((t) => !stood.has(t))) } : null;
-  const dipped = diff.dipThin ? step("dipThin", ran, thinDips(ran, ctx, diff.dipThin, melodyMoments(ctx, diff))) : ran;
+  // diff.drumRuns (a flag): a drum roll gets a note on each hit (drumRuns.js). Its notes are the quarter beats between the
+  // stream's, so they ask the same: the floors let them stand rule.minGapMs from their neighbours, and only them.
+  const rolled = diff.drumRuns ? step("drumRuns", ran, withDrumRunNotes(ran, ctx.features.drums, ctx.timing, diff.drumRuns)) : ran;
+  const rolledTimes = rolled !== ran ? new Set(ran.map((n) => n.t)) : null;
+  const burstTimes = new Set([...(stood ? ran.map((n) => n.t).filter((t) => !stood.has(t)) : []), ...(rolledTimes ? rolled.map((n) => n.t).filter((t) => !rolledTimes.has(t)) : [])]);
+  const burstGap = burstTimes.size > 0 ? { gapMs: Math.min(stood ? bursts.minGapMs : Infinity, rolledTimes ? diff.drumRuns.minGapMs : Infinity), times: burstTimes } : null;
+  const dipped = diff.dipThin ? step("dipThin", rolled, thinDips(rolled, ctx, diff.dipThin, melodyMoments(ctx, diff))) : rolled;
   const hushed = diff.dipSilence ? step("dipSilence", dipped, silentUpper(dipped, ctx, diff.dipSilence)) : dipped;
   const thinned = diff.drumless ? step("drumless", hushed, thinDrumless(hushed, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : hushed;
   const spaced = step("spacedMoments", thinned, spacedMoments(thinned, diff, burstGap));
@@ -663,7 +670,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
     : holdsCappedByPhrase(floored, ctx, diff, isSustain));
   // diff.keepNormalHolds: a long hold of the level this one is built on or cut from plays as it does there (holds.js keptHolds).
   const source = diff.keepNormalHolds && (diff.buildOn ?? diff.cutFrom);
-  const capped = source ? step("normalHolds", shared, keptHolds(shared, finalNotes(ctx, source), diff, ctx.timing, ctx.durationMs)) : shared;
+  const capped = source ? step("normalHolds", shared, keptHolds(shared, finalNotes(ctx, source, !diff.buildOn), diff, ctx.timing, ctx.durationMs)) : shared;
   const planned = step("chords", capped, planChords(capped, ctx, diff, upper, diff.heardChords ? heardShiftOf(ctx, diff.heardChords) : 0));
   const quietHeld = diff.quietLone?.hold ? step("quietLone", planned, holdQuietLone(planned, ctx, diff.quietLone)) : planned;
   // After the hold cap and the chords (sustain.js): the long notes it holds are not cut back to taps, and the passages it
@@ -683,10 +690,13 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
   // diff.calmSpots (a flag): in a quiet part no bar plays well above the bars on both sides of it (spots.js). With the
   // lanes laid, like the fade-out; a level built on another gives only its own extras.
-  const evened = diff.calmSpots ? step("calmSpots", faded, evenSpots(faded, ctx, diff.calmSpots, quietOf(ctx, diff.calmSpots), protect)) : faded;
+  // diff.calmMelody (a flag): the moments on a note of the decoded melody are no part of a spot; the dense spots it evened
+  // were mostly the melody's own runs (Rush E, 15 of the 16 moments it dropped).
+  const onMelody = diff.calmSpots && diff.calmMelody ? melodyTimes(ctx, diff) : null;
+  const evened = diff.calmSpots ? step("calmSpots", faded, evenSpots(faded, ctx, diff.calmSpots, quietOf(ctx, diff.calmSpots), protect, onMelody && new Set(onMelody))) : faded;
   const final = step("finalFloors", evened, enforceFloors(evened, diff, ctx.timing, burstGap));
   if (!(diff.sameCuts && diff.cutFrom)) return final;
-  const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);
+  const above = [...new Set(finalNotes(ctx, diff.cutFrom, true).map((n) => n.t))].sort((a, b) => a - b);
   return step("sameCuts", final, sameCuts(final, above, ctx.timing, diff.sameCuts));
 }
 
@@ -694,8 +704,9 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
 const flagged = (ctx, difficulty) => withFlags(levelOf(difficulty), difficulty, ctx.flags);
 const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(flagged(ctx, difficulty), ctx.busy), ctx.timing), ctx.timing);
 
-const notesFor = (ctx, difficulty, trace = null) => {
-  const level = diffOf(ctx, difficulty);
+const notesFor = (ctx, difficulty, trace = null, plain = false) => {
+  const asked = diffOf(ctx, difficulty);
+  const level = plain && asked.drumRuns ? (({ drumRuns, ...rest }) => rest)(asked) : asked;
   const charted = chartNotes(ctx, level, trace);
   // diff.holdYield: the lanes let a hold go before they lose a moment the level is built on (lanes.js, laneSearch.js).
   const diff = level.holdYield && charted.protect ? { ...level, holdYield: charted.protect } : level;
@@ -737,28 +748,35 @@ function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
   return { notes: kept, diff: used, done: settledRun };
 }
 
-// A level's finished notes, once per song: the levels below it are cut from them.
-function finalNotes(ctx, difficulty) {
-  ctx.final[difficulty] ??= notesFor(ctx, difficulty);
-  return ctx.final[difficulty];
+// A level's finished notes, once per song: the levels below it are cut from them. `plain`: without the notes of diff.drumRuns,
+// for a level cut from it (Easy): a roll of the drums is a run of quarter beats, which Easy does not play, and with the flag
+// on it must be the Easy it is without. A level built on another (Hard, Hell) is built on the whole of it.
+function finalNotes(ctx, difficulty, plain = false) {
+  const key = plain ? plainKey(ctx, difficulty) : difficulty;
+  ctx.final[key] ??= notesFor(ctx, difficulty, null, key !== difficulty);
+  return ctx.final[key];
 }
+
+// The cache key of a level without its drum rolls: the level's own when the flag does not touch it.
+const plainKey = (ctx, difficulty) => (flagged(ctx, difficulty).drumRuns ? `${difficulty}:plain` : difficulty);
 
 // What the player gets of a level: its finished notes without the ones on sounds that are no music (diff.noNoise, a flag;
 // noise.js). Taken off at the very end and from every level alike: a level built on another is built on the whole of it,
 // so away from the noise each level is note for note what it was (with Normal's opening emptied first, the fixture's Easy
 // and Hell chose other figures for the whole song).
 function playedNotes(ctx, difficulty, trace = null, notes = finalNotes(ctx, difficulty)) {
-  const rule = flagged(ctx, difficulty).noNoise;
+  const { noNoise: rule, noNoiseEdge: edge } = flagged(ctx, difficulty);
   if (!rule) return notes;
-  const played = withoutNoise(notes, noiseOf(ctx, rule));
+  const played = withoutNoise(notes, noiseOf(ctx, rule, edge));
   return trace ? trace.step("noNoise", notes, played) : played;
 }
 
 // The moments diff is cut from, or null for a level charted straight from the music.
 function upperRhythm(ctx, diff) {
   if (!diff.cutFrom) return null;
-  ctx.rhythms[diff.cutFrom] ??= rhythmOf(finalNotes(ctx, diff.cutFrom), ctx);
-  return ctx.rhythms[diff.cutFrom];
+  const key = plainKey(ctx, diff.cutFrom);
+  ctx.rhythms[key] ??= rhythmOf(finalNotes(ctx, diff.cutFrom, true), ctx);
+  return ctx.rhythms[key];
 }
 
 // --- public API --------------------------------------------------------------
