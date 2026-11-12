@@ -341,7 +341,7 @@ function followingTheMusic(ctx, notes, phrase, diff) {
   const flat = isFlatLoud(ctx, diff);
   if (!diff.localThin || (flat && !diff.lightThin)) return notes;
   const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
-  return thinned(notes, keptShare(ctx, diff, flat), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff));
+  return thinned(notes, keptShare(ctx, diff, flat), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff), diff.lightThin ? ctx.lightKeep : null);
 }
 
 // How calm the music is at a time (calm.js), the same for every level; null where the level's holds do not read it.
