@@ -4,6 +4,7 @@
 |---|---|---|
 | `hero-figure.webp` | Landing hero plate, ≥861px | Cat-eared figure from behind, cyan rim right, magenta rim left, on black. 1774x887 (2:1), WebP q82, 36 KB. |
 | `operator.webp` | Landing close section | Cat-ear silhouette at a console, single cyan rim light. |
+| `mewbit-og-1200x600.jpg` | Link preview (`og:image`, `twitter:image` in `index.html`) | Mewbit on the night rooftop pointing at a star; same scene as the Discord banner. 1200x600 (2:1), JPEG q88, 108 KB. JPEG, not WebP, because some link unfurlers skip WebP. |
 
 Generated artwork. No third-party rights attach to these.
 
