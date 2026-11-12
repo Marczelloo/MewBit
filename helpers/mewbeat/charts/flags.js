@@ -9,6 +9,7 @@ const {
   CALM_SPOTS,
   COPY_MELODY,
   COPY_SURE,
+  DRUM_RUNS,
   EASY_SAME_CUTS,
   FADE_FALLS,
   FAST_RUNS,
@@ -61,6 +62,9 @@ const FLAGS = {
   copyMelody: { label: "Normal: powtórka bez kopii, gdy kopia gubi melodię", levels: { normal: { copyMelody: COPY_MELODY } } },
   // Normal: with copyMelody, a repeat that sounds almost exactly like its source is copied all the same (generate.js copiedRepeat).
   copySure: { label: "Normal: prawie identyczna powtórka zawsze jest kopią (copyMelody jej nie odrzuca)", levels: { normal: { copySure: COPY_SURE } } },
+  // Normal: a drum roll, strong hits a quarter beat apart on the grid, gets a note on each hit on top of the stream (drumRuns.js).
+  // Easy is cut from the Normal without them; Hard and Hell are built on the one with them.
+  drumRuns: { label: "Normal: krótka seria nut, gdy perkusja gra szybkie uderzenia co ćwierć bitu (na siatce i mocne)", levels: { normal: { drumRuns: DRUM_RUNS } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
   // Normal: a quiet ending that plays on at one loudness is not a fade-out, and keeps its notes (fades.js fadeOutOf).
