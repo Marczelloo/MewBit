@@ -21,6 +21,7 @@ const {
   HELL_HOLDS,
   LEAD_VOICE_BOTH,
   LINE_REPEATS,
+  LOCAL_THIN_SURE,
   LOUD_HOLES,
   MELODY_KEEP,
   PACE_HOLES,
@@ -88,6 +89,8 @@ const FLAGS = {
   leadVoiceBoth: { label: "Normal: w utworze na pianino itp. grają obie ręce, bas ustępuje tylko tam, gdzie zabrałby miejsce nucie melodii", levels: { normal: { leadVoice: LEAD_VOICE_BOTH } } },
   // Normal: the melody's line takes the notes that repeat its tone, which the decoder left out (voices.js withLineRepeats).
   lineRepeats: { label: "Normal: powtarzana nuta melodii liczy się cała, nie co druga", levels: { normal: { lineRepeats: LINE_REPEATS } } },
+  // Normal: localThin reads a second's strong onsets with a count of noise added, so it does not thin where that signal is too low to tell (localThin.js localKeep). Easy is cut from Normal and follows; Hard and Hell are built on it.
+  localThinSure: { label: "Normal: zagęszczenie nut nie spada tam, gdzie sygnał (mocne uderzenia w górnym paśmie) jest zbyt niski, żeby coś powiedzieć", levels: { normal: { localThin: LOCAL_THIN_SURE } } },
   // Normal: a stretch a phrase left empty takes a loud sound in it, on top of its budget (selection.js selectMoments).
   loudHoles: { label: "Normal: dziura z głośnym dźwiękiem w środku dostaje nutę (ponad limit sekcji)", levels: { normal: { loudHoles: LOUD_HOLES } } },
   // Normal: a stretch longer than the notes round it run takes a moment of the foreground the budget left out (selection.js selectMoments).

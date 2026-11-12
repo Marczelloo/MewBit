@@ -26,11 +26,13 @@ function strongOnsetsPerSecond(features, durationMs) {
 
 // Per second, the share of its moments the level keeps: 1 where the music plays as much as on the fuller side of the `reach`
 // seconds around it, falling with what it plays less, never under `floor`.
-function localKeep(features, durationMs, { reach, power, floor, knee }) {
+// `noise` (localThinSure, default 0): a count of strong onsets that stands for what the signal cannot tell, added to both the
+// second and what it is read against, so a second of 0 against 2 is a dip of .47 (noise 2), not of 0.
+function localKeep(features, durationMs, { reach, power, floor, knee, noise = 0 }) {
   const strong = strongOnsetsPerSecond(features, durationMs);
   return strong.map((value, i) => {
     const around = Math.max(meanOf(strong.slice(Math.max(0, i - reach), Math.max(1, i - 1))), meanOf(strong.slice(i + 2, i + reach + 1)));
-    const relative = around > 1e-6 ? value / around : 1;
+    const relative = noise > 0 ? (value + noise) / (around + noise) : around > 1e-6 ? value / around : 1;
     return relative >= knee ? 1 : Math.max(floor, (relative / knee) ** power);
   });
 }

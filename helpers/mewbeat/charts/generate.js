@@ -322,14 +322,17 @@ function loudMoments(ctx, diff) {
   return ctx.loudMoments.get(diff);
 }
 
-// Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
+// Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for the levels that share a
+// localThin setting (localThinSure gives Normal its own).
 function keptShare(ctx, diff, flat) {
-  if (!flat) ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
-  if (!diff.lightThin) return ctx.localKeep;
+  ctx.localKeep ??= new Map();
+  if (!flat && !ctx.localKeep.has(diff.localThin)) ctx.localKeep.set(diff.localThin, localKeep(ctx.features, ctx.durationMs, diff.localThin));
+  const local = ctx.localKeep.get(diff.localThin);
+  if (!diff.lightThin) return local;
   // diff.lightThin (a flag): the lighter stretches the energy shows (localThin.js lightKeep), the smaller share of the two; in
   // a flat loud song only that one (its strong onsets say nothing there, but a stretch under the loud level around it is lighter)
   ctx.lightKeep ??= lightKeep(ctx.features, ctx.durationMs, diff.lightThin);
-  return ctx.lightKeep.map((share, second) => (flat ? share : Math.min(share, ctx.localKeep[second] ?? 1)));
+  return ctx.lightKeep.map((share, second) => (flat ? share : Math.min(share, local[second] ?? 1)));
 }
 
 // The notes of a phrase with the slower seconds inside it thinned (diff.localThin), and never fewer moments than the level

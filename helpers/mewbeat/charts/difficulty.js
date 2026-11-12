@@ -197,6 +197,21 @@ const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
 // a song (a chart moved two beats: 8.7 -> 7.8). The 80 corpus songs: F1 against people .791 -> .793 on Normal (recall
 // .873 -> .880, precision .734 -> .733), .727 -> .728 on Easy, .809 on Hard; moments +1.0% (bot +1.7%).
 const PACE_HOLES = { beats: 1, times: 2, gaps: 2, room: 0.25 };
+// localThin.js localKeep (generator flag localThinSure, Normal and the levels built on it): localThin's reading of a second
+// against the seconds round it, (v + noise) / (around + noise), so that a signal of a few strong onsets a second is not
+// taken for a dip. Asked for by ear (Rush E, "the later part still feels mega empty"): at 1:19-1:26 the strong high-band
+// onsets are 0-1 a second against 1.3-2.6 round them (a piano's high band is mostly its attack and a repeated key gives one),
+// and localThin read that as a half-empty stretch and took up to half the moments away (phrases #14 and #15: 2.9 and 3.3
+// moments a second against 5 of the half beats). Measured against the control (the same signal shifted 37, 53, 71 s) on the
+// 80 corpus songs, the chance that people's Normal is thinner in a second where the signal is thin: plain .420 (shifted .180);
+// round it under 1 strong onset a second .276 (.187), 1-2 .331 (.176): the signal still says something where it is low, so a
+// level under which it is switched off would be wrong, and only 1.6% of the corpus' seconds have under .5 round them. A
+// pseudo-count says it by degree: noise 1 .487 (shifted .18-.19), 2 .528, 3 .567; recall falls .461 -> .358 -> .265 -> .189
+// (plain -> 2 -> 3). Noise 2: corpus F1 against people .7906 -> .7926 on Normal (1: .7921, 3: .7927), 25 of 80 songs
+// changed, Normal +591 -85 moments (net +0.9%), of which 59% are played by people's Normal (all our Normal moments: 72%) and
+// 62% sit on a decoded melody note; the 98 bot songs: 68 changed, Normal +2.3%. Where the strong onsets are 8 a second it is
+// 8% of a reading, on Rush E's 1:19 it is all of it. The levels built on Normal move both ways (Hell #14 of Rush E 5.6 -> 5.1).
+const LOCAL_THIN_SURE = { ...LOCAL_THIN, noise: 2 };
 // voices.js withLineRepeats (generator flag lineRepeats, Normal and the levels that read its melody): the melody's line takes
 // the decoded notes at the pitch of its note before or after, within `reachMs` of it and at least as loud as `minVel`.
 // Rush E 0:33-0:36: the E struck every 165 ms, of which the line holds every other one (the decoder draws its line away from
@@ -829,6 +844,7 @@ module.exports = {
   MELODY_SHIFT_PICK,
   MINI_RESTS,
   PACE_HOLES,
+  LOCAL_THIN_SURE,
   NORMAL_HOLDS,
   PITCH_LANES,
   CALM_SPOTS,
