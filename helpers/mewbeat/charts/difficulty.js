@@ -167,6 +167,11 @@ const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs:
 // (669 -> 668; minLevel .75 took 2-3, .85 and above 0 but leaves AIZO's 0:48 stretch at 11 11 10 9); MAYDAY Normal 1014 -> 1007
 // (largest 4 s window 19 -> 14 at 1:32); MEGALOVANIA (Camellia, 242 BPM) 2352 -> 2325, 2:20 window 27 -> 22 on top of dipThin.
 // smooth 0: a smoothed edge thinned the first louder second after a stretch (MAYDAY +15 added moments by the reshuffle).
+// Per second (localThin.js thinned, `exact`): each second under full keep gives up its own share, round(moments x (1 - keep))
+// with the rounding carried along the run, inside that second. Spread along the run instead, the drops fell where the off-beat
+// moments were, not where the keep was lowest (AIZO 2:08-2:10 at energy .48 stayed 14 -> 12 while 2:10-2:12 at .72 fell 11 -> 7).
+// Now AIZO 2 s windows from 2:04: 7 11 14 11 11 12 -> 6 8 10 9 11 12 (2:08 .48: 14 -> 10, 2:10 .72: 11 -> 9; later stages put some back) and
+// the relative energy bins above 0.4 sit .06-.07 under people (.531/.550/.583/.696/.882 against .582/.631/.671/.761/.921).
 const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0.85, floor: 0.6, power: 1.5 };
 // generate.js drumFitOf, drumRuns.js (flag drumRunsFit, with drumRuns): a roll gets no more added notes than the song and the
 // place ask for. The player, 2026-11-12, after AIZO: the speed-ups "should fit the speed of the song and what is going on in
