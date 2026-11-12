@@ -10,6 +10,7 @@ const {
   COPY_MELODY,
   COPY_SURE,
   DRUM_RUNS,
+  LIGHT_THIN,
   EASY_SAME_CUTS,
   FADE_FALLS,
   FAST_RUNS,
@@ -64,6 +65,7 @@ const FLAGS = {
   copySure: { label: "Normal: prawie identyczna powtórka zawsze jest kopią (copyMelody jej nie odrzuca)", levels: { normal: { copySure: COPY_SURE } } },
   // Normal: a drum roll, strong hits a quarter beat apart on the grid, gets a note on each hit on top of the stream (drumRuns.js).
   // Easy is cut from the Normal without them; Hard and Hell are built on the one with them.
+  lightThin: { label: "Normal: mniej nut w lżejszym fragmencie muzyki między głośniejszymi (energia wyraźnie poniżej poziomu wokół)", levels: { normal: { lightThin: LIGHT_THIN } } },
   drumRuns: { label: "Normal: krótka seria nut, gdy perkusja gra szybkie uderzenia co ćwierć bitu (na siatce i mocne)", levels: { normal: { drumRuns: DRUM_RUNS } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },

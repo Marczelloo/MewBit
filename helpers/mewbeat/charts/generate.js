@@ -20,7 +20,7 @@ const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
-const { localKeep, thinned } = require("./localThin");
+const { localKeep, lightKeep, thinned } = require("./localThin");
 const { flagsKey, noMelodyKey, normalFlags, withFlags } = require("./flags");
 const { noiseLookup, withoutNoise } = require("./noise");
 const { quietLookup } = require("./quiet");
@@ -79,6 +79,7 @@ function analyse(raw, flags) {
     eventTimes: onsets.map((o) => o.t), // what a copied note may sit on
     final: {}, // difficulty -> its finished notes (finalNotes)
     localKeep: null, // the share of moments each second keeps (keptShare)
+    lightKeep: null, // the same for the lighter stretches (diff.lightThin)
     calm: undefined, // t -> how calm the music is, null with nothing to tell it from (calmOf)
     quiet: new Map(), // threshold -> t -> whether the song plays quietly there (quietOf)
     noise: undefined, // t -> whether the sounds there are no music, null with nothing to tell it by (noiseOf)
@@ -322,17 +323,22 @@ function loudMoments(ctx, diff) {
 }
 
 // Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
-function keptShare(ctx, diff) {
-  ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
-  return ctx.localKeep;
+function keptShare(ctx, diff, flat) {
+  if (!flat) ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
+  if (!diff.lightThin) return ctx.localKeep;
+  // diff.lightThin (a flag): the lighter stretches the energy shows (localThin.js lightKeep), the smaller share of the two; in
+  // a flat loud song only that one (its strong onsets say nothing there, but a stretch under the loud level around it is lighter)
+  ctx.lightKeep ??= lightKeep(ctx.features, ctx.durationMs, diff.lightThin);
+  return ctx.lightKeep.map((share, second) => (flat ? share : Math.min(share, ctx.localKeep[second] ?? 1)));
 }
 
 // The notes of a phrase with the slower seconds inside it thinned (diff.localThin), and never fewer moments than the level
-// below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned.
+// below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned, except by diff.lightThin.
 function followingTheMusic(ctx, notes, phrase, diff) {
-  if (!diff.localThin || isFlatLoud(ctx, diff)) return notes;
+  const flat = isFlatLoud(ctx, diff);
+  if (!diff.localThin || (flat && !diff.lightThin)) return notes;
   const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
-  return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff));
+  return thinned(notes, keptShare(ctx, diff, flat), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff));
 }
 
 // How calm the music is at a time (calm.js), the same for every level; null where the level's holds do not read it.
