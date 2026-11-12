@@ -10,6 +10,8 @@ const {
   COPY_MELODY,
   COPY_SURE,
   DRUM_RUNS,
+  LIGHT_THIN,
+  DRUM_RUNS_FIT,
   EASY_SAME_CUTS,
   FADE_FALLS,
   FAST_RUNS,
@@ -20,6 +22,7 @@ const {
   HELL_HOLDS,
   LEAD_VOICE_BOTH,
   LINE_REPEATS,
+  LOCAL_THIN_SURE,
   LOUD_HOLES,
   MELODY_KEEP,
   PACE_HOLES,
@@ -34,6 +37,7 @@ const {
   PLUS_CALM_END,
   PLUS_HEARD,
   PLUS_MELODY,
+  SOFT_RUNS,
 } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
@@ -64,7 +68,14 @@ const FLAGS = {
   copySure: { label: "Normal: prawie identyczna powtórka zawsze jest kopią (copyMelody jej nie odrzuca)", levels: { normal: { copySure: COPY_SURE } } },
   // Normal: a drum roll, strong hits a quarter beat apart on the grid, gets a note on each hit on top of the stream (drumRuns.js).
   // Easy is cut from the Normal without them; Hard and Hell are built on the one with them.
+  lightThin: { label: "Normal: mniej nut w lżejszym fragmencie muzyki między głośniejszymi (energia wyraźnie poniżej poziomu wokół)", levels: { normal: { lightThin: LIGHT_THIN } } },
   drumRuns: { label: "Normal: krótka seria nut, gdy perkusja gra szybkie uderzenia co ćwierć bitu (na siatce i mocne)", levels: { normal: { drumRuns: DRUM_RUNS } } },
+  // Normal: a quarter-beat grid point with a decoded note (any voice) in a fast run of notes gets a note inside a stream, and a
+  // one-beat gap hold that lay over it gives way (softRuns.js, generate.js finish). Not in the seconds lightThin thinned.
+  softRuns: { label: "Normal: krótkie serie nut tam, gdzie zdekodowane nuty biegną szybko (ćwierć bitu na nucie), a przytrzymanie między ósemkami je blokuje", levels: { normal: { softRuns: SOFT_RUNS } } },
+  // Normal: with drumRuns, a roll in a slow song or a quiet place gets one or two notes, at its end, not the whole burst (generate.js
+  // drumFitOf, drumRuns.js). A fast, loud place keeps the burst. Does nothing without drumRuns.
+  drumRunsFit: { label: "Normal: seria nut na rolce perkusji dopasowana do utworu (wolny lub cichy fragment: jedna-dwie nuty na końcu rolki, szybki i głośny: cała seria)", levels: { normal: { drumRunsFit: DRUM_RUNS_FIT } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
   // Normal: a quiet ending that plays on at one loudness is not a fade-out, and keeps its notes (fades.js fadeOutOf).
@@ -86,6 +97,8 @@ const FLAGS = {
   leadVoiceBoth: { label: "Normal: w utworze na pianino itp. grają obie ręce, bas ustępuje tylko tam, gdzie zabrałby miejsce nucie melodii", levels: { normal: { leadVoice: LEAD_VOICE_BOTH } } },
   // Normal: the melody's line takes the notes that repeat its tone, which the decoder left out (voices.js withLineRepeats).
   lineRepeats: { label: "Normal: powtarzana nuta melodii liczy się cała, nie co druga", levels: { normal: { lineRepeats: LINE_REPEATS } } },
+  // Normal: localThin reads a second's strong onsets with a count of noise added, so it does not thin where that signal is too low to tell (localThin.js localKeep). Easy is cut from Normal and follows; Hard and Hell are built on it.
+  localThinSure: { label: "Normal: zagęszczenie nut nie spada tam, gdzie sygnał (mocne uderzenia w górnym paśmie) jest zbyt niski, żeby coś powiedzieć", levels: { normal: { localThin: LOCAL_THIN_SURE } } },
   // Normal: a stretch a phrase left empty takes a loud sound in it, on top of its budget (selection.js selectMoments).
   loudHoles: { label: "Normal: dziura z głośnym dźwiękiem w środku dostaje nutę (ponad limit sekcji)", levels: { normal: { loudHoles: LOUD_HOLES } } },
   // Normal: a stretch longer than the notes round it run takes a moment of the foreground the budget left out (selection.js selectMoments).

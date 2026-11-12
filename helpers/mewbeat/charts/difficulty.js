@@ -150,6 +150,70 @@ const FAST_RUNS = { minGapMs: 70 };
 // follows the player's wish, not the corpus. A note is added only inside a stream (notes before and after within
 // `streamBeats` of a beat) and `minGapMs` from both, like FAST_RUNS.
 const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs: 70, maxRun: 5, maxCover: 0.03 };
+// localThin.js lightKeep (generator flag lightThin, Normal only). Asked for by ear (King Gnu AIZO, 190 BPM, about 0:48-1:00 and
+// 2:04-2:10: "a bit lighter in the music, still full of blocks"): AIZO is flat loud, so the strong-onset thinning of localThin
+// never ran there and the 500 ms energy was read by no rule that reaches over many seconds. A second whose energy stays under
+// the q80 of the `reach` 12 s on both sides (the quieter side counts, so a start of a long light part or a quiet ending does
+// not) keeps (r / knee) ** power of its moments, never under `floor`, and only where that level is itself at least `minLevel`.
+// Measured: AIZO Normal moments per 2 s in the two stretches 11 11 11 9 11 11 | 14 7 11 14 11 11 -> 10 11 9 8 10 8 | 14 6 8 12 7
+// 11 (loud windows around 11-14 stay), longest gap unchanged (1421 ms). Corpus, 80 songs, relative energy against the loud level
+// around, ours per moment against the not-lighter seconds around it (people's Normal in brackets), before -> after: 0.5-0.6
+// .708 -> .586 (.631), 0.6-0.7 .733 -> .613 (.671), 0.7-0.8 .803 -> .709 (.761), 0.8-0.9 .928 -> .882 (.921); the same signal
+// shifted by 37 s is untouched (.941/.977/.978/.991 -> .927/.979/.983/.989 against people .906/.981/.960/1.008), so it is the
+// music and not the rule's own cut. In bins above 0.5 it now sits .04-.06 under people: asked for by ear, and the F1 against
+// people costs Easy .7306 -> .7304, Normal .7906 -> .7893, Hard .8051 -> .8047. Moments, corpus Normal 56316 -> 55855 (-0.8%,
+// 65 of 80 songs), bot 98 songs 91048 -> 90283 (80 songs; Easy -278, Hard -476, Hell -397 follow Normal). Guards: Rush E (fast
+// piano on little energy, p80 .74) keeps its notes but for one moment at 1:58 where the energy really falls .89 -> .66 -> .79
+// (669 -> 668; minLevel .75 took 2-3, .85 and above 0 but leaves AIZO's 0:48 stretch at 11 11 10 9); MAYDAY Normal 1014 -> 1007
+// (largest 4 s window 19 -> 14 at 1:32); MEGALOVANIA (Camellia, 242 BPM) 2352 -> 2325, 2:20 window 27 -> 22 on top of dipThin.
+// smooth 0: a smoothed edge thinned the first louder second after a stretch (MAYDAY +15 added moments by the reshuffle).
+// Per second (localThin.js thinned, `exact`): each second under full keep gives up its own share, round(moments x (1 - keep))
+// with the rounding carried along the run, inside that second. Spread along the run instead, the drops fell where the off-beat
+// moments were, not where the keep was lowest (AIZO 2:08-2:10 at energy .48 stayed 14 -> 12 while 2:10-2:12 at .72 fell 11 -> 7).
+// Now AIZO 2 s windows from 2:04: 7 11 14 11 11 12 -> 6 8 10 9 11 12 (2:08 .48: 14 -> 10, 2:10 .72: 11 -> 9; later stages put some back) and
+// the relative energy bins above 0.4 sit .06-.07 under people (.531/.550/.583/.696/.882 against .582/.631/.671/.761/.921).
+const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0.85, floor: 0.6, power: 1.5 };
+// generate.js drumFitOf, drumRuns.js (flag drumRunsFit, with drumRuns): a roll gets no more added notes than the song and the
+// place ask for. The player, 2026-11-12, after AIZO: the speed-ups "should fit the speed of the song and what is going on in
+// it: in a slower, calmer song they can be there, but not such big ones, enough to feel it, not ten blocks at once". The
+// cap is `shortAdds` notes on a roll in a slow song (a beat of `slowBeatMs` or more, under 137 BPM) or a quiet place (the
+// energy round the roll's middle under `hushBelow` of the song's loud level, quiet.js), `midAdds` between that and a fast,
+// loud place (a beat under `fastBeatMs`, over 160 BPM, and energy from `calmBelow` up), no cap there; the lower of the
+// tempo's and the energy's step. A roll over its cap is placed again from its last hit backwards, so the one or two notes
+// left sit where the roll leads into the next beat. The numbers, the 253 rolls on the 73 corpus and bot songs that have
+// one: drumRuns adds 271 moments, +2 on 99 rolls and +3 or more on 12 (a chain of five moments, 4 gaps, is as long as
+// maxRun 5 lets one grow), +0.13 a roll under 130 BPM, +0.7 at 130-159, +1.8 at 160-184, +1.2 from 185. The energy against
+// the loud level: median .92, 10% under .73, 25% under .81; calmBelow .85 / hushBelow .75 are about the lowest third and
+// sixth. The steps cut 19 of the 271 moments (252 left; 17 rolls lose one or two, one gains one when a note moves to the last
+// hit and a later stage keeps it); Hard follows Normal in the cut rolls (span blocks 6.6 -> 5.5, drumRuns off 5.1), Hell does not
+// (8.1 -> 8.3, off 8.2: it fills the span by itself), so no extras-free span. Corpus F1 against people .7906 -> .7907 Normal,
+// .8051 the same Hard, Normal -11 moments in 6 songs; the bot's 98 songs -5 Normal, -1 Hard, -15 Hell in 7 songs. The AIZO
+// rolls (190 BPM, energy .86-.98) and the other fast loud places stay as they are. People give no ground for steps: of the
+// hits Normal leaves, their Normal plays 17% where the energy is under .85 and 13% from .85 up, 18% against 13% when the same
+// split reads the energy 37 s later (no signal, shifted control), and 62% of 13 hits at a 440 ms beat or slower; on the corpus their Normal plays
+// 86% of a roll's hits under 130 BPM (8 rolls), 56% at 130-159, 46% at 160-184, 49% from 185, and 51% on rolls at .5-.8 of the
+// loud level against 54% above, in span 6 moments a second at every tempo; so the numbers follow the player's words, and the
+// steps are small where the flag adds little already. Of the hits Normal does not play, people's Normal plays the first of
+// a roll 24%, the last 29%, the middle 15% (68 hits), by strength rank 13-16%, which is why the short burst sits at the end.
+const DRUM_RUNS_FIT = { fastBeatMs: 375, slowBeatMs: 440, calmBelow: 0.85, hushBelow: 0.75, midAdds: 2, shortAdds: 1 };
+// Normal's softRuns flag (softRuns.js): a burst on the quarter-beat grid points that carry a decoded note (any voice, onsets
+// within mergeMs are one) in a run of at least minRun onsets each within fastMs of the next, onMs from the grid point. Placed
+// as the bursts of melodyRuns are (melodyPick.js placeRunNotes): inside a stream (streamBeats), maxRun short gaps in a row,
+// minGapMs between notes. What kept those moments out in Rush E was not the missing candidate (the on-grid notes of the line
+// had scored moments already) but the one-beat gap holds between the half-beat taps, which lay over the quarter beats:
+// cutGapHolds lets such a hold (never a real sustain) give way to the burst note and become a tap, and onlyOverHolds adds a
+// note only where it does that (on a plain gap people played 13% of the additions, over a hold 31-34%, control about 25%).
+// keepFloor 1: with lightThin on, not in the seconds it thinned (AIZO 0:52-0:58 went 8-10 -> 9-12 moments per 2 s without it).
+// Measured 2026-11-12 with localThinSure on:
+// - Rush E (32ca6d66): moments 689 -> 715 (28 added, all on a decoded onset, 2 lost); a second: phrase #10 4.4 -> 5.8,
+//   #11 4.0 -> 4.7, #18 5.1 -> 5.9, #8/#9 +0.4/+0.3, the most in one second stays 9. #14/#15 stay 3.4/4.0: their decoded notes
+//   sit off the quarter grid (onMs 50 would put the notes 41 ms from the sound).
+// - Corpus, 80 songs: 1009 moments added in 72 songs; people's Normal plays 31.2% of them, people's Hard 56.2%; the decoded
+//   notes shifted 37 s (control): 22.8% / 39.0%. F1 against people Normal .7926 -> .7908, Hard .8054 -> .8055, Easy same.
+//   minRun 3 added 1261 at 35.1% / 55.2% (control 25.4% / 40.6%), minRun 4 (this) 1104 at 35.8% / 57.2% (bot flags base).
+//   Without onlyOverHolds the flag cost Normal F1 .022.
+// - Bot songs (99): Normal +1584 moments (+1.7%) in 72 songs; the most in one song +13.2% (3b4d340d), +10.4% (304996f5).
+const SOFT_RUNS = { source: "all", mergeMs: 45, fastMs: 200, onMs: 25, minVel: 0, minRun: 4, streamBeats: 1.1, minGapMs: 70, maxRun: 3, cutGapHolds: true, onlyOverHolds: true, keepFloor: 1 };
 // selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
 // sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
 // 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
@@ -179,6 +243,21 @@ const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
 // a song (a chart moved two beats: 8.7 -> 7.8). The 80 corpus songs: F1 against people .791 -> .793 on Normal (recall
 // .873 -> .880, precision .734 -> .733), .727 -> .728 on Easy, .809 on Hard; moments +1.0% (bot +1.7%).
 const PACE_HOLES = { beats: 1, times: 2, gaps: 2, room: 0.25 };
+// localThin.js localKeep (generator flag localThinSure, Normal and the levels built on it): localThin's reading of a second
+// against the seconds round it, (v + noise) / (around + noise), so that a signal of a few strong onsets a second is not
+// taken for a dip. Asked for by ear (Rush E, "the later part still feels mega empty"): at 1:19-1:26 the strong high-band
+// onsets are 0-1 a second against 1.3-2.6 round them (a piano's high band is mostly its attack and a repeated key gives one),
+// and localThin read that as a half-empty stretch and took up to half the moments away (phrases #14 and #15: 2.9 and 3.3
+// moments a second against 5 of the half beats). Measured against the control (the same signal shifted 37, 53, 71 s) on the
+// 80 corpus songs, the chance that people's Normal is thinner in a second where the signal is thin: plain .420 (shifted .180);
+// round it under 1 strong onset a second .276 (.187), 1-2 .331 (.176): the signal still says something where it is low, so a
+// level under which it is switched off would be wrong, and only 1.6% of the corpus' seconds have under .5 round them. A
+// pseudo-count says it by degree: noise 1 .487 (shifted .18-.19), 2 .528, 3 .567; recall falls .461 -> .358 -> .265 -> .189
+// (plain -> 2 -> 3). Noise 2: corpus F1 against people .7906 -> .7926 on Normal (1: .7921, 3: .7927), 25 of 80 songs
+// changed, Normal +591 -85 moments (net +0.9%), of which 59% are played by people's Normal (all our Normal moments: 72%) and
+// 62% sit on a decoded melody note; the 98 bot songs: 68 changed, Normal +2.3%. Where the strong onsets are 8 a second it is
+// 8% of a reading, on Rush E's 1:19 it is all of it. The levels built on Normal move both ways (Hell #14 of Rush E 5.6 -> 5.1).
+const LOCAL_THIN_SURE = { ...LOCAL_THIN, noise: 2 };
 // voices.js withLineRepeats (generator flag lineRepeats, Normal and the levels that read its melody): the melody's line takes
 // the decoded notes at the pitch of its note before or after, within `reachMs` of it and at least as loud as `minVel`.
 // Rush E 0:33-0:36: the E struck every 165 ms, of which the line holds every other one (the decoder draws its line away from
@@ -780,6 +859,8 @@ module.exports = {
   DIP_THIN,
   DRUMLESS,
   DRUM_RUNS,
+  LIGHT_THIN,
+  DRUM_RUNS_FIT,
   EASY_FIGURES,
   EASY_FROM_NORMAL,
   EASY_SAME_CUTS,
@@ -810,6 +891,7 @@ module.exports = {
   MELODY_SHIFT_PICK,
   MINI_RESTS,
   PACE_HOLES,
+  LOCAL_THIN_SURE,
   NORMAL_HOLDS,
   PITCH_LANES,
   CALM_SPOTS,
@@ -822,6 +904,7 @@ module.exports = {
   PLUS_MELODY,
   QUIET_LONE,
   SLOW_DYNAMICS,
+  SOFT_RUNS,
   SOLO_LEAD,
   STAIRS,
   SUSTAIN_HOLDS,

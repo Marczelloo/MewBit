@@ -67,24 +67,42 @@ function burstAround(times, i, timing) {
 // moments are people's 43.6% of the time (a quarter beat where the melody runs fast in a song under 140 BPM: 49.8%).
 function withRunNotes(notes, scored, timing, rule) {
   if (!rule || !timing?.snapped) return notes;
-  const runs = scored.filter((m) => m.melodyRun).map((m) => m.t);
+  return placeRunNotes(notes, scored.filter((m) => m.melodyRun).map((m) => m.t), timing, rule);
+}
+
+// The placing of withRunNotes (also softRuns.js): a note on each of `runs` (times, in order) that falls inside a stream, under
+// the rules above.
+function placeRunNotes(notes, runs, timing, rule, gapHold = null) {
   if (runs.length === 0) return notes;
   const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
   const heldUntil = new Map();
   for (const n of notes) if (n.len > 0) heldUntil.set(n.t, Math.max(heldUntil.get(n.t) ?? 0, n.t + n.len));
   const added = [];
+  const cut = new Set(); // times whose gap hold gives way to a burst note inside it (rule.cutGapHolds: softRuns.js)
+  const gapHeldAt = new Map();
+  const chain = new Set(); // burst notes that began in a gap hold; the next ones of the run follow them (rule.onlyOverHolds)
+  if (rule.cutGapHolds && gapHold) for (const n of notes) if (n.len > 0) gapHeldAt.set(n.t, (gapHeldAt.get(n.t) ?? true) && gapHold(n));
   for (const t of runs) {
     const i = lowerBound(times, t);
     const prev = times[i - 1], next = times[i];
     if (prev === undefined || next === undefined || next === t) continue;
     const span = rule.streamBeats * timing.beatMsAt(t);
     if (t - prev > span || next - t > span || t - prev < rule.minGapMs || next - t < rule.minGapMs) continue;
-    if ((heldUntil.get(prev) ?? 0) > t - rule.minGapMs) continue;
+    const over = (heldUntil.get(prev) ?? 0) > t - rule.minGapMs;
+    if (over && !(rule.cutGapHolds && gapHeldAt.get(prev))) continue;
+    const fromHold = over || chain.has(prev);
+    if (rule.onlyOverHolds && !fromHold) continue;
     times.splice(i, 0, t);
     if (burstAround(times, i, timing) > rule.maxRun) times.splice(i, 1);
-    else added.push({ t, lane: 0 });
+    else {
+      added.push({ t, lane: 0 });
+      if (fromHold) chain.add(t);
+      if (over) { cut.add(prev); heldUntil.delete(prev); }
+    }
   }
-  return added.length ? [...notes, ...added].sort((a, b) => a.t - b.t) : notes;
+  if (!added.length) return notes;
+  const loosened = cut.size ? notes.map((n) => (cut.has(n.t) && n.len > 0 ? { ...n, len: 0 } : n)) : notes;
+  return [...loosened, ...added].sort((a, b) => a.t - b.t);
 }
 
-module.exports = { ONSET_MS, burstAround, ranks, withMelody, withMelodyRuns, withRunNotes };
+module.exports = { ONSET_MS, burstAround, placeRunNotes, ranks, withMelody, withMelodyRuns, withRunNotes };

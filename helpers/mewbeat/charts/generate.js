@@ -14,13 +14,14 @@ const { heldLineMoments } = require("./melodyLines");
 const { ranks, withMelody, withMelodyRuns, withRunNotes } = require("./melodyPick");
 const { silentUpper, thinDips } = require("./dips");
 const { withDrumRunNotes } = require("./drumRuns");
+const { withSoftRunNotes } = require("./softRuns");
 const { thinDrumless } = require("./drumless");
 const { holdSustains, keepMelodyOnly, padLanes, withShortLine } = require("./sustain");
 const { patternEvents } = require("./patterns");
 const { TONAL_MIN_CONF, buildPhrases, chooseLeaders, hasSteadyPulse, isRepeatOf, isVocalSong, supportLayers } = require("./phrases");
 const { copyRepeat, sourceTime, sourceWindow } = require("./repeats");
 const { withIntensity } = require("./intensity");
-const { localKeep, thinned } = require("./localThin");
+const { localKeep, lightKeep, thinned } = require("./localThin");
 const { flagsKey, noMelodyKey, normalFlags, withFlags } = require("./flags");
 const { noiseLookup, withoutNoise } = require("./noise");
 const { quietLookup } = require("./quiet");
@@ -79,6 +80,7 @@ function analyse(raw, flags) {
     eventTimes: onsets.map((o) => o.t), // what a copied note may sit on
     final: {}, // difficulty -> its finished notes (finalNotes)
     localKeep: null, // the share of moments each second keeps (keptShare)
+    lightKeep: null, // the same for the lighter stretches (diff.lightThin)
     calm: undefined, // t -> how calm the music is, null with nothing to tell it from (calmOf)
     quiet: new Map(), // threshold -> t -> whether the song plays quietly there (quietOf)
     noise: undefined, // t -> whether the sounds there are no music, null with nothing to tell it by (noiseOf)
@@ -168,6 +170,14 @@ function decodedNotesAt(ctx, shift) {
   ctx.shiftedNotes ??= new Map();
   if (!ctx.shiftedNotes.has(shift)) ctx.shiftedNotes.set(shift, (ctx.features.decodedNotes ?? []).map((n) => ({ ...n, t: n.t + shift })));
   return ctx.shiftedNotes.get(shift);
+}
+
+// diff.softRuns (a flag): the notes softRuns.js reads, at the shift the level reads the melody line at (the same time scale as
+// the line's); null where no melody was decoded, so the flag does nothing there. rule.source "line" reads the line itself.
+function softNotesOf(ctx, diff) {
+  const drawn = drawnMelodyOf(ctx, diff);
+  if (!drawn) return null;
+  return diff.softRuns.source === "line" ? decodedMelodyOf(ctx, diff) : decodedNotesAt(ctx, melodyShiftOf(ctx, diff, drawn));
 }
 
 // The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one,
@@ -321,18 +331,37 @@ function loudMoments(ctx, diff) {
   return ctx.loudMoments.get(diff);
 }
 
-// Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for every level.
-function keptShare(ctx, diff) {
-  ctx.localKeep ??= localKeep(ctx.features, ctx.durationMs, diff.localThin);
-  return ctx.localKeep;
+// Per second, the share of a phrase's moments the music keeps there (localThin.js); the same for the levels that share a
+// localThin setting (localThinSure gives Normal its own).
+function keptShare(ctx, diff, flat) {
+  ctx.localKeep ??= new Map();
+  if (!flat && !ctx.localKeep.has(diff.localThin)) ctx.localKeep.set(diff.localThin, localKeep(ctx.features, ctx.durationMs, diff.localThin));
+  const local = ctx.localKeep.get(diff.localThin);
+  if (!diff.lightThin) return local;
+  // diff.lightThin (a flag): the lighter stretches the energy shows (localThin.js lightKeep), the smaller share of the two; in
+  // a flat loud song only that one (its strong onsets say nothing there, but a stretch under the loud level around it is lighter)
+  ctx.lightKeep ??= lightKeep(ctx.features, ctx.durationMs, diff.lightThin);
+  return ctx.lightKeep.map((share, second) => (flat ? share : Math.min(share, local[second] ?? 1)));
 }
 
 // The notes of a phrase with the slower seconds inside it thinned (diff.localThin), and never fewer moments than the level
-// below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned.
+// below plays there (diff.notBelow). A song loud all through (selection.js isFlatLoud) is not thinned, except by diff.lightThin.
 function followingTheMusic(ctx, notes, phrase, diff) {
-  if (!diff.localThin || isFlatLoud(ctx, diff)) return notes;
+  const flat = isFlatLoud(ctx, diff);
+  if (!diff.localThin || (flat && !diff.lightThin)) return notes;
   const below = diff.notBelow ? new Set(inWindow(finalNotes(ctx, diff.notBelow), phrase.startMs, phrase.endMs).map((n) => n.t)).size : 0;
-  return thinned(notes, keptShare(ctx, diff), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff));
+  return thinned(notes, keptShare(ctx, diff, flat), ctx.timing, Math.max(0, new Set(notes.map((n) => n.t)).size - below), melodyMoments(ctx, diff), diff.lightThin ? ctx.lightKeep : null);
+}
+
+// diff.softRuns.keepFloor, with diff.lightThin: the burst gives up the seconds lightThin (and localThin) thinned to less than this
+// share. The music is lighter there, and the burst would hand back what lightThin took (AIZO 0:52-0:58). Without lightThin the
+// floor is off: the seconds localThin alone thins are where people still play the burst's moments (corpus, measured).
+function softAllowed(ctx, diff) {
+  const floor = diff.softRuns?.keepFloor;
+  if (!(floor > 0) || !diff.localThin || !diff.lightThin) return null;
+  const keep = keptShare(ctx, diff, isFlatLoud(ctx, diff)); // undefined in a flat loud song with no lightThin: nothing was thinned
+  if (!keep) return null;
+  return (t) => (keep[Math.floor(t / 1000)] ?? 1) >= floor;
 }
 
 // How calm the music is at a time (calm.js), the same for every level; null where the level's holds do not read it.
@@ -346,6 +375,20 @@ function calmOf(ctx, diff) {
 function quietOf(ctx, rule) {
   if (!ctx.quiet.has(rule.below)) ctx.quiet.set(rule.below, quietLookup(ctx.features, rule));
   return ctx.quiet.get(rule.below);
+}
+
+// The most notes one drum roll may get (diff.drumRunsFit, drumRuns.js): (startMs, endMs) -> a count, Infinity for a fast, loud
+// place. The lower of two steps: the tempo's (the beat at the roll's start) and the energy's (quiet.js round the roll's middle).
+function drumFitOf(ctx, rule) {
+  const calm = quietOf(ctx, { below: rule.calmBelow });
+  const hush = quietOf(ctx, { below: rule.hushBelow });
+  return (startMs, endMs) => {
+    const beat = ctx.timing.beatMsAt(startMs);
+    const byTempo = beat <= rule.fastBeatMs ? Infinity : beat >= rule.slowBeatMs ? rule.shortAdds : rule.midAdds;
+    const mid = (startMs + endMs) / 2;
+    const byEnergy = hush?.(mid) ? rule.shortAdds : calm?.(mid) ? rule.midAdds : Infinity;
+    return Math.min(byTempo, byEnergy);
+  };
 }
 
 // Where the sounds of the song are no music (noise.js), once a song: t -> boolean, or null with nothing to tell it by.
@@ -653,12 +696,20 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const bursts = diff.melodyRuns && diff.fastRuns;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, bursts ? { ...diff.melodyRuns, minGapMs: bursts.minGapMs } : diff.melodyRuns)) : settled;
   const stood = bursts && ran !== settled ? new Set(settled.map((n) => n.t)) : null;
+  // diff.softRuns (a flag): where every decoded note runs fast and the line melodyRuns reads does not, the quarter beats with a
+  // note on them join the bursts (softRuns.js). Placed after the bursts of melodyRuns, which keep their places.
+  const softened = diff.softRuns ? step("softRuns", ran, withSoftRunNotes(ran, softNotesOf(ctx, diff), ctx.timing, diff.softRuns, (n) => !sustained.has(`${n.t}:${n.lane}`), softAllowed(ctx, diff))) : ran;
+  const softTimes = softened !== ran ? new Set(ran.map((n) => n.t)) : null;
   // diff.drumRuns (a flag): a drum roll gets a note on each hit (drumRuns.js). Its notes are the quarter beats between the
   // stream's, so they ask the same: the floors let them stand rule.minGapMs from their neighbours, and only them.
-  const rolled = diff.drumRuns ? step("drumRuns", ran, withDrumRunNotes(ran, ctx.features.drums, ctx.timing, diff.drumRuns)) : ran;
-  const rolledTimes = rolled !== ran ? new Set(ran.map((n) => n.t)) : null;
-  const burstTimes = new Set([...(stood ? ran.map((n) => n.t).filter((t) => !stood.has(t)) : []), ...(rolledTimes ? rolled.map((n) => n.t).filter((t) => !rolledTimes.has(t)) : [])]);
-  const burstGap = burstTimes.size > 0 ? { gapMs: Math.min(stood ? bursts.minGapMs : Infinity, rolledTimes ? diff.drumRuns.minGapMs : Infinity), times: burstTimes } : null;
+  const rolled = diff.drumRuns ? step("drumRuns", softened, withDrumRunNotes(softened, ctx.features.drums, ctx.timing, diff.drumRuns, diff.drumRunsFit ? drumFitOf(ctx, diff.drumRunsFit) : null)) : softened;
+  const rolledTimes = rolled !== softened ? new Set(softened.map((n) => n.t)) : null;
+  const burstTimes = new Set([
+    ...(stood ? ran.map((n) => n.t).filter((t) => !stood.has(t)) : []),
+    ...(softTimes ? softened.map((n) => n.t).filter((t) => !softTimes.has(t)) : []),
+    ...(rolledTimes ? rolled.map((n) => n.t).filter((t) => !rolledTimes.has(t)) : []),
+  ]);
+  const burstGap = burstTimes.size > 0 ? { gapMs: Math.min(stood ? bursts.minGapMs : Infinity, softTimes ? diff.softRuns.minGapMs : Infinity, rolledTimes ? diff.drumRuns.minGapMs : Infinity), times: burstTimes } : null;
   const dipped = diff.dipThin ? step("dipThin", rolled, thinDips(rolled, ctx, diff.dipThin, melodyMoments(ctx, diff))) : rolled;
   const hushed = diff.dipSilence ? step("dipSilence", dipped, silentUpper(dipped, ctx, diff.dipSilence)) : dipped;
   const thinned = diff.drumless ? step("drumless", hushed, thinDrumless(hushed, ctx, diff.drumless, decodedMelodyOf(ctx, diff))) : hushed;
@@ -706,7 +757,7 @@ const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(fla
 
 const notesFor = (ctx, difficulty, trace = null, plain = false) => {
   const asked = diffOf(ctx, difficulty);
-  const level = plain && asked.drumRuns ? (({ drumRuns, ...rest }) => rest)(asked) : asked;
+  const level = plain && (asked.drumRuns || asked.softRuns) ? (({ drumRuns, drumRunsFit, softRuns, ...rest }) => rest)(asked) : asked;
   const charted = chartNotes(ctx, level, trace);
   // diff.holdYield: the lanes let a hold go before they lose a moment the level is built on (lanes.js, laneSearch.js).
   const diff = level.holdYield && charted.protect ? { ...level, holdYield: charted.protect } : level;
