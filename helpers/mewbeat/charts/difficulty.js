@@ -128,6 +128,20 @@ const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
 // A sound of the melody dropped for being 35-60 ms off the grid was tried too (melodySnap) and removed: it changed 0.2-0.4%
 // of the moments and no measure.
 const FAST_RUNS = { minGapMs: 70 };
+// drumRuns.js (generator flag drumRuns, Normal only): a run of `minHits` strong drum hits (`minS`) a quarter beat apart, each
+// within `onMs` of a grid point the tracker trusts, gets a note on every hit, on top of Normal's stream. Asked for by a
+// player (King Gnu - AIZO, 0:26.3: nine hits at 79 ms, Normal played five of them every half beat). The numbers: the
+// AIZO intro, 0:00-0:15, is noise read as kicks every 50-80 ms at strength .3-.7, off the grid; at minS .4 / onMs 25 a run
+// of 4 forms there, at .5 and .6 (onMs 20) no run does. At .6 the song has 7 runs of 4+ and 4 of 5+ (0:26.31 x8, 1:22.21
+// x6, 1:37.45 x5, 2:01.68 x9), so minHits 5. `maxRun` is laneRules.js MAX_QUARTER_GAPS (5): longer bursts lose notes to the
+// lane search (a roll of eight keeps 8 of 9 hits). `maxCover`: fast hi-hat and double-kick songs roll all the time (the 80
+// corpus songs: 7 have rolls over 5% of their drums, one 13%), which is their pattern, not a jump; at .02 / .03 / .04 / .06
+// the corpus gets 109 / 164 / 213 / 343 added moments in 24 / 28 / 31 / 36 songs, and people's Normal plays 9 / 17 / 17 / 15%
+// of them, people's Hard 52 / 55 / 58 / 55%. Corpus F1 against people at .03: Normal .7921 -> .7914 (precision .7224 ->
+// .7208), Hard .8044 -> .8049, Easy the same. People's Normal plays few of them (its own precision is .72): the rule
+// follows the player's wish, not the corpus. A note is added only inside a stream (notes before and after within
+// `streamBeats` of a beat) and `minGapMs` from both, like FAST_RUNS.
+const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs: 70, maxRun: 5, maxCover: 0.03 };
 // selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
 // sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
 // 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
@@ -727,6 +741,7 @@ module.exports = {
   DIP_SILENCE,
   DIP_THIN,
   DRUMLESS,
+  DRUM_RUNS,
   EASY_FIGURES,
   EASY_FROM_NORMAL,
   EASY_SAME_CUTS,

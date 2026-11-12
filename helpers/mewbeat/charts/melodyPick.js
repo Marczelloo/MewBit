@@ -50,6 +50,15 @@ function withMelodyRuns(scored, melody, rule) {
   });
 }
 
+// The number of gaps of up to BURST_BEATS of a beat in a row around times[i] (`times` sorted): the length of its burst.
+function burstAround(times, i, timing) {
+  const short = (a, b) => (b - a) / timing.beatMsAt(a) <= BURST_BEATS;
+  let lo = i, hi = i;
+  while (lo > 0 && short(times[lo - 1], times[lo])) lo--;
+  while (hi + 1 < times.length && short(times[hi], times[hi + 1])) hi++;
+  return hi - lo;
+}
+
 // withRunNotes(notes, scored, timing, rule) -> notes with the moments withMelodyRuns marked added on top of the budget
 // (the melodyRuns flag), where they fall inside a stream: the chart's notes before and after are within rule.streamBeats
 // of a beat and at least rule.minGapMs away, the note before is not held over it, and no more than rule.maxRun gaps of up
@@ -63,13 +72,6 @@ function withRunNotes(notes, scored, timing, rule) {
   const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
   const heldUntil = new Map();
   for (const n of notes) if (n.len > 0) heldUntil.set(n.t, Math.max(heldUntil.get(n.t) ?? 0, n.t + n.len));
-  const short = (a, b) => (b - a) / timing.beatMsAt(a) <= BURST_BEATS;
-  const burstAround = (i) => {
-    let lo = i, hi = i;
-    while (lo > 0 && short(times[lo - 1], times[lo])) lo--;
-    while (hi + 1 < times.length && short(times[hi], times[hi + 1])) hi++;
-    return hi - lo;
-  };
   const added = [];
   for (const t of runs) {
     const i = lowerBound(times, t);
@@ -79,10 +81,10 @@ function withRunNotes(notes, scored, timing, rule) {
     if (t - prev > span || next - t > span || t - prev < rule.minGapMs || next - t < rule.minGapMs) continue;
     if ((heldUntil.get(prev) ?? 0) > t - rule.minGapMs) continue;
     times.splice(i, 0, t);
-    if (burstAround(i) > rule.maxRun) times.splice(i, 1);
+    if (burstAround(times, i, timing) > rule.maxRun) times.splice(i, 1);
     else added.push({ t, lane: 0 });
   }
   return added.length ? [...notes, ...added].sort((a, b) => a.t - b.t) : notes;
 }
 
-module.exports = { ONSET_MS, ranks, withMelody, withMelodyRuns, withRunNotes };
+module.exports = { ONSET_MS, burstAround, ranks, withMelody, withMelodyRuns, withRunNotes };

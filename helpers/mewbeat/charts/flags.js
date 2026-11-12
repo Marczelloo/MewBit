@@ -8,6 +8,7 @@ const crypto = require("node:crypto");
 const {
   CALM_SPOTS,
   COPY_MELODY,
+  DRUM_RUNS,
   EASY_SAME_CUTS,
   FADE_FALLS,
   FAST_RUNS,
@@ -54,6 +55,9 @@ const FLAGS = {
   calmSpots: { label: "Normal, Hard, Hell: w cichym fragmencie bez nagłych zagęszczeń (takt nie gra dużo gęściej niż takty przed nim i po nim)", levels: { normal: { calmSpots: CALM_SPOTS }, hard: { calmSpots: CALM_SPOTS }, hell: { calmSpots: CALM_SPOTS } } },
   // Normal: a repeat whose copy would miss the melody its source plays is charted fresh (generate.js copiedRepeat).
   copyMelody: { label: "Normal: powtórka bez kopii, gdy kopia gubi melodię", levels: { normal: { copyMelody: COPY_MELODY } } },
+  // Normal: a drum roll, strong hits a quarter beat apart on the grid, gets a note on each hit on top of the stream (drumRuns.js).
+  // Easy is cut from the Normal without them; Hard and Hell are built on the one with them.
+  drumRuns: { label: "Normal: krótka seria nut, gdy perkusja gra szybkie uderzenia co ćwierć bitu (na siatce i mocne)", levels: { normal: { drumRuns: DRUM_RUNS } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
   // Normal: a quiet ending that plays on at one loudness is not a fade-out, and keeps its notes (fades.js fadeOutOf).
