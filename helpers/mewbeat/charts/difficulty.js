@@ -168,6 +168,29 @@ const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs:
 // (largest 4 s window 19 -> 14 at 1:32); MEGALOVANIA (Camellia, 242 BPM) 2352 -> 2325, 2:20 window 27 -> 22 on top of dipThin.
 // smooth 0: a smoothed edge thinned the first louder second after a stretch (MAYDAY +15 added moments by the reshuffle).
 const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0.85, floor: 0.6, power: 1.5 };
+// generate.js drumFitOf, drumRuns.js (flag drumRunsFit, with drumRuns): a roll gets no more added notes than the song and the
+// place ask for. The player, 2026-11-12, after AIZO: the speed-ups "should fit the speed of the song and what is going on in
+// it: in a slower, calmer song they can be there, but not such big ones, enough to feel it, not ten blocks at once". The
+// cap is `shortAdds` notes on a roll in a slow song (a beat of `slowBeatMs` or more, under 137 BPM) or a quiet place (the
+// energy round the roll's middle under `hushBelow` of the song's loud level, quiet.js), `midAdds` between that and a fast,
+// loud place (a beat under `fastBeatMs`, over 160 BPM, and energy from `calmBelow` up), no cap there; the lower of the
+// tempo's and the energy's step. A roll over its cap is placed again from its last hit backwards, so the one or two notes
+// left sit where the roll leads into the next beat. The numbers, the 253 rolls on the 73 corpus and bot songs that have
+// one: drumRuns adds 271 moments, +2 on 99 rolls and +3 or more on 12 (a chain of five moments, 4 gaps, is as long as
+// maxRun 5 lets one grow), +0.13 a roll under 130 BPM, +0.7 at 130-159, +1.8 at 160-184, +1.2 from 185. The energy against
+// the loud level: median .92, 10% under .73, 25% under .81; calmBelow .85 / hushBelow .75 are about the lowest third and
+// sixth. The steps cut 19 of the 271 moments (252 left; 17 rolls lose one or two, one gains one when a note moves to the last
+// hit and a later stage keeps it); Hard follows Normal in the cut rolls (span blocks 6.6 -> 5.5, drumRuns off 5.1), Hell does not
+// (8.1 -> 8.3, off 8.2: it fills the span by itself), so no extras-free span. Corpus F1 against people .7906 -> .7907 Normal,
+// .8051 the same Hard, Normal -11 moments in 6 songs; the bot's 98 songs -5 Normal, -1 Hard, -15 Hell in 7 songs. The AIZO
+// rolls (190 BPM, energy .86-.98) and the other fast loud places stay as they are. People give no ground for steps: of the
+// hits Normal leaves, their Normal plays 17% where the energy is under .85 and 13% from .85 up, 18% against 13% when the same
+// split reads the energy 37 s later (no signal, shifted control), and 62% of 13 hits at a 440 ms beat or slower; on the corpus their Normal plays
+// 86% of a roll's hits under 130 BPM (8 rolls), 56% at 130-159, 46% at 160-184, 49% from 185, and 51% on rolls at .5-.8 of the
+// loud level against 54% above, in span 6 moments a second at every tempo; so the numbers follow the player's words, and the
+// steps are small where the flag adds little already. Of the hits Normal does not play, people's Normal plays the first of
+// a roll 24%, the last 29%, the middle 15% (68 hits), by strength rank 13-16%, which is why the short burst sits at the end.
+const DRUM_RUNS_FIT = { fastBeatMs: 375, slowBeatMs: 440, calmBelow: 0.85, hushBelow: 0.75, midAdds: 2, shortAdds: 1 };
 // selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
 // sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
 // 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
@@ -814,6 +837,7 @@ module.exports = {
   DRUMLESS,
   DRUM_RUNS,
   LIGHT_THIN,
+  DRUM_RUNS_FIT,
   EASY_FIGURES,
   EASY_FROM_NORMAL,
   EASY_SAME_CUTS,
