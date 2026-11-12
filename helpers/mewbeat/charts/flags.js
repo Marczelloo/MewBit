@@ -37,6 +37,7 @@ const {
   PLUS_CALM_END,
   PLUS_HEARD,
   PLUS_MELODY,
+  SOFT_RUNS,
 } = require("./difficulty");
 
 const FLAGS_FILE_NAME = "generator-flags.json";
@@ -69,6 +70,9 @@ const FLAGS = {
   // Easy is cut from the Normal without them; Hard and Hell are built on the one with them.
   lightThin: { label: "Normal: mniej nut w lżejszym fragmencie muzyki między głośniejszymi (energia wyraźnie poniżej poziomu wokół)", levels: { normal: { lightThin: LIGHT_THIN } } },
   drumRuns: { label: "Normal: krótka seria nut, gdy perkusja gra szybkie uderzenia co ćwierć bitu (na siatce i mocne)", levels: { normal: { drumRuns: DRUM_RUNS } } },
+  // Normal: a quarter-beat grid point with a decoded note (any voice) in a fast run of notes gets a note inside a stream, and a
+  // one-beat gap hold that lay over it gives way (softRuns.js, generate.js finish). Not in the seconds lightThin thinned.
+  softRuns: { label: "Normal: krótkie serie nut tam, gdzie zdekodowane nuty biegną szybko (ćwierć bitu na nucie), a przytrzymanie między ósemkami je blokuje", levels: { normal: { softRuns: SOFT_RUNS } } },
   // Normal: with drumRuns, a roll in a slow song or a quiet place gets one or two notes, at its end, not the whole burst (generate.js
   // drumFitOf, drumRuns.js). A fast, loud place keeps the burst. Does nothing without drumRuns.
   drumRunsFit: { label: "Normal: seria nut na rolce perkusji dopasowana do utworu (wolny lub cichy fragment: jedna-dwie nuty na końcu rolki, szybki i głośny: cała seria)", levels: { normal: { drumRunsFit: DRUM_RUNS_FIT } } },

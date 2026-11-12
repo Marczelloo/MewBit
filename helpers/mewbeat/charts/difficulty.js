@@ -196,6 +196,24 @@ const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0
 // steps are small where the flag adds little already. Of the hits Normal does not play, people's Normal plays the first of
 // a roll 24%, the last 29%, the middle 15% (68 hits), by strength rank 13-16%, which is why the short burst sits at the end.
 const DRUM_RUNS_FIT = { fastBeatMs: 375, slowBeatMs: 440, calmBelow: 0.85, hushBelow: 0.75, midAdds: 2, shortAdds: 1 };
+// Normal's softRuns flag (softRuns.js): a burst on the quarter-beat grid points that carry a decoded note (any voice, onsets
+// within mergeMs are one) in a run of at least minRun onsets each within fastMs of the next, onMs from the grid point. Placed
+// as the bursts of melodyRuns are (melodyPick.js placeRunNotes): inside a stream (streamBeats), maxRun short gaps in a row,
+// minGapMs between notes. What kept those moments out in Rush E was not the missing candidate (the on-grid notes of the line
+// had scored moments already) but the one-beat gap holds between the half-beat taps, which lay over the quarter beats:
+// cutGapHolds lets such a hold (never a real sustain) give way to the burst note and become a tap, and onlyOverHolds adds a
+// note only where it does that (on a plain gap people played 13% of the additions, over a hold 31-34%, control about 25%).
+// keepFloor 1: with lightThin on, not in the seconds it thinned (AIZO 0:52-0:58 went 8-10 -> 9-12 moments per 2 s without it).
+// Measured 2026-11-12 with localThinSure on:
+// - Rush E (32ca6d66): moments 689 -> 715 (28 added, all on a decoded onset, 2 lost); a second: phrase #10 4.4 -> 5.8,
+//   #11 4.0 -> 4.7, #18 5.1 -> 5.9, #8/#9 +0.4/+0.3, the most in one second stays 9. #14/#15 stay 3.4/4.0: their decoded notes
+//   sit off the quarter grid (onMs 50 would put the notes 41 ms from the sound).
+// - Corpus, 80 songs: 1009 moments added in 72 songs; people's Normal plays 31.2% of them, people's Hard 56.2%; the decoded
+//   notes shifted 37 s (control): 22.8% / 39.0%. F1 against people Normal .7926 -> .7908, Hard .8054 -> .8055, Easy same.
+//   minRun 3 added 1261 at 35.1% / 55.2% (control 25.4% / 40.6%), minRun 4 (this) 1104 at 35.8% / 57.2% (bot flags base).
+//   Without onlyOverHolds the flag cost Normal F1 .022.
+// - Bot songs (99): Normal +1584 moments (+1.7%) in 72 songs; the most in one song +13.2% (3b4d340d), +10.4% (304996f5).
+const SOFT_RUNS = { source: "all", mergeMs: 45, fastMs: 200, onMs: 25, minVel: 0, minRun: 4, streamBeats: 1.1, minGapMs: 70, maxRun: 3, cutGapHolds: true, onlyOverHolds: true, keepFloor: 1 };
 // selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
 // sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
 // 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
@@ -886,6 +904,7 @@ module.exports = {
   PLUS_MELODY,
   QUIET_LONE,
   SLOW_DYNAMICS,
+  SOFT_RUNS,
   SOLO_LEAD,
   STAIRS,
   SUSTAIN_HOLDS,
