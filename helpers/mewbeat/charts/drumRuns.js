@@ -42,25 +42,40 @@ function drumRolls(drums, timing, rule) {
 // falls inside a stream: the chart's notes before and after are within rule.streamBeats of a beat and at least rule.minGapMs
 // away, the note before is not held over it, and no more than rule.maxRun gaps of up to 0.3 of a beat follow in a row
 // (the rest of a longer roll stays as it was). The added notes carry no lane; the lane stages lay them.
-function withDrumRunNotes(notes, drums, timing, rule) {
+// `fit` (diff.drumRunsFit, generate.js drumFitOf; null without the flag): (startMs, endMs) -> the most notes one roll may get.
+// A roll that gets no more than that is placed as above, note for note; a roll that would get more is placed again from its
+// last hit backwards and stops at the cap, so a short burst sits at the end of the roll, leading into the next beat.
+function withDrumRunNotes(notes, drums, timing, rule, fit = null) {
   const rolls = drumRolls(drums, timing, rule);
   if (rolls.length === 0) return notes;
-  const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
+  let times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
   const heldUntil = new Map();
   for (const n of notes) if (n.len > 0) heldUntil.set(n.t, Math.max(heldUntil.get(n.t) ?? 0, n.t + n.len));
-  const added = [];
-  for (const roll of rolls) {
-    for (const t of roll.times) {
-      const i = lowerBound(times, t);
-      const prev = times[i - 1], next = times[i];
+  // place(order, cap) -> { times, got }: the roll's hits tried in `order` on a copy of the moments so far, up to `cap` of them
+  const place = (order, cap) => {
+    const ts = times.slice();
+    const got = [];
+    for (const t of order) {
+      if (got.length >= cap) break;
+      const i = lowerBound(ts, t);
+      const prev = ts[i - 1], next = ts[i];
       if (prev === undefined || next === undefined || next === t) continue;
       const span = rule.streamBeats * timing.beatMsAt(t);
       if (t - prev > span || next - t > span || t - prev < rule.minGapMs || next - t < rule.minGapMs) continue;
       if ((heldUntil.get(prev) ?? 0) > t - rule.minGapMs) continue;
-      times.splice(i, 0, t);
-      if (burstAround(times, i, timing) > rule.maxRun) times.splice(i, 1);
-      else added.push({ t, lane: 0 });
+      ts.splice(i, 0, t);
+      if (burstAround(ts, i, timing) > rule.maxRun) ts.splice(i, 1);
+      else got.push({ t, lane: 0 });
     }
+    return { times: ts, got };
+  };
+  const added = [];
+  for (const roll of rolls) {
+    let run = place(roll.times, Infinity);
+    const cap = fit ? fit(roll.times[0], roll.times[roll.times.length - 1]) : Infinity;
+    if (run.got.length > cap) run = place([...roll.times].reverse(), cap);
+    times = run.times;
+    added.push(...run.got);
   }
   return added.length ? [...notes, ...added].sort((a, b) => a.t - b.t) : notes;
 }

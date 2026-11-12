@@ -10,6 +10,7 @@ const {
   COPY_MELODY,
   COPY_SURE,
   DRUM_RUNS,
+  DRUM_RUNS_FIT,
   EASY_SAME_CUTS,
   FADE_FALLS,
   FAST_RUNS,
@@ -65,6 +66,9 @@ const FLAGS = {
   // Normal: a drum roll, strong hits a quarter beat apart on the grid, gets a note on each hit on top of the stream (drumRuns.js).
   // Easy is cut from the Normal without them; Hard and Hell are built on the one with them.
   drumRuns: { label: "Normal: krótka seria nut, gdy perkusja gra szybkie uderzenia co ćwierć bitu (na siatce i mocne)", levels: { normal: { drumRuns: DRUM_RUNS } } },
+  // Normal: with drumRuns, a roll in a slow song or a quiet place gets one or two notes, at its end, not the whole burst (generate.js
+  // drumFitOf, drumRuns.js). A fast, loud place keeps the burst. Does nothing without drumRuns.
+  drumRunsFit: { label: "Normal: seria nut na rolce perkusji dopasowana do utworu (wolny lub cichy fragment: jedna-dwie nuty na końcu rolki, szybki i głośny: cała seria)", levels: { normal: { drumRunsFit: DRUM_RUNS_FIT } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
   // Normal: a quiet ending that plays on at one loudness is not a fade-out, and keeps its notes (fades.js fadeOutOf).

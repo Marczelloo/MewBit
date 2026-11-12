@@ -348,6 +348,20 @@ function quietOf(ctx, rule) {
   return ctx.quiet.get(rule.below);
 }
 
+// The most notes one drum roll may get (diff.drumRunsFit, drumRuns.js): (startMs, endMs) -> a count, Infinity for a fast, loud
+// place. The lower of two steps: the tempo's (the beat at the roll's start) and the energy's (quiet.js round the roll's middle).
+function drumFitOf(ctx, rule) {
+  const calm = quietOf(ctx, { below: rule.calmBelow });
+  const hush = quietOf(ctx, { below: rule.hushBelow });
+  return (startMs, endMs) => {
+    const beat = ctx.timing.beatMsAt(startMs);
+    const byTempo = beat <= rule.fastBeatMs ? Infinity : beat >= rule.slowBeatMs ? rule.shortAdds : rule.midAdds;
+    const mid = (startMs + endMs) / 2;
+    const byEnergy = hush?.(mid) ? rule.shortAdds : calm?.(mid) ? rule.midAdds : Infinity;
+    return Math.min(byTempo, byEnergy);
+  };
+}
+
 // Where the sounds of the song are no music (noise.js), once a song: t -> boolean, or null with nothing to tell it by.
 // `edge` (diff.noNoiseEdge) lets a stretch at the song's start or end reach on to the music; every level has the same.
 function noiseOf(ctx, rule, edge = null) {
@@ -655,7 +669,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const stood = bursts && ran !== settled ? new Set(settled.map((n) => n.t)) : null;
   // diff.drumRuns (a flag): a drum roll gets a note on each hit (drumRuns.js). Its notes are the quarter beats between the
   // stream's, so they ask the same: the floors let them stand rule.minGapMs from their neighbours, and only them.
-  const rolled = diff.drumRuns ? step("drumRuns", ran, withDrumRunNotes(ran, ctx.features.drums, ctx.timing, diff.drumRuns)) : ran;
+  const rolled = diff.drumRuns ? step("drumRuns", ran, withDrumRunNotes(ran, ctx.features.drums, ctx.timing, diff.drumRuns, diff.drumRunsFit ? drumFitOf(ctx, diff.drumRunsFit) : null)) : ran;
   const rolledTimes = rolled !== ran ? new Set(ran.map((n) => n.t)) : null;
   const burstTimes = new Set([...(stood ? ran.map((n) => n.t).filter((t) => !stood.has(t)) : []), ...(rolledTimes ? rolled.map((n) => n.t).filter((t) => !rolledTimes.has(t)) : [])]);
   const burstGap = burstTimes.size > 0 ? { gapMs: Math.min(stood ? bursts.minGapMs : Infinity, rolledTimes ? diff.drumRuns.minGapMs : Infinity), times: burstTimes } : null;
@@ -706,7 +720,7 @@ const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(fla
 
 const notesFor = (ctx, difficulty, trace = null, plain = false) => {
   const asked = diffOf(ctx, difficulty);
-  const level = plain && asked.drumRuns ? (({ drumRuns, ...rest }) => rest)(asked) : asked;
+  const level = plain && asked.drumRuns ? (({ drumRuns, drumRunsFit, ...rest }) => rest)(asked) : asked;
   const charted = chartNotes(ctx, level, trace);
   // diff.holdYield: the lanes let a hold go before they lose a moment the level is built on (lanes.js, laneSearch.js).
   const diff = level.holdYield && charted.protect ? { ...level, holdYield: charted.protect } : level;
