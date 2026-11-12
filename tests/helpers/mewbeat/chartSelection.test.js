@@ -169,7 +169,7 @@ describe("Normal picks its notes from the music", () => {
 
     const reasons = new Set(story.records.filter((r) => r.kind === "event").map((r) => r.reason));
     assert.ok(reasons.size > 0);
-    for (const reason of reasons) assert.ok(["ocena", "dopełnienie", "puls"].includes(reason), String(reason));
+    for (const reason of reasons) assert.ok(["ocena", "dopełnienie", "puls", "dziura", "tempo"].includes(reason), String(reason));
   });
 
   it("the budget follows the music: a loud phrase gets more than a quiet one", () => {
@@ -191,14 +191,14 @@ describe("Normal picks its notes from the music", () => {
 
       const analysis = { getFeatures: async () => makeFeatures(), statusOf: () => null };
       const store = createChartStore({ dir, analysis, log: quietLog });
-      assert.strictEqual(GENERATOR_VERSION, 44);
+      assert.strictEqual(GENERATOR_VERSION, 45);
       assert.strictEqual(store.peekCharts(track), null);
       const { charts } = await store.getCharts(track, "node");
 
       // Made without a melody (no decoder in this store), so marked nm.
-      assert.strictEqual(charts.normal.version, "44-nm");
+      assert.strictEqual(charts.normal.version, "45-nm");
       assert.ok(charts.normal.notes.length > 1);
-      assert.ok(fs.existsSync(file("44-nm")));
+      assert.ok(fs.existsSync(file("45-nm")));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -494,17 +494,16 @@ describe("the repeats of Normal", () => {
 
   // What these test is the plan against Normal's own budget: the floor under Easy lifts that budget, the mini rests
   // (bridges.js) fill the rests of source and repeat alike after the plan, and on this 120 BPM song slowDynamics (v43)
-  // narrows loud against quiet; all three have their own tests.
-  const { notBelow, restBridge, slowDynamics } = DIFFICULTIES.normal;
+  // narrows loud against quiet; all three have their own tests. Two rules of v45 that change a repeat after the plan, or what the
+  // plan is measured against, are left off the same way (each has its own test file): loudHoles and paceHoles fill the holes of a
+  // loud phrase after the plan, so a repeat of a sparse source keeps being a copy and a louder repeat gains more than its extra.
+  const OFF = ["notBelow", "restBridge", "slowDynamics", "loudHoles", "paceHoles"];
+  const kept = Object.fromEntries(OFF.map((k) => [k, DIFFICULTIES.normal[k]]));
   beforeEach(() => {
-    delete DIFFICULTIES.normal.notBelow;
-    delete DIFFICULTIES.normal.restBridge;
-    delete DIFFICULTIES.normal.slowDynamics;
+    for (const k of OFF) delete DIFFICULTIES.normal[k];
   });
   afterEach(() => {
-    DIFFICULTIES.normal.notBelow = notBelow;
-    DIFFICULTIES.normal.restBridge = restBridge;
-    DIFFICULTIES.normal.slowDynamics = slowDynamics;
+    Object.assign(DIFFICULTIES.normal, kept);
   });
 
   it("same loudness copies rhythm and lanes", () => {
@@ -618,11 +617,25 @@ describe("Normal's notes sit on the grid", () => {
 
   it("the louder repeat's extra notes and the seam fill are on the grid too", () => {
     const features = songs["layered with a louder repeat"];
-    const story = traceChart(features, "normal", KEY);
+    // The extras of the repeat are the plan's own (the ranking), as in the repeats above: loudHoles and paceHoles, which fill the repeat's
+    // holes in v45, would take them first and give them their own reasons; the holes they fill are on the grid too (the loop below).
+    const { loudHoles, paceHoles } = DIFFICULTIES.normal;
+    delete DIFFICULTIES.normal.loudHoles;
+    delete DIFFICULTIES.normal.paceHoles;
+    let story;
+    try {
+      story = traceChart(features, "normal", KEY);
+    } finally {
+      DIFFICULTIES.normal.loudHoles = loudHoles;
+      DIFFICULTIES.normal.paceHoles = paceHoles;
+    }
     const grid = analyse(features).timing.gridPoints(4);
     const picked = story.records.filter((r) => r.kind === "event" && r.final);
     assert.ok(picked.some((r) => r.phrase === 3 && r.reason === "ocena"), "the repeat has extra notes");
     for (const r of picked) assert.ok(distance(grid, r.from.t) <= TIGHT_MS, `${r.reason} at ${r.from.t}`);
+    // and with the rules on, the holes they fill are on the grid as well
+    const filled = traceChart(features, "normal", KEY).records.filter((r) => r.kind === "event" && r.final);
+    for (const r of filled) assert.ok(distance(grid, r.from.t) <= TIGHT_MS, `${r.reason} at ${r.from.t}`);
   });
 
   it("two candidates for one grid time leave the higher score; one too far from the grid is not a moment", () => {

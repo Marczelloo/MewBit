@@ -3,12 +3,12 @@ const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, FREE_TIME, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
 const { thinDips } = require("../../../helpers/mewbeat/charts/dips");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { beatSpread, freePhrases, gridPhase, inFree } = require("../../../helpers/mewbeat/charts/freeTime");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { scoreMoments, selectMoments, snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
+const PLAIN = flagWithout("withoutfreetime", "freeTime"); // Normal as it was before freeTime
 const BEAT = 500;
 const FREE_FROM = 16000; // the third phrase of the fixture (16 beats of 500 ms a phrase)
 const FREE_TO = 24000;
@@ -34,15 +34,15 @@ function freeFeatures() {
   return { ...features, tempo: { ...features.tempo, beats }, decodedMelody: melodyOf(features) };
 }
 
-describe("phrases with no tempo to hold (flag freeTime)", () => {
+describe("phrases with no tempo to hold (freeTime)", () => {
   const steady = Array.from({ length: 33 }, (_, i) => i * BEAT);
   const phrase = { index: 0, startMs: 0, endMs: 16 * BEAT, pulse: 1 };
   const quarters = Array.from({ length: 64 }, (_, i) => (i * BEAT) / 4);
   const ones = (times) => times.map(() => 1);
 
-  it("is a flag of Normal the other levels follow, and no level has it without a flag", () => {
-    assert.deepEqual(FLAGS.freeTime.levels, { normal: { freeTime: FREE_TIME } });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.freeTime, undefined);
+  it("is a rule of Normal (from v45) the other levels follow, and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.freeTime, FREE_TIME);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.freeTime, undefined, name);
   });
 
   it("reads how uneven a phrase's tracked beats are", () => {
@@ -102,16 +102,16 @@ describe("phrases with no tempo to hold (flag freeTime)", () => {
 
   it("leaves a song with a steady tempo as it is", () => {
     const features = { ...makeLayeredFeatures(), decodedMelody: melodyOf(makeLayeredFeatures()) };
-    assert.deepEqual(analyse(features, ["freeTime"]).free, []);
-    const flagged = generateAll(features, "free-time-test", ["freeTime"]);
-    const plain = generateAll(features, "free-time-test", []);
-    for (const level of LEVELS) assert.deepEqual(flagged[level].notes, plain[level].notes);
+    assert.deepEqual(analyse(features).free, []);
+    const charts = generateAll(features, "free-time-test");
+    const plain = generateAll(features, "free-time-test", PLAIN);
+    for (const level of LEVELS) assert.deepEqual(charts[level].notes, plain[level].notes);
   });
 
   it("finds the free phrase of a song and stops trusting the grid there", () => {
     const features = freeFeatures();
-    const plain = analyse(features, []);
-    const ctx = analyse(features, ["freeTime"]);
+    const plain = analyse(features, PLAIN);
+    const ctx = analyse(features);
     assert.deepEqual(plain.free, []);
     assert.deepEqual(ctx.free.map((p) => [p.startMs, p.endMs]), [[FREE_FROM, FREE_TO]]);
     assert.equal(plain.timing.intervalOk(FREE_FROM + 1000), true);
@@ -122,8 +122,8 @@ describe("phrases with no tempo to hold (flag freeTime)", () => {
 
   it("scores a free phrase's sounds by their strength alone and leaves them where they were heard", () => {
     const features = freeFeatures();
-    const plain = scoreMoments(analyse(features, []), "normal");
-    const ctx = analyse(features, ["freeTime"]);
+    const plain = scoreMoments(analyse(features, PLAIN), "normal");
+    const ctx = analyse(features);
     const scored = scoreMoments(ctx, "normal");
     assert.equal(scored.length, plain.length);
     const inside = scored.filter((m) => m.t >= FREE_FROM && m.t < FREE_TO);
@@ -133,7 +133,7 @@ describe("phrases with no tempo to hold (flag freeTime)", () => {
     const byStrength = new Map();
     for (const m of inside) byStrength.set(m.s, [...(byStrength.get(m.s) ?? []), m.score]);
     for (const scores of byStrength.values()) assert.equal(new Set(scores).size, 1);
-    // the rest of the song is scored as without the flag
+    // the rest of the song is scored as without the rule
     scored.forEach((m, i) => {
       if (m.t < FREE_FROM || m.t >= FREE_TO) assert.deepEqual(m, plain[i]);
     });
@@ -168,10 +168,10 @@ describe("phrases with no tempo to hold (flag freeTime)", () => {
     assert.ok(gone <= kept);
   });
 
-  it("charts a song with a free phrase on every level, the rest of it as without the flag", () => {
+  it("charts a song with a free phrase on every level, the rest of it as without the rule", () => {
     const features = freeFeatures();
-    const plain = generateAll(features, "free-time-test", []);
-    const flagged = generateAll(features, "free-time-test", ["freeTime"]);
+    const plain = generateAll(features, "free-time-test", PLAIN);
+    const flagged = generateAll(features, "free-time-test");
     for (const level of LEVELS) {
       assert.ok(flagged[level].notes.some((n) => n.t >= FREE_FROM && n.t < FREE_TO));
       const outside = (chart) => chart.notes.filter((n) => n.t < FREE_FROM - 2 * BEAT || n.t >= FREE_TO + 2 * BEAT).length;

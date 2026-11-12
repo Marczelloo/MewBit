@@ -1,12 +1,11 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, INTERNAL_LEVELS, MELODY_LINES, MELODY_LINES_FIRST, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, INTERNAL_LEVELS, MELODY_LINES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { heldLineMoments } = require("../../../helpers/mewbeat/charts/melodyLines");
 const { selectMoments, snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const BEAT = 500;
 const timing = {
@@ -22,13 +21,10 @@ const moment = (t, s, extra = {}) => ({ t, s, score: s, metric: metricOf(t), dow
 const notesAt = (...starts) => starts.map((t) => ({ t, pitch: 60 }));
 const sorted = (set) => [...set].sort((a, b) => a - b);
 
-describe("the melody held as lines (flags melodyLines and melodyLinesFirst)", () => {
-  it("are flags of Normal, and no level has the lines without a flag", () => {
-    assert.deepEqual(FLAGS.melodyLines.levels, { normal: { melodyLines: MELODY_LINES } });
-    assert.deepEqual(FLAGS.melodyLinesFirst.levels, { normal: { melodyLines: MELODY_LINES_FIRST } });
-    assert.equal(MELODY_LINES.first, undefined);
-    assert.equal(MELODY_LINES_FIRST.first, true);
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.melodyLines, undefined);
+describe("the melody held as lines (melodyLines)", () => {
+  it("is a rule of Normal (from v45), and no other level has the lines", () => {
+    assert.deepEqual(DIFFICULTIES.normal.melodyLines, MELODY_LINES);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.melodyLines, undefined, name);
   });
 });
 
@@ -133,7 +129,7 @@ describe("heldLineMoments", () => {
 
 describe("selectMoments with held lines", () => {
   const level = { ...levelOf("normal"), foreground: 0, minNoteGapMs: 100, gapBeats: 1 / 4 };
-  const onTop = { ...level, melodyLines: MELODY_LINES }, first = { ...level, melodyLines: MELODY_LINES_FIRST };
+  const onTop = { ...level, melodyLines: MELODY_LINES };
   const pick = (scored, budget, edges = {}, rule = level) => selectMoments(phrase, scored, budget, rule, timing, edges);
   const times = (chosen) => chosen.map((n) => n.t);
   // Three quiet moments of a line, under the foreground, and four strong sounds; the first of the line is 100 ms from a strong one.
@@ -142,7 +138,7 @@ describe("selectMoments with held lines", () => {
   const scored = [...quiet, ...strong].sort((a, b) => a.t - b.t);
   const lines = new Set([1000, 1500, 2500]);
 
-  it("plays the held moments on top of what the phrase chose, where they fit: no note gives its place (flag melodyLines)", () => {
+  it("plays the held moments on top of what the phrase chose, where they fit: no note gives its place", () => {
     const plain = pick(scored, 3);
     assert.ok(times(plain).includes(1100) && !times(plain).some((t) => lines.has(t)));
     const chosen = pick(scored, 3, { lines, lineRoom: 2 }, onTop);
@@ -151,7 +147,7 @@ describe("selectMoments with held lines", () => {
     assert.deepEqual(chosen.filter((n) => n.reason === "linia").map((n) => n.t), [1500, 2500]);
   });
 
-  it("plays at most the lines' room on top (flag melodyLines)", () => {
+  it("plays at most the lines' room on top", () => {
     const many = Array.from({ length: 12 }, (_, i) => moment(500 + i * 500, 0.2, { score: -1 }));
     const all = new Set(many.map((m) => m.t));
     const plain = pick(many, 3).length;
@@ -160,37 +156,16 @@ describe("selectMoments with held lines", () => {
     assert.equal(pick(many, 3, { lines: all }, onTop).length, plain);
   });
 
-  it("takes the held moments before the foreground, also under its threshold (flag melodyLinesFirst)", () => {
-    const chosen = pick(scored, 3, { lines, lineRoom: 0 }, first);
-    assert.deepEqual(times(chosen), [1000, 1500, 2500]);
-    assert.ok(chosen.every((n) => n.reason === "linia"));
-  });
-
-  it("takes at most the budget and the lines' room (flag melodyLinesFirst)", () => {
-    const many = Array.from({ length: 12 }, (_, i) => moment(500 + i * 500, 0.2, { score: -1 }));
-    const all = new Set(many.map((m) => m.t));
-    assert.equal(pick(many, 3, { lines: all, lineRoom: 1 }, first).length, 4);
-    assert.equal(pick(many, 3, { lines: all, lineRoom: 0 }, first).length, 3);
-    assert.equal(pick(many, 3, { lines: all }, first).length, 3);
-  });
-
-  it("is never swapped out by the long stretches (flag melodyLinesFirst)", () => {
-    const held = [1500, 5500].map((t) => moment(t, 0.2, { score: -1 }));
-    const around = [...held, moment(3500, 0.9, { score: 5 })].sort((a, b) => a.t - b.t);
-    assert.deepEqual(times(pick(around, 2, { lines: new Set([1500, 5500]) }, first)), [1500, 5500]);
-  });
-
   it("changes nothing without held lines", () => {
     const mixed = Array.from({ length: 24 }, (_, i) => moment(i * 250, 0.3 + ((i * 7) % 10) / 20, { score: ((i * 7) % 10) / 3 - 1 }));
     const plain = pick(mixed, 6);
-    for (const rule of [onTop, first]) {
-      assert.deepEqual(pick(mixed, 6, { lines: null, lineRoom: 3 }, rule), plain);
-      assert.deepEqual(pick(mixed, 6, { lines: new Set(), lineRoom: 3 }, rule), plain);
-    }
+    assert.deepEqual(pick(mixed, 6, { lines: null, lineRoom: 3 }, onTop), plain);
+    assert.deepEqual(pick(mixed, 6, { lines: new Set(), lineRoom: 3 }, onTop), plain);
   });
 });
 
-describe("the flags on a whole song", () => {
+describe("the lines on a whole song", () => {
+  const PLAIN = flagWithout("withoutmelodylines", "melodyLines");
   const notesOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "k", flags)).map(([name, chart]) => [name, chart.notes]));
   const withLine = (features, line) => ({ ...features, decodedMelody: line, decodedMelodyTuned: line });
   // A melody too busy for Normal: a note on every sound of the second half of each bar.
@@ -202,26 +177,20 @@ describe("the flags on a whole song", () => {
 
   it("change nothing in a song with no decoded melody", () => {
     const features = makeLayeredFeatures();
-    const plain = notesOf(features);
-    for (const flag of ["melodyLines", "melodyLinesFirst"]) assert.deepEqual(notesOf(features, [flag]), plain, flag);
+    assert.deepEqual(notesOf(features), notesOf(features, PLAIN));
   });
 
   it("change nothing where Normal already plays the melody whole", () => {
     const features = makeLayeredFeatures();
     const mine = withLine(features, features.lead.map((n) => ({ t: n.t, pitch: n.pitch })));
-    const plain = notesOf(mine);
-    for (const flag of ["melodyLines", "melodyLinesFirst"]) assert.deepEqual(notesOf(mine, [flag]), plain, flag);
+    assert.deepEqual(notesOf(mine), notesOf(mine, PLAIN));
   });
 
   it("play more of a melody Normal leaves out, within the lines' room", () => {
     const features = busy(makeLayeredFeatures());
-    const plain = notesOf(features);
+    const plain = notesOf(features, PLAIN), flagged = notesOf(features);
     const moments = (notes) => new Set(notes.map((n) => n.t)).size;
-    for (const [flag, rule] of [["melodyLines", MELODY_LINES], ["melodyLinesFirst", MELODY_LINES_FIRST]]) {
-      const flagged = notesOf(features, [flag]);
-      assert.ok(played(flagged.normal, features) > played(plain.normal, features), `${flag}: ${played(plain.normal, features)} -> ${played(flagged.normal, features)}`);
-      assert.ok(moments(flagged.normal) <= (1.1 + rule.room) * moments(plain.normal), `${flag}: ${moments(plain.normal)} -> ${moments(flagged.normal)}`);
-    }
+    assert.ok(played(flagged.normal, features) > played(plain.normal, features), `${played(plain.normal, features)} -> ${played(flagged.normal, features)}`);
+    assert.ok(moments(flagged.normal) <= (1.1 + MELODY_LINES.room) * moments(plain.normal), `${moments(plain.normal)} -> ${moments(flagged.normal)}`);
   });
-
 });

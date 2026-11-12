@@ -8,7 +8,7 @@ const { makeFeatures } = require("./fixtures");
 
 const BEAT_MS = 500; // the fixtures play at 120 BPM
 const timing = buildTiming(makeFeatures({ durationMs: 64000 }), 64000);
-const context = (level) => ({ timing, phrases: [], sections: [], durationMs: 64000, energy: { at: () => level }, eventTimes: [], onsets: [] });
+const context = (level) => ({ features: {}, timing, phrases: [], sections: [], durationMs: 64000, energy: { at: () => level }, eventTimes: [], onsets: [] });
 const notes = () => Array.from({ length: 64 }, (_, i) => ({ t: 2000 + i * BEAT_MS, lane: 0 }));
 const LOUDNESS = DIFFICULTIES.normal.chordLoudness;
 // Normal with even chord rates and no caps, so only the rates decide.

@@ -1,4 +1,4 @@
-// Music with no tempo to hold (generator flag freeTime, difficulty.js FREE_TIME). The fitted grid (beatFit.js) cannot tell
+// Music with no tempo to hold (diff.freeTime, Normal from v45, difficulty.js FREE_TIME). The fitted grid (beatFit.js) cannot tell
 // that it failed on a stretch that speeds up, slows down or is played freely: it lays the neighbouring tempo over it, and
 // the sounds there sit no nearer to its lines than chance. A phrase is free when three things say so together:
 //   the tracker found no tempo: its beats wander (where the music has a tempo their spread within a phrase is about 0.02)

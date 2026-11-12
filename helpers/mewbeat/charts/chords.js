@@ -196,8 +196,8 @@ function heardPitches(moments, ctx, rule, shift = 0) {
 
 // planChords(notes, ctx, diff, upper, heardShift) -> notes with every moment at the size it plays.
 // `upper` (rhythm.js) is the level above, for a level cut from it. With diff.keepSizes the notes come with their sizes
-// (Normal's, under hardPlus): a moment that came as a chord stays one, as far as the hands are free. With diff.heardChords (a
-// flag) a moment of a phrase a pitched line leads plays no more notes than pitches begin on it (heardPitches, its notes moved
+// (Normal's, under hardPlus): a moment that came as a chord stays one, as far as the hands are free. With diff.heardChords (Normal,
+// Hard and Hell, from v45) a moment of a phrase a pitched line leads plays no more notes than pitches begin on it (heardPitches, its notes moved
 // by `heardShift`), and a chord saved up there waits for a moment with more than one pitch, or with none.
 function planChords(notes, ctx, diff, upper = null, heardShift = 0) {
   const { timing, phrases, sections, energy } = ctx;

@@ -1,11 +1,10 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, NO_NOISE, NO_NOISE_EDGE, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, INTERNAL_LEVELS, NO_NOISE, NO_NOISE_EDGE } = require("../../../helpers/mewbeat/charts/difficulty");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { noiseLookup } = require("../../../helpers/mewbeat/charts/noise");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const QUARTER = 125; // a quarter beat at 120 BPM
@@ -27,6 +26,9 @@ function song({ offGrid = null, unpitched = null } = {}) {
   for (let t = 0; t < DURATION; t += 500) if (!within(unpitched, t)) features.decodedNotes.push({ t, len: 200, pitch: 60, vel: 0.5 });
   return features;
 }
+const NO_EDGE = flagWithout("withoutnonoiseedge", "noNoiseEdge");
+const NO_BOTH = flagWithout("withoutnonoiseboth", "noNoise", "noNoiseEdge");
+const NO_RULE = flagWithout("withoutnonoise", "noNoise");
 const HEAD = { offGrid: [0, 14000], unpitched: [0, 6000] };
 const TAIL = { offGrid: [50000, DURATION], unpitched: [58000, DURATION] };
 const lookupOf = (features, edge = null) => {
@@ -36,20 +38,15 @@ const lookupOf = (features, edge = null) => {
 const chartsOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "k", flags)).map(([level, c]) => [level, c.notes]));
 const momentsOf = (notes, from = 0, to = Infinity) => [...new Set(notes.filter((n) => n.t >= from && n.t < to).map((n) => n.t))];
 
-describe("a noise stretch at the song's ends reaches the music (flag noNoiseEdge)", () => {
-  it("is off by default, on every level, and only with noNoise", () => {
-    assert.ok(FLAGS.noNoiseEdge);
-    assert.deepEqual(Object.keys(FLAGS.noNoiseEdge.levels), LEVELS);
-    for (const level of LEVELS) {
-      assert.equal(DIFFICULTIES[level].noNoiseEdge, undefined, level);
-      assert.equal(withFlags(levelOf(level), level, { noNoiseEdge: true }).noNoiseEdge, NO_NOISE_EDGE, level);
-    }
+describe("a noise stretch at the song's ends reaches the music (noNoiseEdge)", () => {
+  it("is a rule of every level (from v45), and only does anything with noNoise", () => {
+    for (const level of LEVELS) assert.deepEqual(DIFFICULTIES[level].noNoiseEdge, NO_NOISE_EDGE, level);
     // the levels the others are built on stay whole
-    assert.equal(withFlags(levelOf("hardBase"), "hardBase", { noNoiseEdge: true }), levelOf("hardBase"));
-    assert.equal(withFlags(levelOf("easyV26"), "easyV26", { noNoiseEdge: true }), levelOf("easyV26"));
-    // the flag alone does nothing: the rule that finds the stretch is noNoise's
+    assert.equal(INTERNAL_LEVELS.hardBase.noNoiseEdge, undefined);
+    assert.equal(INTERNAL_LEVELS.easyV26.noNoiseEdge, undefined);
+    // the edge alone does nothing: the rule that finds the stretch is noNoise's
     const features = song(HEAD);
-    const off = chartsOf(features, []), alone = chartsOf(features, ["noNoiseEdge"]);
+    const off = chartsOf(features, NO_BOTH), alone = chartsOf(features, NO_RULE);
     for (const level of LEVELS) assert.deepEqual(alone[level], off[level], level);
   });
 
@@ -57,7 +54,7 @@ describe("a noise stretch at the song's ends reaches the music (flag noNoiseEdge
     const features = song(HEAD);
     const plain = lookupOf(features), edged = lookupOf(features, NO_NOISE_EDGE);
     assert.ok(plain && edged);
-    // without the flag only the unpitched part: the windows that hear the notes from 6 s on are music
+    // without the edge only the unpitched part: the windows that hear the notes from 6 s on are music
     for (const t of [500, 2000, 4000]) assert.equal(plain(t), true, `plain at ${t}`);
     for (const t of [8000, 10000, 12000]) assert.equal(plain(t), false, `plain at ${t}`);
     for (const t of [500, 2000, 4000, 8000, 10000, 12000]) assert.equal(edged(t), true, `edged at ${t}`);
@@ -65,11 +62,11 @@ describe("a noise stretch at the song's ends reaches the music (flag noNoiseEdge
     for (const t of [16500, 18000, 30000, 60000]) assert.equal(edged(t), false, `edged at ${t}`);
   });
 
-  it("charts nothing before the music with the flag, and with it off the notes in the pitched part stay", () => {
+  it("charts nothing before the music, and without the edge the notes in the pitched part stay", () => {
     const features = song(HEAD);
-    const off = chartsOf(features, ["noNoise"]), on = chartsOf(features, ["noNoise", "noNoiseEdge"]);
+    const off = chartsOf(features, NO_EDGE), on = chartsOf(features);
     for (const level of LEVELS) {
-      assert.ok(momentsOf(off[level], 8000, 12000).length >= 2, `${level}: the fixture charts the pitched part without the flag`);
+      assert.ok(momentsOf(off[level], 8000, 12000).length >= 2, `${level}: the fixture charts the pitched part without the edge`);
       assert.deepEqual(momentsOf(on[level], 0, 12000), [], `${level} plays before the music`);
       assert.ok(momentsOf(on[level], 17000, 22000).length >= 2, `${level} lost the music`);
     }
@@ -79,7 +76,7 @@ describe("a noise stretch at the song's ends reaches the music (flag noNoiseEdge
     const features = song({ offGrid: [0, 14000] });
     assert.equal(lookupOf(features), null);
     assert.equal(lookupOf(features, NO_NOISE_EDGE), null);
-    const off = chartsOf(features, ["noNoise"]), on = chartsOf(features, ["noNoise", "noNoiseEdge"]);
+    const off = chartsOf(features, NO_EDGE), on = chartsOf(features);
     for (const level of LEVELS) {
       assert.ok(momentsOf(off[level], 0, 12000).length >= 4, `${level}: the fixture charts the opening`);
       assert.deepEqual(on[level], off[level], level);
@@ -101,19 +98,19 @@ describe("a noise stretch at the song's ends reaches the music (flag noNoiseEdge
     for (const t of [52500, 54000, 56000]) assert.equal(plain(t), false, `plain at ${t}`);
     for (const t of [52500, 54000, 56000, 60000, 63900]) assert.equal(edged(t), true, `edged at ${t}`);
     for (const t of [1000, 20000, 40000, 47000]) assert.equal(edged(t), false, `edged at ${t}`);
-    const off = chartsOf(features, ["noNoise"]), on = chartsOf(features, ["noNoise", "noNoiseEdge"]);
+    const off = chartsOf(features, NO_EDGE), on = chartsOf(features);
     for (const level of LEVELS) {
-      assert.ok(momentsOf(off[level], 53000, 57000).length >= 2, `${level}: the fixture charts the pitched part without the flag`);
+      assert.ok(momentsOf(off[level], 53000, 57000).length >= 2, `${level}: the fixture charts the pitched part without the edge`);
       assert.deepEqual(momentsOf(on[level], 53000), [], `${level} plays after the music`);
       assert.ok(momentsOf(on[level], 40000, 47000).length >= 2, `${level} lost the music`);
     }
   });
 
-  it("gives every level its flag-off chart minus the notes in the stretch, nothing else moved", () => {
+  it("gives every level its chart without the edge minus the notes in the stretch, nothing else moved", () => {
     for (const shape of [HEAD, TAIL]) {
       const features = song(shape);
       const edgeAt = lookupOf(features, NO_NOISE_EDGE);
-      const off = chartsOf(features, ["noNoise"]), on = chartsOf(features, ["noNoise", "noNoiseEdge"]);
+      const off = chartsOf(features, NO_EDGE), on = chartsOf(features);
       for (const level of LEVELS) {
         assert.ok(on[level].length < off[level].length, `${level}: the stretch holds notes`);
         assert.deepEqual(on[level], off[level].filter((n) => !edgeAt(n.t)), `${JSON.stringify(shape)} ${level}`);

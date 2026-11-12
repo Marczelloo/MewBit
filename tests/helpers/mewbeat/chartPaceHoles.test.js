@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, INTERNAL_LEVELS, PACE_HOLES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { selectMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { makeLayeredFeatures } = require("./fixtures");
@@ -22,7 +21,7 @@ const times = (notes) => notes.map((n) => n.t);
 const range = (from, to, step) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 const byTime = (a, b) => a.t - b.t;
 
-describe("a stretch longer than the pace of the notes round it (flag paceHoles)", () => {
+describe("a stretch longer than the pace of the notes round it (paceHoles)", () => {
   // A level with a flat gap of 200 ms whose foreground starts at a score of 1, with and without the rule.
   const plainDiff = { minNoteGapMs: 200, gapBeats: 0, foreground: 1 };
   const diff = { ...plainDiff, paceHoles: PACE_HOLES };
@@ -35,12 +34,12 @@ describe("a stretch longer than the pace of the notes round it (flag paceHoles)"
   const inHole = moment(1875, 0.5, 1.5);
   const withHole = [...stream, inHole].sort(byTime);
 
-  it("is a flag of Normal, and no level has it without a flag", () => {
-    assert.deepEqual(FLAGS.paceHoles.levels, { normal: { paceHoles: PACE_HOLES } });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.paceHoles, undefined);
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.paceHoles, PACE_HOLES);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.paceHoles, undefined, name);
   });
 
-  it("leaves the hole empty without the flag, with the budget spent", () => {
+  it("leaves the hole empty without the rule, with the budget spent", () => {
     assert.deepEqual(times(pick(withHole, stream.length, {}, plainDiff)), streamTimes);
   });
 
@@ -121,8 +120,8 @@ describe("a stretch longer than the pace of the notes round it (flag paceHoles)"
     assert.deepEqual(times(selectMoments(later, mine, mine.length, plainDiff, timing, { before: 7500, carry: [carried], earlier })), times(mine));
   });
 
-  it("charts a whole song with the flag on, every level", () => {
-    const flagged = generateAll(makeLayeredFeatures(), "pace-holes-test", ["paceHoles"]);
-    for (const level of ["easy", "normal", "hard", "hell"]) assert.ok(flagged[level].notes.length > 0);
+  it("charts a whole song with the rule on, every level", () => {
+    const charted = generateAll(makeLayeredFeatures(), "pace-holes-test");
+    for (const level of ["easy", "normal", "hard", "hell"]) assert.ok(charted[level].notes.length > 0);
   });
 });

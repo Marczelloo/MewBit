@@ -1,5 +1,5 @@
 // Where a song plays quietly against its own loud parts, for the extras of the levels built on another (generate.js
-// plusNotes, flag plusCalm). calm.js reads how busy the upper bands are, for the holds; this reads how loud the music is:
+// plusNotes, diff.plusCalm). calm.js reads how busy the upper bands are, for the holds; this reads how loud the music is:
 // a quiet stretch can be full of soft sounds (a brushed kit, a piano under a voice), and those are what the extras landed on.
 const { SILENCE_ENERGY } = require("./difficulty");
 

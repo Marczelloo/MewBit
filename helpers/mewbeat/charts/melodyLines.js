@@ -1,8 +1,8 @@
-// The decoded melody held as lines (diff.melodyLines, a flag; difficulty.js MELODY_LINES). Normal's selection picks moment by
+// The decoded melody held as lines (diff.melodyLines, Normal from v45; difficulty.js MELODY_LINES). Normal's selection picks moment by
 // moment and never sees the melody as a line: only 6% of the melody's notes sit in a line it plays whole (72 songs), the rest
 // lose a note to a louder neighbour inside the gap, to the budget or to a sound too weak for the foreground. So the lines worth
-// holding are found over the whole song, and selection.js selectMoments plays their moments on top of what a phrase chose (or,
-// with melodyLines.first, before it chooses). The listening test of 2026-11, where the melody picked the moments alone, lost
+// holding are found over the whole song, and selection.js selectMoments plays their moments on top of what a phrase chose (a variant
+// that chose them before the foreground was dropped: more of the melody, notes people do not play). The listening test of 2026-11, where the melody picked the moments alone, lost
 // ("quiet melody notes took the place of loud, full ones and left holes"), so a line is held only where its notes are heard
 // and loud, and a moment a clearly louder sound stands next to gives way.
 const { beatMsOf } = require("./holds");

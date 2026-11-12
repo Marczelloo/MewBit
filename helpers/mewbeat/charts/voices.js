@@ -1,6 +1,6 @@
 // The voices of a song, read from every note the second detector hears (features.decodedNotes) against the line it drew
-// through them (the decoded melody): the notes that repeat the line's tone and the line left out (generator flag lineRepeats),
-// and the sounds that play under the line, an accompaniment (generator flag leadVoiceBoth). Both asked for by ear on Rush E:
+// through them (the decoded melody): the notes that repeat the line's tone and the line left out (diff.lineRepeats),
+// and the sounds that play under the line, an accompaniment (diff.leadVoice). Both asked for by ear on Rush E:
 // "it picked the lower, more bass line, not the high leading one".
 const { ONSET_MS, ranks } = require("./melodyPick");
 const { lowerBound } = require("./util");
@@ -39,7 +39,7 @@ function withLineRepeats(line, notes, rule) {
 // melody and `notes` every decoded note, both at the shift the level reads them. A moment is under the melody when pitches
 // begin on it (within rule.nearMs), none of them a note of the line (ONSET_MS), the highest rule.below semitones or more
 // under the line's nearest note, and a note of the line begins within rule.clashMs of the moment, before or after: the moment
-// would take that note's place, and anywhere else both hands play (flag leadVoiceBoth). Only in a song a pitched line
+// would take that note's place, and anywhere else both hands play (diff.leadVoice). Only in a song a pitched line
 // carries: rule.song of its phrases or more are led by one (a pitch begins on rule.pitched of a phrase's loud moments, those
 // of rank rule.minLoud or more, rule.minMoments of them at least). Where drums carry the song the bass under a melody is the
 // beat people play, and nothing is taken.
@@ -96,7 +96,7 @@ function pitchedMoments(scored, notes, phrases, rule) {
 // drum but a kick plays on (features.drums of strength rule.minDrum or more, within rule.drumMs), in the phrases a pitched
 // line leads of a song one carries (underLine's gate: rule.pitched, minLoud, minMoments, song). In a piano piece such a moment
 // is a sound the first detector heard and no key was struck on, and a low key reads as a kick: an extra there plays off the
-// notes (generator flag plusHeard). A snare or another drum is a beat people play. An empty set without the rule or the
+// notes (diff.plusHeard). A snare or another drum is a beat people play. An empty set without the rule or the
 // notes, and where drums carry the song or the phrase.
 function offPitch(scored, notes, drums, phrases, rule) {
   const off = new Set();

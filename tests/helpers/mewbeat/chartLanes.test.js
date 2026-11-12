@@ -17,6 +17,7 @@ const timing = buildTiming(features, 64000);
 const every = (fromMs, toMs, stepMs) => Array.from({ length: Math.ceil((toMs - fromMs) / stepMs) }, (_, i) => fromMs + i * stepMs);
 
 const context = (more = {}) => ({
+  features: {},
   timing,
   phrases: [],
   sections: [],

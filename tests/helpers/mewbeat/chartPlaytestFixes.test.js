@@ -1,20 +1,22 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { CALM_SPOTS, COPY_SURE, DIFFICULTIES, INTERNAL_LEVELS, MELODY_ONLY, MELODY_ONLY_LONG } = require("../../../helpers/mewbeat/charts/difficulty");
+const { CALM_SPOTS, COPY_SURE, DIFFICULTIES, INTERNAL_LEVELS, MELODY_ONLY } = require("../../../helpers/mewbeat/charts/difficulty");
 const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { evenSpots } = require("../../../helpers/mewbeat/charts/spots");
 const { melodyOnlyWindows } = require("../../../helpers/mewbeat/charts/sustain");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
-const EVERY_LEVEL = [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)];
 const notesOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "k", flags)).map(([level, chart]) => [level, chart.notes]));
 const moments = (notes, fromMs = 0, toMs = Infinity) => [...new Set(notes.filter((n) => n.t >= fromMs && n.t < toMs).map((n) => n.t))];
 
-describe("calmSpots leaves the notes of the melody (flag calmMelody)", () => {
+describe("calmSpots leaves the notes of the melody (calmMelody)", () => {
+  const NO_CALM = flagWithout("withoutcalmspots", "calmSpots", "calmMelody");
+  const NO_MELODY = flagWithout("withoutcalmmelody", "calmMelody");
+  const NO_SPOTS_ONLY = flagWithout("withoutcalmspotsonly", "calmSpots");
   // 120 BPM, quiet from 24 to 40 s; the decoded melody is the lead's line, but for one bar at 30 s it runs a note every
   // quarter beat: Normal plays 8 moments in that bar against 4 in the bars around it.
   const BEAT = 500, FROM = 30000, TO = FROM + 4 * BEAT;
@@ -29,22 +31,22 @@ describe("calmSpots leaves the notes of the melody (flag calmMelody)", () => {
     return moments(before).filter((t) => !kept.has(t));
   };
 
-  it("is a flag of Normal, Hard and Hell, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.calmMelody.levels, { normal: { calmMelody: true }, hard: { calmMelody: true }, hell: { calmMelody: true } });
-    for (const level of EVERY_LEVEL) assert.equal(level.calmMelody, undefined);
+  it("is a rule of Normal, Hard and Hell (from v45), and no other level has it", () => {
+    for (const name of ["normal", "hard", "hell"]) assert.equal(DIFFICULTIES[name].calmMelody, true, name);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (!["normal", "hard", "hell"].includes(name)) assert.equal(level.calmMelody, undefined, name);
   });
 
   it("does nothing without calmSpots", () => {
     const features = song();
-    assert.deepEqual(notesOf(features, ["calmMelody"]), notesOf(features));
+    assert.deepEqual(notesOf(features, NO_SPOTS_ONLY), notesOf(features, NO_CALM));
   });
 
   it("the melody's run stays whole; what still goes is no note of the melody", () => {
     const features = song();
     const onMelody = new Set(features.decodedMelody.map((n) => n.t));
-    const off = notesOf(features).normal;
-    const lostAlone = lostFrom(off, notesOf(features, ["calmSpots"]).normal);
-    const lostBoth = lostFrom(off, notesOf(features, ["calmSpots", "calmMelody"]).normal);
+    const off = notesOf(features, NO_CALM).normal;
+    const lostAlone = lostFrom(off, notesOf(features, NO_MELODY).normal);
+    const lostBoth = lostFrom(off, notesOf(features).normal);
     // the control: calmSpots alone does take notes of the run
     assert.ok(lostAlone.filter((t) => onMelody.has(t)).length >= 2, `calmSpots alone drops ${lostAlone}`);
     assert.deepEqual(lostBoth.filter((t) => onMelody.has(t)), []);
@@ -71,7 +73,7 @@ describe("calmSpots leaves the notes of the melody (flag calmMelody)", () => {
   });
 
   it("keeps every moment of the level under it on Hard and Hell", () => {
-    const charts = notesOf(song(), ["hardHolds", "hellHolds", "calmSpots", "calmMelody"]);
+    const charts = notesOf(song());
     for (const [level, under] of [["hard", "normal"], ["hell", "hard"]]) {
       const mine = new Set(charts[level].map((n) => n.t));
       assert.deepEqual(moments(charts[under]).filter((t) => !mine.has(t)), [], `${under} moments missing from ${level}`);
@@ -79,7 +81,8 @@ describe("calmSpots leaves the notes of the melody (flag calmMelody)", () => {
   });
 });
 
-describe("the line plays alone only in a long passage (flag melodyOnlyLong)", () => {
+describe("the line plays alone only in a long passage (melodyOnly minRun 3)", () => {
+  const SHORT = { ...MELODY_ONLY, minRun: 2 }; // the passage Normal took before v45
   // chartSustain.test.js's song: 48 s, loud throughout, a short note every 400 ms, a long bass under part of it.
   const line = Array.from({ length: 120 }, (_, i) => ({ t: i * 400, len: 150, pitch: 50 + (i % 5), vel: 0.5 }));
   const ctxOf = (bassFrom, bassTo) => ({
@@ -87,55 +90,58 @@ describe("the line plays alone only in a long passage (flag melodyOnlyLong)", ()
     features: { durationMs: 48000, energy: { hopMs: 500, values: new Array(96).fill(0.9) }, decodedNotes: [{ t: bassFrom, len: bassTo - bassFrom, pitch: 40, vel: 0.8 }, ...line] },
   });
 
-  it("is a flag of Normal that changes only the shortest passage", () => {
-    assert.deepEqual(FLAGS.melodyOnlyLong.levels, { normal: { melodyOnly: MELODY_ONLY_LONG } });
-    assert.deepEqual(MELODY_ONLY_LONG, { ...MELODY_ONLY, minRun: 3 });
+  it("is the rule of Normal (from v45), three windows where it was two", () => {
     assert.equal(DIFFICULTIES.normal.melodyOnly, MELODY_ONLY);
+    assert.equal(MELODY_ONLY.minRun, 3);
   });
 
   it("two windows are no passage any more, three are", () => {
-    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 16000), MELODY_ONLY)], [2, 3]);
-    assert.equal(melodyOnlyWindows(ctxOf(8000, 16000), MELODY_ONLY_LONG).size, 0);
-    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 20000), MELODY_ONLY_LONG)], [2, 3, 4]);
-    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 24000), MELODY_ONLY_LONG)], [2, 3, 4, 5]);
+    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 16000), SHORT)], [2, 3]);
+    assert.equal(melodyOnlyWindows(ctxOf(8000, 16000), MELODY_ONLY).size, 0);
+    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 20000), MELODY_ONLY)], [2, 3, 4]);
+    assert.deepEqual([...melodyOnlyWindows(ctxOf(8000, 24000), MELODY_ONLY)], [2, 3, 4, 5]);
   });
 
-  it("a song with a passage of four windows is charted as without the flag, on every level", () => {
+  it("a song with a passage of four windows is charted as with the shorter minimum, on every level", () => {
     const features = { ...makeLayeredFeatures(), decodedNotes: ctxOf(8000, 24000).features.decodedNotes };
-    const off = notesOf(features), on = notesOf(features, ["melodyOnlyLong"]);
+    FLAGS.withoutmelodyonlylong = { label: "withoutmelodyonlylong", levels: { normal: { melodyOnly: SHORT } } };
+    const off = notesOf(features, { withoutmelodyonlylong: true }), on = notesOf(features);
     for (const level of LEVELS) assert.deepEqual(on[level], off[level], level);
   });
 });
 
-describe("a repeat almost exactly like its source is copied all the same (flag copySure)", () => {
+describe("a repeat almost exactly like its source is copied all the same (copySure)", () => {
+  const NO_COPY = flagWithout("withoutcopyall", "copyMelody", "copySure");
+  const NO_SURE = flagWithout("withoutcopysure", "copySure");
+  const NO_COPY_ONLY = flagWithout("withoutcopymelodyonly", "copyMelody");
   const PHRASE = 8000; // the fixture's phrases: the third repeats the first, similarity .95
   // chartMelodyFlags.test.js's song: a melody on the moments Normal plays, but in the third phrase on the ones it leaves
   // out, so copyMelody charts that phrase fresh. `similarity` is how alike the third phrase is said to be to the first.
   const moved = (similarity) => {
     const features = makeLayeredFeatures();
-    const played = new Set(moments(notesOf(features).normal));
+    const played = new Set(moments(notesOf(features, NO_COPY).normal));
     const there = (t) => t >= 2 * PHRASE && t < 3 * PHRASE;
     const line = snappedMoments(analyse(features), "hard").filter((m) => played.has(m.t) !== there(m.t)).map((m) => ({ t: m.raw ?? m.t, pitch: 60 }));
     const list = features.phrases.list.map((p, i) => (i === 2 ? { ...p, similarity } : p));
     return { ...features, phrases: { ...features.phrases, list }, decodedMelody: line, decodedMelodyTuned: line };
   };
 
-  it("is a flag of Normal, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.copySure.levels, { normal: { copySure: COPY_SURE } });
-    for (const level of EVERY_LEVEL) assert.equal(level.copySure, undefined);
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.equal(DIFFICULTIES.normal.copySure, COPY_SURE);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.copySure, undefined, name);
   });
 
   it("does nothing without copyMelody", () => {
     const features = moved(0.99);
-    assert.deepEqual(notesOf(features, ["copySure"]), notesOf(features));
+    assert.deepEqual(notesOf(features, NO_COPY_ONLY), notesOf(features, NO_COPY));
   });
 
   it("the phrase is a copy again where it is that alike, and stays fresh where it is not", () => {
     const alike = moved(0.99);
     // the control: copyMelody alone charts the third phrase fresh
-    assert.notDeepEqual(moments(notesOf(alike, ["copyMelody"]).normal, 2 * PHRASE, 3 * PHRASE), moments(notesOf(alike).normal, 2 * PHRASE, 3 * PHRASE));
-    assert.deepEqual(notesOf(alike, ["copyMelody", "copySure"]), notesOf(alike));
+    assert.notDeepEqual(moments(notesOf(alike, NO_SURE).normal, 2 * PHRASE, 3 * PHRASE), moments(notesOf(alike, NO_COPY).normal, 2 * PHRASE, 3 * PHRASE));
+    assert.deepEqual(notesOf(alike), notesOf(alike, NO_COPY));
     const less = moved(COPY_SURE - 0.01);
-    assert.deepEqual(notesOf(less, ["copyMelody", "copySure"]), notesOf(less, ["copyMelody"]));
+    assert.deepEqual(notesOf(less), notesOf(less, NO_SURE));
   });
 });

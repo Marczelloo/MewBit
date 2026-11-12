@@ -1,15 +1,21 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, PLUS_CALM, PLUS_CALM_END, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
+const { DIFFICULTIES, INTERNAL_LEVELS, PLUS_CALM, PLUS_CALM_END } = require("../../../helpers/mewbeat/charts/difficulty");
 const { fadeOutOf } = require("../../../helpers/mewbeat/charts/fades");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { quietLookup } = require("../../../helpers/mewbeat/charts/quiet");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
-// Hard has holds of its own in the bot (flag hardHolds); the two flags are measured on top of it.
-const BASE = ["hardHolds"];
+// The charts without a rule are the default call with the rule taken off Hard and Hell (the only levels that have them). Every chart
+// here is also charted without calmSpots, which thins the same quiet parts from the other side, and without the holds in the gaps
+// (plusHolds, holdsByCalm), which turn some of Hell's extras there into holds (10 -> 4 in the quiet middle of the fixture): both have
+// their own tests, and what is measured here is plusCalm alone, as it was when they were flags that were off.
+const NO_SPOTS = flagWithout("withoutcalmspots", "calmSpots", "calmMelody", "plusHolds", "holdsByCalm");
+const NO_PLUS = flagWithout("withoutpluscalm", "plusCalm", "plusCalmEnd");
+const NO_PLUS_CALM = flagWithout("withoutpluscalmonly", "plusCalm");
+const NO_PLUS_END = flagWithout("withoutplusend", "plusCalmEnd");
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const QUIET_FROM = 24000, QUIET_TO = 40000;
 const quietMiddle = (t) => (t >= QUIET_FROM && t < QUIET_TO ? 0.25 : 0.8);
@@ -25,7 +31,7 @@ const SONGS = {
 };
 const QUIET_MIDDLE = ["120 BPM, quiet middle", "150 BPM, quiet middle", "120 BPM, quiet middle, repeats"];
 const ENDING = ["120 BPM, quiet ending", "120 BPM, fading"];
-const chartsOf = (song, flags) => Object.fromEntries(Object.entries(generateAll(SONGS[song](), "k", [...BASE, ...flags])).map(([level, c]) => [level, c.notes]));
+const chartsOf = (song, flags) => Object.fromEntries(Object.entries(generateAll(SONGS[song](), "k", { ...NO_SPOTS, ...flags })).map(([level, c]) => [level, c.notes]));
 const momentsOf = (notes, from = 0, to = Infinity) => [...new Set(notes.filter((n) => n.t >= from && n.t < to).map((n) => n.t))];
 // the moments a level plays that the level under it does not
 const extrasOf = (notes, under, from = 0, to = Infinity) => {
@@ -33,9 +39,11 @@ const extrasOf = (notes, under, from = 0, to = Infinity) => {
   return momentsOf(notes, from, to).filter((t) => !below.has(t));
 };
 
-// The fixtures' Hard never adds more than half of Normal's moments, so the bot's numbers leave them alone; the cap itself is
-// shown with a rule far tighter than the flag's.
-FLAGS.plusCalmTight = { label: "plusCalmTight", levels: { hard: { plusCalm: { below: PLUS_CALM.below, share: 0.05 } }, hell: { plusCalm: { below: PLUS_CALM.below, share: 0.05 } } } };
+// The fixtures' Hard never adds more than half of Normal's moments, so the real numbers leave them alone; the cap itself is
+// shown with a rule far tighter than Hard's own. The first leaves the quiet-ending rule out, as a plusCalm alone would be.
+const TIGHT = { below: PLUS_CALM.below, share: 0.05 };
+FLAGS.plusCalmTight = { label: "plusCalmTight", levels: { hard: { plusCalm: TIGHT, plusCalmEnd: undefined }, hell: { plusCalm: TIGHT, plusCalmEnd: undefined } } };
+FLAGS.plusCalmTightEnd = { label: "plusCalmTightEnd", levels: { hard: { plusCalm: TIGHT }, hell: { plusCalm: TIGHT } } };
 
 describe("where the song is quiet (quietLookup)", () => {
   const features = (values, hopMs = 500) => ({ energy: { hopMs, values } });
@@ -61,39 +69,35 @@ describe("where the song is quiet (quietLookup)", () => {
   });
 });
 
-describe("Hard and Hell add less where the song is quiet (flags plusCalm, plusCalmEnd)", () => {
-  it("both are off by default and change Hard and Hell alone", () => {
-    for (const [name, param, rule] of [["plusCalm", "plusCalm", PLUS_CALM], ["plusCalmEnd", "plusCalmEnd", PLUS_CALM_END]]) {
-      assert.ok(FLAGS[name], name);
-      assert.deepEqual(Object.keys(FLAGS[name].levels), ["hard", "hell"], name);
-      for (const level of ["hard", "hell"]) {
-        assert.equal(DIFFICULTIES[level][param], undefined, `${name} ${level}`);
-        assert.equal(withFlags(levelOf(level), level, { [name]: true })[param], rule, `${name} ${level}`);
-      }
-      for (const level of ["easy", "normal", "hardBase"]) assert.equal(withFlags(levelOf(level), level, { [name]: true }), levelOf(level), `${name} ${level}`);
+describe("Hard and Hell add less where the song is quiet (plusCalm, plusCalmEnd)", () => {
+  it("both are rules of Hard and Hell (from v45) and no other level has them", () => {
+    for (const [param, rule] of [["plusCalm", PLUS_CALM], ["plusCalmEnd", PLUS_CALM_END]]) {
+      for (const level of ["hard", "hell"]) assert.equal(DIFFICULTIES[level][param], rule, `${param} ${level}`);
+      for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "hard" && name !== "hell") assert.equal(level[param], undefined, `${param} ${name}`);
     }
   });
 
   it("leave Easy and Normal note for note, and a song that is loud all the way on every level", () => {
     for (const song of Object.keys(SONGS)) {
-      const off = chartsOf(song, []);
-      for (const flags of [["plusCalm"], ["plusCalmEnd"], ["plusCalm", "plusCalmEnd"], ["plusCalmTight"]]) {
+      const off = chartsOf(song, NO_PLUS);
+      for (const [name, flags] of [["plusCalm", NO_PLUS_END], ["plusCalmEnd", NO_PLUS_CALM], ["both", undefined], ["plusCalmTight", { plusCalmTight: true }], ["plusCalmTightEnd", { plusCalmTightEnd: true }]]) {
         const on = chartsOf(song, flags);
-        for (const level of song === "120 BPM, loud" ? LEVELS : ["easy", "normal"]) assert.deepEqual(on[level], off[level], `${song} ${level} ${flags}`);
+        for (const level of song === "120 BPM, loud" ? LEVELS : ["easy", "normal"]) assert.deepEqual(on[level], off[level], `${song} ${level} ${name}`);
       }
     }
   });
 
   it("plusCalm: in a quiet part a level adds no more than its share of what the level under it plays there", () => {
     for (const song of QUIET_MIDDLE) {
-      const off = chartsOf(song, []), on = chartsOf(song, ["plusCalmTight"]);
+      const off = chartsOf(song, NO_PLUS), on = chartsOf(song, { plusCalmTight: true });
       const quiet = quietLookup(SONGS[song](), PLUS_CALM);
       const calm = (notes, under) => extrasOf(notes, under).filter(quiet).length;
       for (const [level, under] of [["hard", "normal"], ["hell", "hard"]]) {
         const before = calm(off[level], off[under]), after = calm(on[level], on[under]);
-        assert.ok(before >= 6, `${song} ${level}: ${before} extras in the quiet part without the flag`);
-        // two phrases of the fixture lie in the quiet part and each rounds its share up
-        assert.ok(after <= 4 && after < before / 2, `${song} ${level}: ${after} extras in the quiet part against ${before}`);
+        assert.ok(before >= 6, `${song} ${level}: ${before} extras in the quiet part without the rule`);
+        // two phrases of the fixture lie in the quiet part and each rounds its share up; Hard's other rules now leave 8 extras there in
+        // the 150 BPM song, so the cap halves them (4) where it used to cut them below a half
+        assert.ok(after <= 4 && after <= before / 2, `${song} ${level}: ${after} extras in the quiet part against ${before}`);
       }
       // the loud parts of Hard are what they were, a repeat of a quiet phrase too; Hell's follow the Hard under it
       for (const [from, to] of [[0, QUIET_FROM - 2000], [QUIET_TO + 2000, Infinity]]) {
@@ -103,9 +107,9 @@ describe("Hard and Hell add less where the song is quiet (flags plusCalm, plusCa
     }
   });
 
-  it("plusCalm with the bot's numbers never adds to a quiet part", () => {
+  it("plusCalm with its real numbers never adds to a quiet part", () => {
     for (const song of Object.keys(SONGS)) {
-      const off = chartsOf(song, []), on = chartsOf(song, ["plusCalm"]);
+      const off = chartsOf(song, NO_PLUS), on = chartsOf(song, NO_PLUS_END);
       const quiet = quietLookup(SONGS[song](), PLUS_CALM) ?? (() => false);
       for (const [level, under] of [["hard", "normal"], ["hell", "hard"]]) {
         const before = extrasOf(off[level], off[under]).filter(quiet).length, after = extrasOf(on[level], on[under]).filter(quiet).length;
@@ -116,10 +120,10 @@ describe("Hard and Hell add less where the song is quiet (flags plusCalm, plusCa
 
   it("plusCalmEnd: a quiet ending plays what the level under it plays", () => {
     for (const song of ENDING) {
-      const ending = fadeOutOf(analyse(SONGS[song](), [...BASE, "plusCalmEnd"]), PLUS_CALM_END);
+      const ending = fadeOutOf(analyse(SONGS[song](), {}), PLUS_CALM_END);
       assert.ok(ending && ending.startMs >= 40000, `${song}: the ending starts at ${ending?.startMs}`);
-      const off = chartsOf(song, []), on = chartsOf(song, ["plusCalmEnd"]);
-      assert.ok(extrasOf(off.hard, off.normal, ending.startMs).length + extrasOf(off.hell, off.hard, ending.startMs).length > 0, `${song}: nothing added to the ending without the flag`);
+      const off = chartsOf(song, NO_PLUS), on = chartsOf(song, NO_PLUS_CALM);
+      assert.ok(extrasOf(off.hard, off.normal, ending.startMs).length + extrasOf(off.hell, off.hard, ending.startMs).length > 0, `${song}: nothing added to the ending without the rule`);
       for (const [level, under] of [["hard", "normal"], ["hell", "hard"]]) {
         assert.deepEqual(extrasOf(on[level], on[under], ending.startMs), [], `${song}: ${level} adds to the ending`);
         assert.deepEqual(momentsOf(on[level], ending.startMs), momentsOf(on.normal, ending.startMs), `${song}: ${level} in the ending`);
@@ -128,12 +132,12 @@ describe("Hard and Hell add less where the song is quiet (flags plusCalm, plusCa
       assert.deepEqual(momentsOf(on.hard, 0, ending.startMs - 2000), momentsOf(off.hard, 0, ending.startMs - 2000), song);
     }
     // no quiet ending, nothing to do
-    for (const song of ["120 BPM, loud", ...QUIET_MIDDLE]) assert.deepEqual(chartsOf(song, ["plusCalmEnd"]), chartsOf(song, []), song);
+    for (const song of ["120 BPM, loud", ...QUIET_MIDDLE]) assert.deepEqual(chartsOf(song, NO_PLUS_CALM), chartsOf(song, NO_PLUS), song);
   });
 
   it("keeps every moment of the level under it, and the lanes stay playable", () => {
     for (const song of Object.keys(SONGS)) {
-      const charts = chartsOf(song, ["hellHolds", "plusCalmTight", "plusCalmEnd"]);
+      const charts = chartsOf(song, { plusCalmTightEnd: true });
       for (const [level, under] of [["hard", "normal"], ["hell", "hard"]]) {
         const mine = new Set(charts[level].map((n) => n.t));
         assert.deepEqual(momentsOf(charts[under]).filter((t) => !mine.has(t)), [], `${song}: ${under} moments missing from ${level}`);

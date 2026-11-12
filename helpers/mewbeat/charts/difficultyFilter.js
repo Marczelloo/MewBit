@@ -275,7 +275,7 @@ const gapBetween = (a, b, noteGap, close) => (close && (close.times.has(a) || cl
 // between distinct times), minLaneGapMs (same lane, counted from the end of a hold)
 // or a hold's rules (see holds.js). The earlier note wins. `timing` (optional) gives
 // the beat length for Normal's half-beat spacing next to a hold. `close` (optional,
-// { times, gapMs }: the fastRuns flag) lets a moment of `times` and its neighbour
+// { times, gapMs }: diff.fastRuns) lets a moment of `times` and its neighbour
 // stand gapMs apart.
 function enforceFloors(notes, diff, timing = null, close = null) {
   const noteGap = diff.minNoteGapMs ?? 0;

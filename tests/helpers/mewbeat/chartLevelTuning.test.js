@@ -1,12 +1,16 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { sameCuts } = require("../../../helpers/mewbeat/charts/rhythm");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
+const NO_SAME_CUTS = flagWithout("withouteasysamecuts", "sameCuts"); // Easy as it was before sameCuts
+// Hard as it was without its own holds (the rules sit on Hard alone, Hell reading them from it)
+FLAGS.withouthardholds = { label: "withouthardholds", levels: { hard: { plusHolds: undefined, holdRelease: undefined, holdsByCalm: undefined } } };
+const NO_HARD_HOLDS = { withouthardholds: true };
 const SONGS = {
   "120 BPM": () => makeLayeredFeatures({ bpm: 120, durationMs: 64000 }),
   "180 BPM": () => makeLayeredFeatures({ bpm: 180, durationMs: 64000 }),
@@ -22,7 +26,7 @@ const timing = {
   gridPoints: (div) => Array.from({ length: 8 * div + 1 }, (_, i) => (i * 1000) / div),
 };
 
-describe("Easy keeps the same moments in bars Normal plays alike, after the floors too (flag easySameCuts)", () => {
+describe("Easy keeps the same moments in bars Normal plays alike, after the floors too (sameCuts)", () => {
   // Normal plays every beat and the half beat after the downbeat in each bar
   const upper = [0, 2000, 4000, 6000].flatMap((b) => [b, b + 250, b + 500, b + 1000, b + 1500]).sort((a, b) => a - b);
 
@@ -41,12 +45,11 @@ describe("Easy keeps the same moments in bars Normal plays alike, after the floo
     assert.deepEqual(sameCuts(easy, upper, { ...timing, snapped: false }, { keep: 0.4 }), easy);
   });
 
-  it("is off by default and changes Easy alone", () => {
-    assert.ok(FLAGS.easySameCuts);
-    assert.equal(DIFFICULTIES.easy.sameCuts, undefined);
-    for (const level of ["normal", "hard", "hell", "easyV26"]) assert.equal(withFlags(levelOf(level), level, { easySameCuts: true }), levelOf(level), level);
+  it("is Easy's alone (from v45) and changes Easy alone", () => {
+    assert.deepEqual(DIFFICULTIES.easy.sameCuts, { keep: 0.4 });
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "easy") assert.equal(level.sameCuts, undefined, name);
     for (const song of Object.keys(SONGS)) {
-      const off = notesOf(song, {}), on = notesOf(song, { easySameCuts: true });
+      const off = notesOf(song, NO_SAME_CUTS), on = notesOf(song);
       for (const level of ["normal", "hard", "hell"]) assert.deepEqual(on[level], off[level], `${song} ${level}`);
       const normal = momentsOf(on.normal);
       assert.deepEqual(on.easy.filter((n) => !normal.has(n.t)), [], `${song}: Easy moments Normal does not play`);
@@ -54,31 +57,31 @@ describe("Easy keeps the same moments in bars Normal plays alike, after the floo
   });
 });
 
-describe("Hard lays its own holds and lets them go with the sound (flag hardHolds)", () => {
-  it("is off by default and changes Hard, and Hell built on it, alone", () => {
-    assert.ok(FLAGS.hardHolds);
-    assert.equal(DIFFICULTIES.hard.plusHolds, undefined);
-    for (const level of ["easy", "normal", "hell", "hardBase"]) assert.equal(withFlags(levelOf(level), level, { hardHolds: true }), levelOf(level), level);
+describe("Hard lays its own holds and lets them go with the sound (plusHolds)", () => {
+  it("is Hard's (from v45) and changes Hard, and Hell built on it, alone", () => {
+    assert.deepEqual(DIFFICULTIES.hard.plusHolds, { gaps: true });
+    assert.equal(DIFFICULTIES.hard.holdRelease, "free");
+    for (const name of ["easy", "normal", "hardBase", "easyV26", "normalV26"]) assert.equal({ ...DIFFICULTIES, ...INTERNAL_LEVELS }[name].plusHolds, undefined, name);
     for (const song of Object.keys(SONGS)) {
-      const off = notesOf(song, {}), on = notesOf(song, { hardHolds: true });
+      const off = notesOf(song, NO_HARD_HOLDS), on = notesOf(song);
       for (const level of ["easy", "normal"]) assert.deepEqual(on[level], off[level], `${song} ${level}`);
     }
   });
 
   it("keeps every moment of Normal in Hard and of Hard in Hell, with more holds in Hard", () => {
     for (const song of Object.keys(SONGS)) {
-      const { normal, hard, hell } = notesOf(song, { hardHolds: true });
+      const { normal, hard, hell } = notesOf(song);
       const inHard = momentsOf(hard), inHell = momentsOf(hell);
       assert.deepEqual([...momentsOf(normal)].filter((t) => !inHard.has(t)), [], `${song}: Normal moments missing from Hard`);
       assert.deepEqual([...inHard].filter((t) => !inHell.has(t)), [], `${song}: Hard moments missing from Hell`);
       const holds = (notes) => notes.filter((n) => n.len > 0).length;
-      assert.ok(holds(hard) >= holds(notesOf(song, {}).hard), `${song}: ${holds(hard)} holds`);
+      assert.ok(holds(hard) >= holds(notesOf(song, NO_HARD_HOLDS).hard), `${song}: ${holds(hard)} holds`);
     }
   });
 
   it("no note on a held lane and at most two holds at once", () => {
     for (const song of Object.keys(SONGS)) {
-      const notes = notesOf(song, { hardHolds: true }).hard;
+      const notes = notesOf(song).hard;
       const ends = [];
       for (const h of notes.filter((n) => n.len > 0)) {
         const running = ends.filter((e) => e > h.t);

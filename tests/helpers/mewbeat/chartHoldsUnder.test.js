@@ -30,8 +30,13 @@ describe("Normal's holds", () => {
   it("are free: they let go with the sound and carry notes under them", () => {
     assert.equal(normal.holdRelease, "free");
     assert.equal(normal.underHold, true);
-    for (const level of [v26, levelOf("easy"), levelOf("hard"), levelOf("hell")]) {
+    for (const level of [v26, levelOf("easy")]) {
       assert.equal(level.holdRelease, undefined);
+      assert.equal(level.underHold, undefined);
+    }
+    // Hard and Hell let their holds go with the sound too (from v45) but keep the half-beat spacing under a hold
+    for (const level of [levelOf("hard"), levelOf("hell")]) {
+      assert.equal(level.holdRelease, "free");
       assert.equal(level.underHold, undefined);
     }
   });

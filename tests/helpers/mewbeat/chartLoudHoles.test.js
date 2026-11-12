@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, INTERNAL_LEVELS, LOUD_HOLES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { selectMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { makeLayeredFeatures } = require("./fixtures");
@@ -19,7 +18,7 @@ const metricOf = (t) => (t % BEAT === 0 ? 0 : t % (BEAT / 2) === 0 ? 1 : t % (BE
 const moment = (t, s, score = s) => ({ t, s, score, metric: metricOf(t), down: t % (4 * BEAT) === 0 ? 1 : 0, source: "lead" });
 const times = (notes) => notes.map((n) => n.t);
 
-describe("a hole with a loud sound in it (flag loudHoles)", () => {
+describe("a hole with a loud sound in it (loudHoles)", () => {
   // A level with a flat gap of 200 ms whose foreground starts at a score of 1.
   const plainDiff = { minNoteGapMs: 200, gapBeats: 0, foreground: 1 };
   const diff = { ...plainDiff, loudHoles: LOUD_HOLES };
@@ -33,12 +32,12 @@ describe("a hole with a loud sound in it (flag loudHoles)", () => {
   const scored = [...front, ...loudOnes, ...quietOnes].sort((a, b) => a.t - b.t);
   const loud = new Set(times(loudOnes));
 
-  it("is a flag of Normal, and no level has it without a flag", () => {
-    assert.deepEqual(FLAGS.loudHoles.levels, { normal: { loudHoles: LOUD_HOLES } });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.loudHoles, undefined);
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.loudHoles, LOUD_HOLES);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.loudHoles, undefined, name);
   });
 
-  it("leaves the stretch empty without the flag, with the budget spent", () => {
+  it("leaves the stretch empty without the rule, with the budget spent", () => {
     assert.deepEqual(times(pick(scored, 4, { loud, holeRoom: 2 }, plainDiff)), [0, 500, 1000, 7500]);
   });
 
@@ -84,8 +83,8 @@ describe("a hole with a loud sound in it (flag loudHoles)", () => {
     assert.deepEqual(times(chosen), [7000, 10000, 10500]);
   });
 
-  it("charts a whole song with the flag on, every level", () => {
-    const flagged = generateAll(makeLayeredFeatures(), "loud-holes-test", ["loudHoles"]);
+  it("charts a whole song with the rule on, every level", () => {
+    const flagged = generateAll(makeLayeredFeatures(), "loud-holes-test");
     for (const level of ["easy", "normal", "hard", "hell"]) assert.ok(flagged[level].notes.length > 0);
   });
 });

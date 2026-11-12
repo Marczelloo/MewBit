@@ -37,7 +37,7 @@ function localKeep(features, durationMs, { reach, power, floor, knee, noise = 0 
   });
 }
 
-// diff.lightThin (a flag): per second, the share of its moments a lighter stretch keeps, read from the 500 ms energy. A second
+// diff.lightThin (Normal, from v45): per second, the share of its moments a lighter stretch keeps, read from the 500 ms energy. A second
 // is lighter when its energy (smoothed over +-`smooth` hops) stays under the loud level of the music around it, taken as the
 // `quantile` of the `reach` seconds on each side and from the quieter side (so a stretch with loud music on both sides counts,
 // the start of a long light part or a quiet ending does not), and only where that level is loud enough (`minLevel`, the
@@ -72,7 +72,7 @@ function lightKeep(features, durationMs, { reach, quantile, smooth, minLevel, kn
 // The notes without the moments the music gives up: per run of seconds under full keep, off the beat first, then evenly along
 // the run. A held moment stays (a slower stretch is where a long note belongs), no stretch opens past MAX_GAP_BEATS, and
 // at most `spare` moments go. The moments of `last` (a set of times, or null) go only when no other is left to take.
-// `exact` (generator flag lightThin; lightKeep's shares, or null): the seconds it holds under 1 give up their own share, round(
+// `exact` (diff.lightThin; lightKeep's shares, or null): the seconds it holds under 1 give up their own share, round(
 // their moments x (1 - keep)) with the rounding carried along the run, taken inside that second (off the beat first, `last`
 // after the others, held moments and the gap rule as always); a second that cannot give its share does not hand the rest to the
 // seconds around it. The other seconds of a run keep the old way, the run's share spread evenly along it. Spread over the whole

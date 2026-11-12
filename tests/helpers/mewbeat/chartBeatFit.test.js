@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { fitBeats, withFittedBeats } = require("../../../helpers/mewbeat/charts/beatFit");
 const { analyse, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { chartMetrics } = require("../../../helpers/mewbeat/charts/metrics");
-const { makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
+const { flagWithout, makeFeatures, makeLayeredFeatures, threeSectionEnergy } = require("./fixtures");
 
 const WOBBLE_MS = [0, 11, -7, 15, -13, 4, -9, 12];
 
@@ -161,12 +161,18 @@ describe("the generator on the fitted beats", () => {
   };
   const onBeats = (chart, beats) => chart.notes.filter((n) => nearest(beats, n.t) <= 15).length / chart.notes.length;
 
+  // The rules that fill a hole in the music (calmSpots, loudHoles, paceHoles, all in Normal since v45) add moments on the half
+  // beats of whatever grid they get, and lift the share on the tracker's grid: Normal's on-beat share is .69 fitted against .62
+  // on the tracker's grid with them (a gain of .075), .70 against .59 without (.108). What the fit does is the point here, so
+  // this chart leaves the three out.
+  const HOLES = flagWithout("withoutholes", "calmSpots", "loudHoles", "paceHoles");
+
   it("charts every level on the beats the music has", () => {
     const beats = layered().tempo.beats;
     for (const level of ["easy", "normal", "hard"]) {
       const f = layeredOff();
-      const tracker = generateChart({ ...f, tempo: { ...f.tempo, fitted: true } }, level, "youtube:fixture:96000");
-      const fitted = generateChart(f, level, "youtube:fixture:96000");
+      const tracker = generateChart({ ...f, tempo: { ...f.tempo, fitted: true } }, level, "youtube:fixture:96000", HOLES);
+      const fitted = generateChart(f, level, "youtube:fixture:96000", HOLES);
       assert.ok(onBeats(fitted, beats) > onBeats(tracker, beats) + 0.1, `${level}: ${onBeats(fitted, beats)} vs ${onBeats(tracker, beats)}`);
     }
   });

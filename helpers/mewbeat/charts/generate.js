@@ -55,8 +55,8 @@ function analyse(raw, flags) {
   const durationMs = Math.round(features.durationMs);
   const fitted = buildTiming(features, durationMs);
   const phrases = buildPhrases(features, fitted, durationMs);
-  // the phrases with no tempo to hold (the flag freeTime): there the grid is not trusted, as where it has a hole
-  const free = freePhrases(raw, features, fitted, phrases, withFlags({}, "normal", flags).freeTime);
+  // the phrases with no tempo to hold (Normal's freeTime): there the grid is not trusted, as where it has a hole
+  const free = freePhrases(raw, features, fitted, phrases, withFlags(levelOf("normal"), "normal", flags).freeTime);
   const timing = free.length > 0 ? { ...fitted, intervalOk: (t) => !inFree(free, t) && fitted.intervalOk(t) } : fitted;
   const leaders = chooseLeaders(phrases);
   const vocal = isVocalSong(phrases);
@@ -70,7 +70,7 @@ function analyse(raw, flags) {
     energy,
     sections: sectionStarts(features, timing, energy),
     busy: busyFactor(features),
-    flags: normalFlags(flags), // the experimental switches that are on (flags.js); diffOf reads their overrides
+    flags: normalFlags(flags), // the experimental switches that are on (none since v45, flags.js); diffOf reads their overrides
     phrases,
     free,
     leaders,
@@ -96,7 +96,7 @@ function phraseEventTimes(ctx, phrase) {
   return eventTimes.slice(lowerBound(eventTimes, phrase.startMs), lowerBound(eventTimes, phrase.endMs));
 }
 
-// diff.copyMelody (a flag): whether a copy plays less of its phrase's melody than its source plays of its own. The share of
+// diff.copyMelody (Normal, from v45): whether a copy plays less of its phrase's melody than its source plays of its own. The share of
 // the melody's moments (melodyTimes) between `from` and `to` that `notes` play within rule.nearMs, or null with under
 // rule.min of them there.
 function melodyShare(ctx, diff, notes, from, to) {
@@ -111,7 +111,7 @@ function melodyShare(ctx, diff, notes, from, to) {
 // The notes of repeat phrase i copied from its source in `all` (the notes so far) as { notes, extra }, `extra` being the
 // moments a louder repeat of Normal takes on top (repeatPlan); or null when phrase i is no repeat, the plan has it charted
 // fresh (a sparse source on a loud section) or the copy lost most of its source (the music differs, or the source overlaps
-// this phrase): then it is charted fresh. With diff.copyMelody (a flag) also when the melody is not where it was: the copy
+// this phrase): then it is charted fresh. With diff.copyMelody also when the melody is not where it was: the copy
 // plays under rule.share of the melody's share its source plays.
 function copiedRepeat(ctx, all, i, diff) {
   const { timing, energy, phrases, durationMs } = ctx;
@@ -158,7 +158,7 @@ function melodyShiftOf(ctx, diff, drawn) {
   return diff.melodyShiftPick ? pickedMelodyShift(ctx, drawn, diff, applied) : applied;
 }
 
-// diff.lineRepeats (a flag): the drawn line with the decoded notes that repeat its tone (voices.js withLineRepeats). Kept on the ctx.
+// diff.lineRepeats (Normal, from v45): the drawn line with the decoded notes that repeat its tone (voices.js withLineRepeats). Kept on the ctx.
 function repeatedLine(ctx, drawn, rule) {
   ctx.repeatedLines ??= new Map();
   if (!ctx.repeatedLines.has(drawn)) ctx.repeatedLines.set(drawn, withLineRepeats(drawn, ctx.features.decodedNotes, rule));
@@ -172,8 +172,8 @@ function decodedNotesAt(ctx, shift) {
   return ctx.shiftedNotes.get(shift);
 }
 
-// diff.softRuns (a flag): the notes softRuns.js reads, at the shift the level reads the melody line at (the same time scale as
-// the line's); null where no melody was decoded, so the flag does nothing there. rule.source "line" reads the line itself.
+// diff.softRuns (Normal, from v45): the notes softRuns.js reads, at the shift the level reads the melody line at (the same time scale as
+// the line's); null where no melody was decoded, so the rule does nothing there. rule.source "line" reads the line itself.
 function softNotesOf(ctx, diff) {
   const drawn = drawnMelodyOf(ctx, diff);
   if (!drawn) return null;
@@ -181,10 +181,10 @@ function softNotesOf(ctx, diff) {
 }
 
 // The second detector's melody a level reads, if one was decoded: its tuned line with diff.melodyTuned, where there is one,
-// and with diff.lineRepeats (a flag) the notes that repeat the line's tone.
+// and with diff.lineRepeats the notes that repeat the line's tone.
 // With diff.melodyOnsetShift it is moved by features.decodedMelodyShift (chartStore.js: the export's shift to the onsets of
-// all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once. With diff.melodyShiftPick (a
-// flag) the shift is found here instead, against the sounds the level scores (pickedMelodyShift).
+// all our layers, less its shift to the lead line); kept on the ctx, so each line is moved once. With diff.melodyShiftPick (Normal, from v45)
+// the shift is found here instead, against the sounds the level scores (pickedMelodyShift).
 function decodedMelodyOf(ctx, diff) {
   const drawn = drawnMelodyOf(ctx, diff);
   if (!drawn) return drawn;
@@ -230,7 +230,7 @@ function pickedMelodyShift(ctx, line, diff, applied) {
   return picked;
 }
 
-// diff.heardChords (a flag): the shift at which chords.js reads all the decoder's notes, which the melody file moved as it
+// diff.heardChords (Normal, Hard and Hell, from v45): the shift at which chords.js reads all the decoder's notes, which the melody file moved as it
 // moved its line: the line's shift to the onsets, or the one that meets Normal's sounds better (pickedMelodyShift).
 function heardShiftOf(ctx, rule) {
   const { decodedMelody, decodedMelodyTuned, decodedMelodyShift } = ctx.features;
@@ -248,8 +248,8 @@ function scoredFor(ctx, diff) {
   ctx.melodyScored ??= new Map();
   ctx.melodyScored.has(melody) || ctx.melodyScored.set(melody, new Map());
   const byScored = ctx.melodyScored.get(melody);
-  // diff.melodyRuns (a flag): the moments where the melody runs fast are marked, for finish to add
-  // diff.leadVoice (flag leadVoiceBoth): what plays under the melody in a song a pitched line carries scores less (voices.js underLine)
+  // diff.melodyRuns: the moments where the melody runs fast are marked, for finish to add
+  // diff.leadVoice (Normal, from v45): what plays under the melody in a song a pitched line carries scores less (voices.js underLine)
   const key = (diff.melodyRuns ? "runs" : "plain") + (diff.leadVoice ? ":voice" : "");
   byScored.has(scored) || byScored.set(scored, {});
   const cached = byScored.get(scored);
@@ -293,8 +293,8 @@ function melodyTimes(ctx, diff) {
   return ctx.melodyTimes.get(diff);
 }
 
-// diff.melodyKeep (a flag): those moments as a set, which the stages that thin a slower stretch, an energy dip or the fade-out
-// take last or leave; null without the flag or a melody.
+// diff.melodyKeep (Normal, from v45): those moments as a set, which the stages that thin a slower stretch, an energy dip or the fade-out
+// take last or leave; null without the rule or a melody.
 function melodyMoments(ctx, diff) {
   if (!diff.melodyKeep) return null;
   ctx.melodyMoments ??= new Map();
@@ -305,8 +305,8 @@ function melodyMoments(ctx, diff) {
   return ctx.melodyMoments.get(diff);
 }
 
-// diff.melodyLines (a flag): the times of the moments the decoded melody's held lines play (melodyLines.js), over the whole
-// song, which selectMoments plays on top of a phrase's notes; null without the flag or a melody, or when no line is held. Kept on the ctx.
+// diff.melodyLines (Normal, from v45): the times of the moments the decoded melody's held lines play (melodyLines.js), over the whole
+// song, which selectMoments plays on top of a phrase's notes; null without the rule or a melody, or when no line is held. Kept on the ctx.
 function melodyLineMoments(ctx, diff) {
   if (!diff.melodyLines) return null;
   ctx.melodyLineMoments ??= new Map();
@@ -318,8 +318,8 @@ function melodyLineMoments(ctx, diff) {
   return ctx.melodyLineMoments.get(diff);
 }
 
-// diff.loudHoles (a flag): the times of the song's loud moments (strength of rank loudHoles.minLoud or more among the level's
-// moments), which selectMoments may play in a stretch a phrase left empty; null without the flag. Kept on the ctx.
+// diff.loudHoles (Normal, from v45): the times of the song's loud moments (strength of rank loudHoles.minLoud or more among the level's
+// moments), which selectMoments may play in a stretch a phrase left empty; null without the rule. Kept on the ctx.
 function loudMoments(ctx, diff) {
   if (!diff.loudHoles) return null;
   ctx.loudMoments ??= new Map();
@@ -338,7 +338,7 @@ function keptShare(ctx, diff, flat) {
   if (!flat && !ctx.localKeep.has(diff.localThin)) ctx.localKeep.set(diff.localThin, localKeep(ctx.features, ctx.durationMs, diff.localThin));
   const local = ctx.localKeep.get(diff.localThin);
   if (!diff.lightThin) return local;
-  // diff.lightThin (a flag): the lighter stretches the energy shows (localThin.js lightKeep), the smaller share of the two; in
+  // diff.lightThin (Normal, from v45): the lighter stretches the energy shows (localThin.js lightKeep), the smaller share of the two; in
   // a flat loud song only that one (its strong onsets say nothing there, but a stretch under the loud level around it is lighter)
   ctx.lightKeep ??= lightKeep(ctx.features, ctx.durationMs, diff.lightThin);
   return ctx.lightKeep.map((share, second) => (flat ? share : Math.min(share, local[second] ?? 1)));
@@ -443,29 +443,29 @@ function plusNotes(ctx, diff) {
   const occupied = [...moments];
   const scored = snappedMoments(ctx, diff.scoreLevel, diff.feltTempo);
   const scoredTimes = scored.map((m) => m.t);
-  // diff.plusMelody (a flag): an extra on a note of the decoded melody scores more, on the line Normal reads; the chord keys
+  // diff.plusMelody (Hard and Hell, from v45): an extra on a note of the decoded melody scores more, on the line Normal reads; the chord keys
   // of diff.plusDense go by the sound alone
   const melody = diff.plusMelody ? decodedMelodyOf(ctx, diffOf(ctx, "normal")) : null;
   const wanted = melody ? withMelody(scored, melody, diff.plusMelody) : scored;
-  // diff.keepNormalHolds (flag normalHolds): no extra under a long hold of Normal or just after it, where it would cut it
+  // diff.keepNormalHolds: no extra under a long hold of Normal or just after it, where it would cut it
   const held = diff.keepNormalHolds ? longHolds(normal, diff.keepNormalHolds.minBeats, ctx.timing) : [];
   const after = Math.max(diff.minNoteGapMs ?? 0, diff.minLaneGapMs ?? 0);
-  // diff.plusHeard (a flag): in a song a pitched line carries, no extra where no pitch begins (voices.js offPitch), the decoder's
+  // diff.plusHeard (Hard and Hell, from v45): in a song a pitched line carries, no extra where no pitch begins (voices.js offPitch), the decoder's
   // notes read at the shift Normal reads them
   const base = diffOf(ctx, "normal");
   const drawn = diff.plusHeard ? drawnMelodyOf(ctx, base) : null;
   const silent = drawn ? offPitch(scored, decodedNotesAt(ctx, melodyShiftOf(ctx, base, drawn)), ctx.features.drums, phrases, diff.plusHeard) : new Set();
-  // diff.plusCalmEnd (a flag): the quiet ending of a song (fades.js fadeOutOf, whether it falls or plays on at one loudness)
+  // diff.plusCalmEnd (Hard and Hell, from v45): the quiet ending of a song (fades.js fadeOutOf, whether it falls or plays on at one loudness)
   // takes no extra and no chord key: the level winds down on the notes it was built on
   const ending = diff.plusCalmEnd ? fadeOutOf(ctx, diff.plusCalmEnd) : null;
   const wound = (t) => ending !== null && t >= ending.startMs;
   const free = (m) => playable(ctx, m.t) && !silent.has(m.t) && !wound(m.t) && !held.some((h) => m.t > h.t && m.t < h.t + h.len + after);
-  // diff.plusCalm (a flag): where the song plays quietly against its loud parts (quiet.js), null with no energy to read
+  // diff.plusCalm (Hard and Hell, from v45): where the song plays quietly against its loud parts (quiet.js), null with no energy to read
   const quietAt = diff.plusCalm ? quietOf(ctx, diff.plusCalm) : null;
   const soundAt = quietAt ? new Map(wanted.map((m) => [m.t, m.score])) : null;
   const gone = new Set(); // the times of the extras that give way there
   // and a phrase's room shrinks by the share of it those holds take, or the extras crowd into what is left (not with
-  // keepNormalHolds.fullRoom, flag hellHolds: where every hold of Hard counts, that is as much as a tenth of the song)
+  // keepNormalHolds.fullRoom, Hell from v45: where every hold of Hard counts, that is as much as a tenth of the song)
   const heldShare = (phrase) => held.reduce((sum, h) => sum + Math.max(0, Math.min(h.t + h.len, phrase.endMs) - Math.max(h.t, phrase.startMs)), 0) / Math.max(1, phrase.endMs - phrase.startMs);
   const extras = [];
   const keyed = []; // the chord keys of diff.plusDense, kept apart from the extras a repeat copies
@@ -476,7 +476,7 @@ function plusNotes(ctx, diff) {
     const open = held.length > 0 && !diff.keepNormalHolds.fullRoom ? 1 - Math.min(1, heldShare(phrase)) : 1;
     const room = Math.round(open * Math.max(Math.ceil((diff.plusFloor ?? 0) * mine), budgetOf(ctx, phrase, diff) - mine));
     if (room === 0) return;
-    // diff.plusDense (flag hellPlus): the denser the phrase already is, the fewer moments it takes on top, and the room it does not
+    // diff.plusDense: the denser the phrase already is, the fewer moments it takes on top, and the room it does not
     // fill with moments (cut here, or no sound left where one fits) goes to chords on its strongest moments, never more keys than
     // the share of moments it could have taken
     const dense = diff.plusDense;
@@ -507,7 +507,7 @@ function plusNotes(ctx, diff) {
   const all = [...normal, ...extras.filter((n) => !gone.has(n.t)), ...keyed].sort(byTime);
   const sustained = new Set(normal.filter((n) => n.len > 0).map(key));
   if (!diff.plusHolds) return { notes: all, sustained, protect: new Set(moments) };
-  // diff.plusHolds (flag hardHolds): the level's own holds on top of the ones it was built on, as a level charted from the
+  // diff.plusHolds (Hard, from v45): the level's own holds on top of the ones it was built on, as a level charted from the
   // music lays them: long bass and lead notes held, then rests held up to its gap-hold share
   const own = addSustainHolds(all, ctx.features, diff, ctx.timing, ctx.durationMs).map(({ gapHold, ...n }) => n);
   for (const n of own) if (n.len > 0) sustained.add(key(n));
@@ -599,7 +599,7 @@ function chartNotes(ctx, diff, trace = null) {
 
     if (diff.selector === "music") {
       trace?.enter(i, { ...info, charted: "music" });
-      // diff.paceHoles (a flag) reads the pace of the notes before the phrase too: their last moments
+      // diff.paceHoles (Normal, from v45) reads the pace of the notes before the phrase too: their last moments
       const earlier = diff.paceHoles && i > 0 && before > -Infinity ? [...new Set(all.filter((n) => n.t < phrase.startMs).map((n) => n.t))].sort((a, b) => a - b).slice(-PACE_MOMENTS) : null;
       const charted = musicNotes(ctx, i, diff, trace, i > 0 && before > -Infinity ? before : null, earlier);
       // A sound the phrase takes from the end of the one before stays where it is (gap holds start with the phrase).
@@ -688,7 +688,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const settled = diff.restBridge
     ? step("restBridges", released, bridgeRests(released, snappedMoments(ctx, diff.scoreLevel, diff.feltTempo), ctx.energy, ctx.timing, diff.restBridge))
     : released;
-  // diff.fastRuns (a flag, with melodyRuns): over about 150 BPM a quarter beat is under 100 ms, the gap withRunNotes asks and
+  // diff.fastRuns (Normal, from v45, with melodyRuns): over about 150 BPM a quarter beat is under 100 ms, the gap withRunNotes asks and
   // the note gap spacedMoments and the final floors keep, so no burst could stand there. The burst asks fastRuns.minGapMs
   // instead and those two floors let a gap that short stand next to a note of a burst, and only there: any other two notes
   // keep the level's gap. The lane stages keep their own 150 ms lane gap, so the notes of a burst fall on different lanes (a
@@ -696,11 +696,11 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const bursts = diff.melodyRuns && diff.fastRuns;
   const ran = diff.melodyRuns ? step("melodyRuns", settled, withRunNotes(settled, scoredFor(ctx, diff), ctx.timing, bursts ? { ...diff.melodyRuns, minGapMs: bursts.minGapMs } : diff.melodyRuns)) : settled;
   const stood = bursts && ran !== settled ? new Set(settled.map((n) => n.t)) : null;
-  // diff.softRuns (a flag): where every decoded note runs fast and the line melodyRuns reads does not, the quarter beats with a
+  // diff.softRuns: where every decoded note runs fast and the line melodyRuns reads does not, the quarter beats with a
   // note on them join the bursts (softRuns.js). Placed after the bursts of melodyRuns, which keep their places.
   const softened = diff.softRuns ? step("softRuns", ran, withSoftRunNotes(ran, softNotesOf(ctx, diff), ctx.timing, diff.softRuns, (n) => !sustained.has(`${n.t}:${n.lane}`), softAllowed(ctx, diff))) : ran;
   const softTimes = softened !== ran ? new Set(ran.map((n) => n.t)) : null;
-  // diff.drumRuns (a flag): a drum roll gets a note on each hit (drumRuns.js). Its notes are the quarter beats between the
+  // diff.drumRuns (Normal, from v45): a drum roll gets a note on each hit (drumRuns.js). Its notes are the quarter beats between the
   // stream's, so they ask the same: the floors let them stand rule.minGapMs from their neighbours, and only them.
   const rolled = diff.drumRuns ? step("drumRuns", softened, withDrumRunNotes(softened, ctx.features.drums, ctx.timing, diff.drumRuns, diff.drumRunsFit ? drumFitOf(ctx, diff.drumRunsFit) : null)) : softened;
   const rolledTimes = rolled !== softened ? new Set(softened.map((n) => n.t)) : null;
@@ -739,9 +739,9 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const limited = step("chordShare", laid, limitChordShare(laid, ctx.timing, diff));
   // The fade-out thins its moments with their lanes laid, so the search keeps the lanes of the rest of the song.
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
-  // diff.calmSpots (a flag): in a quiet part no bar plays well above the bars on both sides of it (spots.js). With the
+  // diff.calmSpots (Normal, Hard and Hell, from v45): in a quiet part no bar plays well above the bars on both sides of it (spots.js). With the
   // lanes laid, like the fade-out; a level built on another gives only its own extras.
-  // diff.calmMelody (a flag): the moments on a note of the decoded melody are no part of a spot; the dense spots it evened
+  // diff.calmMelody: the moments on a note of the decoded melody are no part of a spot; the dense spots it evened
   // were mostly the melody's own runs (Rush E, 15 of the 16 moments it dropped).
   const onMelody = diff.calmSpots && diff.calmMelody ? melodyTimes(ctx, diff) : null;
   const evened = diff.calmSpots ? step("calmSpots", faded, evenSpots(faded, ctx, diff.calmSpots, quietOf(ctx, diff.calmSpots), protect, onMelody && new Set(onMelody))) : faded;
@@ -751,7 +751,7 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   return step("sameCuts", final, sameCuts(final, above, ctx.timing, diff.sameCuts));
 }
 
-// Flag overrides go in before the busyness scaling, so every stage that reads diff sees them.
+// Flag overrides (none since v45, flags.js) go in before the busyness scaling, so every stage that reads diff sees them.
 const flagged = (ctx, difficulty) => withFlags(levelOf(difficulty), difficulty, ctx.flags);
 const diffOf = (ctx, difficulty) => slowHolds(slowChords(effectiveDifficulty(flagged(ctx, difficulty), ctx.busy), ctx.timing), ctx.timing);
 
@@ -800,18 +800,18 @@ function withoutCrowding(ctx, { notes, sustained, protect }, diff) {
 }
 
 // A level's finished notes, once per song: the levels below it are cut from them. `plain`: without the notes of diff.drumRuns,
-// for a level cut from it (Easy): a roll of the drums is a run of quarter beats, which Easy does not play, and with the flag
-// on it must be the Easy it is without. A level built on another (Hard, Hell) is built on the whole of it.
+// for a level cut from it (Easy): a roll of the drums is a run of quarter beats, which Easy does not play, and with the
+// rule on it must be the Easy it is without. A level built on another (Hard, Hell) is built on the whole of it.
 function finalNotes(ctx, difficulty, plain = false) {
   const key = plain ? plainKey(ctx, difficulty) : difficulty;
   ctx.final[key] ??= notesFor(ctx, difficulty, null, key !== difficulty);
   return ctx.final[key];
 }
 
-// The cache key of a level without its drum rolls: the level's own when the flag does not touch it.
+// The cache key of a level without its drum rolls: the level's own when it has no drum rolls.
 const plainKey = (ctx, difficulty) => (flagged(ctx, difficulty).drumRuns ? `${difficulty}:plain` : difficulty);
 
-// What the player gets of a level: its finished notes without the ones on sounds that are no music (diff.noNoise, a flag;
+// What the player gets of a level: its finished notes without the ones on sounds that are no music (diff.noNoise;
 // noise.js). Taken off at the very end and from every level alike: a level built on another is built on the whole of it,
 // so away from the noise each level is note for note what it was (with Normal's opening emptied first, the fixture's Easy
 // and Hell chose other figures for the whole song).

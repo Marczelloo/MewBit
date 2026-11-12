@@ -10,6 +10,9 @@ const { makeLayeredFeatures } = require("./fixtures");
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const LOCAL_THIN = { reach: 6, power: 1, floor: 0.5, knee: 0.6 }; // the levels own setting (difficulty.js)
 const momentsOf = (notes) => new Set(notes.map((n) => n.t)).size;
+// Normal as it was before the pseudo-count: the level's own setting back
+FLAGS.withoutlocalthinsure = { label: "withoutlocalthinsure", levels: { normal: { localThin: LOCAL_THIN } } };
+const PLAIN = { withoutlocalthinsure: true };
 
 // The high band of a song of `seconds`, with `perSecond(second)` strong onsets each second.
 const highBand = (seconds, perSecond) => ({
@@ -20,11 +23,11 @@ const highBand = (seconds, perSecond) => ({
 });
 const dipAt = (from, to, inside, outside) => (s) => (s >= from && s < to ? inside : outside);
 
-describe("a signal too thin to say anything is no dip (flag localThinSure)", () => {
-  it("is a flag of Normal, and no level has the pseudo-count without a flag", () => {
-    assert.deepEqual(FLAGS.localThinSure.levels, { normal: { localThin: LOCAL_THIN_SURE } });
+describe("a signal too thin to say anything is no dip (localThinSure)", () => {
+  it("is a setting of Normal (from v45), and no other level has the pseudo-count", () => {
+    assert.deepEqual(DIFFICULTIES.normal.localThin, LOCAL_THIN_SURE);
     assert.deepEqual(LOCAL_THIN_SURE, { ...LOCAL_THIN, noise: 2 });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.localThin?.noise, undefined);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.localThin?.noise, undefined, name);
   });
 
   describe("localKeep", () => {
@@ -72,23 +75,23 @@ describe("a signal too thin to say anything is no dip (flag localThinSure)", () 
     const dip = (chart) => momentsOf(chart.notes.filter((n) => n.t >= 9000 && n.t < 14000));
 
     // Seconds 9 and 13 of a real dip (0 against 8) are read against seconds of the dip itself, where the signal is thin: the
-    // flag gives up fewer moments there, and nowhere more; the middle of the dip, read against 8, stays at the floor.
+    // pseudo-count gives up fewer moments there, and nowhere more; the middle of the dip, read against 8, stays at the floor.
     // (Easy is cut from Normal's moments and Hard and Hell are built on them, so the levels after Normal can move either way.)
     it("gives up fewer moments at the edges of a dip on Normal, and none more", () => {
-      const off = generateAll(song(0, 8), "k", []);
-      const on = generateAll(song(0, 8), "k", ["localThinSure"]);
+      const off = generateAll(song(0, 8), "k", PLAIN);
+      const on = generateAll(song(0, 8), "k");
       assert.ok(dip(on.normal) > dip(off.normal), `${dip(on.normal)} > ${dip(off.normal)}`);
     });
 
     it("still thins the dip against a song with none, on Normal", () => {
-      const dipped = generateAll(song(0, 8), "k", ["localThinSure"]);
-      const even = generateAll(song(8, 8), "k", ["localThinSure"]);
+      const dipped = generateAll(song(0, 8), "k");
+      const even = generateAll(song(8, 8), "k");
       assert.ok(dip(dipped.normal) < dip(even.normal), `${dip(dipped.normal)} < ${dip(even.normal)}`);
     });
 
     it("leaves every level note for note where the signal shows no dip (the control)", () => {
-      const off = generateAll(song(8, 8), "k", []);
-      const on = generateAll(song(8, 8), "k", ["localThinSure"]);
+      const off = generateAll(song(8, 8), "k", PLAIN);
+      const on = generateAll(song(8, 8), "k");
       for (const level of LEVELS) assert.deepEqual(on[level].notes, off[level].notes, level);
     });
   });

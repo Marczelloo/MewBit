@@ -100,7 +100,7 @@ function rankColumn(values) {
 // scoreMoments(ctx, level) -> [{ t, s, score, metric, down, grid, source }], time-ordered: the candidates of the whole song with
 // K's score (a logit: how likely people put a note there), from the features as measured (the scores were fitted on
 // those, not on the lead merged). `felt` is diff.feltTempo (meterTimingOf). Kept on the ctx, as every phrase asks.
-// A candidate in a free phrase (ctx.free, freeTime.js; the flag freeTime) has no place in a bar to be scored by: the grid
+// A candidate in a free phrase (ctx.free, freeTime.js; diff.freeTime) has no place in a bar to be scored by: the grid
 // does not fit there. It is scored as a half beat at a middling distance from the grid, so its strength alone tells it from
 // its neighbours, and marked `free`.
 function scoreMoments(ctx, level, felt = null) {
@@ -305,10 +305,9 @@ function gapOf(diff, timing) {
 // they may be chosen too). What the foreground leaves of the budget goes first to what the drums and bass repeat (`edges.figures`,
 // the times of figures.js), then to beats and half beats in the rests where something sounds; a beat nothing sounds on is played
 // only where the phrase has a steady pulse and a grid that fits (not `edges.free`, freeTime.js). The budget is never passed, but for the figures' `edges.figureRoom` and the lines'
-// `edges.lineRoom`. With diff.melodyLines (a flag) the moments of the melody's held lines (`edges.lines`, the times of
+// `edges.lineRoom`. With diff.melodyLines the moments of the melody's held lines (`edges.lines`, the times of
 // melodyLines.js) are played too, beats before the rest, even under diff.foreground ("linia"): after everything else, where
-// they fit between the notes the phrase chose, or with melodyLines.first before the foreground, which then takes what the
-// lines leave of the budget; the long stretches never swap one out. With diff.loudHoles (a flag) a stretch of loudHoles.beats
+// they fit between the notes the phrase chose; the long stretches never swap one out. With diff.loudHoles a stretch of loudHoles.beats
 // (and minMs) or more between two notes (the last of the phrase before too) that all of this left empty takes the best of the
 // song's loud moments in it (`edges.loud`, their times; "dziura"), up to `edges.holeRoom` over what the phrase has: a loud
 // sound under the foreground with the budget spent was a hole to the ear.
@@ -331,10 +330,8 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     chosen.splice(nearest(c.t).i, 0, { t: c.t, s: c.s, reason, source: c.source, score: c.score, down: c.down, held: reason === "linia" });
   };
 
-  // The melody's held lines (diff.melodyLines), beats before the rest. With melodyLines.first they come before the foreground,
-  // as many as the budget and the lines' room hold, and the foreground takes what is left; without it they come last, on top
-  // of what the phrase chose, as many as the lines' room holds: no note gives its place to a line.
-  const linesFirst = !!diff.melodyLines?.first;
+  // The melody's held lines (diff.melodyLines), beats before the rest. They come last, on top of what the phrase chose, as many
+  // as the lines' room holds: no note gives its place to a line (before the foreground they took notes people do not play).
   const holdLines = (most) => {
     const held = scored.filter((c) => edges.lines.has(c.t)).sort((a, b) => a.metric - b.metric || b.score - a.score || a.t - b.t);
     for (const c of held) {
@@ -342,7 +339,6 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
       if (!chosen.some((n) => n.t === c.t) && fits(c.t)) add(c, "linia");
     }
   };
-  if (edges.lines?.size > 0 && linesFirst) holdLines(budget + (edges.lineRoom ?? 0));
 
   // The foreground.
   const foreground = scored.filter((c) => c.score >= diff.foreground).sort((a, b) => b.down - a.down || b.score - a.score || a.t - b.t);
@@ -408,7 +404,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     }
   }
 
-  if (edges.lines?.size > 0 && !linesFirst) holdLines(chosen.length + (edges.lineRoom ?? 0));
+  if (edges.lines?.size > 0) holdLines(chosen.length + (edges.lineRoom ?? 0));
 
   // A stretch between two notes still empty with a loud sound in it (diff.loudHoles), on top of everything: its best loud
   // moment, one at a time. Before the first note and after the last one nothing is a hole (a lead-in, a fade-out).
@@ -430,7 +426,7 @@ function selectMoments(phrase, scored, budget, diff, timing, edges = {}) {
     }
   }
 
-  // A stretch between two notes longer than the notes round it run (diff.paceHoles, a flag), with a moment of the foreground
+  // A stretch between two notes longer than the notes round it run (diff.paceHoles), with a moment of the foreground
   // in it that the budget left out: its best one (a beat before the rest), on top of everything, one at a time. The pace is the median of the gaps
   // next to the stretch, two on either side, the notes before the phrase (`edges.earlier`, in time) among them.
   if (diff.paceHoles) {

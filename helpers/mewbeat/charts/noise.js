@@ -1,4 +1,4 @@
-// Sounds that are no music (generate.js finish, flag noNoise): a creator's intro or outro, speech, effects, crowd noise. Heard
+// Sounds that are no music (generate.js finish, diff.noNoise): a creator's intro or outro, speech, effects, crowd noise. Heard
 // as blocks on a noise that belongs to no note (the user, 2026-11-11). Two things say so together: the sounds of a stretch sit
 // off the song's grid, no nearer to its lines than chance, and the decoder finds almost no pitched note in it. Either alone
 // is common in music (vocals sit off the lines, a drum break has no pitch). The numbers are with NO_NOISE in difficulty.js.
@@ -41,7 +41,7 @@ function noiseLookup(raw, features, timing, rule, edge = null) {
   return (t) => (ends && (t < ends.headMs || t >= ends.tailMs)) || flags[Math.max(0, Math.min(last, Math.round(t / rule.hopMs)))] === true;
 }
 
-// A noise stretch that opens the song (or closes it) reaches on to where the music is (flag noNoiseEdge). `flags` are the
+// A noise stretch that opens the song (or closes it) reaches on to where the music is (diff.noNoiseEdge). `flags` are the
 // windows noiseLookup calls noise, `offGrid` the windows whose sounds sit off the grid; both from the edge inwards. The
 // stretch that starts within `edge.withinMs` of the song's start takes every window after it that is still off the grid and
 // under `edge.pitched` decoded notes a second (the rule's own limit is 1), and stops at the first that is not: the decoder

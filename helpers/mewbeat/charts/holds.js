@@ -556,12 +556,12 @@ function slowHolds(diff, timing) {
 // longHolds(notes, minBeats, timing) -> the holds of a finished level at least minBeats long, time-sorted.
 const longHolds = (notes, minBeats, timing) => notes.filter((n) => n.len >= minBeats * beatMsOf(timing, n.t)).sort((a, b) => a.t - b.t);
 
-// keptHolds(notes, source, diff, timing, limitMs) -> notes: with diff.keepNormalHolds (flag normalHolds) a long hold of the
+// keptHolds(notes, source, diff, timing, limitMs) -> notes: with diff.keepNormalHolds (Easy, Hard and Hell, from v44) a long hold of the
 // level this one is built on or cut from (`source`, its finished notes) plays as it does there. Hard's extras, accents and its
 // rule that a hold lets go on the next moment cut Normal's long holds on a slow passage to taps, and Easy dropped them or capped
 // them away, while the music still sounds there (GHOST 2:09-2:17). So under such a hold only the source's own moments stay, the
 // hold lets go before the next of them, and where this level does not play the hold's moment it gets it, unless it plays a
-// moment closer before it than its note gap. With keepNormalHolds.shortest (flag hellHolds) a hold may be as short as the level's
+// moment closer before it than its note gap. With keepNormalHolds.shortest (Hell, from v45) a hold may be as short as the level's
 // shortest (shortestHold), not holdMinBeats: Hard's rest holds are half a beat.
 function keptHolds(notes, source, diff, timing, limitMs = Infinity) {
   const sourceTimes = new Set(source.map((n) => n.t));

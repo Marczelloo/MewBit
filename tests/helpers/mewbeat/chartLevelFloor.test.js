@@ -5,7 +5,7 @@ const { DIFFICULTIES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { analyse, generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { makeLayeredFeatures } = require("./fixtures");
 
-const features = () => makeLayeredFeatures({ bpm: 170, durationMs: 96000 });
+const features = () => makeLayeredFeatures({ bpm: 150, durationMs: 96000 }); // 150 BPM: the song where Normal without its floor goes under Easy (at 170 the rules Normal gained by v45 keep it above)
 const momentsIn = (notes, p) => new Set(notes.filter((n) => n.t >= p.startMs && n.t < p.endMs).map((n) => n.t)).size;
 // The floor is easyV26, Easy before v44: Easy is cut from Normal now, so it can never be the thicker of the two.
 const thinnerThanEasy = (charts, phrases, f) => {

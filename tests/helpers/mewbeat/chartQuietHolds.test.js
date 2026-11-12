@@ -148,9 +148,13 @@ describe("holds on sustained notes of a non-leader layer", () => {
   it("a note that starts on a drum hit holds the drum's note", () => {
     const features = withBassNote();
     features.bass = features.bass.map((n) => ({ ...n, t: n.t + BEAT_MS / 2 })); // on the next beat, where a kick falls
-    const holds = holdsOf(generateChart(features, "hard", "k"));
+    // On hardBase every hold is the bass note's; the public Hard (from v45 with holds in the gaps of its own, plusHolds) holds the
+    // bass note too, among others.
+    const holds = holdsOf(generateChart(features, "hardBase", "k"));
     assert.ok(holds.length > 0);
     assert.ok(holds.every((h) => features.bass.some((n) => Math.abs(n.t - h.t) <= 40)), JSON.stringify(holds));
+    const hard = holdsOf(generateChart(features, "hard", "k"));
+    assert.ok(features.bass.every((n) => hard.some((h) => Math.abs(n.t - h.t) <= 40)), JSON.stringify(hard));
   });
 
   // The lane search lets a hold go early for a note on its own hand, down to half a beat (laneSearch.js clipRelease). On the

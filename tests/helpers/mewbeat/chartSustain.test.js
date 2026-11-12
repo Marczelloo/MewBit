@@ -133,8 +133,12 @@ describe("the short-note line alone over a held bed (Normal's melodyOnly, v42)",
   });
 
   it("leaves a phrase the drums lead: no lead is heard there to play alone", () => {
-    const ctx = { ...ctxOf(8000, 24000), phrases: [{ startMs: 0, endMs: 16000 }, { startMs: 16000, endMs: 48000 }], leaders: ["lead", "drums"] };
-    assert.deepEqual([...melodyOnlyWindows(ctx, MELODY)], [2, 3]);
+    const ctx = { ...ctxOf(8000, 24000), phrases: [{ startMs: 0, endMs: 20000 }, { startMs: 20000, endMs: 48000 }], leaders: ["lead", "drums"] };
+    assert.deepEqual([...melodyOnlyWindows(ctx, MELODY)], [2, 3, 4]);
+    // the two windows before drums that lead from 16 s are a run too short to play alone (Normal asks for three, v45)
+    const early = { ...ctx, phrases: [{ startMs: 0, endMs: 16000 }, { startMs: 16000, endMs: 48000 }] };
+    assert.equal(melodyOnlyWindows(early, MELODY).size, 0);
+    assert.deepEqual([...melodyOnlyWindows(early, { ...MELODY, minRun: 2 })], [2, 3]);
   });
 
   it("plays the line alone there, one note per line note on the nearest moment", () => {

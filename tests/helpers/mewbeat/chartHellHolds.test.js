@@ -1,15 +1,17 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { DIFFICULTIES, HELL_HOLDS, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
+const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { keptHolds } = require("../../../helpers/mewbeat/charts/holds");
 const { makeLayeredFeatures } = require("./fixtures");
 
-// Hard has holds of its own (flag hardHolds); hellHolds is what Hell does with them.
-const ON = ["hardHolds", "hellHolds"];
-const OFF = ["hardHolds"];
+// Hard has holds of its own; hellHolds is what Hell does with them (from v45 part of Hell). OFF is Hell as it was before it: the
+// release and the yield off, and Hell keeping the holds of the Normal under it from 2 beats up, as Hard does.
+FLAGS.withouthellholds = { label: "withouthellholds", levels: { hell: { holdRelease: undefined, holdYield: undefined, keepNormalHolds: { minBeats: 2 } } } };
+const ON = undefined;
+const OFF = { withouthellholds: true };
 const SONGS = {
   "120 BPM": () => makeLayeredFeatures({ bpm: 120, durationMs: 64000 }),
   "180 BPM": () => makeLayeredFeatures({ bpm: 180, durationMs: 64000 }),
@@ -27,26 +29,25 @@ const keptOf = ({ hard, hell }) => {
   return holdsOf(hard).filter((h) => at.has(h.t)).length;
 };
 
-describe("Hell plays the holds Hard plays (flag hellHolds)", () => {
-  it("is off by default and changes Hell alone", () => {
-    assert.ok(FLAGS.hellHolds);
-    assert.equal(DIFFICULTIES.hell.holdYield, undefined);
-    assert.deepEqual(Object.keys(FLAGS.hellHolds.levels), ["hell"]);
-    for (const level of ["easy", "normal", "hard", "hardBase"]) assert.equal(withFlags(levelOf(level), level, { hellHolds: true }), levelOf(level), level);
-    assert.equal(withFlags(levelOf("hell"), "hell", { hellHolds: true }).holdRelease, HELL_HOLDS.holdRelease);
+describe("Hell plays the holds Hard plays (hellHolds)", () => {
+  it("is Hell's alone (from v45) and changes Hell alone", () => {
+    assert.equal(DIFFICULTIES.hell.holdYield, true);
+    assert.equal(DIFFICULTIES.hell.holdRelease, "free");
+    assert.deepEqual(DIFFICULTIES.hell.keepNormalHolds, { minBeats: 0, shortest: true, fullRoom: true });
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "hell") assert.equal(level.holdYield, undefined, name);
     for (const song of Object.keys(SONGS)) {
       const off = chartsOf(song, OFF), on = chartsOf(song, ON);
       for (const level of ["easy", "normal", "hard"]) assert.deepEqual(on[level], off[level], `${song} ${level}`);
     }
   });
 
-  it("keeps the holds Hard plays where Hell without the flag lets go of them", () => {
+  it("keeps the holds Hard plays where Hell without the rules lets go of them", () => {
     for (const song of HOLDING) {
       const off = chartsOf(song, OFF), on = chartsOf(song, ON);
       const total = holdsOf(off.hard).length;
       assert.ok(total >= 30, `${song}: Hard holds ${total}`);
-      assert.ok(keptOf(off) < total - 2, `${song}: without the flag Hell keeps ${keptOf(off)} of ${total}`);
-      assert.ok(keptOf(on) >= 0.9 * total, `${song}: with the flag Hell keeps ${keptOf(on)} of ${total}`);
+      assert.ok(keptOf(off) < total - 2, `${song}: without the rules Hell keeps ${keptOf(off)} of ${total}`);
+      assert.ok(keptOf(on) >= 0.9 * total, `${song}: with the rules Hell keeps ${keptOf(on)} of ${total}`);
       assert.ok(keptOf(on) > keptOf(off), song);
     }
   });

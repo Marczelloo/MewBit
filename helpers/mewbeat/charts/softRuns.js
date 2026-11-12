@@ -1,5 +1,5 @@
-// A burst where the decoded notes run fast and Normal's half-beat stream does not follow them (diff.softRuns, the softRuns
-// flag). The bursts of melodyRuns (melodyPick.js) read the decoded melody LINE: one note at a time, the top voice. A piano that
+// A burst where the decoded notes run fast and Normal's half-beat stream does not follow them (diff.softRuns, Normal from
+// v45). The bursts of melodyRuns (melodyPick.js) read the decoded melody LINE: one note at a time, the top voice. A piano that
 // plays fast in both hands (Rush E) has a line that runs slower than the music (0:54-1:06: the line 4.2 notes a second, every
 // decoded note 6.5). What kept those quarter beats out was not a missing candidate (the fast on-grid notes of the line already
 // had scored moments) but the gap holds: the one-beat holds between half-beat taps lie over the quarter beats and the

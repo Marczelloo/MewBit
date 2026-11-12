@@ -1,4 +1,4 @@
-// A drum roll in Normal (diff.drumRuns, the drumRuns flag). Normal plays a half beat apart at most; where the drums roll, hits
+// A drum roll in Normal (diff.drumRuns, Normal from v45). Normal plays a half beat apart at most; where the drums roll, hits
 // a quarter beat apart in a row, there is no moment to play on the quarter beats between, so the roll was a stream of half
 // beats with the drums running twice as fast under it (King Gnu - AIZO, 0:26.3: nine strong hits at 79 ms, Normal played five).
 // Here a run of strong hits that sit on the quarter-beat grid gets a note on every one of its hits, on top of the stream
@@ -42,7 +42,7 @@ function drumRolls(drums, timing, rule) {
 // falls inside a stream: the chart's notes before and after are within rule.streamBeats of a beat and at least rule.minGapMs
 // away, the note before is not held over it, and no more than rule.maxRun gaps of up to 0.3 of a beat follow in a row
 // (the rest of a longer roll stays as it was). The added notes carry no lane; the lane stages lay them.
-// `fit` (diff.drumRunsFit, generate.js drumFitOf; null without the flag): (startMs, endMs) -> the most notes one roll may get.
+// `fit` (diff.drumRunsFit, generate.js drumFitOf; null in a level without it): (startMs, endMs) -> the most notes one roll may get.
 // A roll that gets no more than that is placed as above, note for note; a roll that would get more is placed again from its
 // last hit backwards and stops at the cap, so a short burst sits at the end of the roll, leading into the next beat.
 function withDrumRunNotes(notes, drums, timing, rule, fit = null) {

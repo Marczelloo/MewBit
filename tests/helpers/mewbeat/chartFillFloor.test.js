@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, FILL_FLOOR, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { selectMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { makeLayeredFeatures } = require("./fixtures");
@@ -19,7 +18,7 @@ const metricOf = (t) => (t % BEAT === 0 ? 0 : t % (BEAT / 2) === 0 ? 1 : t % (BE
 const moment = (t, s, score = s) => ({ t, s, score, metric: metricOf(t), down: t % (4 * BEAT) === 0 ? 1 : 0, source: "lead" });
 const times = (notes) => notes.map((n) => n.t);
 
-describe("fills keep to audible sounds (flag fillFloor)", () => {
+describe("fills keep to audible sounds (fillFloor)", () => {
   // A level with a flat gap of 200 ms whose foreground starts at a score of 1.
   const plainDiff = { minNoteGapMs: 200, gapBeats: 0, foreground: 1 };
   const diff = { ...plainDiff, fillFloor: FILL_FLOOR };
@@ -31,12 +30,12 @@ describe("fills keep to audible sounds (flag fillFloor)", () => {
   const soft = moment(4000, 0.3, -0.6);
   const scored = [...strong, tail, soft];
 
-  it("is a flag of Normal, and no level has it without a flag", () => {
-    assert.deepEqual(FLAGS.fillFloor.levels, { normal: { fillFloor: FILL_FLOOR } });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.fillFloor, undefined);
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.fillFloor, FILL_FLOOR);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.fillFloor, undefined, name);
   });
 
-  it("fills a long stretch with the barely audible sound without the flag", () => {
+  it("fills a long stretch with the barely audible sound without the rule", () => {
     const chosen = pick(scored, 4, plainDiff);
     assert.deepEqual(times(chosen), [0, 500, 2000, 4000]);
     assert.equal(chosen.find((n) => n.t === 2000).reason, "dopełnienie");
@@ -53,8 +52,8 @@ describe("fills keep to audible sounds (flag fillFloor)", () => {
     assert.deepEqual(times(pick([...strong, quietLead], 4)), [0, 500, 2000]);
   });
 
-  it("charts a whole song with the flag on, every level", () => {
-    const flagged = generateAll(makeLayeredFeatures(), "fill-floor-test", ["fillFloor"]);
-    for (const level of ["easy", "normal", "hard", "hell"]) assert.ok(flagged[level].notes.length > 0);
+  it("charts a whole song with the rule on, every level", () => {
+    const charts = generateAll(makeLayeredFeatures(), "fill-floor-test");
+    for (const level of ["easy", "normal", "hard", "hell"]) assert.ok(charts[level].notes.length > 0);
   });
 });

@@ -2,10 +2,9 @@ const assert = require("node:assert");
 const { describe, it } = require("node:test");
 
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
-const { PITCH_LANES } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
+const { DIFFICULTIES, INTERNAL_LEVELS, PITCH_LANES } = require("../../../helpers/mewbeat/charts/difficulty");
 const { normalViolations, pitchCost, pitchRoom, pitchTrack, recallLane } = require("../../../helpers/mewbeat/charts/laneRules");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const BEAT = 500;
 const beatOf = () => BEAT;
@@ -17,11 +16,10 @@ const track = (pitches, { gap = 250, times, pitch = PITCH_LANES } = {}) => {
 };
 
 describe("mewbeat pitch lanes", () => {
-  describe("the flags", () => {
-    it("are off by default and touch Normal only", () => {
-      assert.ok(FLAGS.pitchLanes, "pitchLanes");
-      assert.deepStrictEqual(Object.keys(FLAGS.pitchLanes.levels), ["normal"], "pitchLanes");
-      assert.deepStrictEqual(Object.keys(FLAGS.pitchLanes.levels.normal), ["pitchLanes"]);
+  describe("the rule", () => {
+    it("is part of Normal (from v45) and no other level has it", () => {
+      assert.deepStrictEqual(DIFFICULTIES.normal.pitchLanes, PITCH_LANES);
+      for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.strictEqual(level.pitchLanes, undefined, name);
     });
   });
 
@@ -138,25 +136,32 @@ describe("mewbeat pitch lanes", () => {
 
   describe("in the charts", () => {
     const features = () => makeLayeredFeatures({ bpm: 120, durationMs: 64000 });
-    const base = generateAll(features(), "k", []);
+    const PLAIN = flagWithout("withoutpitchlanes", "pitchLanes");
+    const base = generateAll(features(), "k", PLAIN);
     const timesOf = (notes) => JSON.stringify([...new Set(notes.map((n) => n.t))]);
 
-    it("leave every chart as it was while the flags are off", () => {
-      assert.deepStrictEqual(generateAll(features(), "k", []), base);
+    it("leave every chart as it was without the rule", () => {
+      assert.deepStrictEqual(generateAll(features(), "k", PLAIN), base);
     });
 
     for (const name of ["pitchLanes"]) {
-      it(`${name} moves lanes alone, never a note or a length`, () => {
-        const on = generateAll(features(), "k", name.split(","));
+      it(`${name} moves lanes alone, never a note, and a hold only where the next note of its lane cut or freed it`, () => {
+        const on = generateAll(features(), "k");
         assert.strictEqual(timesOf(on.normal.notes), timesOf(base.normal.notes));
         assert.strictEqual(on.normal.notes.length, base.normal.notes.length);
-        assert.deepStrictEqual(on.normal.notes.map((n) => n.len ?? 0), base.normal.notes.map((n) => n.len ?? 0));
+        // a hold ends at the next note of its lane, so a note that changed lane can shorten or lengthen the hold of one lane (by 100 ms
+        // in this song, once); a note that was no hold stays none, and no hold moves by as much as a beat
+        on.normal.notes.forEach((n, i) => {
+          const was = base.normal.notes[i];
+          assert.strictEqual((n.len ?? 0) > 0, (was.len ?? 0) > 0, `note ${i}`);
+          assert.ok(Math.abs((n.len ?? 0) - (was.len ?? 0)) < BEAT, `note ${i}`);
+        });
       });
 
       it(`${name} leaves the moments of every level where they were`, () => {
         // Easy is cut from Normal and Hard and Hell are built on it, so their lanes can follow Normal's (Easy through the upper
         // bonus, Hard through the notes it starts from) and a hold can end earlier at the next note of its lane; no note moves
-        const on = generateAll(features(), "k", name.split(","));
+        const on = generateAll(features(), "k");
         for (const level of ["easy", "hard", "hell"]) {
           assert.strictEqual(timesOf(on[level].notes), timesOf(base[level].notes), level);
           assert.strictEqual(on[level].notes.length, base[level].notes.length, level);
@@ -164,14 +169,14 @@ describe("mewbeat pitch lanes", () => {
       });
 
       it(`${name} breaks no rule of Normal's lanes`, () => {
-        const on = generateAll(features(), "k", name.split(","));
+        const on = generateAll(features(), "k");
         const { timing } = analyse(features());
         assert.deepStrictEqual(normalViolations(on.normal.notes, timing, { durationMs: 64000 }), []);
       });
     }
 
     it("pitchLanes changes lanes where the lead moves", () => {
-      const on = generateAll(features(), "k", ["pitchLanes"]);
+      const on = generateAll(features(), "k");
       assert.ok(on.normal.notes.some((n, i) => n.lane !== base.normal.notes[i].lane));
     });
   });

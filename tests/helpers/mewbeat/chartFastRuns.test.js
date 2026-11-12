@@ -3,20 +3,20 @@ const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, FAST_RUNS, INTERNAL_LEVELS, MELODY_RUNS } = require("../../../helpers/mewbeat/charts/difficulty");
 const { enforceFloors, spacedMoments } = require("../../../helpers/mewbeat/charts/difficultyFilter");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll } = require("../../../helpers/mewbeat/charts/generate");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
+const PLAIN = flagWithout("withoutfastruns", "fastRuns"); // Normal as it was before fastRuns
 const notesOf = (features, flags) => generateAll(features, "k", flags).normal.notes;
 const timesOf = (notes) => [...new Set(notes.map((n) => n.t))];
 const gapsOf = (notes) => timesOf(notes).map((t, i, all) => t - all[i - 1]).slice(1);
 const withLine = (features, line) => ({ ...features, decodedMelody: line, decodedMelodyTuned: line });
 
-const noLevelHas = (param) => {
-  for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level[param], undefined, param);
+const noOtherLevelHas = (param) => {
+  for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level[param], undefined, `${name}.${param}`);
 };
 
-describe("the bursts of a fast melody where a quarter beat is under 100 ms (flag fastRuns)", () => {
+describe("the bursts of a fast melody where a quarter beat is under 100 ms (fastRuns)", () => {
   // A melody on every sixteenth of the song, which is fast at any tempo: every moment on it may start a burst.
   const fastLine = (bpm) => {
     const sixteenth = 60000 / bpm / 4;
@@ -33,14 +33,14 @@ describe("the bursts of a fast melody where a quarter beat is under 100 ms (flag
     return out.filter(Boolean);
   };
 
-  it("is a flag of Normal, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.fastRuns.levels, { normal: { fastRuns: FAST_RUNS } });
-    noLevelHas("fastRuns");
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.fastRuns, FAST_RUNS);
+    noOtherLevelHas("fastRuns");
   });
 
   it("puts bursts at 180 BPM (a quarter beat is 83 ms) that the plain generator cannot", () => {
     const features = song(180);
-    const plain = notesOf(features), fast = notesOf(features, ["fastRuns"]);
+    const plain = notesOf(features, PLAIN), fast = notesOf(features);
     assert.ok(gapsOf(plain).every((g) => g >= MELODY_RUNS.minGapMs));
     const short = gapsOf(fast).filter((g) => g < MELODY_RUNS.minGapMs);
     assert.ok(short.length > 20, `${short.length} short gaps`);
@@ -67,14 +67,14 @@ describe("the bursts of a fast melody where a quarter beat is under 100 ms (flag
 
   it("changes nothing where a quarter beat is over 100 ms (120 BPM)", () => {
     const features = song(120);
-    assert.deepEqual(notesOf(features, ["fastRuns"]), notesOf(features));
+    assert.deepEqual(notesOf(features), notesOf(features, PLAIN));
     assert.ok(timesOf(notesOf(features)).length > 100);
   });
 
   it("changes nothing without a decoded melody", () => {
     for (const bpm of [180, 120]) {
       const features = makeLayeredFeatures({ bpm, durationMs: 128000 });
-      assert.deepEqual(notesOf(features, ["fastRuns"]), notesOf(features), `at ${bpm}`);
+      assert.deepEqual(notesOf(features), notesOf(features, PLAIN), `at ${bpm}`);
     }
   });
 
@@ -97,7 +97,7 @@ describe("the bursts of a fast melody where a quarter beat is under 100 ms (flag
     DIFFICULTIES.normal.melodyRuns = undefined;
     try {
       const features = song(180);
-      assert.deepEqual(notesOf(features, ["fastRuns"]), notesOf(features));
+      assert.deepEqual(notesOf(features), notesOf(features, PLAIN));
     } finally { DIFFICULTIES.normal.melodyRuns = saved; }
   });
 });

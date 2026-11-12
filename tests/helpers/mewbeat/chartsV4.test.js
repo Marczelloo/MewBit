@@ -16,6 +16,12 @@ const { flagWithout, makeFeatures, makeLayeredFeatures } = require("./fixtures")
 // A repeat is copied before the lanes are laid. The search gives it its own lanes and a hold may let go early for them
 // (laneSearch.js clipRelease), so what the copy keeps is read without the search.
 const WITHOUT_SEARCH = flagWithout("withoutsearch", "laneSearch", "chordFlow");
+// paceHoles (Normal, v45) reads the pace of the notes before a phrase and fills a stretch longer than they run, so a repeat can take
+// a note its source did not (a loud song: one at 2.5 s into a repeat); the identity of a repeat is read without it, and with it
+// the repeat is shown to keep every moment of its source.
+const WITHOUT_SEARCH_PACE = flagWithout("withoutsearchpace", "laneSearch", "chordFlow", "paceHoles");
+// Hard and Hell hold a gap with a note of its own (plusHolds, from v45), which a drums-only song has too; a chart of taps is read without.
+const WITHOUT_GAP_HOLDS = flagWithout("withoutgapholds", "plusHolds", "holdsByCalm");
 const KEY = "youtube:fixture:v4";
 const DIFFS = ["easy", "normal", "hard"];
 // The machinery below (applyDifficulty, patternEvents, holds, floors) is run with Normal as v26 charted it: normalV26, the
@@ -50,8 +56,8 @@ function setup(features) {
 }
 
 describe("generator v4", () => {
-  it("is version 44", () => {
-    assert.equal(GENERATOR_VERSION, 44);
+  it("is version 45", () => {
+    assert.equal(GENERATOR_VERSION, 45);
     for (const d of DIFFS) {
       assert.ok(Number.isInteger(LEVELS[d].maxLevel));
       assert.ok(Number.isInteger(DIFFICULTIES[d].maxJack));
@@ -108,11 +114,11 @@ describe("generator v4", () => {
       const features = makeLayeredFeatures({ energy });
 
       it("repeatsIdenticalOnEveryDifficulty: phrase 2 plays like 0 and 3 like 1", () => {
-        const charts = generateAll(features, KEY, WITHOUT_SEARCH);
+        const charts = generateAll(features, KEY, WITHOUT_SEARCH_PACE);
         // Hard is built on Normal with extras since v44 and its repeats are not always exact: in a repeat the extras can differ
         // (loud songs) and a hold can end differently (flat ones). hardBase is Hard as v43 charted it, so it stands for Hard here;
         // Hell has no internal copy and is built on Hard, so it is not checked.
-        charts.hardBase = generateChart(features, "hardBase", KEY, WITHOUT_SEARCH);
+        charts.hardBase = generateChart(features, "hardBase", KEY, WITHOUT_SEARCH_PACE);
         const { list } = features.phrases;
         for (const d of ["easy", "normal", "hardBase"]) {
           const { notes } = charts[d];
@@ -133,6 +139,17 @@ describe("generator v4", () => {
           if (p.repeatOf === null) return;
           const hard = times(charts.hard.notes, p);
           for (const t of times(charts.normal.notes, p)) assert.ok(hard.has(t), `phrase ${i}: Normal moment ${t} missing from Hard`);
+        });
+      });
+
+      it("repeatsKeepTheirSource: with paceHoles a repeat keeps every moment of its source, and may fill a hole more", () => {
+        const { normal } = generateAll(features, KEY, WITHOUT_SEARCH);
+        const { list } = features.phrases;
+        list.forEach((p, i) => {
+          if (p.repeatOf === null) return;
+          const [got, expected] = repeatPair(normal.notes, p, list[p.repeatOf]);
+          const moments = new Set(got.map(([t]) => t));
+          for (const [t] of expected) assert.ok(moments.has(t), `phrase ${i}: moment ${t} of phrase ${p.repeatOf} missing`);
         });
       });
 
@@ -207,9 +224,9 @@ describe("generator v4", () => {
     assert.ok(copies.length > 0, "a repeat directly after a non-repeat phrase");
     // Identical copies are checked on easy, normal and hardBase (Hard as v43 charted it): public Hard and Hell are built on Normal with
     // extras since v44 and a repeat can differ there (see repeatsIdenticalOnEveryDifficulty); their floors are still checked.
-    const charts = generateAll(features, KEY, WITHOUT_SEARCH);
+    const charts = generateAll(features, KEY, WITHOUT_SEARCH_PACE);
     const identical = new Set(["easy", "normal", "hardBase"]);
-    for (const chart of [...Object.values(charts), generateChart(features, "hardBase", KEY, WITHOUT_SEARCH)]) {
+    for (const chart of [...Object.values(charts), generateChart(features, "hardBase", KEY, WITHOUT_SEARCH_PACE)]) {
       const p = levelOf(chart.difficulty);
       for (const [phrase, i] of identical.has(chart.difficulty) ? copies : []) {
         const source = list[phrase.repeatOf];
@@ -598,9 +615,11 @@ describe("holds", () => {
   });
 
   it("holdsSurviveRepeats: the repeat identity includes len", () => {
-    const charts = generateAll(features, KEY, WITHOUT_SEARCH);
+    const charts = generateAll(features, KEY, WITHOUT_SEARCH_PACE);
+    // hardBase stands for Hard, as in repeatsIdenticalOnEveryDifficulty: the public Hard has its extras and its gap holds
+    charts.hardBase = generateChart(features, "hardBase", KEY, WITHOUT_SEARCH_PACE);
     const { list } = features.phrases;
-    for (const d of DIFFS) {
+    for (const d of ["easy", "normal", "hardBase"]) {
       const { notes } = charts[d];
       let withHolds = 0;
       list.forEach((p, i) => {
@@ -626,10 +645,16 @@ describe("holds", () => {
     assert.ok(starsOf(dense) <= 10);
   });
 
-  it("tapChartsHaveNoLenKey: a drums-only song has no len keys at all", () => {
-    for (const chart of Object.values(chartsOf(makeLayeredFeatures({ lead: false, bass: false })))) {
+  it("tapChartsHaveNoLenKey: a drums-only song has no len keys at all, and a tap has none beside the holds of Hard and Hell", () => {
+    const drums = makeLayeredFeatures({ lead: false, bass: false });
+    for (const chart of Object.values(generateAll(drums, KEY, WITHOUT_GAP_HOLDS))) {
       assert.ok(chart.notes.length > 0);
       assert.ok(chart.notes.every((n) => Object.keys(n).join() === "t,lane"), chart.difficulty);
+    }
+    // Easy and Normal have no gap holds; Hard and Hell hold some gaps, and a note without a hold is still a tap with no len key
+    for (const chart of Object.values(chartsOf(drums))) {
+      assert.ok(chart.notes.every((n) => (n.len === undefined ? Object.keys(n).join() === "t,lane" : n.len > 0 && Object.keys(n).join() === "t,lane,len")), chart.difficulty);
+      if (chart.difficulty === "easy" || chart.difficulty === "normal") assert.ok(chart.notes.every((n) => !("len" in n)), chart.difficulty);
     }
   });
 

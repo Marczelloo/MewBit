@@ -2,23 +2,22 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, INTERNAL_LEVELS, LEAD_VOICE_BOTH, LINE_REPEATS, PLUS_HEARD } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { snappedMoments } = require("../../../helpers/mewbeat/charts/selection");
 const { offPitch, underLine, withLineRepeats } = require("../../../helpers/mewbeat/charts/voices");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const times = (notes) => notes.map((n) => n.t);
 
-describe("the notes that repeat the melody's tone (flag lineRepeats)", () => {
+describe("the notes that repeat the melody's tone (lineRepeats)", () => {
   // A line of two notes far apart, 60 and 62.
   const line = [{ t: 0, pitch: 60, conf: 0.8, len: 100 }, { t: 2000, pitch: 62, conf: 0.7, len: 100 }];
   const heard = (t, pitch = 60, vel = 0.8) => ({ t, pitch, vel, len: 100 });
 
-  it("is a flag of Normal, and no level has it without a flag", () => {
-    assert.deepEqual(FLAGS.lineRepeats.levels, { normal: { lineRepeats: LINE_REPEATS } });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.lineRepeats, undefined);
+  it("is a rule of Normal, and no other level has it", () => {
+    assert.equal(DIFFICULTIES.normal.lineRepeats, LINE_REPEATS);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.lineRepeats, undefined, name);
   });
 
   it("takes a note at the pitch of the line note before it, marked as a repeat", () => {
@@ -75,7 +74,7 @@ describe("the notes that repeat the melody's tone (flag lineRepeats)", () => {
   });
 });
 
-describe("what plays under the melody (flag leadVoiceBoth)", () => {
+describe("what plays under the melody (leadVoice)", () => {
   const rule = LEAD_VOICE_BOTH;
   const phrase = { startMs: 0, endMs: 8250 };
   // 16 moments, one every 500 ms from 500 to 8000, each stronger than the one before: the last eight are the loud ones.
@@ -99,11 +98,10 @@ describe("what plays under the melody (flag leadVoiceBoth)", () => {
   const notes = notesOf(pitches);
   const at = (result, t) => result.find((m) => m.t === t);
 
-  it("is a flag of Normal, and no level has it without a flag", () => {
+  it("is a rule of Normal, and no other level has it", () => {
     assert.deepEqual(LEAD_VOICE_BOTH, { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75, below: 7, clashMs: 120, penalty: 2.5 });
-    assert.deepEqual(FLAGS.leadVoiceBoth.levels, { normal: { leadVoice: LEAD_VOICE_BOTH } });
-    assert.equal(FLAGS.leadVoice, undefined);
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.leadVoice, undefined);
+    assert.equal(DIFFICULTIES.normal.leadVoice, LEAD_VOICE_BOTH);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.leadVoice, undefined, name);
   });
 
   it("takes the penalty from a low moment a line note begins next to, and marks it", () => {
@@ -181,6 +179,8 @@ describe("what plays under the melody (flag leadVoiceBoth)", () => {
   });
 
   describe("through a whole song", () => {
+    // without the rule: leadVoice off on every level
+    const PLAIN = flagWithout("withoutleadvoice", "leadVoice");
     const notesOfLevels = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "voice-test", flags)).map(([level, chart]) => [level, chart.notes]));
     // The fixture's lead on every beat is the line; the second detector heard it (unless `onBeats` is false), and a note on every sound
     // between its beats: far under the line on the half beats a quarter into each second, near it on the others.
@@ -201,30 +201,30 @@ describe("what plays under the melody (flag leadVoiceBoth)", () => {
       return { ...features, decodedMelody: line, decodedMelodyTuned: line };
     };
 
-    it("charts the same song on every level as without the flag where the gate does not hold", () => {
+    it("charts the same song on every level as without the rule where the gate does not hold", () => {
       // the line is drawn, but only the sounds between its beats have a decoded pitch: most loud moments have none
       const features = clashing(false);
-      const plain = notesOfLevels(features, []);
-      const voiced = notesOfLevels(features, ["leadVoiceBoth"]);
+      const plain = notesOfLevels(features, PLAIN);
+      const voiced = notesOfLevels(features, []);
       for (const level of LEVELS) assert.deepEqual(voiced[level], plain[level], level);
     });
 
-    it("charts the same song on every level as without the flag when no notes were decoded", () => {
+    it("charts the same song on every level as without the rule when no notes were decoded", () => {
       const features = { ...clashing(), decodedNotes: undefined };
-      const plain = notesOfLevels(features, []);
-      const voiced = notesOfLevels(features, ["leadVoiceBoth"]);
+      const plain = notesOfLevels(features, PLAIN);
+      const voiced = notesOfLevels(features, []);
       for (const level of LEVELS) assert.deepEqual(voiced[level], plain[level], level);
     });
 
-    it("leaves Normal as without a flag where no line note begins next to the low sounds", () => {
+    it("leaves Normal as without the rule where no line note begins next to the low sounds", () => {
       const features = carried();
-      assert.deepEqual(notesOfLevels(features, ["leadVoiceBoth"]).normal, notesOfLevels(features, []).normal);
+      assert.deepEqual(notesOfLevels(features, []).normal, notesOfLevels(features, PLAIN).normal);
     });
 
     it("takes the low sounds next to a line note from Normal, and Hard and Hell hold every moment of Normal", () => {
       const features = clashing();
-      const plain = notesOfLevels(features, []);
-      const both = notesOfLevels(features, ["leadVoiceBoth"]);
+      const plain = notesOfLevels(features, PLAIN);
+      const both = notesOfLevels(features, []);
       assert.notDeepEqual(both.normal, plain.normal);
       for (const level of ["hard", "hell"]) {
         const held = new Set(times(both[level]));
@@ -232,14 +232,14 @@ describe("what plays under the melody (flag leadVoiceBoth)", () => {
       }
     });
 
-    it("charts a whole song with lineRepeats and leadVoiceBoth on, every level", () => {
-      const flagged = generateAll(clashing(), "voice-test", ["lineRepeats", "leadVoiceBoth"]);
+    it("charts a whole song with lineRepeats and leadVoice, every level", () => {
+      const flagged = generateAll(clashing(), "voice-test");
       for (const level of LEVELS) assert.ok(flagged[level].notes.length > 0, level);
     });
   });
 });
 
-describe("no extra off the notes (flag plusHeard)", () => {
+describe("no extra off the notes (plusHeard)", () => {
   const rule = PLUS_HEARD;
   // Phrase p: 16 moments, one every 500 ms from 500 to 8000 after its start, each stronger than the one before.
   const SPAN = 10000;
@@ -251,10 +251,11 @@ describe("no extra off the notes (flag plusHeard)", () => {
   const phrase = phraseAt(0);
   const notes = notesIn(0, [3500, 6000]);
 
-  it("is a flag of Hard and Hell, and no level has it without a flag", () => {
+  it("is a rule of Hard and Hell, and no other level has it", () => {
     assert.deepEqual(PLUS_HEARD, { nearMs: 60, drumMs: 40, minDrum: 0.3, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75 });
-    assert.deepEqual(FLAGS.plusHeard.levels, { hard: { plusHeard: PLUS_HEARD }, hell: { plusHeard: PLUS_HEARD } });
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.plusHeard, undefined);
+    assert.equal(DIFFICULTIES.hard.plusHeard, PLUS_HEARD);
+    assert.equal(DIFFICULTIES.hell.plusHeard, PLUS_HEARD);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "hard" && name !== "hell") assert.equal(level.plusHeard, undefined, name);
   });
 
   it("names the moments no pitch begins on", () => {
@@ -310,10 +311,14 @@ describe("no extra off the notes (flag plusHeard)", () => {
   });
 
   describe("through a whole song", () => {
+    // without the rule: plusHeard off on every level
+    const PLAIN = flagWithout("withoutplusheard", "plusHeard");
     const chartsOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "heard-test", flags)).map(([level, chart]) => [level, chart.notes]));
     // A piano piece: the fixture without its drums, its lead on every beat the line, and a pitch the second detector heard on
-    // every sound but those 2250 and 2750 ms into each four seconds, where Hell and Hard take an extra without the flag.
-    const BARE = [2250, 2750];
+    // every sound but those 1250, 1750 and 2250 ms into each four seconds, where Hell and Hard take an extra without the rule. Hard
+    // takes every bare sound it can reach from v45 on (calmSpots, plusCalm and plusHolds change what it extends), so with only the
+    // two at 2250 and 2750 ms Hell had none left to take; this set leaves Hell four of its own, and still holds the song's gate.
+    const BARE = [1250, 1750, 2250];
     const piano = () => {
       const features = { ...makeLayeredFeatures(), drums: [] };
       const line = features.lead.map((n) => ({ t: n.t, pitch: 72, conf: 0.9, len: 200 }));
@@ -329,18 +334,18 @@ describe("no extra off the notes (flag plusHeard)", () => {
       return [...new Set(times(charts[level]))].filter((t) => !has.has(t) && !starts.some((s) => Math.abs(s - t) <= rule.nearMs) && !beats.some((b) => Math.abs(b - t) <= rule.drumMs));
     };
 
-    it("leaves Easy and Normal as without the flag", () => {
+    it("leaves Easy and Normal as without the rule", () => {
       const features = piano();
-      const plain = chartsOf(features, []);
-      const heard = chartsOf(features, ["plusHeard"]);
+      const plain = chartsOf(features, PLAIN);
+      const heard = chartsOf(features, []);
       for (const level of ["easy", "normal"]) assert.deepEqual(heard[level], plain[level], level);
     });
 
     it("takes the extras off the notes from Hard and Hell", () => {
       const features = piano();
-      const plain = chartsOf(features, []);
-      const heard = chartsOf(features, ["plusHeard"]);
-      // without the flag the levels do take such extras: the probe finds them
+      const plain = chartsOf(features, PLAIN);
+      const heard = chartsOf(features, []);
+      // without the rule the levels do take such extras: the probe finds them
       assert.ok(offNotes(features, plain, "hard", "normal").length > 0);
       assert.ok(offNotes(features, plain, "hell", "hard").length > 0);
       assert.deepEqual(offNotes(features, heard, "hard", "normal"), []);
@@ -348,17 +353,17 @@ describe("no extra off the notes (flag plusHeard)", () => {
     });
 
     it("keeps every moment of Normal in Hard and of Hard in Hell", () => {
-      const heard = chartsOf(piano(), ["plusHeard"]);
+      const heard = chartsOf(piano(), []);
       for (const [under, level] of [["normal", "hard"], ["hard", "hell"]]) {
         const held = new Set(times(heard[level]));
         assert.deepEqual(times(heard[under]).filter((t) => !held.has(t)), [], level);
       }
     });
 
-    it("charts every level as without the flag when no notes were decoded", () => {
+    it("charts every level as without the rule when no notes were decoded", () => {
       const features = { ...piano(), decodedNotes: undefined };
-      const plain = chartsOf(features, []);
-      const heard = chartsOf(features, ["plusHeard"]);
+      const plain = chartsOf(features, PLAIN);
+      const heard = chartsOf(features, []);
       for (const level of LEVELS) assert.deepEqual(heard[level], plain[level], level);
     });
   });

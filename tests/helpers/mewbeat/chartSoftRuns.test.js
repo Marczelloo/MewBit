@@ -2,13 +2,13 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, INTERNAL_LEVELS, SOFT_RUNS } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { placeRunNotes, withRunNotes } = require("../../../helpers/mewbeat/charts/melodyPick");
 const { softRunTimes, withSoftRunNotes } = require("../../../helpers/mewbeat/charts/softRuns");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
+const PLAIN = flagWithout("withoutsoftruns", "softRuns");
 const BEAT = 500; // 120 BPM, a quarter beat is 125 ms
 const QUARTERS = Array.from({ length: 400 }, (_, i) => i * (BEAT / 4));
 const timing = { snapped: true, beatMsAt: () => BEAT, gridPoints: () => QUARTERS, intervalOk: () => true };
@@ -17,11 +17,10 @@ const times = (notes) => notes.map((n) => n.t);
 const key = (notes) => JSON.stringify(notes.map((n) => [n.t, n.lane, n.len ?? 0]));
 const momentsOf = (notes) => [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
 
-describe("the burst where every decoded note runs fast (flag softRuns)", () => {
-  it("is a flag of Normal, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.softRuns.levels, { normal: { softRuns: SOFT_RUNS } });
-    assert.match(FLAGS.softRuns.label, /\S/);
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.softRuns, undefined);
+describe("the burst where every decoded note runs fast (softRuns)", () => {
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.softRuns, SOFT_RUNS);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.softRuns, undefined, name);
   });
 
   it("finds a quarter-beat grid point where a decoded note of a fast run begins, and only that", () => {
@@ -97,20 +96,19 @@ describe("the burst where every decoded note runs fast (flag softRuns)", () => {
   }
   const fastLine = Array.from({ length: 400 }, (_, i) => ({ t: 1000 + i * 125, pitch: 60 + (i % 5), vel: 0.6 }));
 
-  it("charts what it charted before with the flag off, and with the flag on where no melody was decoded", () => {
+  it("charts where no melody was decoded as without the rule, and a decoded line the same way every time", () => {
     const bare = makeLayeredFeatures({ bpm: 120, durationMs: 64000, structure: "ABCDEFGHIJKLMNOP" });
-    const plain = generateAll(bare, "k", []);
-    const withFlag = generateAll(bare, "k", ["softRuns"]);
-    for (const level of LEVELS) assert.equal(key(withFlag[level].notes), key(plain[level].notes), level);
-    // a decoded line with the flag off: the same as the same song under a flag that does not touch notes
+    const plain = generateAll(bare, "k", PLAIN);
+    const charted = generateAll(bare, "k");
+    for (const level of LEVELS) assert.equal(key(charted[level].notes), key(plain[level].notes), level);
     const features = songWith(fastLine);
-    const off = generateAll(features, "k", []), again = generateAll(features, "k", []);
-    for (const level of LEVELS) assert.equal(key(off[level].notes), key(again[level].notes), level);
+    const on = generateAll(features, "k"), again = generateAll(features, "k");
+    for (const level of LEVELS) assert.equal(key(on[level].notes), key(again[level].notes), level);
   });
 
   it("leaves Easy as it was, and keeps every moment of Normal in Hard and Hell with no note doubled", () => {
     const features = songWith(fastLine);
-    const plain = generateAll(features, "k", []), soft = generateAll(features, "k", ["softRuns"]);
+    const plain = generateAll(features, "k", PLAIN), soft = generateAll(features, "k");
     assert.equal(key(soft.easy.notes), key(plain.easy.notes));
     for (const level of ["hard", "hell"]) {
       const kept = new Set(momentsOf(soft[level].notes));
@@ -126,9 +124,9 @@ describe("the burst where every decoded note runs fast (flag softRuns)", () => {
 
   it("is the same chart in the trace as in generate, with a step record per added note", () => {
     const features = songWith(fastLine);
-    const all = generateAll(features, "k", ["softRuns"]);
-    for (const level of LEVELS) assert.equal(key(traceChart(features, level, "k", ["softRuns"]).notes), key(all[level].notes), level);
-    const steps = traceChart(features, "normal", "k", ["softRuns"]).records.filter((r) => r.kind === "softRuns");
+    const all = generateAll(features, "k");
+    for (const level of LEVELS) assert.equal(key(traceChart(features, level, "k").notes), key(all[level].notes), level);
+    const steps = traceChart(features, "normal", "k").records.filter((r) => r.kind === "softRuns");
     assert.ok(steps.every((r) => r.final || r.rejected));
   });
 });

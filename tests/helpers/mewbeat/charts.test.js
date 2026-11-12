@@ -335,7 +335,9 @@ describe("mewbeat chart generator", () => {
 
   it("passes a null highlight through and returns null when too sparse", () => {
     assert.strictEqual(generateChart(fixture({ highlightMs: null }), "easy", KEY).highlightMs, null);
-    const sparse = fixture({ energy: () => 0.1, durationMs: 40000 });
+    // 30 s: with the played rules folded in (v45) Easy of the same song at 40 s keeps 26 notes, enough to chart (the bot's 32 flags
+    // gave the same 26 before the fold); at 30 s it is under the least it takes, as 40 s was before.
+    const sparse = fixture({ energy: () => 0.1, durationMs: 30000 });
     assert.strictEqual(generateChart(sparse, "easy", KEY), null);
     assert.strictEqual(generateAll(sparse, KEY), null);
   });

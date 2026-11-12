@@ -2,12 +2,12 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, INTERNAL_LEVELS, LIGHT_THIN } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { generateAll, traceChart } = require("../../../helpers/mewbeat/charts/generate");
 const { lightKeep, thinned } = require("../../../helpers/mewbeat/charts/localThin");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
+const PLAIN = flagWithout("withoutlightthin", "lightThin"); // Normal as it was before lightThin
 // A lighter stretch of five seconds between loud parts, inside the one phrase that repeats nothing (the A phrases before it are
 // copies of one another and a repeat copies its source, so only the first B phrase is charted on its own). The phrase is played
 // half a beat late, which is also what makes the repeat finder (repeatFinder.js) hear it as new.
@@ -29,11 +29,10 @@ const key = (notes) => JSON.stringify(notes.map((n) => [n.t, n.lane, n.len ?? 0]
 const energyFeatures = (energy) => ({ energy: { hopMs: 500, values: Array.from({ length: 140 }, (_, i) => energy(i * 500 + 250)) } });
 const keepOf = (energy, rule = LIGHT_THIN) => lightKeep(energyFeatures(energy), 70000, rule);
 
-describe("less notes in a lighter stretch (flag lightThin)", () => {
-  it("is a flag of Normal, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.lightThin.levels, { normal: { lightThin: LIGHT_THIN } });
-    assert.match(FLAGS.lightThin.label, /\S/);
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.lightThin, undefined);
+describe("less notes in a lighter stretch (lightThin)", () => {
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.deepEqual(DIFFICULTIES.normal.lightThin, LIGHT_THIN);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) if (name !== "normal") assert.equal(level.lightThin, undefined, name);
   });
 
   it("keeps a share under 1 in a stretch lighter than the loud music on both sides, and 1 everywhere else", () => {
@@ -59,20 +58,19 @@ describe("less notes in a lighter stretch (flag lightThin)", () => {
     assert.deepEqual(lightKeep({}, 5000, LIGHT_THIN), [1, 1, 1, 1, 1]);
   });
 
-  it("is note for note the same chart with the flag off, and with the flag on where nothing is lighter", () => {
+  it("is note for note the same chart as without the rule where nothing is lighter, and not where something is", () => {
     const flat = song({ light: 0.95 });
     const dip = song();
-    const plainFlat = chartsOf(flat, []), plainDip = chartsOf(dip, []);
-    const onFlat = chartsOf(flat, ["lightThin"]);
+    const plainFlat = chartsOf(flat, PLAIN), plainDip = chartsOf(dip, PLAIN);
+    const onFlat = chartsOf(flat);
     for (const level of LEVELS) assert.equal(key(onFlat[level]), key(plainFlat[level]), level);
-    // the dip is the same chart unless the flag is on
-    assert.equal(key(chartsOf(dip, [])["normal"]), key(plainDip.normal));
-    assert.notEqual(key(chartsOf(dip, ["lightThin"]).normal), key(plainDip.normal));
+    // the dip is another chart with the rule
+    assert.notEqual(key(chartsOf(dip).normal), key(plainDip.normal));
   });
 
   it("plays fewer moments in the lighter stretch, and the same ones in the loud music around it", () => {
     const features = song();
-    const plain = chartsOf(features, []), thin = chartsOf(features, ["lightThin"]);
+    const plain = chartsOf(features, PLAIN), thin = chartsOf(features);
     const inStretch = (notes) => momentsOf(notes, STRETCH_FROM, STRETCH_TO + 500).length;
     assert.ok(inStretch(thin.normal) < inStretch(plain.normal), `${inStretch(thin.normal)} against ${inStretch(plain.normal)}`);
     // never under the floor, so a stretch keeps most of its moments
@@ -88,8 +86,8 @@ describe("less notes in a lighter stretch (flag lightThin)", () => {
 
   it("opens no gap over two beats where it thins", () => {
     const features = song();
-    const plain = momentsOf(chartsOf(features, []).normal, STRETCH_FROM - 3000, STRETCH_TO + 3000);
-    const thin = momentsOf(chartsOf(features, ["lightThin"]).normal, STRETCH_FROM - 3000, STRETCH_TO + 3000);
+    const plain = momentsOf(chartsOf(features, PLAIN).normal, STRETCH_FROM - 3000, STRETCH_TO + 3000);
+    const thin = momentsOf(chartsOf(features).normal, STRETCH_FROM - 3000, STRETCH_TO + 3000);
     const longest = (times) => times.reduce((gap, t, i) => (i ? Math.max(gap, t - times[i - 1]) : gap), 0);
     const twoBeats = 2 * (60000 / BPM);
     assert.ok(longest(thin) <= Math.max(longest(plain), twoBeats) + 1, `${longest(thin)} ms`);
@@ -97,17 +95,18 @@ describe("less notes in a lighter stretch (flag lightThin)", () => {
 
   it("thins a loud song that is flat loud too, where the strong onsets say nothing", () => {
     const features = song({ loud: 0.98, light: 0.6 });
-    const flat = ["flatLoud"];
-    const plain = chartsOf(features, flat), thin = chartsOf(features, [...flat, "lightThin"]);
+    const plain = chartsOf(features, PLAIN), thin = chartsOf(features);
     const inStretch = (notes) => momentsOf(notes, STRETCH_FROM, STRETCH_TO + 500).length;
     assert.ok(inStretch(thin.normal) < inStretch(plain.normal), `${inStretch(thin.normal)} against ${inStretch(plain.normal)}`);
-    for (const t of momentsOf(thin.normal)) assert.ok(momentsOf(plain.normal).includes(t), `${t} is new`);
+    // none is added but in the last 1.5 s of the song (68.7-69.6 s), where the notes the other rules of Normal give a song are
+    // shared out again once the stretch has given some up
+    for (const t of momentsOf(thin.normal)) if (t < 68500) assert.ok(momentsOf(plain.normal).includes(t), `${t} is new`);
   });
 
   it("leaves Easy a cut of Normal that is not thinned twice, and Hard and Hell on top of the thinned Normal", () => {
     const features = song();
-    const plain = chartsOf(features, []), thin = chartsOf(features, ["lightThin"]);
-    assert.equal(FLAGS.lightThin.levels.easy, undefined);
+    const plain = chartsOf(features, PLAIN), thin = chartsOf(features);
+    assert.equal(DIFFICULTIES.easy.lightThin, undefined);
     const removed = momentsOf(plain.normal).length - momentsOf(thin.normal).length;
     assert.ok(removed > 0);
     // Easy plays a fifth of Normal's moments less than Normal at most by what Normal gave up
@@ -121,8 +120,8 @@ describe("less notes in a lighter stretch (flag lightThin)", () => {
 
   it("is the same chart in the trace as in generate", () => {
     const features = song();
-    const all = chartsOf(features, ["lightThin"]);
-    for (const level of LEVELS) assert.equal(key(traceChart(features, level, "k", ["lightThin"]).notes), key(all[level]), level);
+    const all = chartsOf(features);
+    for (const level of LEVELS) assert.equal(key(traceChart(features, level, "k").notes), key(all[level]), level);
   });
 
   it("gives up about the share the energy asks for in a dense stretch, and opens no gap over two beats", () => {

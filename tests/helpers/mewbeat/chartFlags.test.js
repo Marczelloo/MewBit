@@ -140,7 +140,11 @@ describe("mewbeat generator flags", () => {
 
     it("change when a flag's override is set (control)", () => {
       const plain = generateAll(features(), KEY);
-      withOverrides("density", Object.fromEntries(LEVELS.map((level) => [level, { maxNps: 0.8 }])), () => {
+      // Since v45 Normal fills what loudHoles and paceHoles find open whatever the density cap says (239 notes at 0.8 on this
+      // song as at 6.5), so the override takes those two rules off Normal: then the cap cuts it (195 notes).
+      const levels = Object.fromEntries(LEVELS.map((level) => [level, { maxNps: 0.8 }]));
+      levels.normal = { maxNps: 0.8, loudHoles: undefined, paceHoles: undefined };
+      withOverrides("density", levels, () => {
         const flagged = generateAll(features(), KEY, ["density"]);
         for (const level of LEVELS) {
           assert.notDeepStrictEqual(flagged[level].notes, plain[level].notes, level);

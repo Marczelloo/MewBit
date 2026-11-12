@@ -1,6 +1,6 @@
 // Bumped on every change that alters generated charts (tuning included);
 // charts and leaderboards are keyed by it.
-const GENERATOR_VERSION = 44;
+const GENERATOR_VERSION = 45;
 
 // --- Shared tuning constants (Task 9 tunes these by ear) -------------------
 
@@ -68,22 +68,22 @@ const STAIRS = { minNotes: 3, maxGapBeats: 1, weight: 3 };
 // .8018 -> .8036, moments on the melody 27.1 -> 36.6% (people 37.0%), a melody direction on 74% of single notes (65%).
 // A song with no melody file is charted as before.
 const MELODY_PICK = { bonus: 1.25, minStrength: 0 };
-// generate.js melodyMoments (flag melodyKeep): the moments on a note of the decoded melody are the last a slower stretch
+// generate.js melodyMoments (melodyKeep, Normal, from v45): the moments on a note of the decoded melody are the last a slower stretch
 // gives up (localThin.js), stay through an energy dip (dips.js thinDips) and come right after the held ones in the fade-out
 // (fades.js thinFadeOut). The bot's songs: the melody's notes lost to those three stages 5.3 -> 1.0% (dips 2.1 -> 0), Normal
 // plays 61.9 -> 66.1% of the melody, 12.8 -> 15.8 points over the same melody moved in time, with 0.9% more moments. The 80
 // corpus songs: F1 against people .805 -> .807 on Normal (recall .858 -> .863), .736 -> .734 on Easy.
 const MELODY_KEEP = true;
-// generate.js pickedMelodyShift (flag melodyShiftPick): the decoded melody is moved to where the most of its notes meet a sound
+// generate.js pickedMelodyShift (melodyShiftPick, Normal, from v45): the decoded melody is moved to where the most of its notes meet a sound
 // Normal scores, looked for within reachMs of the file's times in steps of stepMs; a note meets a sound within matchMs. The
 // shift of the melody file stays unless another one matches `margin` more of the notes.
 const MELODY_SHIFT_PICK = { reachMs: 60, stepMs: 2, matchMs: 25, margin: 0.03 };
-// generate.js plusNotes (flag plusMelody): Hard and Hell, built on Normal, choose their extras by the sound alone; with this
+// generate.js plusNotes (plusMelody, Hard and Hell, from v45): Hard and Hell, built on Normal, choose their extras by the sound alone; with this
 // an extra where the decoded melody begins a note scores `bonus` more, as a moment of Normal does (MELODY_PICK). On the 80
 // corpus songs Hard's moments on the melody, over a shifted control, went 6.5 -> 10.4 points with 7.7% of its moments moved and
 // F1 against people .813 -> .812; at bonus 2 F1 fell to .810.
 const PLUS_MELODY = { bonus: 1.25, minStrength: 0 };
-// generate.js plusNotes (flag plusHeard): Hard and Hell take no extra where no pitch begins (within `nearMs`) and no drum but
+// generate.js plusNotes (plusHeard, Hard and Hell, from v45): Hard and Hell take no extra where no pitch begins (within `nearMs`) and no drum but
 // a kick plays (strength `minDrum` or more, within `drumMs`), in the phrases a pitched line leads of a song one carries
 // (voices.js offPitch, the gate of LEAD_VOICE_BOTH: `pitched`, `minLoud`, `minMoments`, `song`). Asked for by ear on Rush E's
 // Hard: "a few blocks not on the notes at all". In a piano piece a low key reads as a kick, and of what is there to take
@@ -94,21 +94,21 @@ const PLUS_MELODY = { bonus: 1.25, minStrength: 0 };
 // -> .865). Hell loses 6% of its moments on the eight songs (Flower Dance 14%), with no human Hell to read it against.
 // Without the drums' leave Hell lost 10% and Hard's F1 fell .1; over every phrase of such a song, Hell lost 7% for the same F1.
 const PLUS_HEARD = { nearMs: 60, drumMs: 40, minDrum: 0.3, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75 };
-// generate.js copiedRepeat (flag copyMelody): a repeat with at least `min` moments on the decoded melody is charted fresh
+// generate.js copiedRepeat (copyMelody, Normal, from v45): a repeat with at least `min` moments on the decoded melody is charted fresh
 // when its copy plays (within `nearMs`) under `share` of the melody's share its source plays: the phrase repeats, the
 // melody over it does not. The bot's songs: the melody's notes lost to a copy 6.2 -> 3.7% at share .75, Normal 12.8 -> 13.9
 // points over the same melody moved in time at .9 (13.6 at .75, 14.0 at 1) with as many moments; the 80 corpus songs: F1
 // against people .805 -> .806 on Normal, .736 -> .735 on Easy at each of the three. At 1 a third more moments change for .1.
 const COPY_MELODY = { min: 4, share: 0.9, nearMs: 30 };
-// generate.js copiedRepeat (flag copySure, with copyMelody): a repeat this like its source is copied whatever the decoded
-// melody says. The user, 2026-11-12, on MAYDAY's drop at 2:21: too sparse for how the music goes. That phrase repeats the
+// generate.js copiedRepeat (copySure, Normal, from v45, with copyMelody): a repeat this like its source is copied whatever the
+// decoded melody says. The user, 2026-11-12, on MAYDAY's drop at 2:21: too sparse for how the music goes. That phrase repeats the
 // one at 1:04 (similarity .98); with copyMelody and melodyShiftPick together its copy was refused, and charted fresh it
 // got 25 moments where its copy has 33 (its first 3 s thinned by localThin to 2-3 a second, under drums as dense as after).
 // The same family of phrases played 30, 25, 30, 32 and 27 moments. The bot's 98 songs: 28 change, Normal's moments +1 in
 // 90337, the melody's notes Normal plays 62.0 -> 61.9%; the 80 corpus songs: 6 change, F1 against people .7921 on Normal
 // before and after.
 const COPY_SURE = 0.97;
-// chords.js heardPitches (flag heardChords): in a phrase where at least `pitched` of the moments (and `minMoments` of them) have
+// chords.js heardPitches (heardChords, Normal, Hard and Hell, from v45): in a phrase where at least `pitched` of the moments (and `minMoments` of them) have
 // a decoded pitch begin within `nearMs`, a moment plays no more notes than pitches begin on it. The decoder's notes are read at
 // the shift generate.js pickedMelodyShift finds with `shift`. Chords on a moment with one pitch: Finale Normal 20.8 -> 2.0%,
 // Hard 44.6 -> 3.7%, Rush E Hard 32.2 -> 11.7% (the rest open a phrase or sit where drums lead), triples on one or two
@@ -127,7 +127,7 @@ const TWO_KEY_TRILL = { minNotes: 4, maxGapBeats: 0.6, weight: 3 };
 // for by ear, as Normal hardly sped up with the music (train speed-ups per minute: people 26, Normal 17). Train F1 .8035
 // -> .8041.
 const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
-// generate.js finish (generator flag fastRuns, Normal only, with melodyRuns): over about 150 BPM a quarter beat is under the
+// generate.js finish (fastRuns, Normal, from v45, with melodyRuns): over about 150 BPM a quarter beat is under the
 // 100 ms of MELODY_RUNS.minGapMs and of Normal's minNoteGapMs (Rush E 93 ms, Finale 79 ms; 36 of 75 songs), so the bursts of
 // melodyRuns could never appear there: withRunNotes asks `minGapMs` of its notes instead, and spacedMoments and the final
 // floors let a gap that short stand next to a note of a burst. Any other two notes of Normal keep 100 ms. Asked for by ear
@@ -136,7 +136,7 @@ const MELODY_RUNS = { fastMs: 200, streamBeats: 1.1, minGapMs: 100, maxRun: 3 };
 // A sound of the melody dropped for being 35-60 ms off the grid was tried too (melodySnap) and removed: it changed 0.2-0.4%
 // of the moments and no measure.
 const FAST_RUNS = { minGapMs: 70 };
-// drumRuns.js (generator flag drumRuns, Normal only): a run of `minHits` strong drum hits (`minS`) a quarter beat apart, each
+// drumRuns.js (drumRuns, Normal, from v45): a run of `minHits` strong drum hits (`minS`) a quarter beat apart, each
 // within `onMs` of a grid point the tracker trusts, gets a note on every hit, on top of Normal's stream. Asked for by a
 // player (King Gnu - AIZO, 0:26.3: nine hits at 79 ms, Normal played five of them every half beat). The numbers: the
 // AIZO intro, 0:00-0:15, is noise read as kicks every 50-80 ms at strength .3-.7, off the grid; at minS .4 / onMs 25 a run
@@ -150,7 +150,7 @@ const FAST_RUNS = { minGapMs: 70 };
 // follows the player's wish, not the corpus. A note is added only inside a stream (notes before and after within
 // `streamBeats` of a beat) and `minGapMs` from both, like FAST_RUNS.
 const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs: 70, maxRun: 5, maxCover: 0.03 };
-// localThin.js lightKeep (generator flag lightThin, Normal only). Asked for by ear (King Gnu AIZO, 190 BPM, about 0:48-1:00 and
+// localThin.js lightKeep (lightThin, Normal, from v45). Asked for by ear (King Gnu AIZO, 190 BPM, about 0:48-1:00 and
 // 2:04-2:10: "a bit lighter in the music, still full of blocks"): AIZO is flat loud, so the strong-onset thinning of localThin
 // never ran there and the 500 ms energy was read by no rule that reaches over many seconds. A second whose energy stays under
 // the q80 of the `reach` 12 s on both sides (the quieter side counts, so a start of a long light part or a quiet ending does
@@ -173,7 +173,7 @@ const DRUM_RUNS = { minS: 0.6, onMs: 20, minHits: 5, streamBeats: 1.1, minGapMs:
 // Now AIZO 2 s windows from 2:04: 7 11 14 11 11 12 -> 6 8 10 9 11 12 (2:08 .48: 14 -> 10, 2:10 .72: 11 -> 9; later stages put some back) and
 // the relative energy bins above 0.4 sit .06-.07 under people (.531/.550/.583/.696/.882 against .582/.631/.671/.761/.921).
 const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0.85, floor: 0.6, power: 1.5 };
-// generate.js drumFitOf, drumRuns.js (flag drumRunsFit, with drumRuns): a roll gets no more added notes than the song and the
+// generate.js drumFitOf, drumRuns.js (drumRunsFit, Normal, from v45, with drumRuns): a roll gets no more added notes than the song and the
 // place ask for. The player, 2026-11-12, after AIZO: the speed-ups "should fit the speed of the song and what is going on in
 // it: in a slower, calmer song they can be there, but not such big ones, enough to feel it, not ten blocks at once". The
 // cap is `shortAdds` notes on a roll in a slow song (a beat of `slowBeatMs` or more, under 137 BPM) or a quiet place (the
@@ -193,17 +193,17 @@ const LIGHT_THIN = { reach: 12, quantile: 0.8, smooth: 0, minLevel: 0.8, knee: 0
 // split reads the energy 37 s later (no signal, shifted control), and 62% of 13 hits at a 440 ms beat or slower; on the corpus their Normal plays
 // 86% of a roll's hits under 130 BPM (8 rolls), 56% at 130-159, 46% at 160-184, 49% from 185, and 51% on rolls at .5-.8 of the
 // loud level against 54% above, in span 6 moments a second at every tempo; so the numbers follow the player's words, and the
-// steps are small where the flag adds little already. Of the hits Normal does not play, people's Normal plays the first of
+// steps are small where drumRuns adds little already. Of the hits Normal does not play, people's Normal plays the first of
 // a roll 24%, the last 29%, the middle 15% (68 hits), by strength rank 13-16%, which is why the short burst sits at the end.
 const DRUM_RUNS_FIT = { fastBeatMs: 375, slowBeatMs: 440, calmBelow: 0.85, hushBelow: 0.75, midAdds: 2, shortAdds: 1 };
-// Normal's softRuns flag (softRuns.js): a burst on the quarter-beat grid points that carry a decoded note (any voice, onsets
+// softRuns.js (softRuns, Normal, from v45): a burst on the quarter-beat grid points that carry a decoded note (any voice, onsets
 // within mergeMs are one) in a run of at least minRun onsets each within fastMs of the next, onMs from the grid point. Placed
 // as the bursts of melodyRuns are (melodyPick.js placeRunNotes): inside a stream (streamBeats), maxRun short gaps in a row,
 // minGapMs between notes. What kept those moments out in Rush E was not the missing candidate (the on-grid notes of the line
 // had scored moments already) but the one-beat gap holds between the half-beat taps, which lay over the quarter beats:
 // cutGapHolds lets such a hold (never a real sustain) give way to the burst note and become a tap, and onlyOverHolds adds a
 // note only where it does that (on a plain gap people played 13% of the additions, over a hold 31-34%, control about 25%).
-// keepFloor 1: with lightThin on, not in the seconds it thinned (AIZO 0:52-0:58 went 8-10 -> 9-12 moments per 2 s without it).
+// keepFloor 1: not in the seconds lightThin thinned (AIZO 0:52-0:58 went 8-10 -> 9-12 moments per 2 s without it).
 // Measured 2026-11-12 with localThinSure on:
 // - Rush E (32ca6d66): moments 689 -> 715 (28 added, all on a decoded onset, 2 lost); a second: phrase #10 4.4 -> 5.8,
 //   #11 4.0 -> 4.7, #18 5.1 -> 5.9, #8/#9 +0.4/+0.3, the most in one second stays 9. #14/#15 stay 3.4/4.0: their decoded notes
@@ -211,10 +211,10 @@ const DRUM_RUNS_FIT = { fastBeatMs: 375, slowBeatMs: 440, calmBelow: 0.85, hushB
 // - Corpus, 80 songs: 1009 moments added in 72 songs; people's Normal plays 31.2% of them, people's Hard 56.2%; the decoded
 //   notes shifted 37 s (control): 22.8% / 39.0%. F1 against people Normal .7926 -> .7908, Hard .8054 -> .8055, Easy same.
 //   minRun 3 added 1261 at 35.1% / 55.2% (control 25.4% / 40.6%), minRun 4 (this) 1104 at 35.8% / 57.2% (bot flags base).
-//   Without onlyOverHolds the flag cost Normal F1 .022.
+//   Without onlyOverHolds the rule cost Normal F1 .022.
 // - Bot songs (99): Normal +1584 moments (+1.7%) in 72 songs; the most in one song +13.2% (3b4d340d), +10.4% (304996f5).
 const SOFT_RUNS = { source: "all", mergeMs: 45, fastMs: 200, onMs: 25, minVel: 0, minRun: 4, streamBeats: 1.1, minGapMs: 70, maxRun: 3, cutGapHolds: true, onlyOverHolds: true, keepFloor: 1 };
-// selection.js selectMoments (generator flag fillFloor, Normal only): the long stretches and the rests are not filled with a
+// selection.js selectMoments (fillFloor, Normal, from v45): the long stretches and the rests are not filled with a
 // sound of strength under `minS`. Asked for by ear (Rush E, 0:04: "one piano key, three blocks on three lanes"): one E of
 // 1.27 s got a note on its onset and two fills 0.2 and 0.4 s later, on onsets of strength .16 and .17 where the key's own
 // is 1.00. With the floor the key gets one hold, as its neighbours at 0:00 and 0:05 do, on every level (Easy had three
@@ -222,19 +222,19 @@ const SOFT_RUNS = { source: "all", mergeMs: 45, fastMs: 200, onMs: 25, minVel: 0
 // 75 songs -> 0; corpus F1 .807 -> .807, moments -0.1 a song. A floor of .5 reads better against people (F1 .810,
 // precision .765 -> .773, moments -1.8%) but takes eleven notes a song that nobody has complained of.
 const FILL_FLOOR = { minS: 0.25 };
-// selection.js selectMoments (generator flag loudHoles, Normal only): a stretch of `beats` (and `minMs`) or more between two
+// selection.js selectMoments (loudHoles, Normal, from v45): a stretch of `beats` (and `minMs`) or more between two
 // notes that a phrase left empty takes the best moment in it whose strength is of rank `minLoud` or more in the song, on top
-// of the budget, up to `room` of it (rounded up). Asked for by ear (Rush E with the melody flags: "gaps although notes are
+// of the budget, up to `room` of it (rounded up). Asked for by ear (Rush E with the melody rules: "gaps although notes are
 // playing"): there the sounds in a hole were loud ones under the foreground (a quarter beat scores low) in a phrase whose
 // budget was spent, with no weaker note for the long stretches to swap out. Rush E, holes of a beat or more with 2+ decoded
 // notes inside and no hold over them: 14 (11.7 s) -> 8 (4.4 s), 538 -> 550 moments; what is left has no snapped moment or
 // lies inside the gap of a chosen note. Over the bot's 74 songs such holes (1.5 beats, 500 ms) are rare with or without it:
-// 2.2 -> 2.0 a song, fewer than a chart moved two beats has (3.4). On top of the melody flags and melodyLines: corpus F1
+// 2.2 -> 2.0 a song, fewer than a chart moved two beats has (3.4). On top of the melody rules and melodyLines: corpus F1
 // .807 -> .807, precision .766 -> .765, recall .868 -> .870, moments +0.4% (bot +0.9%); minLoud .33, 2 beats and room .5
 // give the same within .001. Before the first note and after the last nothing is filled: a first version did, and put a
 // lone note nine seconds into the Camellia remix's fade-out.
 const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
-// selection.js selectMoments (generator flag paceHoles, Normal and the levels built on it): a stretch of `beats` or more
+// selection.js selectMoments (paceHoles, Normal and the levels built on it, from v45): a stretch of `beats` or more
 // between two notes that is `times` the pace of the notes round it or longer (the median of the gaps next to it, `gaps` on
 // either side) takes the best moment of the foreground in it, on top of the budget, up to `room` of it (rounded up).
 // Asked for by ear (MEGALOVANIA about 2:12: "a gap of two to four blocks although the music plays on"): at 2:07.4 and
@@ -243,7 +243,7 @@ const LOUD_HOLES = { beats: 1.5, minMs: 500, minLoud: 0.5, room: 0.25 };
 // a song (a chart moved two beats: 8.7 -> 7.8). The 80 corpus songs: F1 against people .791 -> .793 on Normal (recall
 // .873 -> .880, precision .734 -> .733), .727 -> .728 on Easy, .809 on Hard; moments +1.0% (bot +1.7%).
 const PACE_HOLES = { beats: 1, times: 2, gaps: 2, room: 0.25 };
-// localThin.js localKeep (generator flag localThinSure, Normal and the levels built on it): localThin's reading of a second
+// localThin.js localKeep (localThinSure, Normal and the levels built on it, from v45; localThin with `noise`): localThin's reading of a second
 // against the seconds round it, (v + noise) / (around + noise), so that a signal of a few strong onsets a second is not
 // taken for a dip. Asked for by ear (Rush E, "the later part still feels mega empty"): at 1:19-1:26 the strong high-band
 // onsets are 0-1 a second against 1.3-2.6 round them (a piano's high band is mostly its attack and a repeated key gives one),
@@ -258,27 +258,27 @@ const PACE_HOLES = { beats: 1, times: 2, gaps: 2, room: 0.25 };
 // 62% sit on a decoded melody note; the 98 bot songs: 68 changed, Normal +2.3%. Where the strong onsets are 8 a second it is
 // 8% of a reading, on Rush E's 1:19 it is all of it. The levels built on Normal move both ways (Hell #14 of Rush E 5.6 -> 5.1).
 const LOCAL_THIN_SURE = { ...LOCAL_THIN, noise: 2 };
-// voices.js withLineRepeats (generator flag lineRepeats, Normal and the levels that read its melody): the melody's line takes
+// voices.js withLineRepeats (lineRepeats, Normal and the levels that read its melody, from v45): the melody's line takes
 // the decoded notes at the pitch of its note before or after, within `reachMs` of it and at least as loud as `minVel`.
 // Rush E 0:33-0:36: the E struck every 165 ms, of which the line holds every other one (the decoder draws its line away from
-// a pitch it has just played) and Normal played every other one; with the flag each strike is a note of the line. Rush E
+// a pitch it has just played) and Normal played every other one; now each strike is a note of the line. Rush E
 // 674 -> 691 moments, MEGALOVANIA 707 -> 708. Corpus F1 against people .793 -> .791 on Normal (precision .733 -> .729),
 // .728 -> .729 on Easy, .809 on Hard; moments +0.5%.
 const LINE_REPEATS = { reachMs: 400, minVel: 0.35 };
-// voices.js underLine (generator flag leadVoiceBoth, Normal and the levels built on it): in a song a pitched line carries
+// voices.js underLine (leadVoiceBoth, Normal and the levels built on it, from v45; Normal's leadVoice): in a song a pitched line carries
 // (`song` of its phrases have a pitch begin on `pitched` of their loud moments, rank `minLoud` or more, `minMoments` at
 // least) a moment whose pitches (within `nearMs`) all lie `below` semitones or more under the melody, where a note of the
 // melody begins within `clashMs` of it, scores `penalty` less: it would take that note's place, and is Normal's only where
 // nothing else is. The rest of what plays under the melody stays, both hands, as people chart a piano piece. Asked for by
 // ear (Rush E: "it picked the lower, more bass line"). The gate holds for 4 of the bot's 74 songs (Finale, Bad Piggies
 // Theme, Rush E, BlackBerry) and 4 of the 80 corpus songs. Rush E 691 -> 674 moments, Finale 625 -> 612 with 52 -> 59 holds
-// (the melody's long notes are held where the left hand played). Against people nearly what no flag gives: Flower Dance
+// (the melody's long notes are held where the left hand played). Against people nearly what it was before: Flower Dance
 // Normal F1 .774 -> .770, Yoru ni Kakeru Easy .702 -> .666. At 200 ms it is the version where the bass gave way wherever the
 // line played, on a fast piece (Finale 570 moments, 85 holds; Flower Dance .760); that version (Rush E 656 moments, Finale 570)
 // lost by ear and was dropped. Hard and Hell are built on this Normal and hold every moment of it, for 1-2% of their own
 // (Rush E Hard 846 -> 828, Finale 734 -> 717, Yoru ni Kakeru 1541 -> 1505 at the same F1 .835).
 const LEAD_VOICE_BOTH = { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6, song: 0.75, below: 7, clashMs: 120, penalty: 2.5 };
-// freeTime.js freePhrases (generator flag freeTime, every level): a phrase has no tempo the grid could fit when the beats the
+// freeTime.js freePhrases (freeTime, every level, from v45): a phrase has no tempo the grid could fit when the beats the
 // tracker gave (not the fitted grid) are spread wider than `spread` of their median interval (`minBeats` or more of them),
 // the sounds sit under `onGrid` on the grid's quarter lines (1 all on a line, 0 anywhere) and `minLead` or more notes of
 // the decoded melody lock under `leadLock` to any quarter grid at the fitted tempo. Its moments keep the times they were
@@ -294,7 +294,7 @@ const LEAD_VOICE_BOTH = { nearMs: 60, pitched: 0.8, minLoud: 0.5, minMoments: 6,
 // inside them 56.9 -> 54.7, Hard 59.5 -> 55.3, Easy 48.0 -> 40.6, nothing over the whole corpus (78.5, 80.0, 72.5 -> 72.3);
 // a lock under .3 gives Normal +4.0 on 30 phrases but leaves Rush E 0:12-0:24 on the grid.
 const FREE_TIME = { spread: 0.045, minBeats: 6, onGrid: 0.3, minLead: 6, leadLock: 0.5 };
-// laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (generator flag pitchLanes, Normal only): where consecutive
+// laneRules.js pitchTrack, pitchCost, recallLane, laneSearch.js (pitchLanes, Normal, from v45): where consecutive
 // single moments sit on lead (or decoded melody) notes the lane moves the way the pitch moves, higher = right. A pitch step
 // asks for one lane (a step of the scale), two from `twoLanes` semitones, three from `threeLanes` (and a beat for the leap);
 // near an edge it takes what room is left, at the edge it starts over like melodyPull. A repeated pitch keeps its lane when
@@ -307,7 +307,7 @@ const FREE_TIME = { spread: 0.045, minBeats: 6, onGrid: 0.3, minLead: 6, leadLoc
 // pairs with it, MEGALOVANIA 121 -> 145 of 212). People follow the pitch no more than chance does (47% with it, 41%
 // against), so this is the user's wish, not the corpus.
 const PITCH_LANES = { weight: 3, maxGapBeats: 2, twoLanes: 4, threeLanes: 8, offTarget: 0.8, wrongSide: 2.5, recall: 2, recallMoments: 4, room: 2, lookMoments: 4, lookBeats: 1 };
-// melodyLines.js heldLineMoments, selection.js selectMoments (flag melodyLines, Normal only): the decoded melody held as lines.
+// melodyLines.js heldLineMoments, selection.js selectMoments (melodyLines, Normal, from v45): the decoded melody held as lines.
 // A line is a run of at least `minNotes` melody notes, each within the larger of `joinBeats` beats and `joinMs` of the last. Only
 // 6% of the melody's notes sit in a line Normal plays whole (72 songs): one by one the budget, a louder neighbour inside the gap
 // or a sound too weak for the foreground takes a note out of the line. A line is held when `heard` of its notes have a sound
@@ -317,15 +317,9 @@ const PITCH_LANES = { weight: 3, maxGapBeats: 2, twoLanes: 4, threeLanes: 8, off
 // closer than the level's gap and `louder` of a rank louder keeps its place and the line's moment gives way. What is left of the
 // line is thinned to the level's step (every second note of a fast run, on beats and half beats first). The held moments are
 // played on top of what a phrase chose, where they fit, up to `room` of its budget: no note gives its place to a line. On top
-// of the night's melody flags (melodyKeep, copyMelody, melodyShiftPick), the melody's notes played over what a line moved two
+// of the night's melody rules (melodyKeep, copyMelody, melodyShiftPick), the melody's notes played over what a line moved two
 // beats gets: bot 18.2 -> 19.8 points, corpus 10.8 -> 12.2; corpus F1 .807 -> .807, recall .864 -> .868, moments +1.1%.
 const MELODY_LINES = { joinBeats: 1, joinMs: 450, minNotes: 4, heard: 0.6, minLoud: 0.3, louder: 0.3, room: 0.3 };
-// The same lines chosen before the foreground (flag melodyLinesFirst, Normal only), which then takes what they leave of the
-// budget, `room` of it over: a line wins its place from a sound that is not clearly louder. More of the melody (bot 18.2 ->
-// 21.9, corpus 10.8 -> 15.8) for notes people play (corpus F1 .807 -> .795, recall .864 -> .847; Easy, cut from Normal, .733 ->
-// .718): one for the ear. A melody moment winning single close calls in the foreground (melodyDuel) was tried and removed: it
-// cost the same F1 for half the melody.
-const MELODY_LINES_FIRST = { ...MELODY_LINES, room: 0.15, first: true };
 // dips.js thinDips: Normal slows down where the music dips for a moment inside a loud passage; asked for by ear
 // (MEGALOVANIA, Camellia remix, 2:18-2:23). Train, audio dips of 400 ms+: people thin 35% of them to under half the density
 // around, v39 21%, this 41%. Dropping every off-beat moment where the energy falls under `deep` of the level around, as
@@ -351,18 +345,16 @@ const SUSTAIN_HOLDS = {
 // brass read as kicks. Train Normal F1 .8005 -> .8007, 11 songs changed, the dropped moments people's 14%. From v42.
 const DRUMLESS = { windowMs: 2000, highBelow: 1, highmidBelow: 4 };
 // sustain.js keepMelodyOnly: Normal plays the decoder's short-note line alone where it runs over a held bed in a loud
-// passage of 8 s or more (REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear), not in a phrase the drums
-// lead. The line comes from the decoder's low-threshold run where the melody file has one. It fires on 5 of 36 bot songs
-// and 1 of 78 train songs. From v42.
-const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80, notLedBy: "drums" };
-// Flag melodyOnlyLong: the line plays alone only in a passage of three windows (12 s) or more. The user, 2026-11-12, on
-// MAYDAY 1:39-1:44 and from 3:19: not charted wrong, but its intensity does not fit the rest of the section. There the
-// rule fired for two windows in the middle of a drop (0:16-0:24, 1:40-1:48, 3:20-3:28), a steady half-beat stream of 5
-// moments a second became the line with its gaps (16, 19, 17, 11 moments a window against 19-22 around), and the same
-// music at 2:27 kept its stream. Nothing told these windows from REVOLVANIA's (10-13 drum hits a second in both: its
-// brass reads as kicks), but REVOLVANIA's passage is five windows. Of the five bot songs the rule fires on, the four
-// with two windows change (MAYDAY, FIRESTARTER and two more); the 80 corpus songs: 1 changes, F1 .7921 -> .7922.
-const MELODY_ONLY_LONG = { ...MELODY_ONLY, minRun: 3 };
+// passage of 12 s or more (three windows; REVOLVANIA 0:20-0:42, the MEGALOVANIA motif on a low synth, by ear), not in a
+// phrase the drums lead. The line comes from the decoder's low-threshold run where the melody file has one. It fired on 5 of
+// 36 bot songs and 1 of 78 train songs from v42 (minRun 2, two windows of 8 s); minRun 3 (melodyOnlyLong, from v45): the
+// user, 2026-11-12, on MAYDAY 1:39-1:44 and from 3:19: not charted wrong, but its intensity does not fit the rest of the
+// section. There the rule fired for two windows in the middle of a drop (0:16-0:24, 1:40-1:48, 3:20-3:28), a steady
+// half-beat stream of 5 moments a second became the line with its gaps (16, 19, 17, 11 moments a window against 19-22
+// around), and the same music at 2:27 kept its stream. Nothing told these windows from REVOLVANIA's (10-13 drum hits a
+// second in both: its brass reads as kicks), but REVOLVANIA's passage is five windows. Of the five bot songs the rule fires
+// on, the four with two windows change (MAYDAY, FIRESTARTER and two more); the 80 corpus songs: 1 changes, F1 .7921 -> .7922.
+const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 3, snapMs: 80, notLedBy: "drums" };
 // dips.js silentUpper: Normal drops the moments in an energy dip where the upper bands go quiet for a second or more:
 // REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear. From v42.
 const DIP_SILENCE = { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] };
@@ -384,53 +376,52 @@ const FLAT_LOUD = { fromBpm: 145, ref: 0.7 };
 // fades.js: the fade-out at the end of a song, from where it falls under `from`, keeps `keep` of every bar's moments, the
 // ones on the beat first, and a lone tap with room is held. People's Normal plays 1.27 notes a second there, v37 2.48,
 // this 1.60. Thinned over the whole fade-out at once, a slow, still busy start lost most of its notes (Bad Piggies).
-const FADE_OUT = { loud: 0.6, from: 0.5, quiet: 0.35, minSec: 4, keep: 0.5, barBeats: 4, hold: { minBeats: 1, releaseBeats: 0.5, lastBeats: 2 } };
-// fades.js fadeOutOf (generator flag fadeFalls, Normal and the levels built on it): the end of a song is a fade-out only when
-// its energy falls, the last third under `falls` of the first. Asked for by ear (MEGALOVANIA 2:24-2:36: "a gap although the
-// notes play on"): the riff comes back quieter and plays at one loudness to the end (thirds .21 .22 .21), and the fade-out
-// took every other note of it, 9 moments in two seconds down to 4. Of the bot's 31 songs with a fade-out 9 end like that
-// (last third .90 of the first or more); the 22 that fade sit at .13 to .62.
-const FADE_FALLS = { ...FADE_OUT, falls: 0.7 };
-// generate.js plusNotes, quiet.js (flag plusCalm): where the song plays under `below` of its loud level, a level adds at most
+// fades.js fadeOutOf (`falls`, fadeFalls, Normal and the levels built on it, from v45): the end of a song is a fade-out only
+// when its energy falls, the last third under `falls` of the first. Asked for by ear (MEGALOVANIA 2:24-2:36: "a gap although
+// the notes play on"): the riff comes back quieter and plays at one loudness to the end (thirds .21 .22 .21), and the
+// fade-out took every other note of it, 9 moments in two seconds down to 4. Of the bot's 31 songs with a fade-out 9 end like
+// that (last third .90 of the first or more); the 22 that fade sit at .13 to .62.
+const FADE_OUT = { loud: 0.6, from: 0.5, quiet: 0.35, minSec: 4, keep: 0.5, barBeats: 4, hold: { minBeats: 1, releaseBeats: 0.5, lastBeats: 2 }, falls: 0.7 };
+// generate.js plusNotes, quiet.js (plusCalm, Hard and Hell, from v45): where the song plays under `below` of its loud level, a level adds at most
 // `share` of the moments the level under it plays there. A player's report and the user's ear, 2026-11-11: many blocks in the
 // calmer moments. A phrase's room for extras follows what sounds, and a quiet part of a slow song is full of soft drum hits
 // where the level under it holds long notes: on five of the bot's 98 songs Hard played 1.8 to 4 times Normal's moments there
-// (youtube:CHENRaquRHo 2:32-2:52 Normal 1.9/s, Hard 4.3, Hell 4.7; with the flag 3.0 and 3.6, its loud part as it was).
-// Over the 98 songs (the bot's flags, 4 s windows, 588 of them quiet): Hard 3.08 -> 2.92 moments/s in the quiet ones and
+// (youtube:CHENRaquRHo 2:32-2:52 Normal 1.9/s, Hard 4.3, Hell 4.7; now 3.0 and 3.6, its loud part as it was).
+// Over the 98 songs (the bot's rules, 4 s windows, 588 of them quiet): Hard 3.08 -> 2.92 moments/s in the quiet ones and
 // Hell 3.89 -> 3.49, the loud ones untouched (6.35 and 7.68); windows where Hard plays 1.8 times Normal or more 15 -> 4.
 // Half is where the median song already sits (Hard/Normal 1.25 in quiet windows, 1.22 in loud ones), so most songs keep
 // every note: all of Hard's moments fall by 0.3%, Hell's by 0.5%.
 const PLUS_CALM = { below: 0.5, share: 0.5 };
-// generate.js plusNotes (flag plusCalmEnd): the quiet ending of a song, as FADE_OUT finds it and whether or not it falls
-// (FADE_FALLS leaves an ending that plays on at one loudness at full density), takes no extras: the level ends on the notes
-// of the level under it. The report was MEGALOVANIA on Hard: its last 12 s play at .21 of the energy (loud parts .6 to .97)
-// and Hard added 4.7 moments/s there against Normal's 3.9, Hell 5.0; with the flag both play 3.9. 27 of the 98 songs end
+// generate.js plusNotes (plusCalmEnd, Hard and Hell, from v45): the quiet ending of a song, as FADE_OUT finds it and whether
+// or not it falls (`falls` leaves an ending that plays on at one loudness at full density), takes no extras: the level ends on
+// the notes of the level under it. The report was MEGALOVANIA on Hard: its last 12 s play at .21 of the energy (loud parts .6
+// to .97) and Hard added 4.7 moments/s there against Normal's 3.9, Hell 5.0; now both play 3.9. 27 of the 98 songs end
 // quietly; all of Hard's moments fall by 0.2%, Hell's by 0.5%.
 const PLUS_CALM_END = { loud: FADE_OUT.loud, from: FADE_OUT.from, quiet: FADE_OUT.quiet, minSec: FADE_OUT.minSec };
-// generate.js finish, spots.js (flag calmSpots): where the song plays under `below` of its loud level, a stretch of
+// generate.js finish, spots.js (calmSpots, every level, from v45): where the song plays under `below` of its loud level, a stretch of
 // `windowBeats` holds at most `over` times what the denser of the `sideBeats` on each side of it plays, and never under `most`
 // moments. The user, 2026-11-11: on a large part of the maps the energy is fairly calm and suddenly there is a mini spam.
 // Probe: a second with 5+ moments at 1.6 times the 6 s on each side of it, counted a minute of quiet (under half the loud
 // level), middle and loud music. People on the 80 corpus songs, Normal 1.07 / 1.75 / 1.72 and Hard 1.23 / 1.90 / 2.10:
 // their sudden dense spots sit in the loud parts. Ours with the bot's flags: Normal 2.95 / 2.23 / 0.61, Hard 2.28 / 1.99 /
-// 1.26, Hell 2.90 / 1.58 / 0.52 (the same count with no flags at all). With the flag: Normal 1.21 / 1.92 / 0.61, Hard 0.90
+// 1.26, Hell 2.90 / 1.58 / 0.52 (the same count with no flags at all). With the rule: Normal 1.21 / 1.92 / 0.61, Hard 0.90
 // / 1.52 / 1.23, Hell 1.72 / 1.06 / 0.55; on the bot's 98 songs Normal 2.50 / 3.04 -> 1.56 / 2.50. Normal loses 0.5% of its
 // moments and F1 against people goes .7913 -> .7924 (Hard .8089 -> .8091). The same probe over 2 s (6+ moments) puts the
-// quiet parts under people (.36 a minute against their .78, 6 spots against 11; without the flag 1.20): our spots are
+// quiet parts under people (.36 a minute against their .78, 6 spots against 11; without the rule 1.20): our spots are
 // short ones. Measured in bars because a rule over one second (1.4 times the denser side) cut MEGALOVANIA's opening riff
 // differently on each repeat, a figure being uneven inside its bar; over 1.4 leaves 1.45 / 1.92 on Normal, 1.5 1.81 / 2.07.
 const CALM_SPOTS = { below: 0.65, windowBeats: 4, sideBeats: 12, minSideBeats: 4, most: 6, over: 1.3 };
-// Flag calmMelody (with calmSpots; generate.js finish, spots.js): a moment on a note of the decoded melody is no part of a
+// calmMelody (calmSpots's `melody`, every level, from v45; generate.js finish, spots.js): a moment on a note of the decoded melody is no part of a
 // spot, it stays and is not counted. The user, 2026-11-12, after playing with calmSpots: Rush E loses notes at its start
 // and on the way. Of the 16 moments calmSpots took there 15 sat on a melody note (AIZO 10 of 11, MAYDAY 10 of 11): on
-// Normal the sudden dense spots of a quiet part are the melody's own runs. So with this flag calmSpots all but stops on
+// Normal the sudden dense spots of a quiet part are the melody's own runs. So with this rule calmSpots all but stops on
 // Normal: on the 80 corpus songs it takes 7 moments where it took 300 (56211 without calmSpots, 55911 with, 56204 with
 // both), a second with 5+ moments at 1.6 times its sides comes .82 / .34 / .82 times a minute of quiet music (people
 // .62) and F1 against people is .7911 / .7921 / .7911. Hard keeps part of it, its extras being no melody: .76 / .27 /
 // .55 (people .55), 68045 / 67554 / 67847 moments. The bot's 98 songs: Normal +595 moments on 90337, Hard +626. Keeping
 // the melody's notes but counting them was tried first and is worse than no calmSpots: the bar then gives up the notes
 // on its beats (F1 .7906, .89 spots a minute).
-// generate.js playedNotes, noise.js (flag noNoise): read every `hopMs` over `windowMs`, a place is no music when `minSounds`
+// generate.js playedNotes, noise.js (noNoise, every level, from v45): read every `hopMs` over `windowMs`, a place is no music when `minSounds`
 // sounds or more sit under `onGrid` of the grid's quarter lines and the decoder finds under `pitched` notes a second there.
 // The user, 2026-11-11: noises that are no notes and no vocals get mapped with blocks, a creator's intro or outro too.
 // The control is people's charts: on the 80 corpus songs the rule calls 109 s of 10788 noise (1.0%, 102 s of it in the
@@ -443,7 +434,7 @@ const CALM_SPOTS = { below: 0.65, windowBeats: 4, sideBeats: 12, minSideBeats: 4
 // music bed (youtube:CHENRaquRHo 4:30-5:05, 56 notes; youtube:wjOj_6cMGEY 13:31-14:06, 146): that is music by every
 // measure here. Looser numbers (onGrid .15, pitched 2) take in stretches people do play (0.72 notes/s against 0.13).
 const NO_NOISE = { windowMs: 4000, hopMs: 1000, minSounds: 8, onGrid: 0.1, pitched: 1 };
-// noise.js edgeStretches (flag noNoiseEdge, with noNoise). A noise stretch that starts within `withinMs` of the song's first
+// noise.js edgeStretches (noNoiseEdge, every level, from v45, with noNoise). A noise stretch that starts within `withinMs` of the song's first
 // (last) second takes the windows after it that are still off the grid and under `pitched` decoded notes a second, and its
 // edge lies `reachMs` past the last window's centre. King Gnu AIZO: noNoise stops at 10.4 s, the decoder hears 1.75-2.25 notes
 // a second in windows 11-13 (9 notes of 70-383 ms, none held, none after 13.8 s) and the music starts at 15.57 s; the rule
@@ -464,11 +455,13 @@ const SOLO_LEAD = { drumsBelow: 0.3, leadFrom: 0.8, share: 0.6 };
 // where the music holds no moment that strong stays empty (a full rest).
 const MINI_RESTS = { minBeats: 1.5, playing: 0.25, score: 0, edgeBeats: 0.5 };
 
-// generate.js plusNotes, selection.js plusMoments (flag hardPlus): Hard starts from the moments of Normal and adds its own.
+// generate.js plusNotes, selection.js plusMoments (hardPlus, from v44): Hard starts from the moments of Normal and adds its own.
 // Train sweep (train): budgetScale 1.2 / 1.3 / 1.4 gave Hard 5.95 / 6.17 / 6.24 moments/s (people 6.0) and median
 // F1 .826 / .828 / .823 (old Hard .767); plusFloor (the extras a dense Normal still gets, as a share of its moments) 0.1 / 0.18 / 0.28
 // gave 5.91 / 6.17 / 6.42 moments/s at 1.3. chordRates: Normal's chords stay chords (keepSizes) and these only add, 0.42 chord share
 // (people .42; Hard's own rates gave .54 on top of Normal's chords).
+// From v45 it holds the rules played as flags in the bot too: the ones of Normal that Hard and Hell read as well (calmSpots,
+// calmMelody, heardChords, noNoise, noNoiseEdge), the extras' own (plusCalm, plusCalmEnd, plusHeard, plusMelody), and the holds.
 const HARD_PLUS = {
   buildOn: "normal",
   scoreLevel: "hard",
@@ -476,6 +469,24 @@ const HARD_PLUS = {
   budgetScale: 1.3,
   plusFloor: 0.18,
   chordRates: [0.9, 0.8, 0.18, 0.21],
+  // generate.js plusNotes (hardHolds, Hard, from v45): Hard built on Normal laid no holds of its own and let go of Normal's on its
+  // extras: train, holds 4.6% of its notes against people's 11.6%, held 12% of the song against 27%. plusHolds lays its sustain
+  // and gap holds as a Hard charted from the music did, holdRelease "free" lets a hold go with its sound as Normal's do, and the
+  // hold shares go up. Under 145 / 145-190 / over 190 BPM: holds .042 / .046 / .050 -> .101 / .089 / .090 of the notes (people
+  // .120 / .116 / .079), held time .10 / .12 / .14 -> .30 / .23 / .24 (people .34 / .27 / .24), F1 unchanged (.808 / .816 /
+  // .805). Shares .25 / .4 went past people (.19 holds), without "free" .12 holds but shorter.
+  plusHolds: { gaps: true },
+  holdRelease: "free",
+  holdsByCalm: holdsByCalm({ loud: 0.18, quiet: 0.3 }, { loud: 0.2, quiet: 0.4 }),
+  calmSpots: CALM_SPOTS,
+  calmMelody: true,
+  heardChords: HEARD_CHORDS,
+  noNoise: NO_NOISE,
+  noNoiseEdge: NO_NOISE_EDGE,
+  plusCalm: PLUS_CALM,
+  plusCalmEnd: PLUS_CALM_END,
+  plusHeard: PLUS_HEARD,
+  plusMelody: PLUS_MELODY,
 };
 
 // selection.js plusFigures (flag plusFigures, with hardPlus): the extras follow the figures of the bars. Train against people's
@@ -492,44 +503,21 @@ const PLUS_FIGURES = { plusFigures: true, plusFamilyBonus: 0.3 };
 // keepShareScale scales keepShare, so the flag holds whatever keepShare easyFromNormal sets.
 const EASY_FIGURES = { keepFigures: true, keepShareScale: 0.85 };
 
-// rhythm.js (flag easyFromNormal, from v44): Easy is cut from Normal, keeping keepShare of its moments per phrase by tempo
+// rhythm.js (easyFromNormal, from v44): Easy is cut from Normal, keeping keepShare of its moments per phrase by tempo
 // (in BPM), the beats scoring keepBeatBonus over the half beats; chordKeep and chordNew set its chords. The sweep is in the
 // comment under easyV26.
-const EASY_FROM_NORMAL = { cutFrom: "normal", keepShare: [[145, 0.66], [190, 0.8], [Infinity, 0.85]], keepBeatBonus: 0.6, chordKeep: [0.6, 0.14, 0, 0], chordNew: [0.14, 0, 0, 0] };
-
-// holds.js keptHolds (flag normalHolds): Easy and Hard keep Normal's holds of at least minBeats.
-const NORMAL_HOLDS = { keepNormalHolds: { minBeats: 2 } };
-
-// rhythm.js sameCuts (flag easySameCuts): the bars Normal plays alike keep the same moments in Easy after the floors too, a
+// rhythm.js sameCuts (easySameCuts, from v45): the bars Normal plays alike keep the same moments in Easy after the floors too, a
 // place kept where at least keep of the family's bars still play it. Train against people's Easy (65% same drops where Normal
 // repeats a bar, 2.39 / 2.88 / 2.97 moments/s under 145 / 145-190 / over 190 BPM): v44 39.1%, 2.07 / 2.81 / 3.18, F1 .7332;
 // keep .34 / .4 / .5 alone 68.7 / 73.5 / 79.4%, F1 .7381 / .7392 / .7395, but 2.58 moments/s at 145-190 (the cuts are half
 // beats); keep .4 with keepShare .72 / .9 / .85 (v44 .66 / .8 / .85): 65.8%, 2.13 / 2.68 / 2.97, F1 .7374. Less beat bonus, to
 // bring the share of Easy on the beat (87%) to people's (74%), cost F1 (.7332 -> .6980 at no bonus) and was dropped.
-const EASY_SAME_CUTS = { sameCuts: { keep: 0.4 }, keepShare: [[145, 0.72], [190, 0.9], [Infinity, 0.85]] };
+const EASY_FROM_NORMAL = { cutFrom: "normal", keepShare: [[145, 0.72], [190, 0.9], [Infinity, 0.85]], sameCuts: { keep: 0.4 }, keepBeatBonus: 0.6, chordKeep: [0.6, 0.14, 0, 0], chordNew: [0.14, 0, 0, 0] };
 
-// generate.js plusNotes (flag hardHolds): Hard built on Normal laid no holds of its own and let go of Normal's on its extras:
-// train, holds 4.6% of its notes against people's 11.6%, held 12% of the song against 27%. plusHolds lays its sustain and gap
-// holds as a Hard charted from the music did, holdRelease "free" lets a hold go with its sound as Normal's do, and the hold
-// shares go up. Under 145 / 145-190 / over 190 BPM: holds .042 / .046 / .050 -> .101 / .089 / .090 of the notes (people .120 /
-// .116 / .079), held time .10 / .12 / .14 -> .30 / .23 / .24 (people .34 / .27 / .24), F1 unchanged (.808 / .816 / .805). Shares
-// .25 / .4 went past people (.19 holds), without "free" .12 holds but shorter.
-const HARD_HOLDS = { plusHolds: { gaps: true }, holdRelease: "free", holdsByCalm: holdsByCalm({ loud: 0.18, quiet: 0.3 }, { loud: 0.2, quiet: 0.4 }) };
+// holds.js keptHolds (normalHolds, from v44): Easy and Hard keep Normal's holds of at least minBeats.
+const NORMAL_HOLDS = { keepNormalHolds: { minBeats: 2 } };
 
-// generate.js plusNotes, holds.js keptHolds (flag hellHolds): Hell built on Hard played only half of Hard's holds (bot's 80 songs
-// 50.7%, held for 80% of their length 32.6%; the corpus 55.7%), 95% of the lost ones because the hold let go on the next moment,
-// usually an extra of Hell's, and 3.4% of Hell's notes were holds against Hard's 9.9%. Now every hold of Hard stays one: "free"
-// release lets it go with its sound, no extra lands under it (minBeats 0, down to the level's shortest hold) and the phrase's room
-// does not shrink by that time (fullRoom: the extras go where a hold is not), and where the lanes cannot place a moment of Hard
-// for a hold the newest hold in the way plays as a tap (holdYield: without it nesting broke, 131 moments of Hard in 32 songs).
-// Bot's songs: holds kept 96.3% (80%+ of the length 95.9%), 6.6% of Hell's notes, Hell moments 115516 -> 108401 (-6.2%), notes
-// 176193 -> 172872, median Hell/Hard moments 1.311 -> 1.218; corpus 95.3%, -4.2%, 1.316 -> 1.267. The cost sits in the holds of
-// under 1.1 beats (78% of Hard's holds), which leave no room for an extra: "free" release and holdYield alone (minBeats 2) keep
-// 58% and the holds from 1.1 beats up (92-94%) for 0.1% of the moments, minBeats 0.6 keeps 71% (1.260), a minBeats between 1.1 and 2
-// kept nothing more and cost 1.9%. There are no people's Hell maps to hold this against.
-const HELL_HOLDS = { holdRelease: "free", holdYield: true, keepNormalHolds: { minBeats: 0, shortest: true, fullRoom: true } };
-
-// generate.js plusNotes (flag hellPlus): Hell starts from the moments of Hard and adds its own, as Hard does on Normal. There are
+// generate.js plusNotes (hellPlus, from v44): Hell starts from the moments of Hard and adds its own, as Hard does on Normal. There are
 // no people's Hell maps, so the targets are the user's: about Hard x1.4 moments in the median, only +15-20% on dense songs, and
 // where the room runs out half the extra notes as sixteenth bursts, half as chords of 2-3 keys on strong hits.
 // Train (78 songs, with the bot's flags), Hell/Hard moments in the median: budgetScale 1.8 / 2.0 / 2.2 gave 1.29 / 1.40 / 1.48,
@@ -538,6 +526,7 @@ const HELL_HOLDS = { holdRelease: "free", holdYield: true, keepNormalHolds: { mi
 // rest of its room to chord keys: with 2.2 and 5-9 / .7-.17, phrases under 5/s x1.44, 5-7 x1.42, 7-9 x1.32 (51% of the extra
 // notes chord keys), 9 and up x1.17 (64%); median 1.39, 8.2 moments/s (Hard 6.0), 12.7 notes/s (Hard 8.7). Where Hard already
 // plays every sixteenth (slow songs) no moment fits and the room goes to chords. No Hard moment is lost.
+// From v45 it holds the rules played as flags in the bot too, the same as HARD_PLUS but for the holds (hellHolds, below).
 const HELL_PLUS = {
   buildOn: "hard",
   scoreLevel: "hard",
@@ -548,7 +537,30 @@ const HELL_PLUS = {
   chordRates: [1.0, 0.9, 0.3, 0.3],
   copyFrom: COPY_FROM,
   ...PLUS_FIGURES,
-  ...NORMAL_HOLDS,
+  // holds.js keptHolds, generate.js plusNotes (hellHolds, Hell, from v45): Hell built on Hard played only half of Hard's holds
+  // (bot's 80 songs 50.7%, held for 80% of their length 32.6%; the corpus 55.7%), 95% of the lost ones because the hold let go
+  // on the next moment, usually an extra of Hell's, and 3.4% of Hell's notes were holds against Hard's 9.9%. Now every hold of
+  // Hard stays one: "free" release lets it go with its sound, no extra lands under it (minBeats 0, down to the level's
+  // shortest hold) and the phrase's room does not shrink by that time (fullRoom: the extras go where a hold is not), and where
+  // the lanes cannot place a moment of Hard for a hold the newest hold in the way plays as a tap (holdYield: without it nesting
+  // broke, 131 moments of Hard in 32 songs). Bot's songs: holds kept 96.3% (80%+ of the length 95.9%), 6.6% of Hell's notes,
+  // Hell moments 115516 -> 108401 (-6.2%), notes 176193 -> 172872, median Hell/Hard moments 1.311 -> 1.218; corpus 95.3%,
+  // -4.2%, 1.316 -> 1.267. The cost sits in the holds of under 1.1 beats (78% of Hard's holds), which leave no room for an
+  // extra: "free" release and holdYield alone (minBeats 2) keep 58% and the holds from 1.1 beats up (92-94%) for 0.1% of the
+  // moments, minBeats 0.6 keeps 71% (1.260), a minBeats between 1.1 and 2 kept nothing more and cost 1.9%. There are no
+  // people's Hell maps to hold this against.
+  holdRelease: "free",
+  holdYield: true,
+  keepNormalHolds: { minBeats: 0, shortest: true, fullRoom: true },
+  calmSpots: CALM_SPOTS,
+  calmMelody: true,
+  heardChords: HEARD_CHORDS,
+  noNoise: NO_NOISE,
+  noNoiseEdge: NO_NOISE_EDGE,
+  plusCalm: PLUS_CALM,
+  plusCalmEnd: PLUS_CALM_END,
+  plusHeard: PLUS_HEARD,
+  plusMelody: PLUS_MELODY,
 };
 
 // --- Per-difficulty parameters ---------------------------------------------
@@ -572,7 +584,7 @@ const INTERNAL_LEVELS = {
     minGapBeats: 1 / 4,
     minNoteGapMs: 100,
     maxJack: 2,
-    cutFrom: "hardBase", // Hard as it is without the flag hardPlus, so Easy (cut from this level) does not move with that flag
+    cutFrom: "hardBase", // Hard as it is without hardPlus, so Easy (cut from this level) does not move with it
     cutLevel: 2,
     maxLevel: 1,
     halfBudget: [[110, 0.74], [135, 0.82], [160, 0.73], [185, 0.62], [Infinity, 0.46]],
@@ -697,7 +709,7 @@ const DIFFICULTIES = {
     motifPull: 2, // 6 narrowed a song to its favourites: distinct 4-block figures per 100 were 44 on the train songs, 50 at 2, 58 at 0, people 56
     echoMirror: 0.3,
     sustainMinBeats: 1,
-    localThin: LOCAL_THIN,
+    localThin: LOCAL_THIN_SURE, // from v45 (localThinSure): LOCAL_THIN with a pseudo-count of noise
     holdsByCalm: holdsByCalm({ loud: 0.22, quiet: 0.42 }, { loud: 0.2, quiet: 0.5 }),
     laneSearch: { ...LANE_SEARCH, melody: 0.15, oneHand: 1.25, echoBeta: 10, echoNone: 5, echoMirror: null },
     chordFlow: CHORD_FLOW,
@@ -727,6 +739,29 @@ const DIFFICULTIES = {
     holdSlow: HOLD_SLOW,
     slowDynamics: SLOW_DYNAMICS,
     flatLoud: FLAT_LOUD,
+    // from v45, the rules played as flags in the bot (the comment above each constant has the numbers and the report):
+    calmSpots: CALM_SPOTS, // with calmMelody
+    calmMelody: true,
+    copyMelody: COPY_MELODY, // with copySure
+    copySure: COPY_SURE,
+    drumRuns: DRUM_RUNS, // with drumRunsFit; Easy is cut from the Normal without them (generate.js plainKey), Hard and Hell are built on the one with them
+    drumRunsFit: DRUM_RUNS_FIT,
+    fastRuns: FAST_RUNS, // with melodyRuns
+    fillFloor: FILL_FLOOR,
+    freeTime: FREE_TIME, // every level reads it from Normal (generate.js analyse)
+    heardChords: HEARD_CHORDS,
+    leadVoice: LEAD_VOICE_BOTH,
+    lightThin: LIGHT_THIN,
+    lineRepeats: LINE_REPEATS,
+    loudHoles: LOUD_HOLES,
+    melodyKeep: MELODY_KEEP,
+    melodyLines: MELODY_LINES,
+    melodyShiftPick: MELODY_SHIFT_PICK,
+    noNoise: NO_NOISE, // with noNoiseEdge, on every level
+    noNoiseEdge: NO_NOISE_EDGE,
+    paceHoles: PACE_HOLES,
+    pitchLanes: PITCH_LANES,
+    softRuns: SOFT_RUNS,
   },
   hard: {
     grammar: "hard",
@@ -831,7 +866,8 @@ INTERNAL_LEVELS.hardBase = DIFFICULTIES.hard;
 //   keepShare .66/.76/.80, keepBeatBonus .25:  F1 .7275, ratio .617   bonus .6: .7318   bonus 1: .7319 (flat above .6)
 //   keepShare .66/.85/.90, keepBeatBonus .6:   F1 .7285, ratio .622 (more share, no more F1: people drop the weak moments)
 //   a loudness scale on the share (what halfBudget has) lost F1, .7260, and was dropped.
-//   chosen .66/.80/.85, bonus .6: F1 .7305 (old Easy .7175), ratio .619 (people .648), 2.96 moments/s (people 2.89)
+//   chosen .66/.80/.85, bonus .6: F1 .7305 (old Easy .7175), ratio .619 (people .648), 2.96 moments/s (people 2.89); with the same
+//   cuts in repeated bars (v45) keepShare is .72/.90/.85, see EASY_FROM_NORMAL.
 // People keep the beats over the weak half beats, hence a beat bonus above 0; below 0 F1 falls by .09. Normal's moments alone
 // took Easy's chord share from .109 to .087 (people .102), so chordKeep .6 on the downbeat and chordNew .14 bring it to .102 at
 // the same F1; they are the third tuned setting.
@@ -840,8 +876,9 @@ INTERNAL_LEVELS.easyV26 = DIFFICULTIES.easy;
 // From v44 the levels are built on Normal, played with the flags on in the bot and kept by the user: Hard is every moment of
 // Normal plus extras that follow the figures of the bars (hardPlus, plusFigures), Easy is cut from Normal with the same cuts in
 // the bars Normal plays alike (easyFromNormal, easyFigures), both keep Normal's long holds (normalHolds), and Hell is every
-// moment of Hard plus extras and chords (hellPlus; "za dużo dla mnie", but the patterns made sense).
-DIFFICULTIES.easy = { ...DIFFICULTIES.easy, ...EASY_FIGURES, ...EASY_FROM_NORMAL, ...NORMAL_HOLDS };
+// moment of Hard plus extras and chords (hellPlus; "za dużo dla mnie", but the patterns made sense). From v45 the 32 flags
+// played in the bot are part of them (Normal's literal, EASY_FROM_NORMAL, HARD_PLUS, HELL_PLUS and the noise rules here on Easy).
+DIFFICULTIES.easy = { ...DIFFICULTIES.easy, ...EASY_FIGURES, ...EASY_FROM_NORMAL, ...NORMAL_HOLDS, noNoise: NO_NOISE, noNoiseEdge: NO_NOISE_EDGE };
 DIFFICULTIES.hard = { ...DIFFICULTIES.hard, ...HARD_PLUS, ...NORMAL_HOLDS, ...PLUS_FIGURES };
 DIFFICULTIES.hell = { ...DIFFICULTIES.hell, ...HELL_PLUS };
 
@@ -863,8 +900,6 @@ module.exports = {
   DRUM_RUNS_FIT,
   EASY_FIGURES,
   EASY_FROM_NORMAL,
-  EASY_SAME_CUTS,
-  FADE_FALLS,
   FADE_OUT,
   FAST_RUNS,
   FELT_TEMPO,
@@ -872,10 +907,8 @@ module.exports = {
   FILL_FLOOR,
   FLAT_LOUD,
   FREE_TIME,
-  HARD_HOLDS,
   HEARD_CHORDS,
   HARD_PLUS,
-  HELL_HOLDS,
   HELL_PLUS,
   HOLD_SLOW,
   LEAD_VOICE_BOTH,
@@ -883,9 +916,7 @@ module.exports = {
   LOUD_HOLES,
   MELODY_KEEP,
   MELODY_LINES,
-  MELODY_LINES_FIRST,
   MELODY_ONLY,
-  MELODY_ONLY_LONG,
   MELODY_PICK,
   MELODY_RUNS,
   MELODY_SHIFT_PICK,

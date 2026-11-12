@@ -2,11 +2,12 @@ const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
 const { CALM_SPOTS, DIFFICULTIES, levelOf } = require("../../../helpers/mewbeat/charts/difficulty");
-const { FLAGS, withFlags } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll } = require("../../../helpers/mewbeat/charts/generate");
 const { quietLookup } = require("../../../helpers/mewbeat/charts/quiet");
 const { evenSpots } = require("../../../helpers/mewbeat/charts/spots");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
+
+const WITHOUT = flagWithout("withoutcalmspots", "calmSpots"); // the chart without the rule
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const BEAT = 500, BAR = 4 * BEAT;
@@ -23,7 +24,7 @@ const chartsOf = (song, flags) => Object.fromEntries(Object.entries(generateAll(
 const momentsOf = (notes, from = 0, to = Infinity) => [...new Set(notes.filter((n) => n.t >= from && n.t < to).map((n) => n.t))];
 
 // A chart by hand on the grid of a 120 BPM song: `bars` bars of 4 beats, each given as the quarter beats it plays (0..15).
-const ctx = analyse(makeLayeredFeatures({ bpm: 120, durationMs: 64000 }), []);
+const ctx = analyse(makeLayeredFeatures({ bpm: 120, durationMs: 64000 }));
 const ON_BEATS = [0, 4, 8, 12];
 const chart = (bars) => bars.flatMap((slots, bar) => slots.map((slot) => ({ t: bar * BAR + (slot * BEAT) / 4, lane: slot % 4, len: 0 })));
 const everywhere = () => true;
@@ -118,25 +119,23 @@ describe("a sudden dense spot in a quiet part (spots.js evenSpots)", () => {
   });
 });
 
-describe("no sudden dense spots in the quiet parts (flag calmSpots)", () => {
-  it("is off by default and gives Normal, Hard and Hell the rule", () => {
-    assert.ok(FLAGS.calmSpots);
-    assert.deepEqual(Object.keys(FLAGS.calmSpots.levels), ["normal", "hard", "hell"]);
+describe("no sudden dense spots in the quiet parts (diff.calmSpots)", () => {
+  it("gives Normal, Hard and Hell the rule (from v45), and Easy and the levels before v44 not", () => {
     for (const level of ["normal", "hard", "hell"]) {
-      assert.equal(DIFFICULTIES[level].calmSpots, undefined, level);
-      assert.equal(withFlags(levelOf(level), level, { calmSpots: true }).calmSpots, CALM_SPOTS, level);
+      assert.equal(DIFFICULTIES[level].calmSpots, CALM_SPOTS, level);
+      assert.equal(levelOf(level).calmSpots, CALM_SPOTS, level);
     }
-    for (const level of ["easy", "hardBase"]) assert.equal(withFlags(levelOf(level), level, { calmSpots: true }), levelOf(level), level);
+    for (const level of ["easy", "hardBase"]) assert.equal(levelOf(level).calmSpots, undefined, level);
   });
 
   it("leaves a song that is loud all the way note for note on every level", () => {
-    const off = chartsOf("120 BPM, loud", []), on = chartsOf("120 BPM, loud", ["calmSpots"]);
+    const off = chartsOf("120 BPM, loud", WITHOUT), on = chartsOf("120 BPM, loud");
     for (const level of LEVELS) assert.deepEqual(on[level], off[level], level);
   });
 
   it("only takes moments away from Normal, and none where the song is loud", () => {
     for (const song of Object.keys(SONGS)) {
-      const off = chartsOf(song, []), on = chartsOf(song, ["calmSpots"]);
+      const off = chartsOf(song, WITHOUT), on = chartsOf(song);
       const before = new Set(momentsOf(off.normal));
       assert.deepEqual(momentsOf(on.normal).filter((t) => !before.has(t)), [], `${song}: Normal gained moments`);
       const quiet = quietLookup(SONGS[song](), CALM_SPOTS) ?? (() => false);
@@ -151,7 +150,7 @@ describe("no sudden dense spots in the quiet parts (flag calmSpots)", () => {
 
   it("keeps every moment of the level under it, and the lanes stay playable", () => {
     for (const song of Object.keys(SONGS)) {
-      const charts = chartsOf(song, ["hardHolds", "hellHolds", "calmSpots"]);
+      const charts = chartsOf(song);
       for (const [level, under] of [["hard", "normal"], ["hell", "hard"]]) {
         const mine = new Set(charts[level].map((n) => n.t));
         assert.deepEqual(momentsOf(charts[under]).filter((t) => !mine.has(t)), [], `${song}: ${under} moments missing from ${level}`);

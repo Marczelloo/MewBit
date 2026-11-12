@@ -6,7 +6,7 @@ const { afterEach, beforeEach, describe, it } = require("node:test");
 
 const { audioKeyFile, audioKeyOf } = require("../../../helpers/mewbeat/audioKey");
 const { createChartStore } = require("../../../helpers/mewbeat/chartStore");
-const { fileKey, flagsKey, noMelodyKey } = require("../../../helpers/mewbeat/charts/flags");
+const { FLAGS, fileKey, flagsKey, noMelodyKey } = require("../../../helpers/mewbeat/charts/flags");
 const { GENERATOR_VERSION, generateAll, generateChart } = require("../../../helpers/mewbeat/charts/generate");
 const { createMelodyDecoder } = require("../../../helpers/mewbeat/melodyDecoder");
 const { makeFeatures } = require("./fixtures");
@@ -18,6 +18,9 @@ const key = audioKeyOf(track);
 const decoded = { ...fixture.decoded, short: fixture.short };
 const features = { ...makeFeatures(), ...fixture.features };
 const LEVELS = ["easy", "normal", "hard", "hell"];
+// FLAGS is empty from v45, so the key machinery is exercised with two flags registered here (they change no note).
+FLAGS.markerA = { label: "markerA", levels: {} };
+FLAGS.markerB = { label: "markerB", levels: {} };
 
 function collectingLog() {
   const log = { lines: [], warning: (...args) => log.lines.push(args) };
@@ -32,8 +35,9 @@ describe("a chart made without a melody", () => {
   describe("the marker", () => {
     it("is nm, after the flags", () => {
       assert.strictEqual(noMelodyKey(""), "nm");
-      assert.strictEqual(noMelodyKey("heardChords-pitchLanes"), "heardChords-pitchLanes-nm");
-      assert.strictEqual(noMelodyKey(flagsKey(["pitchLanes", "heardChords"])), "heardChords-pitchLanes-nm");
+      assert.strictEqual(noMelodyKey("markerA-markerB"), "markerA-markerB-nm");
+      assert.strictEqual(noMelodyKey(flagsKey(["markerB", "markerA"])), "markerA-markerB-nm");
+      assert.strictEqual(noMelodyKey(flagsKey(["pitchLanes", "heardChords"])), "nm"); // the flags of before v45 are no flags now
     });
 
     it("goes into a file name past the length limit as a hash, like any key", () => {
@@ -48,11 +52,12 @@ describe("a chart made without a melody", () => {
         assert.strictEqual(generateChart(features, level, KEY).version, GENERATOR_VERSION, level);
         assert.strictEqual(generateChart({ ...features, noMelody: true }, level, KEY).version, `${GENERATOR_VERSION}-nm`, level);
         assert.strictEqual(
-          generateChart({ ...features, noMelody: true }, level, KEY, ["pitchLanes", "heardChords"]).version,
-          `${GENERATOR_VERSION}-heardChords-pitchLanes-nm`,
+          generateChart({ ...features, noMelody: true }, level, KEY, ["markerB", "markerA"]).version,
+          `${GENERATOR_VERSION}-markerA-markerB-nm`,
           level,
         );
-        assert.strictEqual(generateChart(features, level, KEY, ["pitchLanes"]).version, `${GENERATOR_VERSION}-pitchLanes`, level);
+        assert.strictEqual(generateChart(features, level, KEY, ["markerA"]).version, `${GENERATOR_VERSION}-markerA`, level);
+        assert.strictEqual(generateChart(features, level, KEY, ["pitchLanes"]).version, GENERATOR_VERSION, level);
       }
     });
 

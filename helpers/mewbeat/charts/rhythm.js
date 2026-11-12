@@ -283,7 +283,7 @@ function nested(notes, rhythm) {
 }
 
 // sameCuts(notes, upper, timing, { keep }) -> notes: the bars the level above plays alike (`upper`, its sorted times) end up
-// with the same moments (diff.sameCuts, flag easySameCuts). figureMoments makes the budget cut alike, but the floors after
+// with the same moments (diff.sameCuts, Easy from v45). figureMoments makes the budget cut alike, but the floors after
 // it (density, gaps) drop single moments where a bar happens to run dense, so a family of such bars keeps a place only
 // where at least `keep` of its bars still play it, and drops it from the others. Only taps go; holds and bars with no family
 // stay as they are. No downbeats or snapped grid: the notes as they are.

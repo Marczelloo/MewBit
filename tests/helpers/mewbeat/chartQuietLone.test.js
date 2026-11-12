@@ -8,7 +8,7 @@ const { makeFeatures } = require("./fixtures");
 
 const BEAT_MS = 500; // the fixtures play at 120 BPM
 const timing = buildTiming(makeFeatures({ durationMs: 64000 }), 64000);
-const context = (level) => ({ timing, phrases: [], sections: [], durationMs: 64000, energy: { at: () => level }, eventTimes: [], onsets: [] });
+const context = (level) => ({ features: {}, timing, phrases: [], sections: [], durationMs: 64000, energy: { at: () => level }, eventTimes: [], onsets: [] });
 const every = (fromMs, toMs) => Array.from({ length: (toMs - fromMs) / BEAT_MS }, (_, i) => ({ t: fromMs + i * BEAT_MS, lane: 0 }));
 // Beats, then one moment 8 beats after them, then beats again 4 beats later.
 const notes = () => [...every(2000, 10000), { t: 14000, lane: 0 }, ...every(16000, 24000)];

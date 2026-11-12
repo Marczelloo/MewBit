@@ -3,9 +3,13 @@ const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, DRUM_RUNS, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
 const { drumRolls, withDrumRunNotes } = require("../../../helpers/mewbeat/charts/drumRuns");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll, traceChart } = require("../../../helpers/mewbeat/charts/generate");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
+
+// What a chart is without the rule; drumRunsFit goes too, it sizes the burst the rule makes. Where the burst's own size is the
+// point, FITLESS keeps the rule at the size it had before drumRunsFit.
+const WITHOUT = flagWithout("withoutdrumruns", "drumRuns", "drumRunsFit");
+const FITLESS = flagWithout("withoutdrumrunsfit", "drumRunsFit");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const QUARTER = 125; // a quarter beat at 120 BPM
@@ -27,13 +31,14 @@ const chartsOf = (features, flags) => Object.fromEntries(Object.entries(generate
 const momentsOf = (notes, from = 0, to = Infinity) => [...new Set(notes.filter((n) => n.t >= from && n.t < to).map((n) => n.t))].sort((a, b) => a - b);
 const key = (notes) => JSON.stringify(notes.map((n) => [n.t, n.lane, n.len ?? 0]));
 const grid = (hits) => Array.from({ length: hits }, (_, i) => ROLL_AT + i * QUARTER);
-const rulesOf = (features) => analyse(features, ["drumRuns"]).timing;
+const rulesOf = (features) => analyse(features).timing;
 
-describe("the burst where the drums roll (flag drumRuns)", () => {
-  it("is a flag of Normal, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.drumRuns.levels, { normal: { drumRuns: DRUM_RUNS } });
-    assert.match(FLAGS.drumRuns.label, /\S/);
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.drumRuns, undefined);
+describe("the burst where the drums roll (diff.drumRuns)", () => {
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.equal(DIFFICULTIES.normal.drumRuns, DRUM_RUNS);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) {
+      if (name !== "normal") assert.equal(level.drumRuns, undefined, name);
+    }
   });
 
   it("finds a roll of strong hits on the quarter-beat grid, and only that", () => {
@@ -46,9 +51,9 @@ describe("the burst where the drums roll (flag drumRuns)", () => {
     assert.equal(rolls([[ROLL_AT, 8, { s: 0.45, off: 40 }]], false).length, 0, "weak and off the grid");
   });
 
-  it("charts the roll on top of the stream, and charts nothing without the flag", () => {
+  it("charts the roll on top of the stream, and charts nothing without the rule", () => {
     const features = song([[ROLL_AT, 8]]);
-    const plain = chartsOf(features, []), rolled = chartsOf(features, ["drumRuns"]);
+    const plain = chartsOf(features, WITHOUT), rolled = chartsOf(features, FITLESS);
     const inRoll = (notes) => momentsOf(notes, ROLL_AT - 1, ROLL_AT + 8 * QUARTER);
     assert.ok(inRoll(plain.normal).length <= 4, "Normal plays the roll at most every half beat");
     // the burst starts on the beat's own note, so the cap of five quarter gaps in a row (laneRules MAX_QUARTER_GAPS) stops it
@@ -68,14 +73,14 @@ describe("the burst where the drums roll (flag drumRuns)", () => {
   it("makes no burst of weak hits, of hits off the grid, or of a short fill", () => {
     for (const roll of [[ROLL_AT, 8, { s: 0.45 }], [ROLL_AT, 8, { off: 45 }], [ROLL_AT, 8, { s: 0.5, off: 40 }], [ROLL_AT, 3]]) {
       const features = song([roll]);
-      assert.deepEqual(chartsOf(features, ["drumRuns"]), chartsOf(features, []), JSON.stringify(roll));
+      assert.deepEqual(chartsOf(features, FITLESS), chartsOf(features, WITHOUT), JSON.stringify(roll));
     }
   });
 
   it("makes no burst in a noise of kicks every 60 ms off the grid (AIZO, the first fifteen seconds)", () => {
     const features = song([], { kicks: false });
     features.drums = Array.from({ length: 250 }, (_, i) => ({ t: i * 60 + 11, kind: "kick", s: 0.3 + 0.4 * ((i * 7) % 5) / 5 }));
-    assert.deepEqual(chartsOf(features, ["drumRuns"]), chartsOf(features, []));
+    assert.deepEqual(chartsOf(features, FITLESS), chartsOf(features, WITHOUT));
   });
 
   it("makes no burst in a song whose drums roll all the time", () => {
@@ -83,7 +88,7 @@ describe("the burst where the drums roll (flag drumRuns)", () => {
     const rolls = Array.from({ length: 28 }, (_, i) => [4000 + i * 2000, 8]);
     const features = song(rolls);
     assert.ok(drumRolls(features.drums, rulesOf(features), DRUM_RUNS).length === 0);
-    assert.equal(key(chartsOf(features, ["drumRuns"]).normal), key(chartsOf(features, []).normal));
+    assert.equal(key(chartsOf(features, FITLESS).normal), key(chartsOf(features, WITHOUT).normal));
   });
 
   it("adds a note only inside a stream: none where the notes around it are far away", () => {
@@ -103,7 +108,7 @@ describe("the burst where the drums roll (flag drumRuns)", () => {
 
   it("leaves Easy as it was, and Hard and Hell on top of Normal's burst with no note doubled", () => {
     const features = song([[ROLL_AT, 8]]);
-    const plain = chartsOf(features, []), rolled = chartsOf(features, ["drumRuns"]);
+    const plain = chartsOf(features, WITHOUT), rolled = chartsOf(features, FITLESS);
     assert.equal(key(rolled.easy), key(plain.easy));
     assert.notEqual(key(rolled.normal), key(plain.normal));
     for (const level of ["hard", "hell"]) {
@@ -120,12 +125,12 @@ describe("the burst where the drums roll (flag drumRuns)", () => {
 
   it("is the same chart in the trace as in generate, with a step per added note", () => {
     const features = song([[ROLL_AT, 8]]);
-    const all = chartsOf(features, ["drumRuns"]);
+    const all = chartsOf(features, FITLESS);
     for (const level of LEVELS) {
-      const traced = traceChart(features, level, "k", ["drumRuns"]);
+      const traced = traceChart(features, level, "k", FITLESS);
       assert.equal(key(traced.notes), key(all[level]), level);
     }
-    const steps = traceChart(features, "normal", "k", ["drumRuns"]).records.filter((r) => r.kind === "drumRuns");
+    const steps = traceChart(features, "normal", "k", FITLESS).records.filter((r) => r.kind === "drumRuns");
     assert.ok(steps.length >= 2 && steps.every((r) => r.final));
   });
 });

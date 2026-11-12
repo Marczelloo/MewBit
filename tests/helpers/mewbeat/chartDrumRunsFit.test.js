@@ -3,9 +3,16 @@ const { describe, it } = require("node:test");
 
 const { DIFFICULTIES, DRUM_RUNS, DRUM_RUNS_FIT, INTERNAL_LEVELS } = require("../../../helpers/mewbeat/charts/difficulty");
 const { drumRolls, withDrumRunNotes } = require("../../../helpers/mewbeat/charts/drumRuns");
-const { FLAGS } = require("../../../helpers/mewbeat/charts/flags");
 const { analyse, generateAll, traceChart } = require("../../../helpers/mewbeat/charts/generate");
-const { makeLayeredFeatures } = require("./fixtures");
+const { flagWithout, makeLayeredFeatures } = require("./fixtures");
+
+// WITHOUT: no burst at all; FITLESS: the burst at the size drumRuns gives it (before drumRunsFit); NO_RUNS: drumRunsFit alone.
+const WITHOUT = flagWithout("withoutdrumruns", "drumRuns", "drumRunsFit");
+const FITLESS = flagWithout("withoutdrumrunsfit", "drumRunsFit");
+const NO_RUNS = flagWithout("withoutdrumrunsonly", "drumRuns");
+const CALMLESS = flagWithout("withoutcalmspots", "calmSpots");
+const FITLESS_CALM = flagWithout("withoutfitcalm", "drumRunsFit", "calmSpots");
+const WITHOUT_CALM = flagWithout("withoutrunscalm", "drumRuns", "drumRunsFit", "calmSpots");
 
 const LEVELS = ["easy", "normal", "hard", "hell"];
 const HITS = 8;
@@ -23,36 +30,37 @@ function song(bpm, at, energy) {
 const chartsOf = (features, flags) => Object.fromEntries(Object.entries(generateAll(features, "k", flags)).map(([l, c]) => [l, c.notes]));
 const momentsOf = (notes, from = 0, to = Infinity) => [...new Set(notes.filter((n) => n.t >= from && n.t < to).map((n) => n.t))].sort((a, b) => a - b);
 const key = (notes) => JSON.stringify(notes.map((n) => [n.t, n.lane, n.len ?? 0]));
-const addedBy = (features, flags) => {
-  const before = new Set(momentsOf(chartsOf(features, []).normal));
+const addedBy = (features, flags, without = WITHOUT) => {
+  const before = new Set(momentsOf(chartsOf(features, without).normal));
   return momentsOf(chartsOf(features, flags).normal).filter((t) => !before.has(t));
 };
 const ROLL_BEAT = 100; // far from both ends of the song
 // energy: the song is loud (0.6) all through, or quiet (0.2) from 10 s to 50 s, where the roll is
 const quietly = (t) => (t > 10000 && t < 50000 ? 0.2 : 0.6);
 
-describe("the burst sized to the song and the place (flag drumRunsFit)", () => {
-  it("is a flag of Normal, and no level has it without the flag", () => {
-    assert.deepEqual(FLAGS.drumRunsFit.levels, { normal: { drumRunsFit: DRUM_RUNS_FIT } });
-    assert.match(FLAGS.drumRunsFit.label, /\S/);
-    for (const level of [...Object.values(DIFFICULTIES), ...Object.values(INTERNAL_LEVELS)]) assert.equal(level.drumRunsFit, undefined);
+describe("the burst sized to the song and the place (diff.drumRunsFit)", () => {
+  it("is a rule of Normal (from v45), and no other level has it", () => {
+    assert.equal(DIFFICULTIES.normal.drumRunsFit, DRUM_RUNS_FIT);
+    for (const [name, level] of Object.entries({ ...DIFFICULTIES, ...INTERNAL_LEVELS })) {
+      if (name !== "normal") assert.equal(level.drumRunsFit, undefined, name);
+    }
   });
 
   it("does nothing without drumRuns", () => {
     for (const features of [song(120, ROLL_BEAT), song(170, ROLL_BEAT, quietly)]) {
-      assert.deepEqual(chartsOf(features, ["drumRunsFit"]), chartsOf(features, []));
+      assert.deepEqual(chartsOf(features, NO_RUNS), chartsOf(features, WITHOUT));
     }
   });
 
   it("keeps the whole burst in a fast, loud place: drumRuns note for note, on every level", () => {
     const features = song(170, ROLL_BEAT);
-    assert.ok(addedBy(features, ["drumRuns"]).length >= 2, "the fixture has a burst to keep");
-    assert.deepEqual(chartsOf(features, ["drumRuns", "drumRunsFit"]), chartsOf(features, ["drumRuns"]));
+    assert.ok(addedBy(features, FITLESS).length >= 2, "the fixture has a burst to keep");
+    assert.deepEqual(chartsOf(features), chartsOf(features, FITLESS));
   });
 
   it("gives a roll in a slow song one note, at its end", () => {
     const features = song(120, ROLL_BEAT);
-    const full = addedBy(features, ["drumRuns"]), fitted = addedBy(features, ["drumRuns", "drumRunsFit"]);
+    const full = addedBy(features, FITLESS), fitted = addedBy(features);
     assert.equal(full.length, 3);
     assert.equal(fitted.length, DRUM_RUNS_FIT.shortAdds);
     assert.ok(fitted[0] >= Math.max(...full), "the note is the latest the burst would have had");
@@ -62,14 +70,16 @@ describe("the burst sized to the song and the place (flag drumRunsFit)", () => {
 
   it("gives a roll in a quiet place of a fast song one note too, and the same song loud keeps the burst", () => {
     const quiet = song(170, ROLL_BEAT, quietly), loud = song(170, ROLL_BEAT);
-    assert.equal(addedBy(quiet, ["drumRuns"]).length, addedBy(loud, ["drumRuns"]).length, "the burst is the same without the flag");
-    assert.equal(addedBy(quiet, ["drumRuns", "drumRunsFit"]).length, DRUM_RUNS_FIT.shortAdds);
-    assert.equal(addedBy(loud, ["drumRuns", "drumRunsFit"]).length, addedBy(loud, ["drumRuns"]).length);
+    // with calmSpots on, the quiet song gains 7 moments from the burst's rule against the loud song's 3, some of them 4 s from
+    // the roll (calmSpots reads the quiet part as a whole); the fit is the point here, so these charts leave calmSpots out
+    assert.equal(addedBy(quiet, FITLESS_CALM, WITHOUT_CALM).length, addedBy(loud, FITLESS_CALM, WITHOUT_CALM).length, "the burst is the same without the fit");
+    assert.equal(addedBy(quiet, CALMLESS, WITHOUT_CALM).length, DRUM_RUNS_FIT.shortAdds);
+    assert.equal(addedBy(loud, CALMLESS, WITHOUT_CALM).length, addedBy(loud, FITLESS_CALM, WITHOUT_CALM).length);
   });
 
   it("places a roll's notes by its cap: all as before when the cap is not reached, the last ones when it is", () => {
     const features = song(170, ROLL_BEAT);
-    const timing = analyse(features, ["drumRuns"]).timing;
+    const timing = analyse(features).timing;
     const beat = 60000 / 170, at = ROLL_BEAT * beat;
     const stream = Array.from({ length: 40 }, (_, i) => ({ t: at - 4 * beat + i * (beat / 2), lane: i % 4 }));
     const asked = (fit) => withDrumRunNotes(stream, features.drums, timing, DRUM_RUNS, fit).filter((n) => !stream.includes(n)).map((n) => n.t);
@@ -89,9 +99,9 @@ describe("the burst sized to the song and the place (flag drumRunsFit)", () => {
 
   it("leaves Easy as it was, and Hard and Hell on top of Normal's shortened burst with no note doubled", () => {
     const features = song(120, ROLL_BEAT);
-    const plain = chartsOf(features, []), fitted = chartsOf(features, ["drumRuns", "drumRunsFit"]);
+    const plain = chartsOf(features, WITHOUT), fitted = chartsOf(features);
     assert.equal(key(fitted.easy), key(plain.easy));
-    assert.notEqual(key(fitted.normal), key(chartsOf(features, ["drumRuns"]).normal));
+    assert.notEqual(key(fitted.normal), key(chartsOf(features, FITLESS).normal));
     for (const level of ["hard", "hell"]) {
       const kept = new Set(momentsOf(fitted[level]));
       for (const t of momentsOf(fitted.normal)) assert.ok(kept.has(t), `${level} lost ${t}`);
@@ -106,9 +116,9 @@ describe("the burst sized to the song and the place (flag drumRunsFit)", () => {
 
   it("is the same chart in the trace as in generate", () => {
     const features = song(120, ROLL_BEAT);
-    const all = chartsOf(features, ["drumRuns", "drumRunsFit"]);
+    const all = chartsOf(features);
     for (const level of LEVELS) {
-      const traced = traceChart(features, level, "k", ["drumRuns", "drumRunsFit"]);
+      const traced = traceChart(features, level, "k");
       assert.equal(key(traced.notes), key(all[level]), level);
     }
   });

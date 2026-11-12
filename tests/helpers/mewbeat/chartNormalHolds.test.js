@@ -39,9 +39,11 @@ describe("Easy and Hard keep Normal's long holds (part of both since v44, was th
     assert.equal(keptHolds([{ t: 1000, lane: 0 }], source, diff, timing, 2600).find((n) => n.t === 1000).len, 1500);
   });
 
-  it("is part of Easy, Hard and Hell (HELL_PLUS carries it), not of Normal nor of the levels before v44", () => {
+  it("is part of Easy, Hard and Hell (Hell keeps every hold, from v45), not of Normal nor of the levels before v44", () => {
     assert.equal(FLAGS.normalHolds, undefined);
-    for (const level of ["easy", "hard", "hell"]) assert.deepEqual(DIFFICULTIES[level].keepNormalHolds, { minBeats: 2 }, level);
+    for (const level of ["easy", "hard"]) assert.deepEqual(DIFFICULTIES[level].keepNormalHolds, { minBeats: 2 }, level);
+    // Hell keeps Normal's holds from the shortest up (it was minBeats 2 before v45, as hellHolds changed it)
+    assert.deepEqual(DIFFICULTIES.hell.keepNormalHolds, { minBeats: 0, shortest: true, fullRoom: true });
     assert.equal(DIFFICULTIES.normal.keepNormalHolds, undefined);
     for (const level of ["easyV26", "hardBase", "normalV26"]) assert.equal(INTERNAL_LEVELS[level].keepNormalHolds, undefined, level);
   });

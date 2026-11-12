@@ -1,4 +1,4 @@
-// Sudden dense spots in the quiet parts of a song (generate.js finish, flag calmSpots): a bar that plays well above the
+// Sudden dense spots in the quiet parts of a song (generate.js finish, diff.calmSpots): a bar that plays well above the
 // bars on both sides of it while the music stays calm. Heard as "the energy is fairly calm and suddenly a mini spam"
 // (the user, 2026-11-11, on a large part of the maps). The numbers are with CALM_SPOTS in difficulty.js.
 const { groupByTime, slotRank } = require("./difficultyFilter");
@@ -13,7 +13,7 @@ const { lowerBound } = require("./util");
 // denser side to go by neither is a stretch that leads into a denser part or out of one. The moments over that go: the
 // finest place in the bar first, then the weaker sound, then the later one. A moment with a hold stays, and so do the
 // moments of `protect` (the level this one is built on: a set of times, or null). The moments of `apart` (the melody's,
-// flag calmMelody: a set of times, or null) are no part of a spot: they stay and are not counted in the stretch, so a bar
+// diff.calmMelody: a set of times, or null) are no part of a spot: they stay and are not counted in the stretch, so a bar
 // the melody runs through is judged by what plays beside the melody.
 // rule = diff.calmSpots = { below, windowBeats, sideBeats, minSideBeats, most, over }.
 function evenSpots(notes, ctx, rule, quietAt, protect = null, apart = null) {
