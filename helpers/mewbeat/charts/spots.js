@@ -12,9 +12,11 @@ const { lowerBound } = require("./util");
 // stretch is a bar, so a figure that repeats bar after bar is no spot however uneven it is inside the bar, and with the
 // denser side to go by neither is a stretch that leads into a denser part or out of one. The moments over that go: the
 // finest place in the bar first, then the weaker sound, then the later one. A moment with a hold stays, and so do the
-// moments of `protect` (the level this one is built on: a set of times, or null).
+// moments of `protect` (the level this one is built on: a set of times, or null). The moments of `apart` (the melody's,
+// flag calmMelody: a set of times, or null) are no part of a spot: they stay and are not counted in the stretch, so a bar
+// the melody runs through is judged by what plays beside the melody.
 // rule = diff.calmSpots = { below, windowBeats, sideBeats, minSideBeats, most, over }.
-function evenSpots(notes, ctx, rule, quietAt, protect = null) {
+function evenSpots(notes, ctx, rule, quietAt, protect = null, apart = null) {
   if (!rule || !quietAt || notes.length === 0) return notes;
   const moments = groupByTime(notes);
   const charted = moments.map((m) => m[0].t);
@@ -35,7 +37,8 @@ function evenSpots(notes, ctx, rule, quietAt, protect = null) {
     if (sides.length === 0) continue;
     const most = Math.max(rule.most, Math.floor(rule.over * Math.max(...sides) * windowMs));
     for (;;) {
-      const inside = left.slice(lowerBound(left, t), lowerBound(left, t + windowMs));
+      const all = left.slice(lowerBound(left, t), lowerBound(left, t + windowMs));
+      const inside = apart ? all.filter((x) => !apart.has(x)) : all;
       const loose = inside.filter((x) => !fixed.has(x));
       if (inside.length <= most || loose.length === 0) break;
       const [out] = loose

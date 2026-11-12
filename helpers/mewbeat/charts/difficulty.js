@@ -100,6 +100,14 @@ const PLUS_HEARD = { nearMs: 60, drumMs: 40, minDrum: 0.3, pitched: 0.8, minLoud
 // points over the same melody moved in time at .9 (13.6 at .75, 14.0 at 1) with as many moments; the 80 corpus songs: F1
 // against people .805 -> .806 on Normal, .736 -> .735 on Easy at each of the three. At 1 a third more moments change for .1.
 const COPY_MELODY = { min: 4, share: 0.9, nearMs: 30 };
+// generate.js copiedRepeat (flag copySure, with copyMelody): a repeat this like its source is copied whatever the decoded
+// melody says. The user, 2026-11-12, on MAYDAY's drop at 2:21: too sparse for how the music goes. That phrase repeats the
+// one at 1:04 (similarity .98); with copyMelody and melodyShiftPick together its copy was refused, and charted fresh it
+// got 25 moments where its copy has 33 (its first 3 s thinned by localThin to 2-3 a second, under drums as dense as after).
+// The same family of phrases played 30, 25, 30, 32 and 27 moments. The bot's 98 songs: 28 change, Normal's moments +1 in
+// 90337, the melody's notes Normal plays 62.0 -> 61.9%; the 80 corpus songs: 6 change, F1 against people .7921 on Normal
+// before and after.
+const COPY_SURE = 0.97;
 // chords.js heardPitches (flag heardChords): in a phrase where at least `pitched` of the moments (and `minMoments` of them) have
 // a decoded pitch begin within `nearMs`, a moment plays no more notes than pitches begin on it. The decoder's notes are read at
 // the shift generate.js pickedMelodyShift finds with `shift`. Chords on a moment with one pitch: Finale Normal 20.8 -> 2.0%,
@@ -254,6 +262,14 @@ const DRUMLESS = { windowMs: 2000, highBelow: 1, highmidBelow: 4 };
 // lead. The line comes from the decoder's low-threshold run where the melody file has one. It fires on 5 of 36 bot songs
 // and 1 of 78 train songs. From v42.
 const MELODY_ONLY = { windowMs: 4000, lowBelow: 52, longMs: 1000, minVel: 0.3, cover: 0.4, loudAbove: 0.7, shortMs: 600, sameMs: 60, linePerSec: 1.5, chordShare: 0.25, minRun: 2, snapMs: 80, notLedBy: "drums" };
+// Flag melodyOnlyLong: the line plays alone only in a passage of three windows (12 s) or more. The user, 2026-11-12, on
+// MAYDAY 1:39-1:44 and from 3:19: not charted wrong, but its intensity does not fit the rest of the section. There the
+// rule fired for two windows in the middle of a drop (0:16-0:24, 1:40-1:48, 3:20-3:28), a steady half-beat stream of 5
+// moments a second became the line with its gaps (16, 19, 17, 11 moments a window against 19-22 around), and the same
+// music at 2:27 kept its stream. Nothing told these windows from REVOLVANIA's (10-13 drum hits a second in both: its
+// brass reads as kicks), but REVOLVANIA's passage is five windows. Of the five bot songs the rule fires on, the four
+// with two windows change (MAYDAY, FIRESTARTER and two more); the 80 corpus songs: 1 changes, F1 .7921 -> .7922.
+const MELODY_ONLY_LONG = { ...MELODY_ONLY, minRun: 3 };
 // dips.js silentUpper: Normal drops the moments in an energy dip where the upper bands go quiet for a second or more:
 // REVOLVANIA 0:41.5-0:43, a low rumble after the bass drum that the low band hears on every beat, by ear. From v42.
 const DIP_SILENCE = { drop: 0.7, level: 0.3, gapMs: 1000, maxGapMs: 4000, bands: ["highmid", "high"] };
@@ -311,6 +327,16 @@ const PLUS_CALM_END = { loud: FADE_OUT.loud, from: FADE_OUT.from, quiet: FADE_OU
 // short ones. Measured in bars because a rule over one second (1.4 times the denser side) cut MEGALOVANIA's opening riff
 // differently on each repeat, a figure being uneven inside its bar; over 1.4 leaves 1.45 / 1.92 on Normal, 1.5 1.81 / 2.07.
 const CALM_SPOTS = { below: 0.65, windowBeats: 4, sideBeats: 12, minSideBeats: 4, most: 6, over: 1.3 };
+// Flag calmMelody (with calmSpots; generate.js finish, spots.js): a moment on a note of the decoded melody is no part of a
+// spot, it stays and is not counted. The user, 2026-11-12, after playing with calmSpots: Rush E loses notes at its start
+// and on the way. Of the 16 moments calmSpots took there 15 sat on a melody note (AIZO 10 of 11, MAYDAY 10 of 11): on
+// Normal the sudden dense spots of a quiet part are the melody's own runs. So with this flag calmSpots all but stops on
+// Normal: on the 80 corpus songs it takes 7 moments where it took 300 (56211 without calmSpots, 55911 with, 56204 with
+// both), a second with 5+ moments at 1.6 times its sides comes .82 / .34 / .82 times a minute of quiet music (people
+// .62) and F1 against people is .7911 / .7921 / .7911. Hard keeps part of it, its extras being no melody: .76 / .27 /
+// .55 (people .55), 68045 / 67554 / 67847 moments. The bot's 98 songs: Normal +595 moments on 90337, Hard +626. Keeping
+// the melody's notes but counting them was tried first and is worse than no calmSpots: the bar then gives up the notes
+// on its beats (F1 .7906, .89 spots a minute).
 // generate.js playedNotes, noise.js (flag noNoise): read every `hopMs` over `windowMs`, a place is no music when `minSounds`
 // sounds or more sit under `onGrid` of the grid's quarter lines and the decoder finds under `pitched` notes a second there.
 // The user, 2026-11-11: noises that are no notes and no vocals get mapped with blocks, a creator's intro or outro too.
@@ -724,6 +750,7 @@ module.exports = {
   CHORD_SLOW,
   COPY_FROM,
   COPY_MELODY,
+  COPY_SURE,
   DIP_SILENCE,
   DIP_THIN,
   DRUMLESS,
@@ -751,6 +778,7 @@ module.exports = {
   MELODY_LINES,
   MELODY_LINES_FIRST,
   MELODY_ONLY,
+  MELODY_ONLY_LONG,
   MELODY_PICK,
   MELODY_RUNS,
   MELODY_SHIFT_PICK,

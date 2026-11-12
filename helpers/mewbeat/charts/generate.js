@@ -125,7 +125,7 @@ function copiedRepeat(ctx, all, i, diff) {
     .filter((n) => n.t >= LEAD_IN_MS && energy.at(n.t) >= SILENCE_ENERGY);
   const upper = upperRhythm(ctx, diff);
   const copied = upper ? nested(fitted, upper) : fitted;
-  if (diff.copyMelody) {
+  if (diff.copyMelody && !(diff.copySure && phrase.similarity >= diff.copySure)) {
     const here = melodyShare(ctx, diff, copied, phrase.startMs, phrase.endMs);
     if (here !== null && here < diff.copyMelody.share * (melodyShare(ctx, diff, sourceNotes, from, to) ?? 1)) return null;
   }
@@ -683,7 +683,10 @@ function finish(ctx, { notes, sustained, protect = null }, diff, trace = null) {
   const faded = diff.fadeOut ? step("fadeOut", limited, holdFadeOut(thinFadeOut(limited, ctx, diff.fadeOut, melodyMoments(ctx, diff)), ctx, diff.fadeOut)) : limited;
   // diff.calmSpots (a flag): in a quiet part no bar plays well above the bars on both sides of it (spots.js). With the
   // lanes laid, like the fade-out; a level built on another gives only its own extras.
-  const evened = diff.calmSpots ? step("calmSpots", faded, evenSpots(faded, ctx, diff.calmSpots, quietOf(ctx, diff.calmSpots), protect)) : faded;
+  // diff.calmMelody (a flag): the moments on a note of the decoded melody are no part of a spot; the dense spots it evened
+  // were mostly the melody's own runs (Rush E, 15 of the 16 moments it dropped).
+  const onMelody = diff.calmSpots && diff.calmMelody ? melodyTimes(ctx, diff) : null;
+  const evened = diff.calmSpots ? step("calmSpots", faded, evenSpots(faded, ctx, diff.calmSpots, quietOf(ctx, diff.calmSpots), protect, onMelody && new Set(onMelody))) : faded;
   const final = step("finalFloors", evened, enforceFloors(evened, diff, ctx.timing, burstGap));
   if (!(diff.sameCuts && diff.cutFrom)) return final;
   const above = [...new Set(finalNotes(ctx, diff.cutFrom).map((n) => n.t))].sort((a, b) => a - b);

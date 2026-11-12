@@ -8,6 +8,7 @@ const crypto = require("node:crypto");
 const {
   CALM_SPOTS,
   COPY_MELODY,
+  COPY_SURE,
   EASY_SAME_CUTS,
   FADE_FALLS,
   FAST_RUNS,
@@ -23,6 +24,7 @@ const {
   PACE_HOLES,
   MELODY_LINES,
   MELODY_LINES_FIRST,
+  MELODY_ONLY_LONG,
   MELODY_SHIFT_PICK,
   NO_NOISE,
   PITCH_LANES,
@@ -52,8 +54,12 @@ const FLAGS = {
   // Normal, Hard, Hell: in a quiet part no bar plays well above the bars on both sides of it (spots.js evenSpots). Easy is
   // cut from Normal and follows it.
   calmSpots: { label: "Normal, Hard, Hell: w cichym fragmencie bez nagłych zagęszczeń (takt nie gra dużo gęściej niż takty przed nim i po nim)", levels: { normal: { calmSpots: CALM_SPOTS }, hard: { calmSpots: CALM_SPOTS }, hell: { calmSpots: CALM_SPOTS } } },
+  // Normal, Hard, Hell: with calmSpots, the moments on a note of the decoded melody stay (generate.js finish).
+  calmMelody: { label: "Normal, Hard, Hell: wygładzanie cichych fragmentów (calmSpots) nie zabiera nut melodii", levels: { normal: { calmMelody: true }, hard: { calmMelody: true }, hell: { calmMelody: true } } },
   // Normal: a repeat whose copy would miss the melody its source plays is charted fresh (generate.js copiedRepeat).
   copyMelody: { label: "Normal: powtórka bez kopii, gdy kopia gubi melodię", levels: { normal: { copyMelody: COPY_MELODY } } },
+  // Normal: with copyMelody, a repeat that sounds almost exactly like its source is copied all the same (generate.js copiedRepeat).
+  copySure: { label: "Normal: prawie identyczna powtórka zawsze jest kopią (copyMelody jej nie odrzuca)", levels: { normal: { copySure: COPY_SURE } } },
   // Easy: the bars Normal plays alike keep the same moments after the floors too (rhythm.js sameCuts).
   easySameCuts: { label: "Easy: te same cięcia w powtarzanych taktach po limitach", levels: { easy: { ...EASY_SAME_CUTS } } },
   // Normal: a quiet ending that plays on at one loudness is not a fade-out, and keeps its notes (fades.js fadeOutOf).
@@ -85,6 +91,8 @@ const FLAGS = {
   melodyLines: { label: "Normal: trzyma linie melodii (dobre linie z dekodera dogrywane do tego, co już wybrane; nic nie traci miejsca)", levels: { normal: { melodyLines: MELODY_LINES } } },
   // Normal: the same lines chosen before everything else; a line wins its place from a sound that is not clearly louder (selection.js).
   melodyLinesFirst: { label: "Normal: linie melodii wchodzą pierwsze (więcej melodii kosztem części głośnych nut)", levels: { normal: { melodyLines: MELODY_LINES_FIRST } } },
+  // Normal: the short-note line plays alone (sustain.js keepMelodyOnly) only in a passage of 12 s or more, not for two bars of a drop.
+  melodyOnlyLong: { label: "Normal: sama linia melodii nad długim tłem tylko w pasażu od 12 s (krótsze wstawki grają jak reszta sekcji)", levels: { normal: { melodyOnly: MELODY_ONLY_LONG } } },
   // Normal: the decoded melody is moved to where it meets the song's sounds best (generate.js pickedMelodyShift).
   melodyShiftPick: { label: "Normal: przesunięcie melodii dobierane do dźwięków utworu", levels: { normal: { melodyShiftPick: MELODY_SHIFT_PICK } } },
   // Every level: no notes where the sounds are no music, off the grid and without pitch (noise.js; generate.js playedNotes).
