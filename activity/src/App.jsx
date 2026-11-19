@@ -23,6 +23,7 @@ import {
   House,
   Keyboard,
   LinkSimple,
+  Megaphone,
   MagnifyingGlass,
   Microphone,
   MusicNotes,
@@ -52,7 +53,7 @@ import {
 import { openExternalLink, setMewbeatPresence, setMewbitPresence, setupDiscord } from "./discord.js";
 import { connectActivitySocket, fetchActivityState, findActivityTrackSources, searchActivity, searchActivityLibrary, searchActivitySimilar, sendActivityAction } from "./api.js";
 import { parseMusicLink } from "./musicLink.js";
-import { createMockState, createEmptyState, mockSearchResults } from "./mockState.js";
+import { createMockState, createEmptyState, mockChangelog, mockSearchResults } from "./mockState.js";
 import { clamp, usePlayerPosition } from "./hooks/usePlayerPosition.js";
 import { createKonamiMatcher } from "./mewbeat/konami.js";
 import { isDesktopClient } from "./mewbeat/platform.js";
@@ -66,10 +67,12 @@ import Dropdown from "./views/Dropdown.jsx";
 import SignalLoader from "./views/SignalLoader.jsx";
 import "./styles.css";
 import "./motion.css";
+import "./views/patchNotes.css";
 
 const LazyFiltersPanel = lazy(() => import("./views/FiltersPanel.jsx"));
 const LazyHomePanel = lazy(() => import("./views/HomePanel.jsx"));
 const LazyLyricsPanel = lazy(() => import("./views/LyricsPanel.jsx"));
+const LazyPatchNotesPanel = lazy(() => import("./views/PatchNotesPanel.jsx"));
 const loadMewbeatGame = () => import("./mewbeat/MewbeatGame.jsx");
 const LazyMewbeatGame = lazy(loadMewbeatGame);
 
@@ -79,6 +82,8 @@ const MOCK_PREVIEW = import.meta.env.DEV && typeof window !== "undefined" && new
 const MOCK_IDLE_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("idle");
 // ?mock=1&firstrun starts as someone who has not seen the tour, so the reveal and the tour can be checked.
 const MOCK_FIRSTRUN_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("firstrun");
+// ?mock=1&whatsnew opens the "What's new" window, as after an update.
+const MOCK_WHATSNEW_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("whatsnew");
 // Lets us verify the Discord minimized composition at a fixed desktop viewport.
 // This is intentionally gated by both DEV and ?mock=1.
 const MOCK_COMPACT_PREVIEW = MOCK_PREVIEW && new URLSearchParams(window.location.search).has("compact");
@@ -1753,8 +1758,75 @@ function Modal({ open, onClose, labelledBy, initialFocusRef, restoreFocusRef, ch
   );
 }
 
+// Shown once after an update: the release's short summary, "Okay", and a way into the full notes. Closing it in any
+// way (Escape and the scrim too) counts as seen.
+function WhatsNewDialog({ release, onClose, onOpenNotes }) {
+  const okayRef = useRef(null);
+  const [shown, setShown] = useState(release);
+  useEffect(() => { if (release) setShown(release); }, [release]);
+  const data = release || shown;
+  return (
+    <Modal open={Boolean(release)} onClose={onClose} labelledBy="whats-new-title" initialFocusRef={okayRef} className="whats-new">
+      {data ? <>
+        <div className="mdlg-head">
+          <div>
+            <span className="whats-new-kicker"><Sparkle size={14} weight="fill" aria-hidden="true" />What's new in <span className="whats-new-version">v{data.version}</span></span>
+            <h2 id="whats-new-title">{data.title || "MewBit was updated"}</h2>
+          </div>
+          <IconButton label="Close" data-modal-close onClick={onClose}><X size={17} aria-hidden="true" /></IconButton>
+        </div>
+        {data.summary?.length ? <ul className="whats-new-list">{data.summary.map((line, index) => <li key={index}>{line}</li>)}</ul> : null}
+        <div className="mdlg-actions">
+          <button type="button" className="mbtn mbtn-ghost" onClick={onOpenNotes}>Full patch notes</button>
+          <button ref={okayRef} type="button" className="mbtn mbtn-primary" onClick={onClose}>Okay</button>
+        </div>
+      </> : null}
+    </Modal>
+  );
+}
+
+// The toolbar's quieter views in one menu, for a middle too narrow to show them beside the search. styles.css swaps
+// the .toolbar-secondary buttons for this one under the same container width, so nothing here measures.
+function ToolbarMoreMenu({ items }) {
+  const [position, setPosition] = useState(null);
+  const open = Boolean(position);
+  const rootRef = useRef(null);
+  const menuRef = useRef(null);
+  const close = useCallback(() => setPosition(null), []);
+  useSmartMenuGuards(open, rootRef, menuRef, close);
+  const active = items.some((item) => item.active);
+  const issues = items.some((item) => item.issues);
+  return (
+    <>
+      <IconButton
+        ref={rootRef}
+        label="More views"
+        className={`toolbar-more ${open || active ? "is-active" : ""} ${issues ? "has-issues" : ""}`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={(event) => {
+          if (open) { close(); return; }
+          const rect = event.currentTarget.getBoundingClientRect();
+          setPosition({ top: rect.bottom + 6, left: Math.max(10, Math.min(rect.right - 228, window.innerWidth - 238)) });
+        }}
+      >
+        <DotsThree size={18} weight="bold" aria-hidden="true" />
+      </IconButton>
+      <SmartMenu open={open} position={position} rootRef={rootRef} menuRef={menuRef} label="More views">
+        {items.map((item) => (
+          <button key={item.id} type="button" role="menuitem" className={`row-menu-item ${item.active ? "is-active" : ""}`} aria-current={item.active ? "page" : undefined} onClick={() => { close(); item.onSelect(); }}>
+            {item.icon}<span>{item.label}</span>{item.issues ? <span className="toolbar-more-issue" role="img" aria-label="Has issues" /> : null}
+          </button>
+        ))}
+      </SmartMenu>
+    </>
+  );
+}
+
 const HISTORY_QUEUE_LIMIT = 50;
 const HISTORY_SAVE_LIMIT = 500;
+// Below this window width two open panels leave the middle under ~480 px (each panel is at least 270 px).
+const PANELS_SIDE_BY_SIDE_MIN = 1020;
 
 function historyRequester(track) {
   return String(track?.requester || (track?.autoplay ? "MewBit" : "Unknown")).trim();
@@ -2541,14 +2613,18 @@ function PlayerBar({ state, onAction, onView, onOpenExternalLink, isActionPendin
 function App() {
   const [state, setState] = useState(() => {
     if (!import.meta.env.DEV) return createEmptyState();
-    return createMockState({ idle: MOCK_IDLE_PREVIEW, firstRun: MOCK_FIRSTRUN_PREVIEW });
+    return createMockState({ idle: MOCK_IDLE_PREVIEW, firstRun: MOCK_FIRSTRUN_PREVIEW, whatsNew: MOCK_WHATSNEW_PREVIEW });
   });
   const [context, setContext] = useState({ mode: "local", guildId: "demo", accessToken: null, user: { username: "Local Listener" } });
   const [connection, setConnection] = useState({ status: "connecting", message: "Starting Activity" });
   const [activeTab, setActiveTab] = useState("home");
+  // The release whose "What's new" window was closed here. A state push that left before the server stored it
+  // would otherwise open the window again.
+  const [whatsNewClosed, setWhatsNewClosed] = useState(null);
+  const [patchNotesFocus, setPatchNotesFocus] = useState(null);
   const [externalLinkRequest, setExternalLinkRequest] = useState(null);
   const [soundSection, setSoundSection] = useState("effects");
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => typeof window === "undefined" || window.innerWidth > 900);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= PANELS_SIDE_BY_SIDE_MIN);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(() => typeof window === "undefined" || window.innerWidth > 900);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [selectedPlaylistDetail, setSelectedPlaylistDetail] = useState(null);
@@ -2634,6 +2710,25 @@ function App() {
     setLeftSidebarOpen(false);
     setRightSidebarOpen(false);
   }, [isDrawerViewport]);
+  // A narrower window (not full screen, a portrait monitor) has room for one panel beside the middle, not two: the
+  // window shrinking there closes the library, and opening either panel closes the other.
+  const isCrowdedViewport = useMediaQuery(`(max-width: ${PANELS_SIDE_BY_SIDE_MIN - 1}px)`);
+  useEffect(() => {
+    if (isCrowdedViewport && leftSidebarOpen && rightSidebarOpen) setLeftSidebarOpen(false);
+  }, [isCrowdedViewport]);
+  // Read through a ref: the keyboard shortcut's listener outlives the render it was made in.
+  const panelsOpen = useRef({ left: leftSidebarOpen, right: rightSidebarOpen });
+  panelsOpen.current = { left: leftSidebarOpen, right: rightSidebarOpen };
+  const toggleLeftPanel = useCallback(() => {
+    const opening = !panelsOpen.current.left;
+    if (opening && window.innerWidth < PANELS_SIDE_BY_SIDE_MIN) setRightSidebarOpen(false);
+    setLeftSidebarOpen(opening);
+  }, []);
+  const toggleRightPanel = useCallback(() => {
+    const opening = !panelsOpen.current.right;
+    if (opening && window.innerWidth < PANELS_SIDE_BY_SIDE_MIN) setLeftSidebarOpen(false);
+    setRightSidebarOpen(opening);
+  }, []);
   const activityEvents = state.activity?.events || [];
   const hasActivityErrors = activityEvents.some((event) => event.level === "error" || event.level === "warning");
   const appShellRef = useRef(null);
@@ -2911,6 +3006,7 @@ function App() {
       if (action === "pause") next.player.playing = false, next.player.paused = true;
       if (action === "resume") next.player.playing = true, next.player.paused = false;
       if (action === "mewbeat_tutorial_seen") next.mewbeat = { ...next.mewbeat, tutorialSeen: true };
+      if (action === "whats_new_seen") next.whatsNew = null;
       if (action === "mewbeat_settings") next.mewbeat = { ...next.mewbeat, settings: { ...next.mewbeat?.settings, ...payload.settings } };
       if (action === "stop") { next.player.currentTrack = null; next.player.queue = []; next.player.playing = false; next.player.paused = true; next.player.positionMs = 0; }
       if (action === "volume" || action === "volume-preview") {
@@ -3315,6 +3411,8 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (mewbeatOpen || mewbeatRevealOpen || mewbeatCut) return;
+      // A dialog owns the keyboard: Space on its focused button presses the button, not play/pause.
+      if (event.target?.closest?.(".mscrim")) return;
       if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "/") {
         event.preventDefault();
@@ -3324,7 +3422,7 @@ function App() {
       }
       if (event.key.toLowerCase() === "q") {
         event.preventDefault();
-        setRightSidebarOpen((value) => !value);
+        toggleRightPanel();
         return;
       }
       if (!state.player.currentTrack) return;
@@ -3388,6 +3486,21 @@ function App() {
   /* Not terminal: everything still renders and the queue still reads, but
      nothing can play or be searched, so this warns without taking the surface
      away. Absent on older payloads, hence the explicit false. */
+  // After an update, once the room is on screen: not over the loader or a gate, not in the small player, and not over
+  // the game or its way in. An invite link came to play, so it waits for a later visit.
+  const whatsNew = state.whatsNew?.version && state.whatsNew.version !== whatsNewClosed ? state.whatsNew : null;
+  const showWhatsNew = Boolean(whatsNew) && !gate && !showLoader && !isHydrating && !isCompact && !roomInvite
+    && !mewbeatOpen && !mewbeatRevealOpen && !mewbeatCut;
+  const closeWhatsNew = useCallback(() => {
+    if (!whatsNew) return;
+    setWhatsNewClosed(whatsNew.version);
+    onAction("whats_new_seen", { version: whatsNew.version });
+  }, [onAction, whatsNew]);
+  const openPatchNotes = useCallback((version = null) => {
+    setPatchNotesFocus(version);
+    goToView("updates");
+  }, [goToView]);
+
   const lavalinkDown = state.lavalink ? state.lavalink.connected === false : false;
   const showAlert = lavalinkDown && !gate && !showLoader && !isCompact;
 
@@ -3441,18 +3554,25 @@ function App() {
             <div className="stage-toolbar">
               <div className="stage-toolbar-inner">
                 <div className="stage-navigation" aria-label="Activity navigation">
-                  <IconButton label="Toggle playlists" className={leftSidebarOpen ? "is-active" : ""} aria-pressed={leftSidebarOpen} onClick={() => { if (window.matchMedia("(max-width: 900px)").matches) setRightSidebarOpen(false); setLeftSidebarOpen((value) => !value); }}><VinylRecord size={17} weight={leftSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  <IconButton label="Toggle playlists" className={leftSidebarOpen ? "is-active" : ""} aria-pressed={leftSidebarOpen} onClick={toggleLeftPanel}><VinylRecord size={17} weight={leftSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                 </div>
                 <div className="stage-center">
                   <IconButton label="Home" className={activeTab === "home" ? "is-active" : ""} onClick={() => goToView("home")}><House size={17} weight={activeTab === "home" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                   <GlobalSearch {...searchProps} onFocus={() => goToView("search")} />
-                  <IconButton label="Sound settings" className={activeTab === "filters" ? "is-active" : ""} onClick={() => goToView("filters")}><SlidersHorizontal size={17} aria-hidden="true" /></IconButton>
+                  <IconButton label="Sound settings" className={`toolbar-secondary ${activeTab === "filters" ? "is-active" : ""}`} onClick={() => goToView("filters")}><SlidersHorizontal size={17} aria-hidden="true" /></IconButton>
                 </div>
                 <div className="stage-actions" aria-label="Player tools">
-                  <IconButton label="Room activity" className={`${activeTab === "activity" ? "is-active" : ""} ${hasActivityErrors ? "has-issues" : ""}`} onClick={() => goToView("activity")}><Bell size={17} weight={activeTab === "activity" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  <IconButton label="Room activity" className={`toolbar-secondary ${activeTab === "activity" ? "is-active" : ""} ${hasActivityErrors ? "has-issues" : ""}`} onClick={() => goToView("activity")}><Bell size={17} weight={activeTab === "activity" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                   {mewbeatDesktop ? <IconButton label="mewbeat" onClick={() => openGame()}><GameController size={17} aria-hidden="true" /></IconButton> : null}
-                  <IconButton label="Playback history" className={activeTab === "history" ? "is-active" : ""} aria-pressed={activeTab === "history"} onClick={() => goToView("history")}><ClockCounterClockwise size={17} weight={activeTab === "history" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
-                  <IconButton label="Toggle queue" className={rightSidebarOpen ? "is-active" : ""} aria-pressed={rightSidebarOpen} onClick={() => { if (window.matchMedia("(max-width: 900px)").matches) setLeftSidebarOpen(false); setRightSidebarOpen((value) => !value); }}><Queue size={17} weight={rightSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  <IconButton label="Patch notes" className={`toolbar-secondary ${activeTab === "updates" ? "is-active" : ""}`} aria-pressed={activeTab === "updates"} onClick={() => openPatchNotes()}><Megaphone size={17} weight={activeTab === "updates" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  <IconButton label="Playback history" className={`toolbar-secondary ${activeTab === "history" ? "is-active" : ""}`} aria-pressed={activeTab === "history"} onClick={() => goToView("history")}><ClockCounterClockwise size={17} weight={activeTab === "history" ? "fill" : "regular"} aria-hidden="true" /></IconButton>
+                  <ToolbarMoreMenu items={[
+                    { id: "filters", label: "Sound settings", icon: <SlidersHorizontal size={15} aria-hidden="true" />, active: activeTab === "filters", onSelect: () => goToView("filters") },
+                    { id: "activity", label: "Room activity", icon: <Bell size={15} aria-hidden="true" />, active: activeTab === "activity", issues: hasActivityErrors, onSelect: () => goToView("activity") },
+                    { id: "history", label: "Playback history", icon: <ClockCounterClockwise size={15} aria-hidden="true" />, active: activeTab === "history", onSelect: () => goToView("history") },
+                    { id: "updates", label: "Patch notes", icon: <Megaphone size={15} aria-hidden="true" />, active: activeTab === "updates", onSelect: () => openPatchNotes() },
+                  ]} />
+                  <IconButton label="Toggle queue" className={rightSidebarOpen ? "is-active" : ""} aria-pressed={rightSidebarOpen} onClick={toggleRightPanel}><Queue size={17} weight={rightSidebarOpen ? "fill" : "regular"} aria-hidden="true" /></IconButton>
                 </div>
               </div>
             </div>
@@ -3462,6 +3582,7 @@ function App() {
               {activeTab === "filters" ? <section className={`content-panel panel-surface filters-surface filters-surface-${soundSection}`}><PanelTitle icon={<SlidersHorizontal size={18} aria-hidden="true" />} title="Shape the sound" description="EQ and playful filters are applied to the live player" action={<div className="sound-mode-actions" role="tablist" aria-label="Sound controls"><button type="button" role="tab" aria-selected={soundSection === "effects"} className={soundSection === "effects" ? "is-active" : ""} onClick={() => setSoundSection("effects")}><Faders size={15} aria-hidden="true" /><span>Effects</span></button><button type="button" role="tab" aria-selected={soundSection === "equalizer"} className={soundSection === "equalizer" ? "is-active" : ""} onClick={() => setSoundSection("equalizer")}><SlidersHorizontal size={15} aria-hidden="true" /><span>Equalizer</span></button></div>} /><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading sound controls</span></div>}><LazyFiltersPanel filters={state.player.filters} filterPresets={state.filterPresets} equalizerPresets={state.equalizerPresets} activeSection={soundSection} canAdjust={Boolean(state.player.currentTrack)} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "lyrics" ? <section className="content-panel panel-surface"><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading lyrics</span></div>}><LazyLiveLyricsPanel player={state.player} onAction={onAction} isActionPending={isActionPending} /></Suspense></section> : null}
               {activeTab === "activity" ? <section className="content-panel panel-surface activity-feed-panel"><PanelTitle icon={<Bell size={18} aria-hidden="true" />} title="Room activity" description="Live actions and playback issues from this listening room" action={<ShortcutHelp placement="activity" />} /><ActivityFeedPanel events={activityEvents} /></section> : null}
+              {activeTab === "updates" ? <section className="content-panel panel-surface patch-notes-panel"><PanelTitle icon={<Megaphone size={18} aria-hidden="true" />} title="Patch notes" description="What changed in MewBit, release by release" /><Suspense fallback={<div className="empty-state" aria-busy="true"><SpinnerGap className="button-spinner" size={28} aria-hidden="true" /><span>Loading patch notes</span></div>}><LazyPatchNotesPanel focusVersion={patchNotesFocus} fallback={context.mode === "local" && import.meta.env.DEV ? mockChangelog : null} /></Suspense></section> : null}
               {activeTab === "history" ? <section className="content-panel panel-surface history-panel"><HistoryView history={state.player.history || []} sessionStartedAt={state.player.sessionStartedAt} playlists={state.playlists} likedTrackIds={state.likedTrackIds || []} findSources={searchProps.findSources} onAction={onAction} isActionPending={isActionPending} /></section> : null}
               {activeTab === "playlists" ? <section className="content-panel panel-surface"><PlaylistsPanel playlists={state.playlists} currentTrack={state.player.currentTrack} likedTrackIds={state.likedTrackIds || []} selectedPlaylist={selectedPlaylistDetail?.name || selectedPlaylist} playlistDetail={selectedPlaylistDetail} composerOpen={playlistComposerOpen} onComposerClose={closePlaylistComposer} onAction={onAction} /></section> : null}
             </div>
@@ -3474,6 +3595,7 @@ function App() {
       </>}
       </div>
       </FrozenWhile>
+      <WhatsNewDialog release={showWhatsNew ? whatsNew : null} onClose={closeWhatsNew} onOpenNotes={() => { const version = whatsNew?.version; closeWhatsNew(); openPatchNotes(version); }} />
       <ExternalLinkConfirmDialog request={externalLinkRequest} onCancel={() => setExternalLinkRequest(null)} onConfirm={confirmExternalLink} />
       {mewbeatRevealOpen ? <UnlockReveal effects={state.mewbeat?.settings?.effects} onDone={() => { setMewbeatRevealOpen(false); setMewbeatCut({ dimFrom: 0.9 }); }} /> : null}
       {mewbeatCut ? <GlitchCut effects={state.mewbeat?.settings?.effects} volume={state.mewbeat?.settings?.sfx === false ? 0 : state.mewbeat?.settings?.sfxVolume} load={loadMewbeatGame} dimFrom={mewbeatCut.dimFrom} onCut={() => setMewbeatOpen(true)} onDone={() => setMewbeatCut(null)} /> : null}

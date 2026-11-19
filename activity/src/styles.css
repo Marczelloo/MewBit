@@ -1315,3 +1315,16 @@
   .autoplay-menu, .player-more-menu { animation: none; }
   .np .volume-popover, .bar-artwork-open, .bar-seek .range::-webkit-slider-runnable-track, .bar-seek .range::-webkit-slider-thumb { transition: none; }
 }
+
+/* ---- Toolbar: one menu for the quieter views ------------------------- */
+/* Below this width the search would be squeezed by the buttons around it (both panels open in a ~1060 px window
+   left it 108 px). Sound, room activity, history and patch notes move into the More menu; the panels, Home, the
+   search, mewbeat and the queue stay. Measured against .main-stage, the toolbar's container. */
+.stage-actions .toolbar-more { display: none; }
+.row-menu-item.is-active { color: var(--cyan); }
+.toolbar-more-issue { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: var(--danger); }
+@container (max-width: 660px) {
+  .stage-toolbar-inner { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .stage-toolbar .toolbar-secondary { display: none; }
+  .stage-actions .toolbar-more { display: grid; }
+}

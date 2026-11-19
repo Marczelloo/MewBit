@@ -59,20 +59,22 @@ function getPatchNotes(version = null) {
  * Get all available versions sorted by date (newest first)
  * @returns {Array<string>} Array of version strings
  */
+function compareVersions(a, b) {
+  const aParts = String(a).split(".").map(Number);
+  const bParts = String(b).split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((aParts[i] || 0) !== (bParts[i] || 0)) return (aParts[i] || 0) - (bParts[i] || 0);
+  }
+  return 0;
+}
+
+// Notes for a version above package.json are written ahead of the release; they stay hidden until the bump.
 function getAllVersions() {
   if (!patchNotesCache) return [];
-  return Object.keys(patchNotesCache).sort((a, b) => {
-    // Sort by version number (semantic versioning)
-    const aParts = a.split(".").map(Number);
-    const bParts = b.split(".").map(Number);
-
-    for (let i = 0; i < 3; i++) {
-      if (aParts[i] !== bParts[i]) {
-        return bParts[i] - aParts[i]; // Descending order
-      }
-    }
-    return 0;
-  });
+  const current = getCurrentVersion();
+  return Object.keys(patchNotesCache)
+    .filter((version) => compareVersions(version, current) <= 0)
+    .sort((a, b) => compareVersions(b, a));
 }
 
 /**

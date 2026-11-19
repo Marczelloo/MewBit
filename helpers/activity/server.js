@@ -83,6 +83,8 @@ const playlistStore = require("../playlists/store");
 const { consumeRateLimit } = require("../security/rateLimit");
 const statsStore = require("../stats/store");
 const userPreferences = require("../users/preferences");
+const { getCurrentVersion } = require("../announcements/announcer");
+const { describeChangelog, unseenRelease } = require("../announcements/releaseNotes");
 const { getActivityEvents, recordActivityAction, reportActivityIssue } = require("./feed");
 const {
   registerActivitySession,
@@ -430,7 +432,7 @@ function isAllowedOrigin(origin, config) {
 }
 
 // A DM has no player or server settings; only what belongs to the account works there.
-const PRIVATE_PLACE_ACTIONS = new Set(["mewbeat_tutorial_seen", "mewbeat_settings", "mewbeat_report"]);
+const PRIVATE_PLACE_ACTIONS = new Set(["mewbeat_tutorial_seen", "mewbeat_settings", "mewbeat_report", "whats_new_seen"]);
 
 function assertPlayerVoiceAccess(player, identity, action) {
   if (identity.dev || !player?.voiceChannel) return;
@@ -651,6 +653,8 @@ function buildActivityState(client, guildId, userId) {
     filterPresets: FILTER_PRESET_NAMES,
     equalizerPresets: getSerializedEqualizerPresets(userId),
     mewbeat: serializeMewbeat(getMewbeatRecord(userId)),
+    // The release this account has not been shown yet; the Activity opens its "What's new" window on it.
+    whatsNew: unseenRelease(userPreferences.getUserPreferences(userId)?.whatsNewSeen),
   };
 }
 
@@ -1336,6 +1340,13 @@ async function runActivityAction({ guildId, identity, action, payload = {} }) {
     }
     // Per-account only: nothing here touches the player, so neither action is
     // DJ- or voice-guarded, and actionDetail keeps both out of the room feed.
+    // The account saw this release's "What's new" window. Only the running version is stored, so an old tab
+    // cannot mark a release it never showed.
+    case "whats_new_seen": {
+      const version = getCurrentVersion();
+      if (payload.version === version) userPreferences.setUserPreference(identity.id, "whatsNewSeen", version);
+      return { success: true };
+    }
     case "mewbeat_tutorial_seen":
       return { mewbeat: serializeMewbeat(markTutorialSeen(identity.id)) };
     case "mewbeat_settings":
@@ -1773,6 +1784,12 @@ function createActivityServer(client) {
 
       if (request.method === "GET" && url.pathname === "/api/activity/health") {
         return sendJson(response, 200, { ok: true, activity: "mewbit", time: Date.now() }, config);
+      }
+
+      // The same public history the website and /changelog show, read through the Activity's own origin.
+      if (request.method === "GET" && url.pathname === "/api/activity/changelog") {
+        enforceRateLimit(request, "changelog", 60, 60_000);
+        return sendJson(response, 200, { ok: true, current: getCurrentVersion(), releases: describeChangelog() }, config);
       }
 
       if (request.method === "GET" && url.pathname === "/api/activity/artwork") {

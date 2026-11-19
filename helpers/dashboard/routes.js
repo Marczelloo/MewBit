@@ -1,6 +1,7 @@
 const { randomBytes } = require("node:crypto");
 const { version: packageVersion } = require("../../package.json");
-const { getAllVersions, getPatchNotes, getCurrentVersion } = require("../announcements/announcer");
+const { getCurrentVersion } = require("../announcements/announcer");
+const { describeChangelog } = require("../announcements/releaseNotes");
 const { CATEGORIES, DEFAULT_CATEGORY } = require("../help/categories");
 const Log = require("../logs/log");
 const health = require("../monitoring/health");
@@ -74,25 +75,6 @@ function describeCommands() {
   }));
 }
 
-/**
- * Release history, newest first. The same JSON `/changelog` reads in Discord.
- */
-function describeChangelog() {
-  return getAllVersions()
-    .map((version) => {
-      const notes = getPatchNotes(version);
-      if (!notes) return null;
-      return {
-        version: notes.version || version,
-        date: notes.date || null,
-        title: notes.title || "",
-        features: Array.isArray(notes.features) ? notes.features : [],
-        fixes: Array.isArray(notes.fixes) ? notes.fixes : [],
-        changes: Array.isArray(notes.changes) ? notes.changes : [],
-      };
-    })
-    .filter(Boolean);
-}
 
 function sendJson(response, statusCode, payload, extraHeaders = {}) {
   response.writeHead(statusCode, {

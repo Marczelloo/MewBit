@@ -36,6 +36,11 @@ async function request(path, options = {}, accessToken = null) {
   }
 }
 
+// Every release's notes, newest first. Public, so it needs no token.
+export function fetchActivityChangelog({ signal } = {}) {
+  return request("/api/activity/changelog", { signal });
+}
+
 export function fetchActivityState({ guildId, accessToken }) {
   return request(`/api/activity/state?guildId=${encodeURIComponent(guildId)}`, {}, accessToken);
 }

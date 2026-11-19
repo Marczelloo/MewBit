@@ -115,7 +115,7 @@ function createMockPlaylistDetails(now) {
   };
 }
 
-export function createMockState({ idle = false, firstRun = false } = {}) {
+export function createMockState({ idle = false, firstRun = false, whatsNew = false } = {}) {
   const currentTrack = idle ? null : tracks[0];
   const now = Date.now();
   return {
@@ -170,6 +170,8 @@ export function createMockState({ idle = false, firstRun = false } = {}) {
     },
     lavalink: { connected: true, latencyMs: 24 },
     mewbeat: { tutorialSeen: !firstRun, settings: { ...MEWBEAT_DEFAULT_SETTINGS, keys: [...MEWBEAT_DEFAULT_SETTINGS.keys] } },
+    // ?mock=1&whatsnew opens the "What's new" window, as after an update.
+    whatsNew: whatsNew ? { version: mockChangelog.current, date: mockChangelog.releases[0].date, title: mockChangelog.releases[0].title, summary: mockChangelog.releases[0].summary } : null,
     playlists: [
       { id: "liked", name: "Liked Songs", type: "user", description: "Your saved tracks", trackCount: 5, thumbnail: "", public: false, collaborative: false, isDefault: true, artworks: [libraryTracks[3], libraryTracks[0], libraryTracks[6], libraryTracks[1]].map((track) => track.artworkUrl) },
       { id: "night-drive", name: "Night Drive.exe", type: "user", description: "Blue lights, no skips", trackCount: libraryTracks.length, thumbnail: "", public: true, collaborative: true, isDefault: false, artworks: libraryTracks.slice(0, 4).map((track) => track.artworkUrl) },
@@ -183,6 +185,39 @@ export function createMockState({ idle = false, firstRun = false } = {}) {
     filterPresets: ["nightcore", "vaporwave", "chipmunk", "deepvoice", "eightd", "karaoke", "wobble", "vibrato", "robot", "telephone", "mono", "surround", "meme"],
   };
 }
+
+// The patch notes view reads this in the local preview, where there is no gateway to ask.
+export const mockChangelog = {
+  current: "2.0.0",
+  releases: [
+    {
+      version: "2.0.0",
+      date: "2026-11-18",
+      title: "mewbeat and the Rebuilt Activity",
+      summary: [
+        "mewbeat is here: a four-key rhythm game inside the Activity, on any song MewBit can play.",
+        "Every song gets four levels, Easy to Hell, charted from its beat and melody.",
+        "Play live along with the bot, solo at your own pace, or in a room with friends.",
+      ],
+      features: [
+        "mewbeat, a four-key rhythm game that charts any song MewBit can play",
+        "Rooms: play the same chart with friends, with a live leaderboard",
+        "Profiles, stats and ratings for every player",
+      ],
+      fixes: ["The queue no longer jumps when a track is removed during a skip"],
+      changes: ["The Activity has a new Home and a History view"],
+    },
+    {
+      version: "1.4.0",
+      date: "2026-08-29",
+      title: "The Web Surface",
+      summary: [],
+      features: ["MewBit now has a website: a landing page, a searchable command reference, and a changelog"],
+      fixes: ["Rate limits now count each visitor separately behind a reverse proxy"],
+      changes: ["The Activity moved to its own hostname"],
+    },
+  ],
+};
 
 export const mockSearchResults = [
   { ...tracks[1], id: "search-2pac", title: "Hit Em Up", author: "2Pac", source: "youtube", sourceLabel: "YouTube", playQuery: "https://www.youtube.com/watch?v=41qC3w3UUkU" },
