@@ -35,6 +35,24 @@ export const STAGES = {
   spacedMoments: "odstępy między chwilami",
   chords: "plan akordów",
   lanes: "układ torów wg wzorców ludzi",
+  calmSpots: "gęste miejsca w spokojnych częściach",
+  chordShare: "limit udziału akordów",
+  dipSilence: "cisza w krótkich spadkach energii",
+  dipThin: "przerzedzanie w krótkich spadkach energii",
+  drumRuns: "przejścia perkusji",
+  drumless: "fragmenty bez perkusji",
+  fadeOut: "wyciszenie na końcu",
+  firstSound: "pierwszy dźwięk utworu",
+  localThin: "przerzedzanie za gęstych miejsc",
+  melodyOnly: "sama melodia, jedna nuta naraz",
+  melodyRuns: "szybkie przebiegi melodii",
+  noNoise: "dźwięki, które nie są muzyką",
+  normalHolds: "długie holdy z poziomu bazowego",
+  padLanes: "pasy długich dźwięków",
+  quietLone: "pojedyncze nuty w cichych miejscach",
+  restBridges: "mini pauzy",
+  sameCuts: "te same cięcia co na innym poziomie",
+  softRuns: "krótkie serie w szybkiej melodii",
 };
 
 export const RULES = {
@@ -57,6 +75,13 @@ export const KINDS = {
   sustainHolds: "hold z długiego dźwięku",
   cut: "z rytmu trudniejszego poziomu",
   chords: "druga nuta akordu",
+  firstSound: "nuta na pierwszym dźwięku utworu",
+  normalHolds: "długi hold z poziomu bazowego",
+  restBridges: "nuta w mini pauzie",
+  drumRuns: "przejście perkusji",
+  clipHolds: "nuta po skróceniu holdu",
+  melodyRuns: "szybki przebieg melodii",
+  softRuns: "krótka seria w szybkiej melodii",
 };
 
 export const KIND_SHORT = {
@@ -70,12 +95,21 @@ export const KIND_SHORT = {
   chords: "akord",
 };
 
-export const SOURCES = { bass: "bas", drums: "perkusja", lead: "melodia (lead)", bands: "pasma", rhythm: "rytm" };
+export const SOURCES = {
+  bass: "bas", drums: "perkusja", lead: "melodia (lead)", bands: "pasma", rhythm: "rytm",
+  low: "pasmo low (najniższe dźwięki)", lowmid: "pasmo lowmid", highmid: "pasmo highmid", high: "pasmo high (najwyższe dźwięki)",
+  secondary: "warstwa wspierająca (secondary)",
+};
+// Who leads a phrase, and how the phrase was written.
+export const LEADERS = { drums: "perkusja", bass: "bas", lead: "melodia", bands: "pasma" };
+export const CHARTED = { music: "z dźwięków muzyki", pattern: "ze wzorca rytmu", copy: "kopia wcześniejszej frazy", bands: "ścieżką po pasmach" };
 
 export const stageName = (s) => STAGES[s] ?? s;
 export const ruleName = (r) => RULES[r] ?? r;
 export const kindName = (k) => KINDS[k] ?? k;
 export const sourceName = (s) => SOURCES[s] ?? s;
+export const leaderName = (l) => LEADERS[l] ?? l;
+export const chartedName = (c) => CHARTED[c] ?? c;
 
 // "odstęp 120 ms, wymagane 240 ms" and friends.
 export function ruleText(why) {

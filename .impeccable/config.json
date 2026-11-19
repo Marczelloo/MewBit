@@ -64,6 +64,12 @@
         ],
         "createdAt": "2026-11-09T00:02:24.393Z",
         "reason": "Claude triage: .mb-board top edge shows the difficulty colour on the scoreboard the user approved (2026-11-08); it is a top edge, not a side tab"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "grotesk",
+        "createdAt": "2026-11-19T11:57:22.815Z",
+        "reason": "session task: debugger must match the mewbeat Activity, whose activity/src/styles.css uses Hanken Grotesk"
       }
     ]
   }

@@ -21,7 +21,7 @@ const el = {
   offset: $("#offset"), offsetVal: $("#offsetVal"), follow: $("#follow"),
   snapSel: $("#snapSel"), genInfo: $("#genInfo"), msg: $("#msg"), warn: $("#warn"),
   showRej: $("#showRej"), filterChip: $("#filterChip"), loopInfo: $("#loopInfo"), loopClear: $("#loopClear"), cursorT: $("#cursorT"),
-  legendChips: $("#legendChips"),
+  legendChips: $("#legendChips"), stats: $("#stats"),
 };
 const g = el.cv.getContext("2d");
 const og = el.ov.getContext("2d");
@@ -69,6 +69,11 @@ let msgTimer = 0;
 let lastTimeStr = "";
 let lastWin = "";
 let hatch = null;
+// What the reader opened or closed: the audio-analysis rows, the panel tab, each collapsible panel section.
+let analysisOpen = lsGet("mewbeat-debug.analysis") === "1";
+let panelTab = lsGet("mewbeat-debug.tab") === "tech" ? "tech" : "overview";
+const openSecs = (() => { try { return JSON.parse(lsGet("mewbeat-debug.open") ?? "{}") ?? {}; } catch { return {}; } })();
+el.showRej.checked = lsGet("mewbeat-debug.ghosts") === "1";
 
 const player = new Player(() => {
   el.playBtn.textContent = player.playing ? "⏸" : "▶";
@@ -224,14 +229,18 @@ function buildRows() {
   let y = 0;
   const add = (id, h, label, extra = {}) => { r.push({ id, y, h, label, ...extra }); y += h + ROW_GAP; };
   add("ruler", 22, "");
-  add("wave", 58, "Fala");
-  add("energy", 44, "Energia");
-  D.bands.forEach((b, i) => add("band:" + i, 11, `pasmo ${b.name}`, { band: b, small: true }));
-  D.drumKinds.forEach((k) => add("drum:" + k, 11, `perk. ${k}`, { kind: k, small: true }));
-  add("bass", 44, "Bas");
-  add("lead", 44, "Melodia");
+  add("wave", 58, "Fala dźwięku");
+  // The audio analysis is for digging into why: one click opens it, and the choice is remembered.
+  add("analysis", 20, `${analysisOpen ? "▾" : "▸"} Analiza dźwięku`, { group: true });
+  if (analysisOpen) {
+    add("energy", 44, "Energia");
+    D.bands.forEach((b, i) => add("band:" + i, 11, `pasmo ${b.name}`, { band: b, small: true }));
+    D.drumKinds.forEach((k) => add("drum:" + k, 11, `perk. ${k}`, { kind: k, small: true }));
+    add("bass", 44, "Bas");
+    add("lead", 44, "Melodia");
+  }
   add("phrases", 22, "Frazy");
-  add("gen", 4 * 21, C?.unusable ? "Generator (brak)" : C ? "Generator" : "Generator (liczę…)", { lanes: true });
+  add("gen", 4 * 21, C?.unusable ? "Chart generatora (brak)" : C ? "Chart generatora" : "Chart generatora (liczę…)", { lanes: true });
   const hn = humanNotes();
   if (hn) add("human", 4 * 15, "Człowiek", { lanes: true });
   else add("human", 18, D.hasAnyHuman ? `Człowiek: brak mapy dla ${level}` : "Człowiek: brak (utwór bez mapy)", { empty: true });
@@ -254,6 +263,27 @@ function buildRows() {
   totalH = y;
 }
 const rowById = (id) => rows.find((r) => r.id === id);
+
+// Hover text for the label column: what each row shows, in plain words.
+const ROW_HELP = {
+  wave: "Fala dźwięku: głośność nagrania w czasie. Klik przewija odtwarzanie w to miejsce.",
+  analysis: "Co generator usłyszał w nagraniu: energia, pasma, perkusja, bas i melodia. Kliknij, żeby rozwinąć albo zwinąć.",
+  energy: "Energia: jak głośno i gęsto gra utwór w danym momencie.",
+  bass: "Bas: wykryte dźwięki basu (wyżej = wyższy dźwięk).",
+  lead: "Melodia: wykryta główna linia melodyczna (wyżej = wyższy dźwięk).",
+  phrases: "Frazy: fragmenty utworu, które generator traktuje jako całość. Kolor = instrument, który prowadzi frazę. Kliknij frazę po szczegóły.",
+  gen: "Chart generatora: nuty na 4 pasach (0–3), tak jak w grze. Kolor = skąd nuta się wzięła. Kliknij nutę po szczegóły.",
+  human: "Mapa zrobiona przez człowieka na tym samym poziomie, do porównania.",
+  snap: "Snapshot: chart ze starszej wersji generatora, do porównania.",
+};
+const rowHelp = (r) =>
+  ROW_HELP[r.id] ?? (r.band ? `Pasmo ${r.band.name}: nowe dźwięki w tym zakresie częstotliwości (low = najniższe, high = najwyższe).` : r.kind ? `Perkusja (${r.kind}): wykryte uderzenia.` : "");
+
+function toggleAnalysis() {
+  analysisOpen = !analysisOpen;
+  lsSet("mewbeat-debug.analysis", analysisOpen ? "1" : "0");
+  relayout();
+}
 
 function relayout() {
   if (!D) return;
@@ -492,16 +522,16 @@ function select(s) {
 
 function renderPanel(keepScroll = false) {
   const st = el.panel.scrollTop;
-  if (!D) { el.panel.innerHTML = `<div class="empty" style="padding:12px 0">Ładuję…</div>`; return; }
-  const c = { D, C, song: D.song, level, human: humanNotes(), filter, snapVer, featurePhrases: D.featurePhrases };
+  if (!D) { el.panel.innerHTML = `<div class="empty" style="padding:12px 0">Ładuję…</div>`; el.stats.innerHTML = ""; return; }
+  const c = { D, C, song: D.song, level, human: humanNotes(), filter, snapVer, featurePhrases: D.featurePhrases, tab: panelTab, open: openSecs, roundIx };
+  el.stats.innerHTML = UI.statsHtml(c);
   let html = "";
   const usable = C && !C.unusable;
   if (sel?.kind === "note" && usable && C.recById.get(sel.id)) html = UI.noteHtml(c, C.recById.get(sel.id));
   else if (sel?.kind === "phrase") html = UI.phraseHtml(usable ? c : { ...c, C: { phraseByIndex: new Map(), phraseStats: new Map() } }, sel.index);
   else if (sel?.kind === "human") html = UI.plainNoteHtml({ ...c, C: usable ? C : null }, sel);
   else { sel = sel?.kind === "note" ? null : sel; html = UI.summaryHtml(c); }
-  if (sel) html = `<div class="actions" style="padding-top:8px"><button class="mini" data-act="clearSel">← podsumowanie (Esc)</button></div>` + html;
-  else if (D.song.rounds?.length) html = UI.roundsHtml(D.song.rounds, D.snapshots, roundIx) + html;
+  if (sel) html = `<div class="actions" style="padding-top:10px"><button class="mini" data-act="clearSel">← podsumowanie (Esc)</button></div>` + html;
   el.panel.innerHTML = html;
   el.panel.scrollTop = keepScroll ? st : 0;
   lastWin = "";
@@ -911,8 +941,8 @@ function drawLabels() {
   g.fillRect(LABEL_W - 1, 0, 1, totalH);
   g.textBaseline = "middle";
   for (const r of rows) {
-    g.font = (r.small ? "10px" : "11px") + " system-ui, sans-serif";
-    g.fillStyle = r.empty ? COL.warn : COL.dim;
+    g.font = (r.group || r.lanes ? "600 " : "") + (r.small ? "10px" : "11px") + ' "Hanken Grotesk", "Segoe UI", system-ui, sans-serif';
+    g.fillStyle = r.empty ? COL.warn : r.group ? COL.accent : r.lanes ? COL.text : COL.dim;
     let label = r.label;
     if ((r.id === "gen" || r.id === "human" || r.id === "snap") && r.lanes && offsetMs) label += ` (${offsetMs > 0 ? "+" : ""}${offsetMs} ms)`;
     const y = r.lanes ? r.y + 9 : r.y + r.h / 2;
@@ -963,7 +993,10 @@ function draw() {
     else if (r.kind) drawTicks(r, D.drumsByKind.get(r.kind), drumColor(r.kind));
     else if (r.id === "bass") drawRoll(r, D.bass, D.pitch.bass, COL["l-bass"]);
     else if (r.id === "lead") drawRoll(r, D.lead, D.pitch.lead, COL["l-lead"]);
-    else if (r.id === "phrases") drawPhrases(r);
+    else if (r.group) {
+      g.fillStyle = COL.dim; g.font = '11px "Hanken Grotesk", "Segoe UI", system-ui, sans-serif'; g.textBaseline = "middle";
+      g.fillText(analysisOpen ? "energia, pasma, perkusja, bas, melodia · kliknij, żeby zwinąć" : "energia, pasma, perkusja, bas, melodia · kliknij, żeby rozwinąć", LABEL_W + 10, r.y + r.h / 2);
+    } else if (r.id === "phrases") drawPhrases(r);
     else if (r.id === "gen") {
       if (usable) drawLanes(r, C.notes, { offset: offsetMs, color: (n) => kindColor(n.kind), ghosts: showGhosts() ? C.ghosts : null });
       else {
@@ -1128,9 +1161,9 @@ const canvasPoint = (e) => {
 el.cv.addEventListener("pointerdown", (e) => {
   if (!D || e.button !== 0) return;
   const { x, y } = canvasPoint(e);
-  if (x < LABEL_W) return;
-  el.cv.setPointerCapture(e.pointerId);
   const row = rowAt(y);
+  if (x < LABEL_W) { if (row?.group) toggleAnalysis(); return; }
+  el.cv.setPointerCapture(e.pointerId);
   if (e.shiftKey) {
     drag = { mode: "loop", startT: tAtX(x), moved: false };
     loopDrag = { a: drag.startT, b: drag.startT };
@@ -1146,7 +1179,10 @@ el.cv.addEventListener("pointermove", (e) => {
   const { x, y } = canvasPoint(e);
   el.cursorT.textContent = x >= LABEL_W ? `kursor ${fmt(tAtX(x))}` : "kursor –";
   if (!drag) {
-    el.cv.style.cursor = x >= LABEL_W && hitTest(x, y) ? "pointer" : "grab";
+    const row = rowAt(y);
+    el.cv.style.cursor = row?.group || (x >= LABEL_W && hitTest(x, y)) ? "pointer" : x < LABEL_W ? "help" : "grab";
+    const help = row && (x < LABEL_W || row.group) ? rowHelp(row) : "";
+    if (el.cv.title !== help) el.cv.title = help;
     return;
   }
   if (drag.mode === "pan") {
@@ -1178,6 +1214,7 @@ function endDrag(e) {
     } else requestDraw();
   } else if (d.mode === "pan" && !d.moved) {
     const row = d.row;
+    if (row?.group) { toggleAnalysis(); return; } // a click (not a pan) on the analysis row opens or closes it
     if (row?.id === "wave") { seek(tAtX(x), false); return; }
     const hit = hitTest(x, y);
     if (hit) {
@@ -1227,6 +1264,7 @@ el.panel.addEventListener("click", (e) => {
   const d = b.dataset;
   switch (d.act) {
     case "clearSel": select(null); break;
+    case "tab": panelTab = d.tab === "tech" ? "tech" : "overview"; lsSet("mewbeat-debug.tab", panelTab); renderPanel(); break;
     case "rec": {
       const rec = C?.recById.get(Number(d.id));
       if (!rec) { flash("Nie ma takiej nuty w tym chartcie."); break; }
@@ -1282,7 +1320,15 @@ el.panel.addEventListener("click", (e) => {
   b.blur?.();
 });
 
-el.filterChip.addEventListener("click", () => { filter = null; renderPanel(true); requestDraw(); });
+// A collapsible panel section remembers being opened or closed (toggle does not bubble, hence the capture).
+el.panel.addEventListener("toggle", (e) => {
+  const key = e.target?.dataset?.sec;
+  if (!key || openSecs[key] === e.target.open) return;
+  openSecs[key] = e.target.open;
+  lsSet("mewbeat-debug.open", JSON.stringify(openSecs));
+}, true);
+
+el.filterChip.addEventListener("click",() => { filter = null; renderPanel(true); requestDraw(); });
 
 // ---------- song picker ----------
 const isPreview = (s) => s.id.startsWith("preview:");
@@ -1389,16 +1435,17 @@ el.snapSel.addEventListener("change", () => {
 $("#recalc").addEventListener("click", (e) => { loadChart(true); e.currentTarget.blur(); });
 
 function buildLegend() {
-  const chip = (c, text, hollow) => `<span class="chip"><i class="${hollow ? "hollow" : ""}" style="--c:${c}"></i>${text}</span>`;
+  const chip = (c, text, cls = "") => `<span class="chip"><i class="${cls}" style="--c:${c}"></i>${text}</span>`;
+  const grp = (title, body) => `<div class="lgrp"><div class="sub">${title}</div>${body}</div>`;
+  const LEADER = { drums: "perkusja", bass: "bas", lead: "melodia", bands: "pasma" };
   el.legendChips.innerHTML =
-    Object.entries(KIND_SHORT).map(([k, t]) => chip(kindColor(k), t)).join("") +
-    chip(COL["k-other"], "inne") +
-    chip(COL["k-event"], "odrzucona (duch)", true) +
-    chip(COL.human, "człowiek") +
-    chip(COL.snap, "snapshot") +
-    `<span class="chip dim">| frazy:</span>` +
-    ["drums", "bass", "lead", "bands"].map((l) => chip(leaderColor(l), l)).join("") +
-    `<span class="chip dim">kreskowana = kopia</span>`;
+    grp("Nuty generatora · kolor = skąd się wzięła", Object.entries(KIND_SHORT).map(([k, t]) => chip(kindColor(k), t)).join("") + chip(COL["k-other"], "inne")) +
+    grp("Pozostałe nuty", chip(COL["k-event"], "odrzucona (duch): rozważona, ale nie weszła do chartu", "hollow") + chip(COL.human, "człowiek") + chip(COL.snap, "snapshot")) +
+    grp(
+      "Frazy · kolor = instrument, który prowadzi",
+      ["drums", "bass", "lead", "bands"].map((l) => chip(leaderColor(l), `${LEADER[l]} <span class="dim">(${l})</span>`)).join("") +
+        `<div>${chip(COL.dim, "kreskowana = kopia wcześniejszej frazy", "dash")}</div>`
+    );
 }
 
 // ---------- transport ----------
@@ -1436,7 +1483,25 @@ el.offset.addEventListener("input", () => {
 el.offset.addEventListener("change", () => el.offset.blur());
 $("#offsetReset").addEventListener("click", (e) => { el.offset.value = "0"; el.offset.dispatchEvent(new Event("input")); e.currentTarget.blur(); });
 el.follow.addEventListener("change", () => el.follow.blur());
-el.showRej.addEventListener("change", () => { el.showRej.blur(); requestDraw(); });
+el.showRej.addEventListener("change", () => { lsSet("mewbeat-debug.ghosts", el.showRej.checked ? "1" : "0"); el.showRej.blur(); requestDraw(); });
+
+// ---------- popovers: a button with data-pop opens the box with that id; a click outside or Esc closes it ----------
+const popButtons = [...document.querySelectorAll("[data-pop]")];
+const closePops = (except) => { for (const b of popButtons) if (b !== except) { $("#" + b.dataset.pop).hidden = true; b.setAttribute("aria-expanded", "false"); } };
+for (const b of popButtons) {
+  b.setAttribute("aria-haspopup", "true");
+  b.setAttribute("aria-expanded", "false");
+  b.addEventListener("click", () => {
+    const box = $("#" + b.dataset.pop);
+    closePops(b);
+    box.hidden = !box.hidden;
+    b.setAttribute("aria-expanded", String(!box.hidden));
+  });
+}
+document.addEventListener("mousedown", (e) => {
+  if (!popButtons.some((b) => b.contains(e.target) || $("#" + b.dataset.pop).contains(e.target))) closePops();
+});
+const anyPopOpen = () => popButtons.some((b) => !$("#" + b.dataset.pop).hidden);
 el.loopClear.addEventListener("click", (e) => { setLoop(null); e.currentTarget.blur(); });
 $("#zoomIn").addEventListener("click", (e) => { zoomAt(LABEL_W + PW / 2, 1.4); e.currentTarget.blur(); });
 $("#zoomOut").addEventListener("click", (e) => { zoomAt(LABEL_W + PW / 2, 1 / 1.4); e.currentTarget.blur(); });
@@ -1458,7 +1523,7 @@ window.addEventListener("keydown", (e) => {
     case "-": case "_": zoomAt(LABEL_W + PW / 2, 1 / 1.4); break;
     case "[": stepSong(-1); break;
     case "]": stepSong(1); break;
-    case "Escape": if (!el.songPop.hidden) closePop(); else if (sel) select(null); break;
+    case "Escape": if (!el.songPop.hidden) closePop(); else if (anyPopOpen()) closePops(); else if (sel) select(null); break;
     default:
   }
 });

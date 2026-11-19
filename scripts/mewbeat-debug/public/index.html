@@ -8,66 +8,85 @@
 </head>
 <body>
 <header id="top">
+  <div class="brand"><b>mewbeat</b><span>debugger map</span></div>
   <div class="songpick">
     <button id="prevSong" class="ico" title="Poprzedni utwór ([)">‹</button>
     <button id="songBtn" class="songbtn" title="Wybierz utwór">Ładuję listę…</button>
     <button id="nextSong" class="ico" title="Następny utwór (])">›</button>
-    <div id="songPop" hidden>
-      <input id="songFilter" type="text" placeholder="Filtruj: artysta / tytuł" autocomplete="off" spellcheck="false">
+    <div id="songPop" class="pop" hidden>
+      <input id="songFilter" type="text" placeholder="Szukaj: artysta / tytuł" autocomplete="off" spellcheck="false">
       <div class="seg" id="sortSeg">
         <button data-sort="name" class="on">A–Z</button>
-        <button data-sort="dist">Dystans ↓</button>
+        <button data-sort="dist" title="Najpierw utwory, których chart najbardziej różni się od mapy człowieka">Dystans ↓</button>
       </div>
       <ul id="songList"></ul>
     </div>
   </div>
-  <div class="seg" id="levelSeg" title="Poziom (klawisze 1-4)">
-    <button data-level="easy">easy <kbd>1</kbd></button>
-    <button data-level="normal">normal <kbd>2</kbd></button>
-    <button data-level="hard">hard <kbd>3</kbd></button>
-    <button data-level="hell">hell <kbd>4</kbd></button>
+  <div class="seg levels" id="levelSeg" title="Poziom trudności (klawisze 1-4)">
+    <button data-level="easy">Easy <kbd>1</kbd></button>
+    <button data-level="normal">Normal <kbd>2</kbd></button>
+    <button data-level="hard">Hard <kbd>3</kbd></button>
+    <button data-level="hell">Hell <kbd>4</kbd></button>
   </div>
-  <label class="inl">Snapshot <select id="snapSel"><option value="">brak</option></select></label>
-  <button id="recalc" title="Przelicz chart z aktualnego kodu generatora (audio i pozycja zostają)">Przelicz</button>
-  <span id="genInfo" class="tnum"></span>
+  <span class="grow"></span>
   <span id="msg" class="msg"></span>
+  <div class="popwrap">
+    <button id="toolsBtn" class="ico" data-pop="toolsPop" title="Narzędzia: snapshot, przeliczenie, wersja generatora">⋯</button>
+    <div id="toolsPop" class="pop right" hidden>
+      <div class="pophead">Narzędzia</div>
+      <label class="field"><span class="term" title="Zapisany chart ze starszej wersji generatora. Pokazuje się jako osobny wiersz pod mapą człowieka, do porównania.">Snapshot</span>
+        <select id="snapSel"><option value="">brak</option></select></label>
+      <div class="field"><button id="recalc" title="Przelicz chart z aktualnego kodu generatora (audio i pozycja zostają)">Przelicz chart</button></div>
+      <div class="field"><span class="dim">Generator</span><span id="genInfo" class="tnum"></span></div>
+    </div>
+  </div>
 </header>
 
-<section id="transport">
-  <button id="playBtn" class="play" title="Odtwarzaj / pauza (Spacja)" disabled>▶</button>
-  <span id="timeNow" class="time tnum">0:00.000</span><span class="dim">/</span><span id="timeTotal" class="time dim tnum">0:00.000</span><span id="audioStatus" class="dim"></span>
-  <label class="inl">Skocz do <input id="jumpTo" type="text" size="8" placeholder="1:36.5" spellcheck="false"></label>
-  <div class="seg" id="rateSeg" title="Prędkość">
-    <button data-rate="0.5">0.5×</button>
-    <button data-rate="0.75">0.75×</button>
-    <button data-rate="1" class="on">1×</button>
-  </div>
-  <label class="inl">Głośność <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
-  <label class="inl chk"><input id="clickGen" type="checkbox"> klik: generator</label>
-  <label class="inl chk"><input id="clickHum" type="checkbox"> klik: człowiek</label>
-  <label class="inl" title="Przesunięcie nut i kliknięć względem audio (dekodery mp3 dodają opóźnienie)">Offset <input id="offset" type="range" min="-150" max="150" step="1" value="0"> <span id="offsetVal" class="tnum offv">0 ms</span> <button id="offsetReset" class="mini">0</button></label>
-  <label class="inl chk"><input id="follow" type="checkbox" checked> śledź</label>
-  <span class="grow"></span>
-  <button id="zoomOut" class="ico" title="Oddal (-)">−</button>
-  <button id="zoomIn" class="ico" title="Przybliż (+)">+</button>
-</section>
-
-<section id="legend">
-  <span id="legendChips"></span>
-  <label class="inl chk"><input id="showRej" type="checkbox" checked> odrzucone</label>
-  <span id="filterChip" class="fchip" hidden></span>
-  <span class="grow"></span>
-  <span id="loopInfo" class="tnum dim">A–B: brak (Shift+przeciągnij)</span>
-  <button id="loopClear" class="mini" disabled>Wyczyść A–B</button>
-  <span id="cursorT" class="tnum dim cur">kursor –</span>
-</section>
+<section id="stats" aria-label="Najważniejsze liczby"></section>
 
 <div id="warn" hidden></div>
 
 <main>
   <div id="left">
+    <section id="transport">
+      <button id="playBtn" class="play" title="Odtwarzaj / pauza (Spacja)" disabled>▶</button>
+      <span class="clock"><span id="timeNow" class="time tnum">0:00.000</span><span class="dim"> /</span><span id="timeTotal" class="dim tnum">0:00.000</span></span>
+      <span id="audioStatus" class="dim"></span>
+      <div class="seg" id="rateSeg" title="Prędkość odtwarzania">
+        <button data-rate="0.5">0.5×</button>
+        <button data-rate="0.75">0.75×</button>
+        <button data-rate="1" class="on">1×</button>
+      </div>
+      <label class="inl" title="Głośność">🔊 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+      <div class="popwrap">
+        <button id="listenBtn" data-pop="listenPop" title="Kliknięcia nut, przesunięcie, skok do czasu">Odsłuch ▾</button>
+        <div id="listenPop" class="pop" hidden>
+          <div class="pophead">Odsłuch</div>
+          <label class="field">Skocz do <input id="jumpTo" type="text" size="8" placeholder="1:36.5" spellcheck="false" title="Wpisz czas i Enter, np. 1:36, 1:36.5 albo 96.5"></label>
+          <label class="field chk"><input id="clickGen" type="checkbox"> klik: generator <span class="dim small">(tyka na każdej nucie chartu)</span></label>
+          <label class="field chk"><input id="clickHum" type="checkbox"> klik: człowiek <span class="dim small">(tyka na nutach mapy człowieka)</span></label>
+          <label class="field" title="Przesunięcie nut i kliknięć względem audio (dekodery mp3 dodają opóźnienie)"><span class="term">Offset</span> <input id="offset" type="range" min="-150" max="150" step="1" value="0"> <span id="offsetVal" class="tnum offv">0 ms</span> <button id="offsetReset" class="mini" title="Wyzeruj offset">0</button></label>
+          <label class="field chk"><input id="follow" type="checkbox" checked> śledź <span class="dim small">(widok jedzie za odtwarzaniem)</span></label>
+        </div>
+      </div>
+      <span class="grow"></span>
+      <button id="zoomOut" class="ico" title="Oddal (-)">−</button>
+      <button id="zoomIn" class="ico" title="Przybliż (+)">+</button>
+    </section>
     <div id="canvasWrap"><canvas id="cv"></canvas></div>
-    <div id="ovWrap"><canvas id="ov"></canvas></div>
+    <div id="ovWrap" title="Cały utwór: kliknij albo przeciągnij, żeby przewinąć widok"><canvas id="ov"></canvas></div>
+    <section id="legend">
+      <div class="popwrap up">
+        <button id="legendBtn" class="mini" data-pop="legendPop" title="Co znaczą kolory">Legenda</button>
+        <div id="legendPop" class="pop" hidden><div id="legendChips"></div></div>
+      </div>
+      <label class="inl chk" title="Nuty, które generator rozważał, ale odrzucił (puste obrysy). Kliknij jedną, żeby zobaczyć dlaczego."><input id="showRej" type="checkbox"> odrzucone nuty</label>
+      <span id="filterChip" class="fchip" hidden></span>
+      <span class="grow"></span>
+      <span id="loopInfo" class="tnum dim">A–B: brak (Shift+przeciągnij)</span>
+      <button id="loopClear" class="mini" disabled>Wyczyść A–B</button>
+      <span id="cursorT" class="tnum dim cur">kursor –</span>
+    </section>
   </div>
   <aside id="panel"></aside>
 </main>
