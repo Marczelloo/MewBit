@@ -270,6 +270,8 @@ node scripts/mewbeat-debug/server.mjs
 
 It listens on `127.0.0.1:5180` (set `PORT` to change that) and is not meant to be exposed. It generates charts live from the generator in this checkout, and its list starts with the songs your bot's players have played. A report's link opens the played song on its level. The page is one canvas with a shared time axis, so you can see the audio, the notes and the features together; it has A-B looping and a panel that explains why a note is where it is. The page's own labels are in Polish.
 
+To open it from elsewhere, keep it on `127.0.0.1` and let the dashboard pass it on: put your Discord user id in `MEWBEAT_DEBUG_USERS` and set `MEWBEAT_DEBUG_URL` to `<DASHBOARD_PUBLIC_URL>/api/dashboard/debug`. After you sign in to the dashboard, the debugger opens at that address and report links lead there. Nobody else can open it, server owners included, because it shows every server's songs and the generator's insides. The dashboard does not start the debugger: it has to run beside the bot, and in the Compose stack `MEWBEAT_DEBUG_TARGET` has to point at wherever it runs. Signing in takes you to the dashboard, so open the report link again afterwards.
+
 `scripts/mewbeat-preview.mjs` mixes clicks into a song so you can hear a chart without playing it.
 
 ### Limits and honest caveats

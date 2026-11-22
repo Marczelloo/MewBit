@@ -234,7 +234,7 @@ function songPayload(id) {
   const f = featuresOf(id);
   return {
     song,
-    audioUrl: `/audio/${encodeURIComponent(id)}`,
+    audioUrl: `audio/${encodeURIComponent(id)}`,
     features: {
       durationMs: f.durationMs,
       featuresVersion: f.featuresVersion,

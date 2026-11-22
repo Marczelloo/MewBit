@@ -158,7 +158,9 @@ The rhythm game in the Activity needs no variable to run: with none of these set
 | `MEWBEAT_MELODY_DECODER` | on | Set to `off` to skip melody decoding altogether. Every chart is then made without a melody. |
 | `MEWBEAT_AUDIO_OFFSET` | on | Set to `off` to stop the per-song audio offset measurement. The measurement is done by the decoder service for the experimental "Per-song audio alignment" setting, so it also needs `MEWBEAT_DECODER_URL`. |
 | `MEWBEAT_AUDIO_LATENCY_MS` | `500` | In Live mode, how many milliseconds the bot's reported playback position runs ahead of what people hear in the voice channel (Lavalink's send queue plus Discord's transport). The game's Live clock allows for it. Must be a number; anything else uses the default. A player's own "Bot audio" calibration in the game's settings covers the remaining difference. |
-| `MEWBEAT_DEBUG_URL` | `http://localhost:5180` | Where the mewbeat debugger is reachable, used for the link in a map report. A trailing slash is fine. |
+| `MEWBEAT_DEBUG_URL` | `http://localhost:5180` | Where the mewbeat debugger is reachable, used for the link in a map report. A trailing slash is fine. Behind the dashboard sign-in it is `<DASHBOARD_PUBLIC_URL>/api/dashboard/debug`. |
+| `MEWBEAT_DEBUG_USERS` | empty | Discord user ids, comma-separated, who may open the debugger through the dashboard at `/api/dashboard/debug/`. Everyone else, server owners included, gets a not-found. Empty: the route does not exist. |
+| `MEWBEAT_DEBUG_TARGET` | `http://127.0.0.1:5180` | Where the dashboard finds the running debugger. Only GET and HEAD are passed on, without the visitor's cookies. |
 
 The decoder service has its own variables, set in its `environment` block in `docker-compose.yml`:
 

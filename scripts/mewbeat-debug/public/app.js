@@ -365,7 +365,7 @@ async function loadSong(id, { lv = level, pos = 0 } = {}) {
   renderPanel();
   let payload;
   try {
-    payload = await getJson(`/api/song/${encodeURIComponent(id)}`);
+    payload = await getJson(`api/song/${encodeURIComponent(id)}`);
   } catch (e) {
     if (token !== songToken) return;
     el.songBtn.textContent = "Błąd ładowania utworu";
@@ -431,7 +431,7 @@ async function loadChart(keep = false) {
   const t0 = performance.now();
   let raw;
   try {
-    raw = await getJson(`/api/chart/${encodeURIComponent(D.id)}/${level}`);
+    raw = await getJson(`api/chart/${encodeURIComponent(D.id)}/${level}`);
   } catch (e) {
     if (my !== chartToken) return;
     el.genInfo.innerHTML = `<span class="warn">błąd chartu</span>`;
@@ -469,7 +469,7 @@ async function loadSnapshot() {
   snapData = { loading: true };
   relayout();
   try {
-    const arr = await getJson(`/api/snapshot/${encodeURIComponent(D.id)}/${level}/${snapVer}`);
+    const arr = await getJson(`api/snapshot/${encodeURIComponent(D.id)}/${level}/${snapVer}`);
     if (my !== snapToken) return;
     snapData = { notes: sortedByT(arr) };
   } catch (e) {
@@ -1547,7 +1547,7 @@ async function boot() {
   resizeOverview();
   let songs;
   try {
-    songs = await getJson("/api/songs");
+    songs = await getJson("api/songs");
   } catch (e) {
     el.songBtn.textContent = "Błąd listy utworów";
     flash("Nie wczytano /api/songs: " + e.message, 10000);

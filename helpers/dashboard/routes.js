@@ -30,6 +30,7 @@ const {
   STATE_COOKIE,
 } = require("./sessions");
 const { readGuildSettings, applyGuildSettings } = require("./settings");
+const { DEBUG_PREFIX, createDebugProxy } = require("./debugProxy");
 
 const MAX_BODY_SIZE = 32 * 1024;
 const PREFIX = "/api/dashboard";
@@ -151,6 +152,10 @@ function enforceRateLimit(request, bucket, limit, windowMs) {
   }
 }
 
+function sessionOf(request) {
+  return getSession(parseCookies(request.headers.cookie)[SESSION_COOKIE]) || null;
+}
+
 function requireSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const session = getSession(cookies[SESSION_COOKIE]);
@@ -264,7 +269,7 @@ async function describeAccess(client, guildId, viewerId) {
   };
 }
 
-function createDashboardRouter(client) {
+function createDashboardRouter(client, { debugProxy = createDebugProxy({ getSession: sessionOf }) } = {}) {
   async function route(request, response, url) {
     const config = getDashboardConfig();
     if (!config.enabled) throw Object.assign(new Error("The dashboard is disabled."), { statusCode: 503 });
@@ -328,6 +333,8 @@ function createDashboardRouter(client) {
         ok: true,
         user: { id: session.userId, username: session.username, avatar: session.avatar },
         guilds: listManageableGuilds(client, session.guilds, session.userId),
+        // The map debugger's address for the few people on MEWBEAT_DEBUG_USERS, null for everyone else.
+        debugger: debugProxy.allows(session.userId) ? `${DEBUG_PREFIX}/` : null,
       });
     }
 
@@ -621,6 +628,10 @@ function createDashboardRouter(client) {
       if (!url.pathname.startsWith(`${PREFIX}/`)) return false;
 
       try {
+        if (url.pathname === DEBUG_PREFIX || url.pathname.startsWith(`${DEBUG_PREFIX}/`)) {
+          if (!getDashboardConfig().enabled) throw Object.assign(new Error("The dashboard is disabled."), { statusCode: 503 });
+          if (debugProxy.handle(request, response, url)) return true;
+        }
         await route(request, response, url);
       } catch (error) {
         const status = Number(error.statusCode) || 500;

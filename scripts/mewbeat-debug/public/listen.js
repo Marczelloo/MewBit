@@ -227,7 +227,7 @@ async function loadSong(entry) {
   setStatus("Ładuję utwór…");
   let data;
   try {
-    data = await getJson(`/api/listening/${encodeURIComponent(entry.song)}`, signal);
+    data = await getJson(`api/listening/${encodeURIComponent(entry.song)}`, signal);
   } catch (e) {
     if (token !== loadToken || e?.name === "AbortError") return;
     showError(`Nie udało się wczytać utworu (${messageOf(e)}).`, () => loadSong(entry));
@@ -251,7 +251,7 @@ async function loadSong(entry) {
   updateTotal();
   renderPlayState();
   drawTimeline();
-  const url = `/audio/${encodeURIComponent(data.audioId)}`;
+  const url = `audio/${encodeURIComponent(data.audioId)}`;
   loadAudio(token, url, signal);
 }
 
@@ -461,7 +461,7 @@ async function init() {
   el.songSel.disabled = true;
   setStatus("Ładuję listę utworów…");
   try {
-    list = await getJson("/api/listening");
+    list = await getJson("api/listening");
   } catch (e) {
     showError(`Nie udało się wczytać listy utworów (${messageOf(e)}).`, init);
     return;
