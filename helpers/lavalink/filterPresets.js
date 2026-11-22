@@ -71,7 +71,9 @@ const FILTER_PRESET_NAMES = Object.freeze(Object.keys(FILTER_PRESETS));
 
 function getFilterPreset(name) {
   const key = String(name || "").toLowerCase();
-  return FILTER_PRESETS[key] ? { name: key, ...FILTER_PRESETS[key] } : null;
+  // Own keys only: "constructor" or "__proto__" must not resolve to something
+  // on Object.prototype.
+  return Object.hasOwn(FILTER_PRESETS, key) ? { name: key, ...FILTER_PRESETS[key] } : null;
 }
 
 module.exports = {

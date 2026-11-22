@@ -1,9 +1,12 @@
-export function Toggle({ checked, onChange, disabled, onLabel = "On", offLabel = "Off" }) {
+import { useEffect, useRef, useState } from "react";
+
+export function Toggle({ checked, onChange, disabled, label, onLabel = "On", offLabel = "Off" }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={checked ? "toggle is-on" : "toggle"}
@@ -35,7 +38,34 @@ export function Select({ value, onChange, disabled, options, placeholder, id }) 
   );
 }
 
-export function Slider({ value, onChange, disabled, min, max, step, format, id }) {
+/**
+ * A range input that only reports the release.
+ *
+ * Dragging fires change continuously, and each report is a request, so the
+ * value is held locally while the pointer is down and `onCommit` fires once
+ * per gesture: on pointer release, key release, or blur.
+ */
+export function Slider({ value, onCommit, disabled, min, max, step, format, id, label }) {
+  const [draft, setDraft] = useState(value);
+  const dirty = useRef(false);
+  // Read at commit time rather than `draft`: a keyboard step fires change and
+  // keyup in the same tick, before the state update has landed.
+  const latest = useRef(value);
+
+  useEffect(() => {
+    // Adopt server state only between gestures, or a save landing would snap
+    // the thumb out from under the pointer.
+    if (dirty.current) return;
+    setDraft(value);
+    latest.current = value;
+  }, [value]);
+
+  const release = () => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    onCommit(latest.current);
+  };
+
   return (
     <div className="slider">
       <input
@@ -44,11 +74,21 @@ export function Slider({ value, onChange, disabled, min, max, step, format, id }
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={draft}
         disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
+        aria-label={label}
+        onChange={(event) => {
+          dirty.current = true;
+          latest.current = Number(event.target.value);
+          setDraft(latest.current);
+        }}
+        onPointerUp={release}
+        onKeyUp={release}
+        onPointerCancel={release}
+        onTouchEnd={release}
+        onBlur={release}
       />
-      <output className="mono slider-value">{format(value)}</output>
+      <output className="mono slider-value">{format(draft)}</output>
     </div>
   );
 }
@@ -68,6 +108,7 @@ export function ToggleRows({ rows, onChange, disabled }) {
             <small>{row.describe}</small>
           </span>
           <Toggle
+            label={row.label}
             checked={row.checked}
             disabled={row.disabled || disabled}
             onChange={(value) => onChange(row.id, value)}
@@ -137,6 +178,9 @@ export function BandSliders({ bands, frequencies, minGain, maxGain, onChange, on
             // request, and a Lavalink filter update per pixel would be abuse.
             onPointerUp={onCommit}
             onKeyUp={onCommit}
+            onPointerCancel={onCommit}
+            onTouchEnd={onCommit}
+            onBlur={onCommit}
           />
           <output className={gain === 0 ? "mono band-value" : "mono band-value is-set"}>
             {`${toDb(gain) >= 0 ? "+" : ""}${toDb(gain).toFixed(1)} dB`}

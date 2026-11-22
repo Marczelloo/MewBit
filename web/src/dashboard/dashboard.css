@@ -140,6 +140,24 @@
   outline-color: var(--line-strong);
 }
 
+/* The tile's own 1px outline would otherwise outrank the global focus ring. */
+.rail-item:focus-visible,
+.section-link:focus-visible,
+.select:focus-visible,
+.toggle:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.rail-item:focus-visible {
+  border-radius: 12px;
+}
+
+.section-link:focus-visible {
+  border-radius: 10px;
+}
+
 /* Active server is marked by a bar on the rail's inner edge, not a fill. */
 .rail-item.is-active {
   color: var(--text);
@@ -180,6 +198,7 @@
 }
 
 .sections {
+  position: relative;
   display: grid;
   gap: 3px;
 }
@@ -235,7 +254,7 @@
 
 .panel-head {
   max-width: 68ch;
-  margin-bottom: 26px;
+  margin-bottom: 22px;
 }
 
 .panel-head h2 {
@@ -520,7 +539,7 @@ code.mono {
 
 .statgrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(148px, 100%), 1fr));
   gap: 10px;
 }
 
@@ -610,7 +629,7 @@ code.mono {
 
 .deflist {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   gap: 12px;
   margin: 0;
   max-width: 560px;
@@ -1032,20 +1051,24 @@ code.mono {
   }
 
   .rail {
-    padding: 8px;
+    padding: 8px 10px 4px;
   }
 
+  /* The ul scrolls, so it clips: the bottom padding is the room the active
+     marker is drawn in. */
   .rail ul {
     grid-auto-flow: column;
     grid-auto-columns: 44px;
     justify-content: start;
+    padding-bottom: 7px;
     overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .rail-item.is-active::after {
     left: 50%;
     top: auto;
-    bottom: -8px;
+    bottom: -7px;
     width: 26px;
     height: 3px;
     border-radius: 3px 3px 0 0;
@@ -1085,8 +1108,23 @@ code.mono {
     white-space: nowrap;
   }
 
+  /* The panel releases its scroll to the page, so the save bar has to be
+     pinned to the viewport foot instead of the panel foot. A clipping panel
+     would stop it sticking, so it stops clipping and the bar takes the
+     corners itself. */
+  .panel {
+    overflow: visible;
+  }
+
   .panel-scroll {
     overflow-y: visible;
+  }
+
+  .savebar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    border-radius: 0 0 16px 16px;
   }
 
   /* A wrapped equalizer is not an equalizer — three rows of five bands reads as
@@ -1096,6 +1134,8 @@ code.mono {
     grid-auto-flow: column;
     grid-auto-columns: 44px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
   }
 
   .field.is-wide,
@@ -1155,7 +1195,8 @@ code.mono {
 .field-describe {
   grid-column: 1;
   margin-top: 5px;
-  max-width: 62ch;
+  max-width: 64ch;
+  text-wrap: pretty;
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--muted);
@@ -1164,7 +1205,7 @@ code.mono {
 .field-note {
   grid-column: 1;
   margin-top: 7px;
-  max-width: 62ch;
+  max-width: 64ch;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted);
@@ -1216,6 +1257,7 @@ code.mono {
 
 .toggle:hover:not(:disabled) {
   color: var(--text);
+  outline-color: var(--line-strong);
 }
 
 .toggle.is-on {
@@ -1278,6 +1320,14 @@ code.mono {
   appearance: none;
   cursor: pointer;
   text-overflow: ellipsis;
+}
+
+.select {
+  transition: background-color 0.15s var(--ease);
+}
+
+.select:hover:not(:disabled) {
+  background-color: var(--high);
 }
 
 .select:disabled {
@@ -1366,8 +1416,12 @@ code.mono {
 
 .savebar-guild {
   margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
   font: 500 11px var(--mono);
   color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .spin {
@@ -1400,5 +1454,196 @@ code.mono {
 
   .field-note {
     order: 4;
+  }
+}
+
+/* ---------- laptop: the viewport is the frame ---------- */
+
+/* The settings column is the only scroller, so the save bar stays at the panel
+   foot however long a section runs. The section list scrolls on its own if the
+   viewport is shorter than it. */
+@media (min-width: 901px) {
+  .dash {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .dash-body {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .rail,
+  .dash-nav {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+/* ---------- tablet and phone: sticky needs a body that does not scroll ---------- */
+
+/* The page sets overflow-x hidden on body, which makes body a scroll container
+   and quietly stops anything inside it from sticking. clip keeps the same
+   guarantee (html still hides the horizontal axis) without the container. */
+body:has(.dash) {
+  overflow-x: clip;
+}
+
+/* ---------- phone ---------- */
+
+@media (max-width: 900px) {
+  .dash-top {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: 52px;
+    background: var(--bg);
+  }
+
+  .dash-user {
+    max-width: 34vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A flex column rather than a grid: a sticky grid item is bounded by its own
+     grid area, a sticky flex item by the whole container. */
+  .dash-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .rail {
+    flex: none;
+    padding: 6px 8px 2px;
+  }
+
+  .rail ul {
+    grid-auto-columns: 36px;
+    gap: 6px;
+  }
+
+  .rail-item {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+
+  .rail-item img {
+    border-radius: 10px;
+  }
+
+  /* The section list becomes one strip under the top bar. The guild name is
+     already in the save bar, so it stays for screen readers only. */
+  .dash-nav {
+    position: sticky;
+    top: 52px;
+    z-index: 20;
+    flex: none;
+    padding: 4px;
+  }
+
+  .dash-guild {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Padding gives the focus ring room inside the scroll box, which would
+     otherwise clip it. */
+  .sections {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .sections::-webkit-scrollbar {
+    display: none;
+  }
+
+  .section-group {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* Groups read as inline runs divided by a hairline; the label stays for
+     screen readers. */
+  .section-group + .section-group {
+    margin: 0 0 0 4px;
+    padding: 0 0 0 6px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .section-group-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .section-link {
+    display: flex;
+    flex: none;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 13px;
+    white-space: nowrap;
+  }
+
+  .section-link small {
+    display: none;
+  }
+
+  .panel {
+    flex: none;
+  }
+
+  .panel-scroll {
+    padding: 18px 16px 20px;
+  }
+
+  .panel-head {
+    margin-bottom: 14px;
+  }
+
+  .panel-head h2 {
+    font-size: 17px;
+  }
+
+  .field {
+    padding: 16px 0;
+  }
+
+  .savebar {
+    padding: 10px 16px;
+  }
+
+  .savebar-guild {
+    max-width: 38%;
+  }
+
+  .addrow .input {
+    min-width: 0;
   }
 }

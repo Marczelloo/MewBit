@@ -1,9 +1,10 @@
 import Field from "../controls/Field.jsx";
 import { Select, Toggle } from "../controls/Inputs.jsx";
 
-export default function TicketsSection({ settings, commit, savedField, channelOptions, roleOptions }) {
+export default function TicketsSection({ settings, commit, savedField, postChannelOptions, blockedChannels, roleOptions }) {
   const tickets = settings.tickets;
   const noChannel = !tickets.channelId;
+  const blocked = blockedChannels.has(tickets.channelId);
 
   return (
     <>
@@ -14,6 +15,7 @@ export default function TicketsSection({ settings, commit, savedField, channelOp
         saved={savedField === "ticketsEnabled"}
       >
         <Toggle
+          label="Ticket system"
           checked={tickets.enabled}
           disabled={noChannel}
           onChange={(value) => commit({ tickets: { enabled: value } }, "ticketsEnabled")}
@@ -23,13 +25,20 @@ export default function TicketsSection({ settings, commit, savedField, channelOp
       <Field
         label="Notification channel"
         describe="Where a new ticket is posted for the team to pick up."
-        note={tickets.enabled ? null : "The ticket system is off, so nothing will be posted here."}
+        note={
+          blocked
+            ? "MewBit cannot post in this channel. Give it Send Messages and Embed Links there."
+            : tickets.enabled
+              ? null
+              : "The ticket system is off, so nothing will be posted here."
+        }
+        tone={blocked ? "danger" : "muted"}
         saved={savedField === "ticketChannel"}
       >
         <Select
           value={tickets.channelId}
           onChange={(value) => commit({ tickets: { channelId: value } }, "ticketChannel")}
-          options={channelOptions}
+          options={postChannelOptions}
           placeholder="Not set — the ticket system cannot be turned on"
         />
       </Field>

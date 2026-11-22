@@ -37,6 +37,7 @@ export default function LogsSection({ settings, commit, savedField, channelOptio
         saved={savedField === "logsEnabled"}
       >
         <Toggle
+          label="Logging"
           checked={logs.enabled}
           disabled={!anyCategory}
           onChange={(value) => commit({ logs: { enabled: value } }, "logsEnabled")}

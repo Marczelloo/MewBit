@@ -14,18 +14,24 @@ const SKIP_OPTIONS = [
   { value: "hybrid", label: "Hybrid — DJ skips outright, others vote" },
 ];
 
-export function PlayerSection({ settings, commit, savedField, channelOptions }) {
+const CANNOT_POST_NOTE = "MewBit cannot post in this channel. Give it Send Messages and Embed Links there.";
+
+export function PlayerSection({ settings, commit, savedField, postChannelOptions, blockedChannels }) {
+  const playerBlocked = blockedChannels.has(settings.player.playerChannel);
+
   return (
     <>
       <Field
         label="Player channel"
         describe="MewBit posts its player message here, and the Activity opens against this channel."
+        note={playerBlocked ? CANNOT_POST_NOTE : null}
+        tone={playerBlocked ? "danger" : "muted"}
         saved={savedField === "playerChannel"}
       >
         <Select
           value={settings.player.playerChannel}
           onChange={(value) => commit({ player: { playerChannel: value } }, "playerChannel")}
-          options={channelOptions}
+          options={postChannelOptions}
           placeholder="Not set — posts wherever the command was used"
         />
       </Field>
@@ -36,6 +42,7 @@ export function PlayerSection({ settings, commit, savedField, channelOptions }) 
         saved={savedField === "autoplay"}
       >
         <Toggle
+          label="Autoplay"
           checked={settings.player.autoplay}
           onChange={(value) => commit({ player: { autoplay: value } }, "autoplay")}
         />
@@ -43,10 +50,11 @@ export function PlayerSection({ settings, commit, savedField, channelOptions }) 
 
       <Field
         label="24/7 radio"
-        describe="MewBit stays in the voice channel when everyone leaves instead of disconnecting after the idle timeout."
+        describe="When the queue ends, MewBit keeps queueing tracks based on what was played and never leaves for inactivity. /stop turns it off. Can be switched on ahead of time; it takes effect when music next plays."
         saved={savedField === "radio247"}
       >
         <Toggle
+          label="24/7 radio"
           checked={settings.player.radio247}
           onChange={(value) => commit({ player: { radio247: value } }, "radio247")}
         />
@@ -74,7 +82,9 @@ export function SourceSection({ settings, commit, savedField }) {
 export function DjSection({ settings, commit, savedField, roleOptions }) {
   const dj = settings.dj;
   const djOff = !dj.enabled;
-  const strictWithoutRole = dj.enabled && dj.strictMode && !dj.roleId;
+  // DJ mode with nobody to be the DJ would lock out everyone but the owner, so
+  // the role comes first and the switch waits for it.
+  const needsRole = !dj.enabled && !dj.roleId;
   const thresholdUnused = dj.enabled && dj.skipMode === "dj";
   const offNote = djOff ? "DJ mode is off — everyone can control playback." : null;
 
@@ -83,23 +93,27 @@ export function DjSection({ settings, commit, savedField, roleOptions }) {
       <Field
         label="DJ mode"
         describe="With DJ mode off, anyone in the voice channel can skip, stop, and reorder the queue."
+        note={needsRole ? "Choose a DJ role first." : null}
         saved={savedField === "enabled"}
       >
-        <Toggle checked={dj.enabled} onChange={(value) => commit({ dj: { enabled: value } }, "enabled")} />
+        <Toggle
+          label="DJ mode"
+          checked={dj.enabled}
+          disabled={needsRole}
+          onChange={(value) => commit({ dj: { enabled: value } }, "enabled")}
+        />
       </Field>
 
       <Field
         label="DJ role"
-        describe="Members with this role always control playback. The server owner always can."
-        note={offNote}
+        describe="Members with this role control playback while DJ mode is on. The server owner always can."
         saved={savedField === "roleId"}
       >
         <Select
           value={dj.roleId}
-          disabled={djOff}
           onChange={(value) => commit({ dj: { roleId: value } }, "roleId")}
           options={roleOptions}
-          placeholder="No role — administrators only"
+          placeholder="No role"
         />
       </Field>
 
@@ -130,30 +144,31 @@ export function DjSection({ settings, commit, savedField, roleOptions }) {
           max={1}
           step={0.05}
           format={(value) => `${Math.round(value * 100)}%`}
-          onChange={(value) => commit({ dj: { voteThreshold: value } }, "voteThreshold")}
+          label="Vote threshold"
+          onCommit={(value) => commit({ dj: { voteThreshold: value } }, "voteThreshold")}
         />
       </Field>
 
       <Field
         label="Strict mode"
-        describe="Only the DJ role and the server owner control playback. Administrators lose the implicit pass."
-        note={
-          offNote ||
-          (strictWithoutRole
-            ? "Strict mode does nothing until a DJ role is set. Only the server owner can control playback right now."
-            : null)
-        }
-        tone={strictWithoutRole ? "danger" : "muted"}
+        describe="Only the DJ role and the server owner control playback. Without it, members with Administrator, Manage Server or Manage Channels also can."
+        note={offNote}
         saved={savedField === "strictMode"}
       >
-        <Toggle checked={dj.strictMode} disabled={djOff} onChange={(value) => commit({ dj: { strictMode: value } }, "strictMode")} />
+        <Toggle
+          label="Strict mode"
+          checked={dj.strictMode}
+          disabled={djOff}
+          onChange={(value) => commit({ dj: { strictMode: value } }, "strictMode")}
+        />
       </Field>
     </>
   );
 }
 
-export function AnnouncementsSection({ settings, commit, savedField, channelOptions }) {
+export function AnnouncementsSection({ settings, commit, savedField, postChannelOptions, blockedChannels }) {
   const on = settings.announcements.announcementsEnabled;
+  const blocked = blockedChannels.has(settings.announcements.announcementChannel);
 
   return (
     <>
@@ -163,6 +178,7 @@ export function AnnouncementsSection({ settings, commit, savedField, channelOpti
         saved={savedField === "announcementsEnabled"}
       >
         <Toggle
+          label="Announcements"
           checked={on}
           onChange={(value) => commit({ announcements: { announcementsEnabled: value } }, "announcementsEnabled")}
         />
@@ -171,14 +187,15 @@ export function AnnouncementsSection({ settings, commit, savedField, channelOpti
       <Field
         label="Announcement channel"
         describe="Where those update notes are posted."
-        note={on ? null : "Announcements are off, so nothing will be posted here."}
+        note={blocked ? CANNOT_POST_NOTE : on ? null : "Announcements are off, so nothing will be posted here."}
+        tone={blocked ? "danger" : "muted"}
         saved={savedField === "announcementChannel"}
       >
         <Select
           value={settings.announcements.announcementChannel}
           disabled={!on}
           onChange={(value) => commit({ announcements: { announcementChannel: value } }, "announcementChannel")}
-          options={channelOptions}
+          options={postChannelOptions}
           placeholder="Not set — no update notes are posted"
         />
       </Field>

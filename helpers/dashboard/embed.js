@@ -1,6 +1,7 @@
 const { EmbedBuilder, PermissionsBitField } = require("discord.js");
 const { BRAND } = require("../brand");
 const Log = require("../logs/log");
+const { channelCanPost } = require("./channels");
 
 /**
  * Sending a custom embed from the dashboard.
@@ -94,19 +95,9 @@ function listChannels(client, guildId) {
   const guild = client?.guilds?.cache?.get(guildId);
   if (!guild) return [];
 
-  const me = guild.members?.me;
   return [...(guild.channels?.cache?.values?.() || [])]
     .filter((channel) => TEXT_CHANNEL_TYPES.has(channel.type))
-    .map((channel) => {
-      const permissions = me && typeof channel.permissionsFor === "function" ? channel.permissionsFor(me) : null;
-      // Reported rather than filtered out: "MewBit cannot post here" is more
-      // useful to an owner than a channel quietly missing from the list.
-      const canPost = Boolean(
-        permissions?.has?.(PermissionsBitField.Flags.SendMessages) &&
-          permissions?.has?.(PermissionsBitField.Flags.EmbedLinks)
-      );
-      return { id: channel.id, name: channel.name, canPost };
-    });
+    .map((channel) => ({ id: channel.id, name: channel.name, canPost: channelCanPost(guild, channel) }));
 }
 
 function describeEmbedOptions(client, guildId) {

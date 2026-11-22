@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { init: initAnnouncer } = require("../../../helpers/announcements/announcer");
 const accessStore = require("../../../helpers/dashboard/access");
-const { createDashboardRouter } = require("../../../helpers/dashboard/routes");
+const { createDashboardRouter, recordSettingsChanges } = require("../../../helpers/dashboard/routes");
 const { createSession, resetSessions, SESSION_COOKIE } = require("../../../helpers/dashboard/sessions");
 const { resetGuildState } = require("../../../helpers/guildState");
 const { CATEGORIES, DEFAULT_CATEGORY } = require("../../../helpers/help/categories");
@@ -486,4 +486,90 @@ test("a settings write is attributed in the change log", async () => {
   assert.equal(entry.field, "autoplay");
   assert.equal(entry.from, "off");
   assert.equal(entry.to, "on");
+});
+
+/* ------------------------------------------------ origin and change trail --- */
+
+test("a refused origin names the page's origin and the configured public URL", async () => {
+  resetSessions();
+  const id = createSession({ userId: "u1", accessToken: "tok", guilds: [{ id: GUILD, permissions: "8" }] });
+  const router = createDashboardRouter(fakeClient());
+  const response = fakeResponse();
+  await router.handle(
+    request({ method: "PATCH", cookie: `${SESSION_COOKIE}=${id}`, origin: "https://evil.test", body: "{}" }),
+    response,
+    url(`/api/dashboard/guilds/${GUILD}/settings`)
+  );
+  assert.equal(response.statusCode, 403);
+  const { error } = JSON.parse(response.body);
+  assert.match(error, /https:\/\/evil\.test/);
+  assert.match(error, /https:\/\/mewbit\.test/);
+  assert.match(error, /DASHBOARD_PUBLIC_URL/);
+});
+
+/* The trail is diffed from two settings snapshots, so it can be exercised
+   without a router or a real store: recordChange is swapped for a recorder. */
+function trailFor(before, after, patch) {
+  const recorded = [];
+  const original = accessStore.recordChange;
+  accessStore.recordChange = (guildId, entry) => recorded.push(entry);
+  try {
+    recordSettingsChanges(null, GUILD, { userId: "u1", username: "Neko" }, before, after, patch);
+  } finally {
+    accessStore.recordChange = original;
+  }
+  return recorded.map((entry) => `${entry.section}.${entry.field}: ${entry.from} -> ${entry.to}`);
+}
+
+test("the trail records log categories and channels one key at a time", () => {
+  const before = {
+    logs: {
+      categories: { message: true, voice: true },
+      channels: { voice: "ch-a" },
+    },
+  };
+  const after = {
+    logs: {
+      categories: { message: false, voice: true },
+      channels: { voice: "ch-b" },
+    },
+  };
+  assert.deepEqual(trailFor(before, after, { logs: {} }), [
+    "logs.categories.message: on -> off",
+    "logs.channels.voice: ch-a -> ch-b",
+  ]);
+});
+
+test("the trail renders equalizer bands as flat or a custom curve, and skips them beside a named preset", () => {
+  const flat = new Array(15).fill(0);
+  const curve = flat.map((_, index) => (index === 0 ? 0.1 : 0));
+
+  assert.deepEqual(
+    trailFor(
+      { equalizer: { preset: "flat", bands: flat, presets: ["a"] } },
+      { equalizer: { preset: "custom", bands: curve, presets: ["a", "b"] } },
+      { equalizer: { bands: curve } }
+    ),
+    ["equalizer.preset: flat -> custom", "equalizer.bands: flat -> custom curve"]
+  );
+
+  assert.deepEqual(
+    trailFor(
+      { equalizer: { preset: "flat", bands: flat } },
+      { equalizer: { preset: "bassboost", bands: curve } },
+      { equalizer: { preset: "bassboost" } }
+    ),
+    ["equalizer.preset: flat -> bassboost"]
+  );
+});
+
+test("the trail records an audio effect change but not the derived option list", () => {
+  assert.deepEqual(
+    trailFor(
+      { effects: { effect: "off", options: [{ name: "a" }] } },
+      { effects: { effect: "nightcore", options: [{ name: "a" }, { name: "b" }] } },
+      { effects: { effect: "nightcore" } }
+    ),
+    ["effects.effect: off -> nightcore"]
+  );
 });

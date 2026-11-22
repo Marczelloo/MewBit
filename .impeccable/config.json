@@ -8,6 +8,15 @@
         "value": "rgba(0, 0, 0, 0.9)",
         "createdAt": "2026-08-28T12:36:10.154Z",
         "reason": "Claude: mask-image alpha ramp, not a palette colour — the compositor uses only the alpha channel and discards the RGB, so this is an opacity stop rather than a colour decision. landing.css .landing::before"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "web/src/dashboard/dashboard.css"
+        ],
+        "createdAt": "2026-11-19T15:45:34.285Z",
+        "reason": "Claude decided: .embed-preview::before is the colour stripe of a Discord embed preview (mirrors the real Discord embed, user-chosen colour), pre-existing, not a decorative card accent"
       }
     ]
   }

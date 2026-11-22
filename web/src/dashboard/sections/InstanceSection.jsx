@@ -58,7 +58,7 @@ export default function InstanceSection() {
     { label: "Lavalink", value: instance.lavalink?.connected ? "Connected" : "Disconnected" },
     { label: "Lavalink latency", value: instance.lavalink?.latency != null ? `${instance.lavalink.latency} ms` : "—" },
     { label: "Reconnects", value: String(instance.lavalink?.reconnects ?? 0) },
-    { label: "Heap used", value: memory?.heapUsed ? `${memory.heapUsed}` : "—" },
+    { label: "Heap used", value: memory?.heapUsed != null && Number.isFinite(Number(memory.heapUsed)) ? `${Number(memory.heapUsed).toFixed(1)} MB` : "—" },
     { label: "Event loop lag", value: lag != null ? `${lag} ms` : "—" },
   ];
 

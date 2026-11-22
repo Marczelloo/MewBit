@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import Field from "../controls/Field.jsx";
 import { BandSliders, Select } from "../controls/Inputs.jsx";
 
+function effectLabel(name) {
+  if (name === "eightd") return "8D";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 /**
- * The server's stored equalizer.
+ * The server's stored equalizer and audio effect.
  *
  * It is not the live player's: the bot restores this on the next player it
  * creates, and pushes it to a running one when there is one. That distinction
@@ -12,6 +17,7 @@ import { BandSliders, Select } from "../controls/Inputs.jsx";
  */
 export default function EqualizerSection({ settings, commit, savedField }) {
   const eq = settings.equalizer;
+  const effects = settings.effects;
 
   // Dragging a slider has to feel continuous while only the release is sent,
   // so the bands are held locally between commits.
@@ -37,8 +43,34 @@ export default function EqualizerSection({ settings, commit, savedField }) {
 
   const isCustom = eq.preset === "custom";
 
+  // The same names /filter offers. Anything the backend lists is shown, so a
+  // new preset needs no change here.
+  const effectOptions = effects
+    ? [
+        { value: "off", label: "Off — no effect" },
+        ...effects.options.map((option) => ({
+          value: option.name,
+          label: `${effectLabel(option.name)} — ${option.description}`,
+        })),
+      ]
+    : [];
+
   return (
     <>
+      {effects ? (
+        <Field
+          label="Audio effect"
+          describe="The same effects /filter offers. They change speed, pitch or stereo image, and stack with the equalizer."
+          saved={savedField === "effect"}
+        >
+          <Select
+            value={effects.effect}
+            onChange={(value) => commit({ effects: { effect: value || "off" } }, "effect")}
+            options={effectOptions}
+          />
+        </Field>
+      ) : null}
+
       <Field
         label="Preset"
         describe="The same presets /equalizer offers. Choosing one replaces every band below."

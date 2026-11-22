@@ -180,7 +180,13 @@ function assertSameOrigin(request, config) {
   const origin = request.headers.origin;
   if (!origin) return;
   if (origin !== config.publicUrl) {
-    throw Object.assign(new Error("Request origin is not allowed."), { statusCode: 403 });
+    throw Object.assign(
+      new Error(
+        `Changes are refused because this page is open at ${origin}, but the bot only accepts them from ${config.publicUrl}. ` +
+          "Open the dashboard there, or set DASHBOARD_PUBLIC_URL."
+      ),
+      { statusCode: 403 }
+    );
   }
 }
 
@@ -211,6 +217,19 @@ function renderValue(guild, value) {
  * logging off.
  */
 function recordSettingsChanges(guild, guildId, session, before, after, patch) {
+  const record = (section, field, from, to) => {
+    accessStore.recordChange(guildId, {
+      userId: session.userId,
+      username: session.username,
+      section,
+      field,
+      from,
+      to,
+    });
+  };
+  const isPlainObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const isFlat = (bands) => Array.isArray(bands) && bands.every((band) => !Number(band?.gain ?? band));
+
   for (const section of Object.keys(patch || {})) {
     const from = before?.[section];
     const to = after?.[section];
@@ -218,21 +237,33 @@ function recordSettingsChanges(guild, guildId, session, before, after, patch) {
 
     for (const field of Object.keys(to)) {
       // Derived and read-only members of a section are not changes anyone made.
-      if (["presets", "frequencies", "minGain", "maxGain", "configured", "openCount", "totalCount"].includes(field)) {
+      if (
+        ["presets", "frequencies", "minGain", "maxGain", "configured", "openCount", "totalCount", "options"].includes(field)
+      ) {
         continue;
       }
       const wasValue = from[field];
       const isValue = to[field];
       if (JSON.stringify(wasValue) === JSON.stringify(isValue)) continue;
 
-      accessStore.recordChange(guildId, {
-        userId: session.userId,
-        username: session.username,
-        section,
-        field,
-        from: renderValue(guild, wasValue),
-        to: renderValue(guild, isValue),
-      });
+      // Maps (log categories, log channels) read better one key at a time:
+      // "message: on -> off" rather than two JSON blobs cut off at 120 chars.
+      if (isPlainObject(wasValue) && isPlainObject(isValue)) {
+        for (const key of new Set([...Object.keys(wasValue), ...Object.keys(isValue)])) {
+          if (JSON.stringify(wasValue[key]) === JSON.stringify(isValue[key])) continue;
+          record(section, `${field}.${key}`, renderValue(guild, wasValue[key]), renderValue(guild, isValue[key]));
+        }
+        continue;
+      }
+
+      if (section === "equalizer" && field === "bands") {
+        // The preset entry already says it when the patch picked a named preset.
+        if (to.preset !== from.preset && to.preset !== "custom") continue;
+        record(section, field, isFlat(wasValue) ? "flat" : "custom curve", isFlat(isValue) ? "flat" : "custom curve");
+        continue;
+      }
+
+      record(section, field, renderValue(guild, wasValue), renderValue(guild, isValue));
     }
   }
 }
@@ -650,4 +681,4 @@ function createDashboardRouter(client) {
   };
 }
 
-module.exports = { createDashboardRouter };
+module.exports = { createDashboardRouter, recordSettingsChanges };

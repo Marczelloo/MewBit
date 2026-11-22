@@ -197,7 +197,7 @@ export default function EmbedSection({ guildId }) {
       </Field>
 
       <Field label="Timestamp" describe="Adds the current time to the footer when it is sent.">
-        <Toggle checked={draft.timestamp} onChange={set("timestamp")} />
+        <Toggle label="Timestamp" checked={draft.timestamp} onChange={set("timestamp")} />
       </Field>
 
       <div className="statblock">

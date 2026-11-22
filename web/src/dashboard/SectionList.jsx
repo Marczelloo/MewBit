@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 
 /**
  * Eight sections is past the point where a flat list reads as one thing, so
@@ -12,7 +13,7 @@ export const SECTION_GROUPS = [
     sections: [
       { id: "player", label: "Player", hint: "Channel, autoplay, 24/7" },
       { id: "source", label: "Source", hint: "Default search provider" },
-      { id: "equalizer", label: "Equalizer", hint: "Stored sound shaping" },
+      { id: "equalizer", label: "Sound", hint: "Equalizer and effects" },
       { id: "dj", label: "DJ", hint: "Role gating and skip votes" },
       { id: "playlists", label: "Playlists", hint: "Shared with the whole server" },
     ],
@@ -47,8 +48,24 @@ export function isSection(value) {
 }
 
 export default function SectionList({ guildId }) {
+  const strip = useRef(null);
+  const { pathname } = useLocation();
+
+  // On a phone the list is one horizontal strip. Keep the active section in
+  // view when it is entered by a link or a reload rather than by tapping it.
+  useEffect(() => {
+    const nav = strip.current;
+    const active = nav?.querySelector(".is-active");
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    nav.scrollTo({
+      left: active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2,
+      behavior: reduced ? "auto" : "smooth",
+    });
+  }, [pathname]);
+
   return (
-    <nav className="sections" aria-label="Settings sections">
+    <nav className="sections" aria-label="Settings sections" ref={strip}>
       {SECTION_GROUPS.map((group) => (
         <div className="section-group" key={group.id}>
           <h2 className="section-group-label">{group.label}</h2>

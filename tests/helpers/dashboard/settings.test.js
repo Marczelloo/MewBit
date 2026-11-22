@@ -37,20 +37,34 @@ require.cache[TICKET_PATH] = {
   },
 };
 
-const { readGuildSettings, applyGuildSettings, EQ_BAND_COUNT } = require("../../../helpers/dashboard/settings");
+const { readGuildSettings, applyGuildSettings, liveHooks, EQ_BAND_COUNT } = require("../../../helpers/dashboard/settings");
 const djStore = require("../../../helpers/dj/store");
 const { resetGuildState, getGuildState } = require("../../../helpers/guildState");
 const { getEqualizerState, clearEqualizerState } = require("../../../helpers/lavalink/equalizerStore");
 
-const GUILD = "settings-test-guild";
+const GUILD = "910000000000000091";
 
 function fakeClient() {
   return {
     guilds: {
       cache: new Map([[GUILD, {
         id: GUILD,
-        channels: { cache: new Map([["c1", { id: "c1", name: "music", type: 0 }]]) },
-        roles: { cache: new Map([["r1", { id: "r1", name: "DJ", managed: false }]]) },
+        channels: {
+          cache: new Map([
+            ["c1", { id: "c1", name: "music", type: 0 }],
+            ["100000000000000001", { id: "100000000000000001", name: "tickets", type: 0 }],
+            ["300000000000000003", { id: "300000000000000003", name: "logs", type: 5 }],
+            ["500000000000000005", { id: "500000000000000005", name: "Lounge", type: 2 }],
+          ]),
+        },
+        roles: {
+          cache: new Map([
+            ["r1", { id: "r1", name: "DJ", managed: false }],
+            ["200000000000000002", { id: "200000000000000002", name: "Mods", managed: false }],
+            ["600000000000000006", { id: "600000000000000006", name: "Booster", managed: true }],
+            [GUILD, { id: GUILD, name: "@everyone", managed: false }],
+          ]),
+        },
       }]]),
     },
   };
@@ -86,7 +100,9 @@ function fakeLoggingClient({ failFor = null } = {}) {
         cache: new Map([[GUILD, {
           id: GUILD,
           channels: { cache: channels, fetch: async (id) => channels.get(id) || null },
-          roles: { cache: new Map() },
+          roles: {
+            cache: new Map([["400000000000000004", { id: "400000000000000004", name: "Staff", managed: false }]]),
+          },
         }]]),
       },
     },
@@ -111,6 +127,7 @@ test.beforeEach(() => {
   ticketState.tickets = [];
   clearEqualizerState(GUILD);
   resetGuildState(GUILD);
+  djStore.setGuildConfig(GUILD, { enabled: false, roleId: null });
 });
 
 /* ------------------------------------------------------------- existing --- */
@@ -122,8 +139,14 @@ test("settings read back the current store values and the picker options", () =>
   assert.equal(settings.source.defaultSource, "deezer");
   assert.equal(settings.player.autoplay, false);
   assert.equal(settings.dj.skipMode, "vote");
-  assert.deepEqual(settings.options.channels, [{ id: "c1", name: "music" }]);
-  assert.deepEqual(settings.options.roles, [{ id: "r1", name: "DJ" }]);
+  // Voice channels are not offered; canPost is false for a channel the fake
+  // cannot answer permission questions about.
+  assert.deepEqual(settings.options.channels, [
+    { id: "c1", name: "music", canPost: false },
+    { id: "100000000000000001", name: "tickets", canPost: false },
+    { id: "300000000000000003", name: "logs", canPost: false },
+  ]);
+  assert.deepEqual(settings.options.roles.map((role) => role.id), ["r1", "200000000000000002"]);
 });
 
 test("applying player settings writes through guildState", async () => {
@@ -415,4 +438,385 @@ test("a server with no listening history reports zeroes rather than nulls", () =
   assert.equal(stats.songsPlayed, 0);
   assert.equal(stats.msPlayed, 0);
   assert.deepEqual(stats.topSources, []);
+});
+
+/* --------------------------------------------- guild-checked pickers --- */
+
+test("a voice channel or a channel from another server is refused when the guild is known", async () => {
+  for (const channelId of ["500000000000000005", "700000000000000007"]) {
+    await assert.rejects(
+      () => applyGuildSettings(GUILD, { player: { playerChannel: channelId } }, fakeClient()),
+      (error) => error.statusCode === 400 && error.message === "Player channel must be a text channel in this server."
+    );
+  }
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { announcements: { announcementChannel: "500000000000000005" } }, fakeClient()),
+    (error) => error.statusCode === 400 && /text channel in this server/.test(error.message)
+  );
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { tickets: { channelId: "700000000000000007" } }, fakeClient()),
+    (error) => error.statusCode === 400 && /text channel in this server/.test(error.message)
+  );
+});
+
+test("a news channel is accepted and clearing still works with a guild present", async () => {
+  await applyGuildSettings(GUILD, { player: { playerChannel: "300000000000000003" } }, fakeClient());
+  assert.equal(getGuildState(GUILD).playerChannel, "300000000000000003");
+  await applyGuildSettings(GUILD, { player: { playerChannel: null } }, fakeClient());
+  assert.equal(getGuildState(GUILD).playerChannel, null);
+});
+
+test("managed roles, @everyone and unknown roles are refused when the guild is known", async () => {
+  for (const roleId of ["600000000000000006", GUILD, "800000000000000008"]) {
+    await assert.rejects(
+      () => applyGuildSettings(GUILD, { tickets: { roleId } }, fakeClient()),
+      (error) => error.statusCode === 400 && error.message === "Ticket ping role must be a role in this server."
+    );
+  }
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { dj: { roleId: "800000000000000008" } }, fakeClient()),
+    (error) => error.statusCode === 400 && /DJ role must be a role in this server/.test(error.message)
+  );
+});
+
+test("log access roles and log channels get the same guild check", async () => {
+  seedLogs();
+  const { client } = fakeLoggingClient();
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { logs: { accessRoles: ["800000000000000008"] } }, client),
+    (error) => error.statusCode === 400 && /Access role must be a role in this server/.test(error.message)
+  );
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { logs: { channels: { voice: "700000000000000007" } } }, client),
+    (error) => error.statusCode === 400 && /voice log channel must be a text channel in this server/.test(error.message)
+  );
+});
+
+test("channel options report whether MewBit can post in them", () => {
+  const { PermissionsBitField } = require("discord.js");
+  const canPost = {
+    has: (flag) => flag === PermissionsBitField.Flags.SendMessages || flag === PermissionsBitField.Flags.EmbedLinks,
+  };
+  const readOnly = { has: (flag) => flag === PermissionsBitField.Flags.SendMessages };
+
+  const client = {
+    guilds: {
+      cache: new Map([[GUILD, {
+        id: GUILD,
+        members: { me: { id: "bot" } },
+        channels: {
+          cache: new Map([
+            ["c1", { id: "c1", name: "open", type: 0, permissionsFor: () => canPost }],
+            ["c2", { id: "c2", name: "readonly", type: 0, permissionsFor: () => readOnly }],
+          ]),
+        },
+        roles: { cache: new Map() },
+      }]]),
+    },
+  };
+
+  assert.deepEqual(readGuildSettings(client, GUILD).options.channels, [
+    { id: "c1", name: "open", canPost: true },
+    { id: "c2", name: "readonly", canPost: false },
+  ]);
+});
+
+/* ------------------------------------------------------------------ DJ --- */
+
+test("DJ mode cannot be turned on without a role", async () => {
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { dj: { enabled: true } }, fakeClient()),
+    (error) => error.statusCode === 400 && error.message === "Choose a DJ role before turning DJ mode on."
+  );
+  assert.equal(djStore.getGuildConfig(GUILD).enabled, false);
+
+  const { settings } = await applyGuildSettings(GUILD, { dj: { enabled: true, roleId: "200000000000000002" } }, fakeClient());
+  assert.equal(settings.dj.enabled, true);
+  assert.equal(settings.dj.roleId, "200000000000000002");
+});
+
+test("clearing the DJ role while DJ mode is on is refused", async () => {
+  await applyGuildSettings(GUILD, { dj: { enabled: true, roleId: "200000000000000002" } }, fakeClient());
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { dj: { roleId: null } }, fakeClient()),
+    (error) => error.statusCode === 400 && /Choose a DJ role/.test(error.message)
+  );
+  // Turning it off and clearing the role together is fine.
+  const { settings } = await applyGuildSettings(GUILD, { dj: { enabled: false, roleId: null } }, fakeClient());
+  assert.equal(settings.dj.enabled, false);
+  assert.equal(settings.dj.roleId, null);
+});
+
+test("a legacy DJ config without a role stays editable through its other fields", async () => {
+  djStore.setGuildConfig(GUILD, { enabled: true, roleId: null });
+  const { settings } = await applyGuildSettings(GUILD, { dj: { strictMode: true, skipMode: "vote" } }, fakeClient());
+  assert.equal(settings.dj.strictMode, true);
+  assert.equal(settings.dj.enabled, true);
+});
+
+/* -------------------------------------------------------------- effects --- */
+
+test("effects read as off with every preset listed", () => {
+  const { effects } = readGuildSettings(fakeClient(), GUILD);
+  assert.equal(effects.effect, "off");
+  const nightcore = effects.options.find((option) => option.name === "nightcore");
+  assert.ok(nightcore && typeof nightcore.description === "string" && nightcore.description.length > 0);
+  assert.deepEqual(Object.keys(nightcore).sort(), ["description", "name"]);
+});
+
+test("an audio effect persists its name and filters for the next session", async () => {
+  const { settings } = await applyGuildSettings(GUILD, { effects: { effect: "nightcore" } }, fakeClient());
+
+  assert.equal(settings.effects.effect, "nightcore");
+  const stored = getEqualizerState(GUILD);
+  assert.equal(stored.filterPreset, "nightcore");
+  assert.deepEqual(stored.timescale, { speed: 1.18, pitch: 1.08, rate: 1 });
+});
+
+test("switching effect replaces the old effect's filters and keeps the equalizer", async () => {
+  await applyGuildSettings(GUILD, { equalizer: { preset: "bassboost" } }, fakeClient());
+  const bands = getEqualizerState(GUILD).equalizer;
+
+  await applyGuildSettings(GUILD, { effects: { effect: "nightcore" } }, fakeClient());
+  await applyGuildSettings(GUILD, { effects: { effect: "wobble" } }, fakeClient());
+  const swapped = getEqualizerState(GUILD);
+  assert.equal(swapped.filterPreset, "wobble");
+  assert.equal(swapped.timescale, undefined);
+  assert.ok(swapped.tremolo);
+
+  const { settings } = await applyGuildSettings(GUILD, { effects: { effect: "off" } }, fakeClient());
+  const stored = getEqualizerState(GUILD);
+  assert.equal(settings.effects.effect, "off");
+  assert.equal(stored.filterPreset, undefined);
+  assert.equal(stored.tremolo, undefined);
+  assert.deepEqual(stored.equalizer, bands);
+  assert.equal(stored.preset, "bassboost");
+  assert.equal(settings.equalizer.preset, "bassboost");
+});
+
+test("an unknown audio effect is rejected with 400", async () => {
+  for (const effect of ["spaceship", 5, null]) {
+    await assert.rejects(
+      () => applyGuildSettings(GUILD, { effects: { effect } }, fakeClient()),
+      (error) => error.statusCode === 400 && error.message === "Unknown audio effect."
+    );
+  }
+});
+
+test("an equalizer change keeps the stored audio effect", async () => {
+  await applyGuildSettings(GUILD, { effects: { effect: "vaporwave" } }, fakeClient());
+  const { settings } = await applyGuildSettings(GUILD, { equalizer: { preset: "bassboost" } }, fakeClient());
+
+  assert.equal(settings.effects.effect, "vaporwave");
+  assert.equal(getEqualizerState(GUILD).filterPreset, "vaporwave");
+  assert.ok(getEqualizerState(GUILD).timescale);
+});
+
+/* ---------------------------------------------------- live side effects --- */
+
+/* The real hooks load the lavalink, buttons and announcer modules, which start
+   timers and loaders. Tests replace them so nothing here can keep the process
+   alive or touch Discord. */
+function stubHooks(overrides = {}) {
+  const original = { ...liveHooks };
+  const calls = { refresh: [], resume: [], announce: [] };
+  Object.assign(liveHooks, {
+    getPlayer: () => null,
+    refreshNowPlaying: async (client, guildId, player) => { calls.refresh.push({ guildId, player }); },
+    resumeRadio: async (player, guildId) => { calls.resume.push({ guildId, player }); },
+    sendAnnouncement: async (client, guildId, channelId) => { calls.announce.push({ guildId, channelId }); },
+    ...overrides,
+  });
+  return { calls, restore: () => Object.assign(liveHooks, original) };
+}
+
+test("changing autoplay refreshes the player message only when a player exists", async () => {
+  const player = { queue: [1], currentTrack: { title: "x" } };
+  const none = stubHooks();
+  try {
+    await applyGuildSettings(GUILD, { player: { autoplay: true } }, fakeClient());
+    assert.equal(none.calls.refresh.length, 0);
+  } finally { none.restore(); }
+
+  const live = stubHooks({ getPlayer: () => player });
+  try {
+    await applyGuildSettings(GUILD, { player: { autoplay: false } }, fakeClient());
+    assert.equal(live.calls.refresh.length, 1);
+    assert.equal(live.calls.refresh[0].player, player);
+    // Unchanged value: nothing to refresh.
+    await applyGuildSettings(GUILD, { player: { autoplay: false } }, fakeClient());
+    assert.equal(live.calls.refresh.length, 1);
+  } finally { live.restore(); }
+});
+
+test("turning 24/7 on with an idle player resumes from history, otherwise it is just stored", async () => {
+  const idle = { queue: [], currentTrack: null };
+  const busy = { queue: [], currentTrack: { title: "playing" } };
+
+  const a = stubHooks({ getPlayer: () => idle });
+  try {
+    const { warnings } = await applyGuildSettings(GUILD, { player: { radio247: true } }, fakeClient());
+    assert.deepEqual(warnings, []);
+    assert.equal(a.calls.resume.length, 1);
+    assert.equal(getGuildState(GUILD).radio247, true);
+  } finally { a.restore(); }
+
+  resetGuildState(GUILD);
+  const b = stubHooks({ getPlayer: () => busy });
+  try {
+    await applyGuildSettings(GUILD, { player: { radio247: true } }, fakeClient());
+    assert.equal(b.calls.resume.length, 0);
+  } finally { b.restore(); }
+
+  resetGuildState(GUILD);
+  const c = stubHooks();
+  try {
+    await applyGuildSettings(GUILD, { player: { radio247: true } }, fakeClient());
+    assert.equal(c.calls.resume.length, 0);
+    assert.equal(getGuildState(GUILD).radio247, true);
+  } finally { c.restore(); }
+});
+
+test("setting an announcement channel while enabled sends the pending announcement", async () => {
+  const hooks = stubHooks();
+  try {
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: "100000000000000001" } }, fakeClient());
+    assert.deepEqual(hooks.calls.announce, [{ guildId: GUILD, channelId: "100000000000000001" }]);
+
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: null } }, fakeClient());
+    await applyGuildSettings(
+      GUILD,
+      { announcements: { announcementChannel: "100000000000000001", announcementsEnabled: false } },
+      fakeClient()
+    );
+    // Cleared, then disabled: neither sends.
+    assert.equal(hooks.calls.announce.length, 1);
+
+    // No client: stored, not sent.
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: "100000000000000001", announcementsEnabled: true } });
+    assert.equal(hooks.calls.announce.length, 1);
+  } finally { hooks.restore(); }
+});
+
+test("a failing live side effect becomes a warning and never fails the patch", async () => {
+  const hooks = stubHooks({
+    getPlayer: () => ({ queue: [], currentTrack: null }),
+    refreshNowPlaying: async () => { throw new Error("message gone"); },
+    sendAnnouncement: async () => { throw new Error("no access"); },
+  });
+  try {
+    const { settings, warnings } = await applyGuildSettings(
+      GUILD,
+      { player: { autoplay: true }, announcements: { announcementChannel: "100000000000000001" } },
+      fakeClient()
+    );
+    assert.equal(settings.player.autoplay, true);
+    assert.equal(settings.announcements.announcementChannel, "100000000000000001");
+    assert.equal(warnings.length, 2);
+    assert.match(warnings.join(" "), /message gone/);
+    assert.match(warnings.join(" "), /no access/);
+  } finally { hooks.restore(); }
+});
+
+test("re-sending the same announcement channel does not send again, switching on does", async () => {
+  const hooks = stubHooks();
+  const channel = "100000000000000001";
+  try {
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: channel } }, fakeClient());
+    assert.equal(hooks.calls.announce.length, 1);
+
+    // Same channel again, and an unrelated toggle that leaves it enabled.
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: channel } }, fakeClient());
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: channel, announcementsEnabled: true } }, fakeClient());
+    assert.equal(hooks.calls.announce.length, 1);
+
+    // Off, then back on with the channel still set: one send for the switch.
+    await applyGuildSettings(GUILD, { announcements: { announcementsEnabled: false } }, fakeClient());
+    assert.equal(hooks.calls.announce.length, 1);
+    await applyGuildSettings(GUILD, { announcements: { announcementsEnabled: true } }, fakeClient());
+    assert.deepEqual(hooks.calls.announce, [
+      { guildId: GUILD, channelId: channel },
+      { guildId: GUILD, channelId: channel },
+    ]);
+
+    // A different channel is a change.
+    await applyGuildSettings(GUILD, { announcements: { announcementChannel: "300000000000000003" } }, fakeClient());
+    assert.equal(hooks.calls.announce.length, 3);
+  } finally { hooks.restore(); }
+});
+
+/* ---------------------------------------------------- refused patches --- */
+
+test("a refused patch leaves every store untouched", async () => {
+  await applyGuildSettings(GUILD, { player: { playerChannel: "100000000000000001" } }, fakeClient());
+
+  // Valid player/source/ticket/effect changes alongside DJ on with no role.
+  await assert.rejects(
+    () =>
+      applyGuildSettings(
+        GUILD,
+        {
+          player: { playerChannel: "300000000000000003", autoplay: true },
+          source: { defaultSource: "spotify" },
+          tickets: { channelId: "100000000000000001", enabled: true },
+          effects: { effect: "nightcore" },
+          dj: { enabled: true },
+        },
+        fakeClient()
+      ),
+    (error) => error.statusCode === 400 && /DJ role/.test(error.message)
+  );
+
+  const state = getGuildState(GUILD);
+  assert.equal(state.playerChannel, "100000000000000001");
+  assert.equal(state.autoplay, false);
+  assert.equal(state.defaultSource, "deezer");
+  assert.equal(ticketState.config[GUILD], undefined);
+  assert.equal(getEqualizerState(GUILD)?.filterPreset, undefined);
+  assert.equal(djStore.getGuildConfig(GUILD).enabled, false);
+});
+
+test("a later section's refusal, in either order, still writes nothing", async () => {
+  // The ticket rule and a bad effect name are checked after the state section.
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { player: { autoplay: true }, tickets: { enabled: true } }, fakeClient()),
+    (error) => error.statusCode === 400
+  );
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { player: { autoplay: true }, effects: { effect: "spaceship" } }, fakeClient()),
+    (error) => error.statusCode === 400
+  );
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { player: { autoplay: true }, equalizer: { preset: "spaceship" } }, fakeClient()),
+    (error) => error.statusCode === 400
+  );
+  assert.equal(getGuildState(GUILD).autoplay, false);
+});
+
+test("prototype keys are not audio effects and write nothing", async () => {
+  await applyGuildSettings(GUILD, { effects: { effect: "nightcore" } }, fakeClient());
+  const stored = JSON.stringify(getEqualizerState(GUILD));
+
+  for (const effect of ["constructor", "__proto__", "toString", "hasOwnProperty", "CONSTRUCTOR"]) {
+    await assert.rejects(
+      () => applyGuildSettings(GUILD, { effects: { effect } }, fakeClient()),
+      (error) => error.statusCode === 400 && error.message === "Unknown audio effect."
+    );
+  }
+  assert.equal(JSON.stringify(getEqualizerState(GUILD)), stored);
+
+  // From a clean slate nothing is written either.
+  clearEqualizerState(GUILD);
+  await assert.rejects(
+    () => applyGuildSettings(GUILD, { effects: { effect: "constructor" } }, fakeClient()),
+    (error) => error.statusCode === 400
+  );
+  assert.equal(getEqualizerState(GUILD)?.filterPreset, undefined);
+});
+
+test("getFilterPreset only resolves its own preset names", () => {
+  const { getFilterPreset } = require("../../../helpers/lavalink/filterPresets");
+  assert.equal(getFilterPreset("constructor"), null);
+  assert.equal(getFilterPreset("__proto__"), null);
+  assert.equal(getFilterPreset("Nightcore").name, "nightcore");
 });

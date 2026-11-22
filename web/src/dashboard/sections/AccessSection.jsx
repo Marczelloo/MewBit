@@ -17,7 +17,7 @@ const FIELD_NAMES = {
   announcementChannel: "Announcement channel",
   announcementsEnabled: "Announcements",
   enabled: "Enabled",
-  roleId: "DJ role",
+  roleId: "Role",
   skipMode: "Skip mode",
   voteThreshold: "Vote threshold",
   strictMode: "Strict mode",
@@ -25,10 +25,43 @@ const FIELD_NAMES = {
   channels: "Log channels",
   accessRoles: "Log readers",
   channelId: "Ticket channel",
+  effect: "Audio effect",
   preset: "Equalizer preset",
   bands: "Equalizer bands",
   operator: "Dashboard access",
 };
+
+/* Where the same field name means different things, the section decides. */
+const SECTION_FIELD_NAMES = {
+  "tickets.enabled": "Ticket system",
+  "tickets.roleId": "Ping role",
+  "tickets.channelId": "Ticket channel",
+  "dj.enabled": "DJ mode",
+  "dj.roleId": "DJ role",
+  "logs.enabled": "Logging",
+  "effects.effect": "Audio effect",
+};
+
+const LOG_CATEGORY_NAMES = {
+  message: "Messages",
+  voice: "Voice",
+  server: "Server",
+  bot: "Bot",
+};
+
+/* Nested log fields are recorded as `categories.voice` and `channels.voice`. */
+function fieldName(entry) {
+  const specific = SECTION_FIELD_NAMES[`${entry.section}.${entry.field}`];
+  if (specific) return specific;
+
+  const nested = /^(categories|channels)\.(\w+)$/.exec(entry.field || "");
+  if (nested && LOG_CATEGORY_NAMES[nested[2]]) {
+    const name = LOG_CATEGORY_NAMES[nested[2]];
+    return nested[1] === "categories" ? `${name} logging` : `${name} log channel`;
+  }
+
+  return FIELD_NAMES[entry.field] || entry.field;
+}
 
 const SECTION_NAMES = {
   player: "Player",
@@ -37,7 +70,10 @@ const SECTION_NAMES = {
   announcements: "Announcements",
   logs: "Server logs",
   tickets: "Tickets",
-  equalizer: "Equalizer",
+  equalizer: "Sound",
+  effects: "Sound",
+  playlists: "Playlists",
+  embed: "Embeds",
   access: "Access",
 };
 
@@ -199,7 +235,7 @@ export default function AccessSection({ guildId }) {
                 <span className="mono trail-when">{formatWhen(entry.at)}</span>
                 <span className="trail-what">
                   <b>{entry.username}</b> changed{" "}
-                  <b>{FIELD_NAMES[entry.field] || entry.field}</b>
+                  <b>{fieldName(entry)}</b>
                   {SECTION_NAMES[entry.section] ? ` in ${SECTION_NAMES[entry.section]}` : null}
                   <small>
                     {entry.from} → {entry.to}

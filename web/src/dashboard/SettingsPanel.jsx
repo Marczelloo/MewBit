@@ -21,8 +21,8 @@ const SECTION_COPY = {
     lead: "Which provider a bare search resolves against. Members can override this for themselves.",
   },
   equalizer: {
-    title: "Equalizer",
-    lead: "The sound shaping this server keeps. It is restored every time MewBit starts playing.",
+    title: "Sound",
+    lead: "The equalizer and audio effect this server keeps. Both are restored every time MewBit starts playing.",
   },
   playlists: {
     title: "Playlists",
@@ -96,16 +96,30 @@ export default function SettingsPanel({ guildId, section, sectionLabel, guildNam
   const [saveState, setSaveState] = useState("idle");
   const [savedField, setSavedField] = useState(null);
   const savedTimer = useRef(null);
+  // Every save is numbered. Two quick changes are two requests in flight, and
+  // only the newest one may touch the screen: an older response landing late
+  // would put the previous value back on a control the user already moved.
+  const requestSeq = useRef(0);
+  // The newest settings the server has confirmed, and the request that
+  // produced them. A failed save reverts to this, not to a stale closure.
+  const serverState = useRef({ settings: null, seq: 0 });
+  const inFlight = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     setSettings(null);
     setError(null);
     setWarnings([]);
+    // Anything still in flight for the previous server is now stale.
+    requestSeq.current += 1;
+    inFlight.current = 0;
+    serverState.current = { settings: null, seq: requestSeq.current };
 
     getSettings(guildId)
       .then((payload) => {
-        if (!cancelled) setSettings(payload.settings);
+        if (cancelled) return;
+        serverState.current = { settings: payload.settings, seq: requestSeq.current };
+        setSettings(payload.settings);
       })
       .catch((apiError) => {
         if (!cancelled) setError(apiError.message);
@@ -116,11 +130,43 @@ export default function SettingsPanel({ guildId, section, sectionLabel, guildNam
     };
   }, [guildId]);
 
+  // A message about one section has no business following the user to the next.
+  // Skipped when the first load failed: that error is the whole screen.
+  useEffect(() => {
+    if (!serverState.current.settings) return;
+    setError(null);
+    setWarnings([]);
+  }, [section]);
+
+  // Statistics are read-only and move on their own while the page is open, so
+  // opening them fetches again rather than showing what the first load saw.
+  useEffect(() => {
+    if (section !== "stats") return undefined;
+    let cancelled = false;
+
+    getSettings(guildId)
+      .then((payload) => {
+        if (cancelled) return;
+        // Not while a save is in flight: its response is the newer truth.
+        if (inFlight.current > 0) return;
+        serverState.current = { settings: payload.settings, seq: requestSeq.current };
+        setSettings(payload.settings);
+      })
+      .catch((apiError) => {
+        if (!cancelled) setError(apiError.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [guildId, section]);
+
   useEffect(() => () => clearTimeout(savedTimer.current), []);
 
   const commit = useCallback(
     async (patch, fieldKey) => {
-      const previous = settings;
+      requestSeq.current += 1;
+      const seq = requestSeq.current;
       // Optimistic, one level deep into each group so a control responds now.
       setSettings((current) => {
         const next = { ...current };
@@ -132,9 +178,19 @@ export default function SettingsPanel({ guildId, section, sectionLabel, guildNam
       setSaveState("saving");
       setError(null);
       setWarnings([]);
+      inFlight.current += 1;
 
       try {
         const payload = await patchSettings(guildId, patch);
+        // The newest confirmed state, even if a later request has since been
+        // sent: it is what a later failure reverts to.
+        if (seq > serverState.current.seq) {
+          serverState.current = { settings: payload.settings, seq };
+        }
+        // Only the newest request may update the screen; an older response
+        // would undo a change the user has already made on top of it.
+        if (seq !== requestSeq.current) return;
+
         // Replace wholesale: a slash command may have changed something else,
         // and a nested group like logs.categories cannot be merged shallowly.
         setSettings(payload.settings);
@@ -149,12 +205,17 @@ export default function SettingsPanel({ guildId, section, sectionLabel, guildNam
           setSavedField(null);
         }, 2200);
       } catch (apiError) {
-        setSettings(previous);
+        if (seq !== requestSeq.current) return;
+        // Back to what the server last confirmed, not to whatever the closure
+        // happened to hold when this request was made.
+        if (serverState.current.settings) setSettings(serverState.current.settings);
         setSaveState("idle");
         setError(apiError.message);
+      } finally {
+        inFlight.current = Math.max(0, inFlight.current - 1);
       }
     },
-    [guildId, settings]
+    [guildId]
   );
 
   if (error && !settings) {
@@ -186,6 +247,17 @@ export default function SettingsPanel({ guildId, section, sectionLabel, guildNam
     value: channel.id,
     label: `#${channel.name}`,
   }));
+  // Channels MewBit is not allowed to post in. Still selectable, because the
+  // permission can be granted afterwards; the label and a note say so instead.
+  const blockedChannels = new Set(
+    settings.options.channels.filter((channel) => channel.canPost === false).map((channel) => channel.id)
+  );
+  const postChannelOptions = settings.options.channels.map((channel) => ({
+    value: channel.id,
+    label: blockedChannels.has(channel.id)
+      ? `#${channel.name} — MewBit cannot post here`
+      : `#${channel.name}`,
+  }));
   const roleOptions = settings.options.roles.map((role) => ({
     value: role.id,
     label: `@${role.name}`,
@@ -212,6 +284,8 @@ export default function SettingsPanel({ guildId, section, sectionLabel, guildNam
           commit={commit}
           savedField={savedField}
           channelOptions={channelOptions}
+          postChannelOptions={postChannelOptions}
+          blockedChannels={blockedChannels}
           roleOptions={roleOptions}
         />
       </div>
